@@ -26,7 +26,7 @@ from plaid_client.constraints import value_set_allows
 from . import docload, fingerprint as fp, garble, opkind, rules, work
 from .bidi import plain_quote
 from .java_regex import matcher
-from .limits import PIN_SENTENCES_MAX, PIN_SENTENCES_PLAN_MAX
+from .limits import PIN_SENTENCES_MAX, PIN_SENTENCES_PLAN_MAX, READ_PRINTS_MAX
 from .plan import (PLAN_MAX_OPS, PlanFull, docs_of_op, keep_waiting, kept_values, plan_changes,
                    reserve as core_reserve, waiting_phrase)
 from .provenance import Requester
@@ -193,6 +193,19 @@ class BaseWorkspace:
         #: model whole (:meth:`note_shown`): what a job's selection counts as
         #: read, never what a tool loaded (REV-JG3-1)
         self.shown: Dict[str, set] = {}
+        #: What the conversation's earlier replies showed the model of each
+        #: sentence (``conversation.earlier_reads``): document id -> sentence
+        #: number as text -> the print of its words. Set by the service. Empty
+        #: outside a conversation (a job's piece, a script).
+        self.read_before: Dict[str, Dict[str, str]] = {}
+        #: The same for this turn (:meth:`note_shown`), kept on its reply.
+        self.read_now: Dict[str, Dict[int, str]] = {}
+        #: The documents run_code's load() read this turn: code that plans by
+        #: the numbers it loaded plans by the text as it is.
+        self.code_read: set = set()
+        #: Whether the tool call under way stages (a plan tool), set by the
+        #: toolkit around each call.
+        self.planning = False
         # Set when the operator configured web search. None means the web tools
         # are not offered to the model at all.
         self.web = None
@@ -485,6 +498,62 @@ class BaseWorkspace:
         for i in positions:
             if 1 <= i <= len(doc.sentences):
                 held.add(doc.sentences[i - 1].id)
+                printed = self.words_print(doc.sentences[i - 1])
+                if printed is not None:
+                    self.read_now.setdefault(doc.id, {})[i] = printed
+
+    # --- numbers read in an earlier turn ------------------------------------
+
+    def words_print(self, sentence) -> Optional[str]:
+        """A short print of a sentence's words, in order, which changes when a
+        word is added, removed, joined, split or retyped, and when another
+        sentence takes its place. None where the app names no word by its
+        number, and then no number is checked."""
+        return None
+
+    def reads_kept(self) -> Dict[str, Dict[str, str]]:
+        """What this turn showed the model, for its reply to keep (``read``):
+        document id -> sentence number as text -> print, at most
+        :data:`READ_PRINTS_MAX` sentences."""
+        out: Dict[str, Dict[str, str]] = {}
+        left = READ_PRINTS_MAX
+        for doc_id, prints in self.read_now.items():
+            for n, printed in prints.items():
+                if left <= 0:
+                    return out
+                out.setdefault(doc_id, {})[str(n)] = printed
+                left -= 1
+        return out
+
+    def refuse_moved_sentence(self, doc, n: int, ref: str) -> None:
+        """Refuse a staging call naming a word of sentence ``n`` (1-based) of
+        ``doc`` by its number, ``ref`` as given, when the sentence's words are
+        not as this conversation last read them: a number read then may name
+        another word now (2026-11-17 survey). A sentence read again in this
+        turn, a document run_code loaded in it, and a sentence never read are
+        not asked. The refusal names every sentence of the document that has
+        changed since it was read, so one read puts them all right."""
+        if not self.planning or doc.id in self.code_read:
+            return
+        before = self.read_before.get(doc.id) or {}
+        now = self.read_now.get(doc.id) or {}
+        if str(n) not in before or n in now:
+            return
+
+        def moved(k: int) -> bool:
+            if k in now:
+                return False
+            if not 1 <= k <= len(doc.sentences):
+                return True
+            return self.words_print(doc.sentences[k - 1]) != before[str(k)]
+        if not moved(n):
+            return
+        names = [f's{k}' for k in sorted(int(k) for k in before if k.isdigit()) if moved(k)]
+        listed = names[0] if len(names) == 1 else ', '.join(names[:-1]) + ' and ' + names[-1]
+        one = len(names) == 1
+        raise ToolError(f'{plain_quote(doc.name or "")} {ref}: the words of {listed} have changed since this '
+                        f'conversation read them. Read {listed if one else "them"} again with read_document and '
+                        f'name {"its" if one else "their"} words by the numbers it shows now.', kind='conflict')
 
     def sentence_position(self, doc, item) -> Optional[int]:
         """The position of the sentence a read_document argument names in

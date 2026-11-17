@@ -25,6 +25,7 @@ from plaid_client.workflows.igt.tagsets import (CLOSED, MIXED, gloss_reading_of,
                                                refused_parts, tagset_enforces)
 
 from ..core import docload, opkind
+from ..core.fingerprint import fingerprint
 from ..core.bidi import plain_quote, qname, qv
 from ..core.java_regex import PatternError, matcher
 from ..core.plan import change_of, docs_of_op, labelled
@@ -356,6 +357,14 @@ class Workspace(BaseWorkspace):
             if holder is not None:
                 found.add(holder)
         return found
+
+    def words_print(self, sentence) -> Optional[str]:
+        """The sentence's id and its words in order, each its token and its
+        text: a word typed in, deleted, joined, split or retyped, or another
+        sentence in its place, changes it, and a value on a word does not
+        (``BaseWorkspace.refuse_moved_sentence``). Eight hex digits: it tells
+        an edit from none, and one is kept per sentence read."""
+        return fingerprint([sentence.id, [[w.id, w.surface] for w in sentence.words]])[:8]
 
     def doc_tag(self, doc, show: bool = True) -> str:
         """The ``"<document>" `` prefix on a printed reference: the document's

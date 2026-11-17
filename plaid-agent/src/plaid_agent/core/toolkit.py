@@ -135,7 +135,15 @@ def build(tools: List[Dict[str, Any]], impl: Dict[str, Callable], *, manual: str
         # a sentence: the model asked for two and is getting one. Said here
         # rather than in each tool, so a tool cannot be written without it.
         after = (lambda out: out + ws.superseded_note()) if name in write else None
-        return run_tool(ws, name, f, rewrite(f, args) if rewrite else args, after=after, schema=schemas.get(name),
-                        reading=reading)
+        # Whether the call stages, which a number read in an earlier turn is
+        # asked only then (`BaseWorkspace.refuse_moved_sentence`). A plan
+        # tool called by run_code's plan() sets it inside run_code's call.
+        planning = getattr(ws, 'planning', False)
+        ws.planning = name in write
+        try:
+            return run_tool(ws, name, f, rewrite(f, args) if rewrite else args, after=after,
+                            schema=schemas.get(name), reading=reading)
+        finally:
+            ws.planning = planning
 
     return Kit(tools, write, tools_for, call_tool)

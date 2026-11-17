@@ -108,6 +108,13 @@ MAX_SCOPE_DOCS = 100
 # rather than the promise.
 MAX_SENTENCES_PER_READ = 40
 
+# Sentences one reply keeps a print of, of those its turn showed the model
+# (``BaseWorkspace.reads_kept``), for a later turn to tell whether a number
+# read then still names the same word. About seventeen bytes each in the
+# record. Past it the rest are not kept, and a number read in them is
+# compared with an older read or with none.
+READ_PRINTS_MAX = 400
+
 # Documents the project overview names. The rest are in list_documents, which
 # pages and filters, and the overview says so.
 OVERVIEW_DOCS = 50

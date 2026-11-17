@@ -23,8 +23,8 @@ from .agent import (TurnCancelled, TurnFailed, turn_reply_round, turn_trace, con
 from .files import Attachments, FileKeeper
 from .garble import seed
 from .guidelines import in_context as guidelines_in_context
-from .conversation import (CONNECTION_LOST_LINE, assistant_item, error_item, held_transcript, proposed_changes, prune,
-                           record_budget, turn_ending)
+from .conversation import (CONNECTION_LOST_LINE, assistant_item, earlier_reads, error_item, held_transcript,
+                           proposed_changes, prune, record_budget, turn_ending)
 from .rounds import RoundKeeper
 from .plan import outcome_unknown, waiting_plan
 from .web import session_for
@@ -136,6 +136,9 @@ class Turn:
                 # The plan an earlier message staged that still waits on its card,
                 # which this turn's own plan replaces (see `turn_ending`).
                 ws.waiting = waiting_plan(conv['display'])
+                # What the earlier replies showed the model of each sentence,
+                # which a number it read then is held to when it stages.
+                ws.read_before = earlier_reads(conv['display'])
                 transcript = filetools.stamp(transcript, ws.files.named((last_user or {}).get('files') or []),
                                              ws.FILE_ROUTES)
                 # The other projects the user added to the conversation, read from their
@@ -291,6 +294,9 @@ class Turn:
             # The job the turn drafted, for the user to start from its card.
             item['job'] = {**card, 'status': None}
         item['elapsed_ms'] = int((time.monotonic() - started) * 1000)
+        read = ws.reads_kept()
+        if read:
+            item['read'] = read
         if ws.keeper.refs:
             # The files this turn stored, which later turns read as the
             # conversation's own.
