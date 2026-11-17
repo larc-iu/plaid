@@ -226,8 +226,8 @@ def _quoted(what: str, text: str, chars: Optional[int]) -> str:
 
 
 #: How the job page words a plan's pieces.
-_PIECES = {'sentences': 'stretches of sentences', 'document': 'one piece per document',
-           'selection': 'one piece for all the documents'}
+_PIECES = {'sentences': 'stretches of sentences', 'document': 'one part per document',
+           'selection': 'one part for all the documents'}
 
 
 def search_part(plan: Dict[str, Any]) -> str:
@@ -280,7 +280,7 @@ def plan_line(report: Dict[str, Any]) -> Optional[str]:
         if too_long:
             line += f', {too_long:,} {"of them " if failed or apart else ""}in stretches of sentences'
     elif fallback:
-        line += f', {len(fallback):,} of them in smaller pieces'
+        line += f', {len(fallback):,} of them in smaller parts'
     line += '.'
     # What the plan fills, by the names the report gives (REV-DF-D-1).
     names = plan.get('fills_names')
@@ -336,7 +336,7 @@ def summary(job: Dict[str, Any], note_chars: Optional[int] = JOB_SUMMARY_NOTE_CH
     if told:
         # The assistant's own words when it planned the job, never the
         # starter's instructions (the lead's ruling on REV-JG-14).
-        lines.append(_quoted('What the assistant told every piece, as it planned the job', told, note_chars))
+        lines.append(_quoted('What the assistant told every part, as it planned the job', told, note_chars))
     if report.get('findings'):
         # The one report of a job that fills nothing (RPF-A5).
         lines.append(_quoted('The job\'s findings, its report', report['findings'], note_chars))
@@ -573,7 +573,7 @@ def _table_lines(table: Dict[str, Any]) -> str:
 def _help() -> str:
     return '\n'.join([
         'read_job reads an assistant job of this project: what it did, as its record says. A job\'s record holds '
-        'what it did, the model\'s note on each piece, and nothing more of why.',
+        'what it did, the model\'s note on each part, and nothing more of why.',
         '- No job: the project\'s jobs, newest first, each with its id.',
         '- job: its summary (state, who started it and when, the instructions whole, how its work was cut, the '
         'summary the job wrote, totals) and the report\'s sections with how many rows each holds.',

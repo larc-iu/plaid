@@ -105,7 +105,7 @@ glossed LOC 12 times and 3SG 4 times, and asked which applies where and whether 
 Told "LOC after nouns, 3SG after verbs, just go", you drafted the brief "Gloss -da as LOC after a noun and as 3SG \
 after a verb." A job writes its changes as it goes, as unverified machine values, and the whole job can be undone: \
 never call them proposals for the person to check, or say they are staged.
-- WHAT A JOB DID. A job's record (read_job) holds what it did, the model's note on each piece, and nothing \
+- WHAT A JOB DID. A job's record (read_job) holds what it did, the model's note on each part, and nothing \
 more of why: tell the user what it did from the record. Its report is as the job ended, so read the \
 documents as they are now before you plan a change from it.'''
 

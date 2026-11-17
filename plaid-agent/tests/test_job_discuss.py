@@ -214,7 +214,7 @@ def test_the_plans_instructions_and_what_it_left_out_are_read_as_the_assistants(
     job = _ended(ws.client, report, note='Gloss the texts.')
     out = call_tool(ws, 'read_job', {'job': job})
     assert 'Instructions as sent: "Gloss the texts."' in out
-    assert f'What the assistant told every piece, as it planned the job: "{told}"' in out
+    assert f'What the assistant told every part, as it planned the job: "{told}"' in out
     assert 'Left out by the plan (plan.left_out) 1' in out
     rows = call_tool(ws, 'read_job', {'job': job, 'section': 'Left out by the plan'})
     assert '"Text 2", id d2' in rows or 'name: Text 2' in rows, rows

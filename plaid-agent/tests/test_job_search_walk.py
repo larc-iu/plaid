@@ -339,10 +339,10 @@ def test_the_plan_line_says_how_a_selection_fallen_back_was_worked():
     plan = {'pieces': 'selection', 'fills_names': ['Gloss'],
             'fallback': [{'document_id': None, 'reason': 'failed'}]}
     assert jobread.plan_line({'plan': plan}) == (
-        'Worked in one piece for all the documents, then each document as a whole. Fills: Gloss.')
+        'Worked in one part for all the documents, then each document as a whole. Fills: Gloss.')
     plan['fallback'].append({'document_id': 'd2', 'reason': 'too-long'})
     assert jobread.plan_line({'plan': plan}) == (
-        'Worked in one piece for all the documents, then each document as a whole, 1 of them in stretches of '
+        'Worked in one part for all the documents, then each document as a whole, 1 of them in stretches of '
         'sentences. Fills: Gloss.')
     put_off = {'pieces': 'selection', 'fallback': [{'document_id': 'd1', 'reason': 'in-use'}]}
-    assert jobread.plan_line({'plan': put_off}) == 'Worked in one piece for all the documents, then 1 as a whole.'
+    assert jobread.plan_line({'plan': put_off}) == 'Worked in one part for all the documents, then 1 as a whole.'

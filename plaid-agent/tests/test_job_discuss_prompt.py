@@ -27,7 +27,7 @@ def test_the_igt_prompt_says_how_to_speak_of_a_job_once():
     assert system.count(LEAD) == 1
     para = _paragraph(system)
     for said in ('read_job', 'tell the user what it did from the record',
-                 "holds what it did, the model's note on each piece, and nothing more of why",
+                 "holds what it did, the model's note on each part, and nothing more of why",
                  'as the job ended', 'read the documents as they are now before you plan a change from it'):
         assert said in para, said
 
@@ -43,7 +43,7 @@ def test_the_record_of_a_job_is_said_the_same_way_everywhere():
     guide = (Path(__file__).resolve().parents[2] / 'plaid-igt' / 'docs' / 'igt-guide.adoc').read_text()
     for name, text in (('the chat prompt', igt_prompt.SYSTEM), ('read_job', jobread._help()), ('the guide', guide)):
         flat = ' '.join(text.split())
-        assert "the model's note on each piece" in flat and 'and nothing more of why' in flat, name
+        assert "the model's note on each part" in flat and 'and nothing more of why' in flat, name
         assert "own words" not in flat.split("A job's record")[1][:120], name
         assert 'no record of why' not in flat and 'never why' not in flat and 'and not why' not in flat, name
 
