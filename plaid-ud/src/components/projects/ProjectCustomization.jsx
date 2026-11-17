@@ -260,7 +260,7 @@ export const ProjectCustomization = () => {
     const notColor = drawn.find(([, color]) => color && !isHexColor(color));
     if (notColor) {
       notifyError(
-        `${notColor[0]}: "${notColor[1]}" is not a color of the form #RRGGBB.`,
+        `${notColor[0]}: "${notColor[1]}" is not a color of the form #RGB or #RRGGBB.`,
         'UD settings not saved',
       );
       return;

@@ -121,7 +121,7 @@ describe('UD customization', () => {
     expect(hex.getAttribute('aria-invalid')).toBe('true');
     await view.step(() => button(view.container, 'Save').click());
     expect(feedback.notifyError).toHaveBeenCalledWith(
-      'NOUN: "#12" is not a color of the form #RRGGBB.',
+      'NOUN: "#12" is not a color of the form #RGB or #RRGGBB.',
       'UD settings not saved',
     );
     expect(managed.current.fetchProject).not.toHaveBeenCalled();
@@ -136,6 +136,24 @@ describe('UD customization', () => {
     await view.step(() => type(view.container.querySelector('[aria-label="NOUN hex"]'), '#12'));
     await view.step(() => view.container.querySelector('[aria-label="Remove NOUN"]').click());
     expect(view.container.querySelector('[aria-label="NOUN hex"]')).toBeNull();
+    await view.step(async () => {
+      button(view.container, 'Save').click();
+      await new Promise((r) => setTimeout(r, 0));
+    });
+    const messages = feedback.notifyError.mock.calls.map((c) => String(c[0]));
+    expect(messages.some((m) => m.includes('is not a color'))).toBe(false);
+    await view.unmount();
+  });
+
+  // REV-HFU-8: a three-digit hex was stored before the check, so it still is,
+  // as typed, and the swatch shows it.
+  it('takes a three-digit hex as it was taken before', async () => {
+    feedback.notifyError.mockClear();
+    const view = await mount();
+    const hex = view.container.querySelector('[aria-label="NOUN hex"]');
+    await view.step(() => type(hex, '#F00'));
+    expect(hex.getAttribute('aria-invalid')).toBe(null);
+    expect(view.container.querySelector('[aria-label="NOUN color"]').value).toBe('#ff0000');
     await view.step(async () => {
       button(view.container, 'Save').click();
       await new Promise((r) => setTimeout(r, 0));
