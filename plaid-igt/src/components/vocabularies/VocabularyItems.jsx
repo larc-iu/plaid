@@ -847,6 +847,8 @@ export const VocabularyItems = ({
       form: fromBase.form,
       metadata: { ...reservedMetadata(selectedAsRead?.metadata), ...fromBase.metadata },
     };
+    const labelOf = (key) =>
+      key === 'form' ? 'Form' : fieldLabel(fields.find((f) => f.name === key) ?? key);
     setItems((prev) => prev.map((i) => (i.id === item.id ? saved(item.id) : i)));
     showSaved();
     // Only the keys the save changes are sent, so one written elsewhere
@@ -866,7 +868,7 @@ export const VocabularyItems = ({
         const clash =
           now && changedUnderSave(followIds(loaded), followIds({ form, metadata }), now);
         if (clash) {
-          throw Object.assign(new Error(changedElsewhereText(clash)), {
+          throw Object.assign(new Error(changedElsewhereText(clash, labelOf)), {
             status: 409,
             changedElsewhere: true,
           });

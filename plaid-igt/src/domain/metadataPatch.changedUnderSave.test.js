@@ -54,3 +54,21 @@ describe('changedUnderSave', () => {
     ).toBeNull();
   });
 });
+
+// REV-HFV-R2-2: the refusal names the field by its label on the form, at a
+// sentence's start.
+describe('changedElsewhereText', () => {
+  it('names the field by its label, capitalised, and the form as Form', async () => {
+    const { changedElsewhereText } = await import('./metadataPatch');
+    const labelOf = (k) => ({ gloss: 'gloss (en)', seeAlso: 'See also' })[k] ?? k;
+    expect(changedElsewhereText({ key: 'gloss', value: 'hound' }, labelOf)).toBe(
+      'Gloss (en) was changed elsewhere to “hound”. Save again to keep yours.',
+    );
+    expect(changedElsewhereText({ key: 'seeAlso', value: ['x'] }, labelOf)).toBe(
+      'See also was changed elsewhere. Save again to keep yours.',
+    );
+    expect(changedElsewhereText({ key: 'form', value: 'perrito' })).toBe(
+      'Form was changed elsewhere to “perrito”. Save again to keep yours.',
+    );
+  });
+});

@@ -254,7 +254,7 @@ describe('the entry form', () => {
     expect(calls.filter(([kind]) => kind === 'bulkUpdate')).toEqual([]);
     expect(feedback.notifyError).toHaveBeenCalledTimes(1);
     expect(feedback.notifyError.mock.calls[0]).toEqual([
-      'gloss was changed elsewhere to “ONE-B”. Save again to keep yours.',
+      'Gloss was changed elsewhere to “ONE-B”. Save again to keep yours.',
       'Failed to save the entry',
     ]);
     expect(glossInput().value).toBe('ONE');
@@ -294,7 +294,7 @@ describe('the entry form', () => {
         await settle(5);
       });
       expect(feedback.notifyError.mock.calls.map((c) => c[0])).toEqual([
-        'gloss was changed elsewhere to “ONE-B”. Save again to keep yours.',
+        'Gloss was changed elsewhere to “ONE-B”. Save again to keep yours.',
       ]);
       expect(glossInput().value).toBe('ONE');
       expect(noteInput().value).toBe('NEW-B');
@@ -326,7 +326,7 @@ describe('the entry form', () => {
       await saveAgain(view);
       expect(sent(calls)).toEqual([]);
       expect(feedback.notifyError.mock.calls.map((c) => c[0])).toEqual([
-        'gloss was changed elsewhere to “ONE-C”. Save again to keep yours.',
+        'Gloss was changed elsewhere to “ONE-C”. Save again to keep yours.',
       ]);
       expect(glossInput().value).toBe('ONE');
       await view.unmount();

@@ -73,10 +73,15 @@ export const changedUnderSave = (loaded, next, now) => {
 
 /**
  * The words for a save refused because `key` was changed elsewhere to
- * `value` (changedUnderSave).
+ * `value` (changedUnderSave), the field named by `labelOf(key)` as the form
+ * shows it, at a sentence's start.
  */
-export const changedElsewhereText = ({ key, value }) => {
-  const name = key === 'form' ? 'Form' : key;
+export const changedElsewhereText = (
+  { key, value },
+  labelOf = (k) => (k === 'form' ? 'Form' : k),
+) => {
+  const label = String(labelOf(key) ?? key);
+  const name = label.charAt(0).toUpperCase() + label.slice(1);
   const what =
     value === undefined || value === null || value === ''
       ? 'was removed elsewhere'
