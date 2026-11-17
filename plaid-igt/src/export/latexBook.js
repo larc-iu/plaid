@@ -456,8 +456,9 @@ function sentenceColumns(sentence, selection) {
 // spaces stand on both sides, a closing mark (a full stop, a comma, a closing
 // bracket or quotation mark) with the word before it and an opening one with
 // the word after it. A dash or a straight quotation mark between spaces stays
-// a column. Its text is the column's `before` or `after`, printed on the word
-// line only.
+// a column, and so does a spaced closing mark after the first a word takes,
+// or after punctuation alone. Its text is the column's `before` or `after`,
+// printed on the word line only.
 const PUNCTUATION_RE = /^\p{P}+$/u;
 const CLOSING_RE =
   /^[\p{Pe}\p{Pf}.,;:!?\u2026\u060c\u061b\u061f\u06d4\u0964\u0965\u3001\u3002\uff0c\uff1f\uff01]+$/u;
@@ -476,8 +477,12 @@ function attachPunctuation(columns) {
     const next = columns[i + 1];
     const prev = carry === '' ? out[out.length - 1] : null;
     const word = next && !bare(next) ? next : null;
-    if (bare(c) && prev && (c.glued || (!word?.glued && CLOSING_RE.test(c.word)))) {
+    // A spaced closing mark goes with a word, and only the first after it:
+    // runs of punctuation that spaces part stay apart (". . ." is not "...").
+    const spaced = !c.glued && !word?.glued && CLOSING_RE.test(c.word);
+    if (bare(c) && prev && (c.glued || (spaced && !bare(prev) && !prev.spacedAfter))) {
       prev.after = `${prev.after ?? ''}${c.word}`;
+      if (spaced) prev.spacedAfter = true;
       return;
     }
     if (bare(c) && word && (word.glued || OPENING_RE.test(c.word))) {

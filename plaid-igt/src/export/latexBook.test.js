@@ -344,6 +344,27 @@ describe('formatExample', () => {
     expect(lineOf(formatExample(s, SEL), 'glb').at(-1)).toBe('\\PlaidMorphemeField{x} {} {} {} {}');
   });
 
+  it('joins no two runs of punctuation that spaces part (H9-2)', () => {
+    const gap = (content) => ({ type: 'gap', content });
+    const tok = (t) => ({ type: 'token', ...t });
+    const line = (pieces, words) =>
+      lineOf(formatExample(sentenceOf(words, {}, pieces), SEL), 'gla')[0];
+    // Runs of punctuation alone stay three columns, not "...!!!???".
+    expect(line([gap('... !!! ???')], [])).toBe(
+      '\\PlaidWord{...} \\PlaidWord{!!!} \\PlaidWord{???}',
+    );
+    // The first spaced closing mark goes with its word, as ever, and the
+    // next one keeps its space: "waited. . . then", not "waited... then".
+    const [waited, then] = [word('waited'), word('then')];
+    expect(line([tok(waited), gap(' . . . '), tok(then)], [waited, then])).toBe(
+      '\\PlaidWord{waited}\\PlaidWord{.} \\PlaidWord{.} \\PlaidWord{.} \\PlaidWord{then}',
+    );
+    const [unbalanced, end] = [word('unbalanced'), word('end')];
+    expect(line([gap('{'), tok(unbalanced), gap(' } } '), tok(end)], [unbalanced, end])).toBe(
+      '\\PlaidWord{{}\\{}\\PlaidWord{unbalanced}\\PlaidWord{{}\\}} \\PlaidWord{{}\\}} \\PlaidWord{end}',
+    );
+  });
+
   it('keeps a mark that carries a value of its own as a column', () => {
     const s = sentenceOf([word('a'), word('?', [], { POS: span('PUNCT') })]);
     expect(lineOf(formatExample(s, SEL), 'gla')).toEqual(['\\PlaidWord{a} \\PlaidWord{?}']);
