@@ -797,6 +797,14 @@ def named_args(ws: Any, args: Any) -> Any:
     return out
 
 
+def _holds_work(ws: Any) -> bool:
+    """Whether the turn staged a plan or drafted a job card, either of which
+    is the substance of the turn and outlives a failed model call after it
+    (`keep_the_plan`). A card was lost this way while its tool's answer said
+    it was on the reply."""
+    return bool(getattr(ws, 'ops', None)) or getattr(ws, 'job_card', None) is not None
+
+
 def _plan_snapshot(ws: Any) -> List[str]:
     """The plan as it stands, to tell whether a call changed it. In any order:
     a change staged again over itself may move to the end of the plan. A job
@@ -1367,7 +1375,7 @@ def _run_turn(cfg, kit, ws, system, transcript, on_progress, cancelled, on_text,
         count in the turn's usage: as the provider reported them, else as
         the model's tokenizer counts what was sent and written.
         ``(reply, reasoning of the failed call)``."""
-        if not getattr(ws, 'ops', None):
+        if not _holds_work(ws):
             raise e
         line = failure_line(e)
         print(f'{cfg.model}: a model call after a staged plan failed, and the plan is kept: {line}')
@@ -1422,7 +1430,7 @@ def _run_turn(cfg, kit, ws, system, transcript, on_progress, cancelled, on_text,
         new.append(d)  # the nudge itself never enters the saved transcript
         text = (d.get('content') or '').strip()
         if not text:
-            if not getattr(ws, 'ops', None):
+            if not _holds_work(ws):
                 # Asked twice and nothing came back, and nothing was planned:
                 # a failed turn, which the reader can retry, not an answer.
                 raise TurnFailed(EMPTY_REPLY)

@@ -296,3 +296,25 @@ def test_a_turn_that_staged_and_then_failed_twice_is_an_answer_with_its_plan_and
     monkeypatch.setattr(agent, '_complete', Model(_resp(calls=[_call(1, 'plan_a')]), err, err))
     turn = run_turn(ModelConfig(model='fake/m', stream=False), kit, Ws(), 'system', [{'role': 'user', 'content': 'hi'}])
     assert turn.failure is err and turn.text == '(The model service did not answer.)'
+
+
+def test_a_drafted_job_card_is_kept_when_the_model_then_fails(monkeypatch):
+    """Older than the retry: keep_the_plan kept ops only, so a card the turn
+    drafted was lost with the turn while its result said it was on the reply."""
+    def draft(ws, name, args):
+        ws.job_card = {'summary': 'gloss 40 documents'}
+        return 'Drafted the job. Its card is on your reply.'
+    tracer = Tracer(kind=lambda n: PLAN, describe=lambda n, a: 'Drafted a job', progress=lambda n, a: '')
+    kit = Toolkit(tools_for=lambda ws: [], call_tool=draft, tracer=tracer)
+    ws = Ws()
+    ws.job_card = None
+    err = _errors()['server']
+    monkeypatch.setattr(agent, '_complete', Model(_resp(calls=[_call(1, 'propose_job')]), err, err))
+    turn = run_turn(ModelConfig(model='fake/m', stream=False), kit, ws, 'system', [{'role': 'user', 'content': 'hi'}])
+    assert turn.failure is err and ws.job_card == {'summary': 'gloss 40 documents'}
+    # An empty reply after a card is kept the same way as after a plan.
+    monkeypatch.setattr(agent, '_complete', Model(_resp(calls=[_call(1, 'propose_job')]), _resp(''), _resp('')))
+    ws = Ws()
+    ws.job_card = None
+    turn = run_turn(ModelConfig(model='fake/m', stream=False), kit, ws, 'system', [{'role': 'user', 'content': 'hi'}])
+    assert turn.text == f'({agent.EMPTY_REPLY})'
