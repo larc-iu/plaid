@@ -18,7 +18,7 @@ from plaid_client.document_lock import with_document_lock
 from plaid_client.operations import _Operations
 from plaid_client.http import (
     _UNSET as _HTTP_UNSET, PlaidAPIError, make_request, build_api_error, network_error,
-    DEFAULT_TIMEOUT_S, DEFAULT_BATCH_TIMEOUT_S, wire_timeout, query_timeout,
+    DEFAULT_TIMEOUT_S, DEFAULT_BATCH_TIMEOUT_S, json_body, wire_timeout, query_timeout,
 )
 from plaid_client.ids import normalize_user_id
 from plaid_client.pagination import iter_pages, list_all, list_page
@@ -4397,7 +4397,7 @@ class PlaidClient(_Operations):
         url = f'{base_url.rstrip("/")}{path}'
         kwargs = {'timeout': wire_timeout(timeout)}
         if method == 'POST':
-            kwargs.update(headers={'Content-Type': 'application/json'}, data=json.dumps(body))
+            kwargs.update(headers={'Content-Type': 'application/json'}, data=json_body(body))
         try:
             response = getattr(req_lib, method.lower())(url, **kwargs)
         except Exception as e:

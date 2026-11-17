@@ -34,7 +34,7 @@ def _stub_server(client, answer=lambda request, n: Response(200, {'id': 'x'})):
         request = {'url': kw['url'], 'method': kw['method'], 'key': headers.get(KEY),
                    'auth': headers.get('Authorization'),
                    'content_type': headers.get('Content-Type'),
-                   'body': json.loads(data) if isinstance(data, str) else None}
+                   'body': json.loads(data) if isinstance(data, (str, bytes)) else None}
         requests.append(request)
         r = answer(request, len(requests) - 1)
         if isinstance(r, BaseException):

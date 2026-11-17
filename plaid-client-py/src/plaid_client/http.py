@@ -673,6 +673,20 @@ def _read_download(response, url, method, to_path, on_progress):
     return to_path if to_path is not None else b''.join(parts)
 
 
+def json_body(value, default=None) -> bytes:
+    """``value`` as a request body: compact JSON in UTF-8, every letter as
+    itself, the bytes the JS client's ``JSON.stringify`` sends. Escaped
+    (``ensure_ascii``) a non-Latin value took three to six times its size and
+    met the server's JSON body cap long before its stored-value cap
+    (REV-HFC-5). A string holding a lone surrogate, which UTF-8 cannot carry,
+    is sent escaped, as JSON.stringify escapes it."""
+    try:
+        return json.dumps(value, ensure_ascii=False, separators=(',', ':'),
+                          default=default).encode('utf-8')
+    except UnicodeEncodeError:
+        return json.dumps(value, separators=(',', ':'), default=default).encode('ascii')
+
+
 def make_request(client, method, path, *, body=None, raw_body=None, form_data=False,
                  query_params=None, no_batch=False, out_of_band=False,
                  no_operation=False, skip_response_transform=False,
@@ -784,7 +798,7 @@ def make_request(client, method, path, *, body=None, raw_body=None, form_data=Fa
         else:
             # Here, not at the top: batch.py imports this module.
             from plaid_client.batch import _unsendable
-            kwargs['data'] = json.dumps(request_body, default=_unsendable)
+            kwargs['data'] = json_body(request_body, _unsendable)
 
     # A write that lands on a held document renews its lock on the server, so
     # its keeper hears of it (document_lock.writes_landed).

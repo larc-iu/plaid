@@ -14,7 +14,7 @@ from typing import TYPE_CHECKING, Any
 from plaid_client.document_lock import writes_landed, writes_started
 from plaid_client.http import (
     _UNSET, IDEMPOTENCY_HEADER, NO_PIN, REPLAYED_HEADER, PlaidAPIError, build_api_error,
-    extract_document_versions, is_replayed, network_error, next_idempotency_key, note_server_clock,
+    extract_document_versions, is_replayed, json_body, network_error, next_idempotency_key, note_server_clock,
     prepare_request, restamp_document_version, wire_timeout, with_retries,
 )
 from plaid_client.replayed import mark_replayed, was_replayed
@@ -333,7 +333,7 @@ def send_chunks(client, ops: list[dict], stamped_documents: list | None, stamped
             record(_claimed_version(stamped['path']) if stamped else None)
             # Encoded once, before anything goes: a body that cannot be
             # sent is the caller's mistake, never an unknown outcome.
-            data = json.dumps(body, default=_unsendable)
+            data = json_body(body, _unsendable)
             results, replayed = post_batch(client, url, data, key, budget)
             # The server took the request, so each operation it joined exists.
             for group in (stamped_groups or [])[start:start + MAX_BATCH_OPS]:

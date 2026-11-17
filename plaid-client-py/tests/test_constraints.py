@@ -39,7 +39,7 @@ def _sent(fn):
     out = []
     for r in client.session.sent:
         url = urlsplit(r['url'])
-        body = json.loads(r['data']) if isinstance(r['data'], str) else r['json']
+        body = json.loads(r['data']) if isinstance(r['data'], (str, bytes)) else r['json']
         out.append({'method': r['method'],
                     'path': url.path + (f'?{url.query}' if url.query else ''), 'body': body})
     return out

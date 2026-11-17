@@ -2679,7 +2679,7 @@ class FakeCore:
 
     def stored_bytes(self, key):
         """How many bytes the value stored under ``key`` takes as JSON."""
-        return len(json.dumps(self.data[key][1]).encode())
+        return len(json.dumps(self.data[key][1], ensure_ascii=False, separators=(',', ':')).encode())
 
     def close(self):
         self.restarted.set()
