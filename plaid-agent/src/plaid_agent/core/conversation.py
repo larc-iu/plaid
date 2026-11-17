@@ -599,9 +599,6 @@ def build_meta(prev: Optional[Dict[str, Any]], conv_id: str, conv: Dict[str, Any
         # by other requests and by the store, never lost by this rewrite.
         'holder': prev.get('holder'),
         'size': prev.get('size'),
-        # What the conversation is for (``ops.purpose_of``), set when it
-        # was created and kept by every write after.
-        **({'purpose': prev['purpose']} if prev.get('purpose') else {}),
     }
 
 

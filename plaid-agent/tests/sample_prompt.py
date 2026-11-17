@@ -94,13 +94,6 @@ def _render(app: str) -> str:
               '```text', kit.call_tool(ws, 'project_overview', {}).rstrip(), '```\n',
               f'`read_document` on "{document}":\n',
               '```text', kit.call_tool(ws, 'read_document', {'document': document}).rstrip(), '```\n']
-    if app == 'igt':
-        # A conversation the page opened with "Set up job" (purpose
-        # job-setup) has this note at the end of its system prompt.
-        from plaid_agent.igt.jobcard import setup_note
-        parts += ['## A conversation that sets up a job\n',
-                  'Opened with "Set up job" (its purpose `job-setup`), the system prompt ends with:\n',
-                  '```text', setup_note(ws).rstrip(), '```\n']
     return '\n'.join(parts)
 
 

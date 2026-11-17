@@ -63,17 +63,13 @@ export const useAssistantFocus = () => {
 
 // A screen's side of starting a conversation about itself ("Discuss with the
 // assistant", on a job's page): the panel opens on a NEW conversation, whose
-// first message is then asked from what the screen published. Outside a
-// provider it is a no-op.
-//
-// Called as `start({purpose})` the new conversation is FOR something
-// (purposes.js): its first send carries the purpose, which the service keeps
-// in the record. Nothing is sent by itself: the reader writes the first
-// message. Called with anything else (a click's event) it has none.
+// first message is then asked from what the screen published. Nothing is sent
+// by itself: the reader writes the first message. Outside a provider it is a
+// no-op.
 export const useStartConversation = () => useContext(SubjectContext)?.startConversation ?? noAsk;
 
-// The panel's side of the same: a request (`{seq, purpose}`, `seq` new for
-// each press) or null, and how to let go of it once it is taken. The shell
+// The panel's side of the same: a request (`{seq}`, `seq` new for each press)
+// or null, and how to let go of it once it is taken. The shell
 // opens the dock when this turns non-null.
 export const useAssistantFresh = () => {
   const ctx = useContext(SubjectContext);

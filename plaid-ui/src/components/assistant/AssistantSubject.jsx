@@ -12,13 +12,12 @@ export const AssistantSubjectProvider = ({ children }) => {
   const [focus, setFocus] = useState(null);
   const ask = useCallback((detail) => setFocus(detail || null), []);
   const clearFocus = useCallback(() => setFocus(null), []);
-  // A new conversation a screen asked for, as `{seq, purpose}` with `seq` new
-  // for each press, so pressing again after the panel took the first is a
-  // request of its own. A purpose is only ever a string (subject.js).
+  // A new conversation a screen asked for, as `{seq}` with `seq` new for each
+  // press, so pressing again after the panel took the first is a request of
+  // its own.
   const [fresh, setFresh] = useState(null);
-  const startConversation = useCallback((opts) => {
-    const purpose = typeof opts?.purpose === 'string' ? opts.purpose : null;
-    setFresh((was) => ({ seq: (was?.seq || 0) + 1, purpose }));
+  const startConversation = useCallback(() => {
+    setFresh((was) => ({ seq: (was?.seq || 0) + 1 }));
   }, []);
   const clearFresh = useCallback(() => setFresh(null), []);
   // A screen's own Assistant button, pressed: a number new for each press, so

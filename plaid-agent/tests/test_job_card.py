@@ -591,14 +591,23 @@ def test_help_says_how_to_draft_what_the_job_fills_and_never_privileges_glossing
     assert 'Give every word ending in -ka the Word class V.' in out
 
 
-# --- a conversation set up for a job: its purpose (BRIEF-SU) -------------------------------
+# --- a job is set up in any conversation (AB, the owner 2026-11-17) -------------------------
+# No button opens a conversation for setting up a job any more: a person asks
+# the assistant in whatever conversation they are in. What the job-setup note
+# said is the chat prompt's own jobs section, every turn of every
+# conversation, and propose_job, the card and the planner need nothing else.
 
-def _systems(monkeypatch):
-    """Every turn's system prompt, as the model is sent it."""
+def _systems(monkeypatch, calls=()):
+    """Every turn's system prompt, as the model is sent it. Each turn makes
+    ``calls`` (tool, args) first, as a model would."""
     seen = []
 
     def fake_run_turn(cfg, kit, ws, system, transcript, on_progress, cancelled, on_text=None):
         seen.append(system)
+        for tool, args in calls:
+            ws.job_card = None
+            said = kit.call_tool(ws, tool, args)
+            assert not said.startswith('Error'), said
         return TurnResult('Which documents?', [{'role': 'assistant', 'content': 'Which documents?'}], [])
     monkeypatch.setattr(turn_mod, 'run_turn', fake_run_turn)
     return seen
@@ -608,45 +617,83 @@ def _sent(svc, client, rid, create, **fields):
     helper = Helper(request_id=rid)
     svc.process_request(_req(client, 'send', text='Fill Case on every word.', create=create, **fields), helper)
     assert not helper.errors, helper.errors
-    return _store(client).load('c1')[1]
+    return _store(client).load('c1')
 
 
-def test_a_job_setup_conversation_keeps_its_purpose_and_is_told_what_it_is_for_every_turn(monkeypatch):
-    from plaid_agent.igt.jobcard import setup_note
+#: The job steps, as every conversation's system prompt says them.
+_STEPS = ('- A JOB LEFT TO RUN. When the user wants work done without them, lead to a job card drafted with '
+          'propose_job, not to a plan of changes. In order:\n'
+          '1. Read what they ask the job to do, and on which documents: call propose_job with action "facts" and '
+          'those documents, and read the documents.\n')
+
+
+def test_an_ordinary_conversation_is_told_how_to_set_up_a_job_every_turn(monkeypatch):
     client = _writer_client()
     svc = _service()
     systems = _systems(monkeypatch)
-    meta = _sent(svc, client, 'r1', True, purpose='job-setup')
-    assert meta['purpose'] == 'job-setup'
-    # The next send names no purpose, and a later one cannot change it.
-    meta = _sent(svc, client, 'r2', False)
-    assert meta['purpose'] == 'job-setup'
-    meta = _sent(svc, client, 'r3', False, purpose='other')
-    assert meta['purpose'] == 'job-setup'
-    ws = fake_ws(client)
-    ws.job_facts = lambda: {}  # the service's own client, which this test does not give it
-    note = setup_note(ws)
-    assert len(systems) == 3 and all(s.endswith('\n\n' + note) for s in systems), systems[0][-3000:]
-    assert note.startswith('This conversation sets up an assistant job. The person says what the job should do, '
-                           'and you lead to a job card drafted with propose_job, not to a plan of changes. In order:\n'
-                           '1. Read what the person asks the job to do, and on which documents.\n'
-                           '2. Call propose_job with action "facts" and those documents.\n')
-    assert '\nHow propose_job works (no need to call help):\npropose_job drafts an unattended job' in note
+    _conv, meta = _sent(svc, client, 'r1', True)
+    _sent(svc, client, 'r2', False)
+    assert 'purpose' not in meta
+    assert len(systems) == 2 and all(_STEPS in s for s in systems), systems[0][-3000:]
+    # Said once, and nothing appended for a job after the prompt.
+    assert all(s.count('A JOB LEFT TO RUN') == 1 and 'sets up an assistant job' not in s for s in systems)
 
 
-@pytest.mark.parametrize('purpose', [None, 'other', 'Job Setup', 'job-setup ' * 5, 7, {'kind': 'job-setup'}])
-def test_any_other_conversation_is_told_nothing_of_a_setup(monkeypatch, purpose):
+def test_a_stored_conversation_with_a_purpose_opens_and_is_told_the_same(monkeypatch):
+    """A conversation started by the old Set up job keeps purpose in its
+    entry. Nothing reads it: it opens, answers and is told what any other
+    conversation is told."""
+    client = _writer_client()
+    svc = _service()
+    systems = _systems(monkeypatch)
+    _sent(svc, client, 'r1', True)
+    store = _store(client)
+    conv, meta = store.load('c1')
+    store.save('c1', conv, {**meta, 'purpose': 'job-setup'})
+    conv, meta = _sent(svc, client, 'r2', False, purpose='job-setup')
+    assert [d['kind'] for d in conv['display']].count('assistant') == 2
+    assert systems[1] == systems[0]
+
+
+def test_a_send_that_names_a_purpose_is_answered_as_any_other(monkeypatch):
     client = _writer_client()
     systems = _systems(monkeypatch)
-    meta = _sent(_service(), client, 'r1', True, **({'purpose': purpose} if purpose is not None else {}))
-    assert meta.get('purpose') == ('other' if purpose == 'other' else None), meta
-    assert 'sets up an assistant job' not in systems[0]
+    _conv, meta = _sent(_service(), client, 'r1', True, purpose='job-setup')
+    assert 'purpose' not in meta
+    assert _STEPS in systems[0] and 'sets up an assistant job' not in systems[0]
 
 
-def test_the_setup_note_is_part_of_the_assistants_version():
-    from plaid_agent.igt.jobcard import JOB_SETUP_NOTE
+def test_an_ordinary_conversation_drafts_a_card_that_binds_the_planner(monkeypatch):
+    """facts then draft in a conversation with no purpose: the reply carries
+    the card with what it fills, and the job's setup the page builds from it
+    (plaid-igt jobSetupOf) holds the planner to it, as before."""
+    from plaid_agent.igt import targets as tg
+    from plaid_agent.igt.job import JobWorkspace
+    from plaid_agent.igt.toolkit import job_plan_call
+    client = _writer_client()
+    _systems(monkeypatch, calls=[('propose_job', {'action': 'facts', 'documents': ['Text 1']}),
+                                 ('propose_job', {**GLOSS, 'fills': ['Morph Gloss']})])
+    conv, meta = _sent(_service(), client, 'r1', True)
+    assert 'purpose' not in meta
+    card = conv['display'][-1]['job']
+    assert card['status'] is None
+    assert card['fills'] == [{'id': 'sl-mgloss', 'name': 'Morph Gloss'}] and card['edits_text'] is False
+    ws = fake_ws(client)
+    pws = JobWorkspace(client, ws.project, mode=JobWorkspace.PLAN)
+    pws.job_documents = [{'id': 'd1', 'name': 'Text 1'}]
+    pws.job_setup = tg.setup_of(ws.project, {'fills': card['fills'], 'text': card['edits_text'],
+                                             'conversation': 'c1'})
+    out = job_plan_call(pws, 'plan_work', {'pieces': 'sentences', 'fills': ['Morph Gloss', 'segmentation']})
+    assert out == ('Error: fills: this job was set up to fill only "Morph Gloss". Leave out "segmentation".'), out
+    out = job_plan_call(pws, 'plan_work', {'pieces': 'sentences', 'fills': ['Morph Gloss']})
+    assert not out.startswith('Error'), out
+    assert pws.plan_work['fills'] == ['sl-mgloss']
+
+
+def test_the_jobs_section_is_part_of_the_assistants_version():
+    from plaid_agent.igt import prompt
     texts, _tools = _service().prompt_template()
-    assert JOB_SETUP_NOTE in texts
+    assert any(prompt._JOBS in t for t in texts)
 
 
 def test_help_and_the_guide_say_the_fills_bind_the_jobs_plan_never_what_it_writes():

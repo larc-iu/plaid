@@ -34,14 +34,12 @@ import { copyText, saveBlob } from '../../lib/download.js';
 import { conversationToMarkdown, markdownFilename } from './exportMarkdown.js';
 import { followable, jobFor } from './jobs.js';
 import { runByLine } from './useAssistantAvailable.js';
-import { purposeTitle } from './purposes.js';
 import { useConfirm } from '../shared/ConfirmProvider.jsx';
 
 // The conversation rail: one row per conversation, the assistant picker, and
 // the export menu.
-// One sidebar entry: the title, when it was last written, what it was started
-// for once a title names it otherwise (its purpose, purposes.js), which model,
-// and whether work was left unfinished.
+// One sidebar entry: the title, when it was last written, which model, and
+// whether work was left unfinished.
 // A conversation started from a document says so: the same list holds those
 // and the ones started from the tab, and which document a thread is about is
 // the first thing that tells them apart.
@@ -57,15 +55,12 @@ const ConversationRow = ({ m, opening, elsewhere = null }) => {
     <>
       <div className="flex items-center gap-1.5">
         <MessageSquare className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-        <span className={cn('truncate', m.draft && 'italic')}>
-          {m.title || purposeTitle(m.purpose) || 'Untitled'}
-        </span>
+        <span className={cn('truncate', m.draft && 'italic')}>{m.title || 'Untitled'}</span>
       </div>
       <div className="pl-5 text-[11px] text-muted-foreground">
         {m.draft
           ? 'Nothing sent yet'
           : (opening === m.id ? 'Opening…' : timeAgo(m.updatedAt)) +
-            (m.title && purposeTitle(m.purpose) ? ` · ${purposeTitle(m.purpose)}` : '') +
             (m.model ? ` · ${m.model.split('/').pop()}` : '') +
             (followable(m.pending) && !jobFor(m.id) ? ' · unfinished' : '')}
       </div>

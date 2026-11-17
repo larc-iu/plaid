@@ -162,12 +162,6 @@ class Turn:
                 # unqualified question is about it. Nothing is taken away.
                 if where and where[2]:
                     system = f'{system}\n\n{where[2]}'
-                # What the conversation was created for, by the code its
-                # entry keeps, never read from its text.
-                ws.purpose = (meta or {}).get('purpose')
-                purpose = self.purpose_note(ws, ws.purpose)
-                if purpose:
-                    system = f'{system}\n\n{purpose}'
                 # What every call of the next turn sends besides the transcript, taken
                 # off the window before the transcript is held to its share of it.
                 overhead = (system, self.kit.tools_for(ws))

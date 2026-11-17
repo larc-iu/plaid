@@ -278,6 +278,29 @@ describe('useStartConversation', () => {
     await unmount();
   });
 
+  // No conversation is started FOR anything (the owner, 2026-11-17): a request
+  // is a new conversation and nothing more, whatever a caller hands it.
+  it('hands the panel a new conversation and nothing more, whatever it is called with', async () => {
+    const seen = [];
+    const Asks = () => {
+      const start = useStartConversation();
+      return (
+        <button type="button" data-testid="ask" onClick={() => start({ purpose: 'job-setup' })}>
+          Ask
+        </button>
+      );
+    };
+    const { container, step, unmount } = await renderComponent(
+      <AssistantSubjectProvider>
+        <Panel seen={seen} />
+        <Asks />
+      </AssistantSubjectProvider>,
+    );
+    await step(() => container.querySelector('[data-testid="ask"]').click());
+    expect(Object.keys(seen.at(-1))).toEqual(['seq']);
+    await unmount();
+  });
+
   it('does nothing outside a provider', async () => {
     const { container, step, unmount } = await renderComponent(<Discuss />);
     await step(() => container.querySelector('[data-testid="discuss"]').click());

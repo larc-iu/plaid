@@ -16,7 +16,6 @@ from ..core.service import BaseAssistantService
 from ..core.plan import PlanError, PlanOutOfDate
 from . import plan, prompt, toolkit
 from .citations import resolve_citations
-from .jobcard import JOB_SETUP_NOTE, JOB_SETUP_PURPOSE, setup_note
 from .jobread import job_place
 from .project import load_project
 from .plan import SETTINGS_KINDS
@@ -81,18 +80,6 @@ class AssistantService(BaseAssistantService):
         # its own (jobcard._facts).
         ws.job_facts = lambda: self.client.jobs.worker()
         return ws
-
-    def purpose_note(self, ws, purpose: Optional[str]) -> Optional[str]:
-        # A conversation the page opened to set up a job ("Set up job"):
-        # what it is for and propose_job's help (BRIEF-SU). Any other is
-        # as before.
-        return setup_note(ws) if purpose == JOB_SETUP_PURPOSE else None
-
-    def prompt_template(self):
-        # The setup note is part of what the model may be told, so of the
-        # assistant's version.
-        texts, tools = super().prompt_template()
-        return texts + [JOB_SETUP_NOTE], tools
 
     def page_wrote(self, client, project_id: str, ops) -> Optional[Dict[str, int]]:
         # Tagset changes, always a plan of their own, are written by the app

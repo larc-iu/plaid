@@ -16,16 +16,18 @@ import { fakeJobWorker } from './jobWorker.js';
 // "Left blank" list links into the grid. Then a second card is drafted and
 // discarded. A throwaway project, deleted afterwards with its jobs.
 //
-// Set up job (BRIEF-SU) opens the panel on a new conversation marked
-// job-setup, whose every turn tells the model so. The model asks propose_job
-// for the facts, asks the person about the rest, and drafts a card that shows
-// what the job fills and whether it may edit the text. The job started from it
-// carries them as its setup, which its page says, and plaid-agent's own worker
-// on a scripted model (runScriptedJobWorker) holds its planner to it: a plan
-// naming another field is refused with the setup's line, the next is kept and
-// the job fills Gloss. The Jobs tab's "⋯" menu still opens the Start job
-// form with an assistant online, and a window too narrow for the panel opens
-// the Assistant tab on the new conversation.
+// A job is set up by asking the assistant in an ordinary conversation (AB,
+// the owner 2026-11-17: no button sets up a job). The Documents tab's
+// Assistant button opens the panel, and every turn's prompt carries the job
+// steps. The model asks propose_job for the facts, asks the person about the
+// rest, and drafts a card that shows what the job fills and whether it may
+// edit the text. The job started from it carries them as its setup, which its
+// page says, and plaid-agent's own worker on a scripted model
+// (runScriptedJobWorker) holds its planner to it: a plan naming another field
+// is refused with the setup's line, the next is kept and the job fills Gloss.
+// The Jobs tab's Assistant button opens the panel, its "⋯" menu still opens
+// the Start job form with an assistant online, and on a window too narrow for
+// the panel the button is a link to the Assistant tab.
 
 const DOC = 'Story A';
 const BRIEF = 'Gloss kai as "go".';
@@ -315,7 +317,7 @@ const cleanUp = async (service, serviceId) => {
   await client.messages.discardService(projectId, serviceId).catch(() => {});
 };
 
-test('Set up job: facts, a question, a card that binds the job, and a planner held to it', async ({
+test('a job asked for in an ordinary conversation: facts, a question, a card that binds the job, and a planner held to it', async ({
   page,
 }) => {
   test.setTimeout(300_000);
@@ -360,44 +362,50 @@ test('Set up job: facts, a question, a card that binds the job, and a planner he
     await waitOnline(serviceId, service);
     await page.goto(`/#/projects/${projectId}`);
 
-    // A new conversation for setting the job up, nothing sent by itself.
-    await page.getByRole('button', { name: 'Set up job' }).click();
+    // The Assistant button beside New document opens the panel, nothing sent
+    // by itself, on an ordinary conversation.
+    const main = page.getByRole('main');
+    await main.getByRole('button', { name: 'Assistant', exact: true }).click();
     await expect(page.getByRole('dialog')).toHaveCount(0);
     const panel = page.getByRole('complementary');
-    await expect(panel.getByText('Say what the job should do.', { exact: true })).toBeVisible();
-    await panel.getByRole('button', { name: 'Past conversations' }).click();
-    await expect(page.getByText('Job setup', { exact: true })).toBeVisible();
-    await page.keyboard.press('Escape');
+    // A thread of an earlier test may be the one it resumes: a new one.
+    await panel.getByRole('button', { name: 'New conversation' }).click();
+    await expect(panel.getByText('Ask about', { exact: false })).toBeVisible();
+    await expect(page.getByText(/set up job/i)).toHaveCount(0);
 
-    // The send that creates it carries the purpose.
     const box = panel.getByRole('textbox', { name: 'Message' });
     await expect(box).toBeEditable({ timeout: 60_000 });
-    await box.fill('Gloss Story A.');
+    await box.fill('Set up a job to gloss Story A.');
     const sent = sendRequest(page);
     await box.press('Enter');
     const payload = JSON.parse((await sent).postData());
-    expect(payload).toMatchObject({ op: 'send', create: true, purpose: 'job-setup' });
+    expect(payload).toMatchObject({ op: 'send', create: true });
+    expect(payload).not.toHaveProperty('purpose');
     const convId = payload['conversation-id'];
 
-    // The service kept the purpose and told the model what the conversation
-    // is for, and facts answered the planner's own lines.
+    // Every turn's prompt carries the job steps, nothing is added for a job
+    // setup, and facts answered the planner's own lines.
     await expect(panel.getByText('Translation is empty too: fill it?')).toBeVisible({
       timeout: 60_000,
     });
     await expect(panel.getByTestId('job-card')).toHaveCount(0);
     const turn1 = service.asked();
     expect(turn1).toHaveLength(2);
-    for (const body of turn1)
-      expect(body.messages[0].content).toContain('This conversation sets up an assistant job.');
+    for (const body of turn1) {
+      expect(body.messages[0].content).toContain(
+        'When the user wants work done without them, lead to a job card drafted with propose_job',
+      );
+      expect(body.messages[0].content).not.toContain('This conversation sets up an assistant job.');
+    }
     const factsAnswer = turn1[1].messages.find((m) => m.role === 'tool').content;
     expect(factsAnswer).toContain("What a job can fill (name them in propose_job's fills):");
     expect(factsAnswer).toContain('"Gloss"');
     expect(factsAnswer).toContain('- "Story A": 1 sentence');
     const meta = (await client.userData.get(userId, `igt:assistant:${projectId}:meta:${convId}`))
       .value;
-    expect(meta.purpose).toBe('job-setup');
+    expect(meta).not.toHaveProperty('purpose');
 
-    // The answer, and the card. A later send carries no purpose.
+    // The answer, and the card.
     await box.fill('Only Gloss. Leave the text as it is.');
     const second = sendRequest(page);
     await box.press('Enter');
@@ -405,7 +413,7 @@ test('Set up job: facts, a question, a card that binds the job, and a planner he
     const card = panel.getByTestId('job-card');
     await expect(card).toBeVisible({ timeout: 60_000 });
     for (const body of service.asked().slice(2))
-      expect(body.messages[0].content).toContain('This conversation sets up an assistant job.');
+      expect(body.messages[0].content).toContain('lead to a job card drafted with propose_job');
     const key = `igt:assistant:${projectId}:conv:${convId}`;
     // The card as the page receives it: `edits_text` read as `editsText`.
     const stored = (await client.userData.get(userId, key)).value.display.find((d) => d.job).job;
@@ -549,7 +557,7 @@ test('with an assistant online, the Jobs tab offers the Assistant button and sti
   }
 });
 
-// RP-2: a setup conversation's first reply staged a plan with Approve, and a
+// RP-2: a conversation's first reply staged a plan with Approve, and a
 // later reply drafted the job card. The plan stayed approvable beside the job.
 // A reply that carries a job card now marks every plan still waiting
 // replaced (RPF-A, b012f7bac): the plan card reads Replaced with no Approve,
@@ -583,9 +591,10 @@ test('a plan staged before a job card is drafted is replaced once the card appea
   try {
     await waitOnline(serviceId, service);
     await page.goto(`/#/projects/${projectId}`);
-    await page.getByRole('button', { name: 'Set up job' }).click();
+    await page.getByRole('main').getByRole('button', { name: 'Assistant', exact: true }).click();
     const panel = page.getByRole('complementary');
-    await expect(panel.getByText('Say what the job should do.', { exact: true })).toBeVisible();
+    await panel.getByRole('button', { name: 'New conversation' }).click();
+    await expect(panel.getByRole('textbox', { name: 'Message' })).toBeVisible();
 
     await send(page, 'Gloss kai as "walk".');
     const plan = panel.getByText('Proposed changes', { exact: true }).locator('xpath=../..');

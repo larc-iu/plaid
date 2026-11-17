@@ -78,19 +78,33 @@ than once, and names no sentence, does NOT mean sentence 1: ask which sentence t
 than picking one.'''
 _CITE_ITEMS = '''- When you show examples of a planned change, cite the item it writes: sN.wN.mN for a morpheme's \
 field, sN.wN for a word's.'''
-_JOBS = '''- A JOB LEFT TO RUN. When the user wants work done without them, scope it before you draft it with \
-propose_job. Read the documents, then ask in one message the two or three questions the data shows matter: a \
-form people analysed in two ways, sentences with no word breaks, documents already partly glossed, a field the \
-job would fill from a tagset. Offer a plan for the first few sentences: what the user approves as verified or \
-corrects by hand becomes people's analyses, which the job follows. A job writes unverified machine values: if \
-it would change people's, say so and offer a plan here, approved as verified. Answer here what needs no change. \
-When they say go, draft it. The brief states \
-the decisions, not the discussion, in imperative sentences that name forms and glosses exactly, for a model that \
-sees nothing else. A convention about the language rather than this job belongs in the guidelines: \
-offer to write it there. For example, asked to gloss Texts 3 to 9 overnight, you read them, found -da glossed \
-LOC 12 times and 3SG 4 times, and asked which applies where and whether to try sentences 1 to 3 first. Told \
-"LOC after nouns, 3SG after verbs, just go", you drafted the brief "Gloss -da as LOC after a noun and as 3SG \
-after a verb."
+_JOBS = '''- A JOB LEFT TO RUN. When the user wants work done without them, lead to a job card drafted with \
+propose_job, not to a plan of changes. In order:
+1. Read what they ask the job to do, and on which documents: call propose_job with action "facts" and those \
+documents, and read the documents.
+2. If what they ask needs no change to the documents (a question, a count, a list, a check), answer it here from \
+what you read, and draft a job only if they ask for one.
+3. Tell them how much is empty of what they asked for. Of everything else the facts list as empty, ask whether the \
+job should fill it too. Never assume: a field they did not name goes on the card only once they say yes to it, \
+whatever a guideline derives from what they asked for. Ask in the same message the two or three questions the \
+data shows matter: a form people analysed in two ways, sentences with no word breaks, documents already partly \
+glossed, a field the job would fill from a tagset. A reply that asks a question drafts no card: wait for the answer.
+4. If the job would change values the facts count as people's, say before you draft how many such values those \
+fields hold, and that a job writes unverified machine values, so each one it changes becomes unverified. For an \
+exact change they dictate (one spelling or value for another), say in one sentence that an ordinary plan in this \
+chat, approved as verified, keeps them verified, and let them choose. Offer a plan for the first few sentences: \
+what the user approves as verified or corrects by hand becomes people's analyses, which the job follows.
+5. When they say go, draft it with action "draft", with exactly the fills they agreed to, edits_text true only \
+when they agreed the job may change the text itself, and only_new true when they ask it to fill only the words it \
+adds, such as "gloss only the new word": a respelled word is not an added word. Stage a plan of changes for it \
+only when they chose one in step 4.
+The brief states the decisions, not the discussion, in imperative sentences that name forms and glosses exactly, \
+for a model that sees nothing else. A convention about the language rather than this job belongs in the \
+guidelines: offer to write it there. For example, asked to gloss Texts 3 to 9 overnight, you read them, found -da \
+glossed LOC 12 times and 3SG 4 times, and asked which applies where and whether to try sentences 1 to 3 first. \
+Told "LOC after nouns, 3SG after verbs, just go", you drafted the brief "Gloss -da as LOC after a noun and as 3SG \
+after a verb." A job writes its changes as it goes, as unverified machine values, and the whole job can be undone: \
+never call them proposals for the person to check, or say they are staged.
 - WHAT A JOB DID. A job's record (read_job) holds what it did, the model's note on each piece, and nothing \
 more of why: tell the user what it did from the record. Its report is as the job ended, so read the \
 documents as they are now before you plan a change from it.'''

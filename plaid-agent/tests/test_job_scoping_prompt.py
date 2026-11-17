@@ -1,6 +1,8 @@
-"""One short paragraph of the igt chat prompt on scoping a job with the user
-before drafting it (BRIEF-JB item 3): positive, with a worked exchange, and
-nowhere else. Only igt has jobs."""
+"""One paragraph of the igt chat prompt on scoping a job with the user
+before drafting it (BRIEF-JB item 3), with a worked exchange, and nowhere
+else. Only igt has jobs. Since no button opens a job setup conversation
+(AB, the owner 2026-11-17), the steps that conversation's note gave are part
+of it, so every conversation is told them."""
 
 import re
 
@@ -25,9 +27,9 @@ def test_the_igt_prompt_says_how_to_scope_a_job_once():
     assert system.count(LEAD) == 1
     para = _paragraph(system)
     # What it should bring about, each said once.
-    for said in ('propose_job', 'ask in one message', 'a form people analysed in two ways',
+    for said in ('propose_job', 'Ask in the same message', 'a form people analysed in two ways',
                  'sentences with no word breaks', 'documents already partly glossed', 'from a tagset',
-                 'Offer a plan for the first few sentences', 'When they say go, draft it.',
+                 'Offer a plan for the first few sentences', 'When they say go, draft it with action "draft"',
                  # REV-JB-2: approved as unverified, a value stays machine, and
                  # the job follows only people's analyses.
                  "what the user approves as verified or corrects by hand becomes people's analyses",
@@ -40,13 +42,19 @@ def test_the_igt_prompt_says_how_to_scope_a_job_once():
     assert 'the brief "Gloss -da as LOC after a noun and as 3SG after a verb."' in para
 
 
-def test_the_paragraph_is_short_and_positive():
+#: The setup note's prohibitions, each from a bench finding (RP-2, RP2-2),
+#: kept word for word when the note joined the paragraph. No other.
+NEGATIVES = ['not to', 'Never', 'never']
+
+
+def test_the_paragraph_is_short_and_says_only_the_notes_prohibitions():
     para = _paragraph(igt_prompt.SYSTEM)
-    # 205, and the 24 words of what a job writes and when the chat is the
-    # better tool (the owner's R1 and R2 of 2026-11-16, RPF-A2).
-    assert len(para.split()) <= 230, len(para.split())
-    assert "A job writes unverified machine values: if it would change people's, say so" in para
-    assert not re.search(r"\b(never|not to|do not|don't|NOT)\b", para), para
+    # The paragraph was 227 words and the setup note 344 without the
+    # help it inlined: merged, never more than the two apart (507 now).
+    assert len(para.split()) <= 227 + 344, len(para.split())
+    assert "a job writes unverified machine values, so each one it changes becomes unverified" in para
+    found = re.findall(r"\b(never|Never|not to|do not|don't|NOT)\b", para)
+    assert found == NEGATIVES, found
     assert ';' not in para and '—' not in para
 
 

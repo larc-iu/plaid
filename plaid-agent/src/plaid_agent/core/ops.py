@@ -28,7 +28,6 @@ conversation is allowed when the hold is free (none, this tab's, older than
 actions, allowed from any tab.
 """
 
-import re
 from datetime import datetime, timezone
 from typing import Any, Dict, Optional
 
@@ -105,20 +104,6 @@ def busy_why(pending: Optional[Dict[str, Any]]) -> Optional[str]:
     if not isinstance(pending, dict) or not pending.get('request_id'):
         return None
     return 'busy-apply' if pending.get('kind') == 'apply' else 'busy-turn'
-
-
-#: What a conversation's ``purpose`` may be: a short code, such as
-#: ``job-setup``, that the page sends with the send creating it.
-PURPOSE = re.compile(r'[a-z][a-z0-9-]{0,31}')
-
-
-def purpose_of(value: Any) -> Optional[str]:
-    """The conversation's purpose as its entry keeps it: the code the page
-    sent with the send that created it, or None for anything that is not a
-    short code (lowercase letters, digits and hyphens, at most 32
-    characters, from a letter). The app reads it every turn
-    (``purpose_note``). Nothing reads it from text."""
-    return value if isinstance(value, str) and PURPOSE.fullmatch(value) else None
 
 
 def about_of(where: Optional[Dict[str, Any]]) -> Optional[Dict[str, Any]]:

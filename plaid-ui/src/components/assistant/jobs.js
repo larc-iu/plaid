@@ -364,17 +364,7 @@ const finishJob = async (j, store) => {
     if (e?.status === 404 && j.create && !j.recorded && !j.gone) {
       // A first message the service never took: the conversation was never
       // made, and is a new one again, its text back in the composer.
-      // It keeps what it was started for.
-      result = {
-        conv: {
-          id: j.id,
-          messages: [],
-          display: [],
-          draft: true,
-          ...(j.purpose ? { purpose: j.purpose } : {}),
-        },
-        meta: null,
-      };
+      result = { conv: { id: j.id, messages: [], display: [], draft: true }, meta: null };
     } else if (e?.status === 404 || j.gone) {
       j.gone = true;
       j.why = DELETED;
@@ -480,8 +470,6 @@ export const startTurn = ({
   files = [],
   projects = [],
   create = false,
-  // What the conversation is for, sent only with the send that creates it.
-  purpose = null,
   retry = false,
   tab = null,
 }) => {
@@ -500,7 +488,6 @@ export const startTurn = ({
     asked,
     tab,
     create,
-    purpose: create ? purpose : null,
     unsent: retry ? null : text,
     progress: 'Thinking…',
   });
@@ -537,7 +524,6 @@ export const startTurn = ({
             : {
                 text,
                 create,
-                ...(create && purpose ? { purpose } : {}),
                 ...(where ? { where } : {}),
                 ...(files.length ? { files } : {}),
                 ...(projects.length ? { projects } : {}),
@@ -852,12 +838,10 @@ export const stopJob = async (client, projectId, j) => {
 
 // A conversation that has not been sent yet. It gets its id up front so it can
 // sit in the sidebar like any other, and the service creates it with the
-// first message (`create`), which carries the `purpose` it was started for,
-// if any (purposes.js).
-export const newConversation = (purpose = null) => ({
+// first message (`create`).
+export const newConversation = () => ({
   id: newId(),
   messages: [],
   display: [],
   draft: true,
-  ...(typeof purpose === 'string' && purpose ? { purpose } : {}),
 });

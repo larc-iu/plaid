@@ -1,8 +1,10 @@
-"""What the setup conversation is told, and how its steps are labelled
-(RPF-A2, RPF-A10, the owner's R1 and R2), and what read_job says of the
-report's new parts (RPF-A3 to A5).
+"""What every conversation is told of setting up a job, and how its steps
+are labelled (RPF-A2, RPF-A10, the owner's R1 and R2), and what read_job
+says of the report's new parts (RPF-A3 to A5). The steps were a note for a
+conversation opened by Set up job, and are the chat prompt's own jobs
+section since that button went (AB, the owner 2026-11-17).
 
-RP-2: a Set up job conversation answered with a chat plan, and the
+RP-2: a job setup conversation answered with a chat plan, and the
 assistant called a job's values "proposals" while the job writes them; the
 33 values people had checked became unverified, which the person learned
 only by asking. RP-3: the card claimed a convention the project does not
@@ -20,7 +22,10 @@ from plaid_agent.igt.trace import TRACER
 
 
 def _note():
-    return jobcard.JOB_SETUP_NOTE.replace('\n', ' ')
+    """The chat prompt's jobs section, as every conversation is sent it."""
+    prompt = build_system_prompt(load_project(FakeClient(), 'p1'))
+    start = prompt.index('- A JOB LEFT TO RUN.')
+    return prompt[start:prompt.index('\n- ', start + 1)].replace('\n', ' ')
 
 
 def test_r2_a_request_that_needs_no_change_is_answered_in_the_chat():
@@ -37,10 +42,11 @@ def test_r1_people_are_told_before_drafting_that_their_values_become_unverified(
             'ordinary plan in this chat, approved as verified, keeps them verified, and let them choose.') in note
 
 
-def test_rp2_the_setup_conversation_leads_to_a_card_not_a_plan():
+def test_rp2_a_job_asked_for_leads_to_a_card_not_a_plan():
     note = _note()
-    assert 'you lead to a job card drafted with propose_job, not to a plan of changes' in note
-    assert 'Stage no plan of changes here unless the person chose one in step 5.' in note
+    assert ('When the user wants work done without them, lead to a job card drafted with propose_job, not to a '
+            'plan of changes.') in note
+    assert 'Stage a plan of changes for it only when they chose one in step 4.' in note
 
 
 def test_a_jobs_values_are_never_called_proposals_or_staged():
@@ -60,10 +66,12 @@ def test_rp3_rp5_the_brief_opens_plainly_and_claims_no_convention_it_did_not_rea
             in help_)
 
 
-def test_the_ordinary_chat_says_the_same_of_jobs():
-    prompt = build_system_prompt(load_project(FakeClient(), 'p1')).replace('\n', ' ')
-    assert ("A job writes unverified machine values: if it would change people's, say so and offer a plan here, "
-            'approved as verified. Answer here what needs no change.') in prompt
+def test_the_steps_are_said_once_and_the_tool_is_named_in_them():
+    prompt = build_system_prompt(load_project(FakeClient(), 'p1'))
+    assert prompt.count('A JOB LEFT TO RUN') == 1
+    note = _note()
+    assert 'call propose_job with action "facts" and those documents' in note
+    assert 'draft it with action "draft", with exactly the fills they agreed to' in note
 
 
 def test_facts_count_the_values_people_hold_of_each_target():

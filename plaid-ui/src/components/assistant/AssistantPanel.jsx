@@ -5,7 +5,6 @@ import { Button } from '../ui/button.jsx';
 import { AssistantChat } from './AssistantChat.jsx';
 import { AssistantPicker, ConversationHistory } from './ConversationList.jsx';
 import { runByLine } from './useAssistantAvailable.js';
-import { purposeEmpty } from './purposes.js';
 
 // The assistant in the shell's dock: the same chat, a third of a screen wide,
 // beside whatever the reader is working on.
@@ -110,16 +109,13 @@ export const AssistantPanel = ({
             )}
           </>
         )}
-        renderEmpty={({ purpose }) => (
+        renderEmpty={() => (
           <div className="mt-4 flex flex-col items-center gap-4 text-center">
             <div className="max-w-md text-sm text-muted-foreground">
               {/* The panel reaches screens that are about no one thing (the
                   project's own tabs, a vocabulary list), where the old fallback
-                  to "this document" named something that was not on screen.
-                  A conversation started for a purpose says what to write. */}
-              {purposeEmpty(purpose) ? (
-                purposeEmpty(purpose)
-              ) : subjectName ? (
+                  to "this document" named something that was not on screen. */}
+              {subjectName ? (
                 <>Ask about {subjectName}, or about the rest of the project.</>
               ) : (
                 <>Ask about {projectName || 'this project'}.</>

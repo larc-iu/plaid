@@ -123,8 +123,8 @@ describe('the job page and the assistant', () => {
       expect(button, state).not.toBeNull();
       expect(seen.at(-1).fresh).toBeNull();
       await m.step(() => button.click());
-      // A conversation about the job, for no purpose of its own.
-      expect(seen.at(-1).fresh).toMatchObject({ purpose: null });
+      // A new conversation about the job, and nothing more.
+      expect(Object.keys(seen.at(-1).fresh)).toEqual(['seq']);
       await m.unmount();
     }
   });

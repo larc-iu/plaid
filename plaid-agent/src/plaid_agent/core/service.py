@@ -158,13 +158,6 @@ class BaseAssistantService(ServiceCli, RecordOps, Approving, PageWrites, Turn, B
         its name and its guideline titles, and cuts it to a budget."""
         return self.PROMPT.project_brief(project)
 
-    def purpose_note(self, ws, purpose: Optional[str]) -> Optional[str]:
-        """What the system prompt adds for a conversation created for
-        ``purpose`` (the code the page sent with the send creating it, kept
-        in its entry), or None. An app answers for its own purposes. Every
-        turn asks, so the note is the current one."""
-        return None
-
     #: How this app writes a reference to a place in a document, for the focus
     #: note. The app's own grammar, so the app states it.
     reference_shape = 'a bare reference'
