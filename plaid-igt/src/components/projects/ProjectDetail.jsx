@@ -28,7 +28,7 @@ import { useComposeProject } from '@/hooks/useCompose';
 import { useAssistantAvailable } from '@ui/components/assistant/useAssistantAvailable.js';
 import { IGT_ASSISTANT } from './assistant/adapter.js';
 import { UnfinishedImport } from './UnfinishedImport.jsx';
-import { SetUpJob, StartWithoutAssistant } from './jobs/StartJobDialog.jsx';
+import { StartWithoutAssistant } from './jobs/StartJobDialog.jsx';
 import { AssistantButton } from './assistant/AssistantButton.jsx';
 
 // The tabs a visit rarely opens ride in their own chunks: Bulk Edit,
@@ -176,15 +176,12 @@ const ProjectBody = ({ project, projectId, client, documents, reload }) => {
   // (settings/access) does not. Gate document-create on this so a reader isn't
   // shown a button that 403s on submit.
   const canWrite = canEditProject(project, user);
-  // Set up job, for whoever may start one, on Jobs, where a "⋯" menu also
-  // offers the Start job form with no assistant.
-  const mayStartJob = canStartJob(project, user);
-  const setUpJob = mayStartJob && (
-    <SetUpJob projectId={projectId} client={client} documents={documents} />
-  );
-  const jobsActions = mayStartJob && (
+  // The Jobs tab's actions, for whoever may start a job: the Assistant button,
+  // and a "⋯" menu with the Start job form, the way to start one with no
+  // assistant.
+  const jobsActions = canStartJob(project, user) && (
     <div className="flex items-center gap-2">
-      {setUpJob}
+      <AssistantButton projectId={projectId} client={client} />
       <StartWithoutAssistant projectId={projectId} client={client} documents={documents} />
     </div>
   );
@@ -280,7 +277,7 @@ const ProjectBody = ({ project, projectId, client, documents, reload }) => {
     body = jobId ? (
       <JobPage project={project} projectId={projectId} jobId={jobId} client={client} />
     ) : (
-      <ProjectJobs projectId={projectId} client={client} startJob={jobsActions} />
+      <ProjectJobs projectId={projectId} client={client} actions={jobsActions || null} />
     );
   } else if (active === 'search') {
     body = (

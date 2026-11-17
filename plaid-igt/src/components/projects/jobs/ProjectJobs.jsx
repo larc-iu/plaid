@@ -10,10 +10,11 @@ import { jobPath } from './jobText.js';
 /**
  * The project's Jobs tab: every job of the project, newest first, each row a
  * link to the job's page. Read again every JOB_POLL_MS while one of them is
- * active, so a job's row moves as its worker does. `startJob` is Set up job
- * and the "⋯" menu with Start without the assistant, for a writer.
+ * active, so a job's row moves as its worker does. `actions` are the
+ * Assistant button and the "⋯" menu with Start without the assistant, for a
+ * writer, who is also told how a job is set up.
  */
-export const ProjectJobs = ({ projectId, client, startJob = null }) => {
+export const ProjectJobs = ({ projectId, client, actions = null }) => {
   const [jobs, setJobs] = useState(null);
   const [error, setError] = useState(null);
   const [attempt, setAttempt] = useState(0);
@@ -108,7 +109,11 @@ export const ProjectJobs = ({ projectId, client, startJob = null }) => {
 
   return (
     <div>
-      <SectionHeader title="Jobs" actions={startJob} />
+      <SectionHeader
+        title="Jobs"
+        description={actions ? 'A job is set up by asking the assistant.' : null}
+        actions={actions}
+      />
       {error ? (
         <LoadError onRetry={() => setAttempt((n) => n + 1)}>Failed to list the jobs</LoadError>
       ) : (

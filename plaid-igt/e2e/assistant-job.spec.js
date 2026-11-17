@@ -506,7 +506,7 @@ test('Set up job: facts, a question, a card that binds the job, and a planner he
   }
 });
 
-test('with an assistant online, the Jobs tab still opens the Start job form, and a narrow window opens the Assistant tab', async ({
+test('with an assistant online, the Jobs tab offers the Assistant button and still opens the Start job form, and a narrow window links the Assistant tab', async ({
   page,
 }) => {
   test.setTimeout(120_000);
@@ -517,7 +517,14 @@ test('with an assistant online, the Jobs tab still opens the Start job form, and
   try {
     await waitOnline(serviceId, service);
     await page.goto(`/#/projects/${projectId}?tab=jobs`);
-    await expect(page.getByRole('button', { name: 'Set up job' })).toBeVisible();
+    const main = page.getByRole('main');
+    await expect(main.getByText('A job is set up by asking the assistant.')).toHaveCount(1);
+    // The Assistant button beside the menu opens the panel, as the chip does.
+    await main.getByRole('button', { name: 'Assistant', exact: true }).click();
+    const panel = page.getByRole('complementary');
+    await expect(panel.getByRole('textbox', { name: 'Message' })).toBeVisible();
+    await panel.getByRole('button', { name: 'Hide the assistant' }).click();
+    await expect(panel).toHaveCount(0);
 
     // The "⋯" menu, by keyboard.
     await page.getByRole('button', { name: 'More job actions' }).focus();
@@ -531,12 +538,11 @@ test('with an assistant online, the Jobs tab still opens the Start job form, and
     await dialog.getByRole('button', { name: 'Cancel' }).click();
     await expect(dialog).toHaveCount(0);
 
-    // Too narrow for the panel: the Assistant tab, on a new job setup
-    // conversation, and the address no longer asks for one.
+    // Too narrow for the panel: a link to the Assistant tab.
     await page.setViewportSize({ width: 900, height: 800 });
-    await page.getByRole('button', { name: 'Set up job' }).click();
-    await expect(page).toHaveURL(new RegExp(`#/projects/${projectId}\\?tab=assistant$`));
-    await expect(page.getByText('Say what the job should do.', { exact: true })).toBeVisible();
+    await main.getByRole('link', { name: 'Assistant', exact: true }).click();
+    await expect(page).toHaveURL(new RegExp(`#/projects/${projectId}\\?tab=assistant`));
+    await expect(page.getByRole('textbox', { name: 'Message' })).toBeVisible();
     await expect(page.getByRole('dialog')).toHaveCount(0);
   } finally {
     await cleanUp(service, serviceId);

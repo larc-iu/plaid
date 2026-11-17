@@ -56,9 +56,7 @@ vi.mock('./jobs/JobPage.jsx', () => ({
   JobPage: ({ jobId }) => <div data-testid="job-page">{jobId}</div>,
 }));
 vi.mock('./jobs/ProjectJobs.jsx', () => ({
-  ProjectJobs: ({ startJob }) => (
-    <div data-testid="jobs-tab">{startJob ? 'with start' : 'without start'}</div>
-  ),
+  ProjectJobs: ({ actions }) => <div data-testid="jobs-tab">{actions || 'no actions'}</div>,
 }));
 
 const auth = vi.hoisted(() => ({
@@ -294,30 +292,42 @@ describe('the project page header', () => {
     }
   });
 
-  it('offers Start job on the Jobs tab to a writer only', async () => {
+  // The Jobs tab offers a writer the Assistant button and the "⋯" menu, and no
+  // button that sets up a job (the owner, 2026-11-17).
+  it('offers a writer the Assistant button and the menu on the Jobs tab, a reader neither', async () => {
+    const jobsTab = (view) => view.container.querySelector('[data-testid="jobs-tab"]');
     const d = deferred();
     auth.client = d.client;
-    const writer = await renderComponent(at('/projects/A?tab=jobs'));
-    await writer.step(async () => d.settle('A'));
-    await writer.step(async () => {});
-    expect(writer.container.querySelector('[data-testid="jobs-tab"]').textContent).toBe(
-      'with start',
-    );
-    await writer.unmount();
-
-    auth.user = { id: 'r', isAdmin: false };
+    assistant.available = true;
     try {
+      const writer = await renderComponent(at('/projects/A?tab=jobs'));
+      await writer.step(async () => d.settle('A'));
+      await writer.step(async () => {});
+      expect(jobsTab(writer).textContent).toBe('Assistant');
+      expect(jobsTab(writer).querySelector('[aria-label="More job actions"]')).not.toBeNull();
+      await writer.unmount();
+
+      // No assistant online: the menu alone.
+      assistant.available = false;
+      const alone = await renderComponent(at('/projects/A?tab=jobs'));
+      await alone.step(async () => d.settle('A'));
+      await alone.step(async () => {});
+      expect(jobsTab(alone).textContent).toBe('');
+      expect(jobsTab(alone).querySelector('[aria-label="More job actions"]')).not.toBeNull();
+      await alone.unmount();
+
+      assistant.available = true;
+      auth.user = { id: 'r', isAdmin: false };
       const reader = await renderComponent(at('/projects/A?tab=jobs'));
       await reader.step(async () =>
         pendingReader(d, 'A', { maintainers: [], writers: [], readers: ['r'] }),
       );
       await reader.step(async () => {});
-      expect(reader.container.querySelector('[data-testid="jobs-tab"]').textContent).toBe(
-        'without start',
-      );
+      expect(jobsTab(reader).textContent).toBe('no actions');
       await reader.unmount();
     } finally {
       auth.user = { id: 'u', isAdmin: true };
+      assistant.available = false;
     }
   });
 

@@ -7,11 +7,11 @@ import { renderComponent, byText, all } from '@ui/test/renderComponent.jsx';
 // box and can be edited, nothing knows them afterwards, the instructions are
 // required and counted against core's limit, a project with no worker seen
 // lately says so, and a project that already has a job is answered with a
-// link to it. Opened here by Set up job on a project with no assistant
-// online, which opens the form (SetUpJob.test.jsx has the rest of it).
+// link to it. Opened here from the Jobs tab's "⋯" menu, Start without the
+// assistant (StartWithoutAssistant.test.jsx has the menu itself).
 const feedback = vi.hoisted(() => ({ notifyError: vi.fn() }));
 vi.mock('@/utils/feedback', () => feedback);
-const { SetUpJob } = await import('./StartJobDialog.jsx');
+const { StartWithoutAssistant } = await import('./StartJobDialog.jsx');
 const { serviceCache } = await import('@ui/components/assistant/jobs.js');
 
 const DOCS = [
@@ -65,7 +65,7 @@ const open = async (client, { all: chooseAll = false, ...props } = {}) => {
           path="*"
           element={
             <>
-              <SetUpJob projectId="p1" client={client} {...props} />
+              <StartWithoutAssistant projectId="p1" client={client} {...props} />
               <Where onAt={(p) => (at = p)} />
             </>
           }
@@ -74,7 +74,16 @@ const open = async (client, { all: chooseAll = false, ...props } = {}) => {
     </MemoryRouter>,
   );
   await v.step(async () => {});
-  await v.step(() => byText(v.container, 'button', 'Set up job').click());
+  const trigger = all(v.container, 'button').find(
+    (b) => b.getAttribute('aria-label') === 'More job actions',
+  );
+  await v.step(() => {
+    trigger.focus();
+    trigger.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+  });
+  await v.step(() =>
+    byText(document.body, '[role="menuitem"]', 'Start without the assistant').click(),
+  );
   await v.step(async () => {});
   // Nothing is chosen when the form opens (RPF-P7): `all` chooses every
   // document first.
@@ -233,13 +242,13 @@ describe('Start job', () => {
     await v.unmount();
   });
 
-  it('opens from a document with that document chosen, reading the list itself', async () => {
+  it('reads the list itself when it is handed none', async () => {
     const client = fakeClient();
-    const { v } = await open(client, { documentId: 'd2' });
+    const { v } = await open(client);
     expect(client.projects.listDocuments).toHaveBeenCalledWith('p1');
     expect(box('Selected documents').checked).toBe(true);
-    expect(box('Story B').checked).toBe(true);
-    expect(box('Story A').checked).toBe(false);
+    expect(box('Story B').checked).toBe(false);
+    await v.step(() => box('Story B').click());
     await v.step(() => startButton().click());
     await v.step(async () => {});
     expect(client.jobs.create.mock.calls[0][1].documents).toEqual(['d2']);

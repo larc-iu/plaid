@@ -4,7 +4,8 @@ import { renderComponent, all } from '@ui/test/renderComponent.jsx';
 
 // The Jobs tab: the project's jobs newest first, every cell a link to the
 // job's page, read again while a job is active so its row moves with the
-// worker, and Start job only where it is handed one.
+// worker, and the actions it is handed (the Assistant button and the "⋯"
+// menu, for a writer) with the one line saying how a job is set up.
 const { ProjectJobs } = await import('./ProjectJobs.jsx');
 const { JOB_POLL_MS } = await import('@ui/domain/jobs.js');
 
@@ -19,10 +20,10 @@ const job = (id, over = {}) => ({
   ...over,
 });
 
-const mount = (client, startJob = null) =>
+const mount = (client, actions = null) =>
   renderComponent(
     <MemoryRouter>
-      <ProjectJobs projectId="p1" client={client} startJob={startJob} />
+      <ProjectJobs projectId="p1" client={client} actions={actions} />
     </MemoryRouter>,
   );
 
@@ -89,12 +90,36 @@ describe('the Jobs tab', () => {
     await v.unmount();
   });
 
-  it('says when there are none, and draws the Start job it is handed', async () => {
+  it('says when there are none, and draws the actions it is handed', async () => {
     const client = { jobs: { list: vi.fn(async () => []) } };
-    const v = await mount(client, <button type="button">Start job</button>);
+    const v = await mount(client, <button type="button">Assistant</button>);
     expect(v.container.textContent).toContain('No jobs.');
-    expect(all(v.container, 'button').some((b) => b.textContent === 'Start job')).toBe(true);
+    expect(all(v.container, 'button').some((b) => b.textContent === 'Assistant')).toBe(true);
     await v.unmount();
+  });
+
+  // The fact, said once, and no button tells a person to set up a job (the
+  // owner, 2026-11-17).
+  const LINE = 'A job is set up by asking the assistant.';
+  const count = (text, needle) => text.split(needle).length - 1;
+  it('says once, above the list, how a job is set up, to whoever is handed the actions', async () => {
+    const empty = { jobs: { list: vi.fn(async () => []) } };
+    const v = await mount(empty, <button type="button">Assistant</button>);
+    const text = v.container.textContent;
+    expect(count(text, LINE)).toBe(1);
+    expect(v.container.querySelector('h2').parentElement.textContent).toContain(LINE);
+    expect(text).not.toMatch(/set up job/i);
+    await v.unmount();
+
+    const some = { jobs: { list: vi.fn(async () => [job('j1')]) } };
+    const listed = await mount(some, <button type="button">Assistant</button>);
+    expect(count(listed.container.textContent, LINE)).toBe(1);
+    await listed.unmount();
+
+    // A reader, handed no actions, is not told how to set one up.
+    const reader = await mount(empty);
+    expect(reader.container.textContent).not.toContain(LINE);
+    await reader.unmount();
   });
 
   it('reads the list again while a job is active, and stops once none is', async () => {

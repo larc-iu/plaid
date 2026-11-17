@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Loader2, MoreHorizontal } from 'lucide-react';
-import { AssistantMark } from '@ui/components/assistant/PlaidMarks.jsx';
+import { MoreHorizontal } from 'lucide-react';
 import { notifyError } from '@/utils/feedback';
 import { Button } from '@ui/components/ui/button';
 import { Label } from '@ui/components/ui/label';
@@ -22,94 +21,12 @@ import {
 } from '@ui/components/ui/dropdown-menu';
 import { SearchInput } from '@ui/components/shared/list-search';
 import { compareNames } from '@ui/domain/collation.js';
-import { JOB_SETUP } from '@ui/components/assistant/purposes.js';
-import { useStartConversation } from '@ui/components/assistant/subject.js';
-import { useAssistantAvailable } from '@ui/components/assistant/useAssistantAvailable.js';
-import { useWideEnoughToDock } from '@ui/components/assistant/useDock.js';
-import { IGT_ASSISTANT } from '../assistant/adapter.js';
 import { STARTER_TEXTS, activeJobOf, instructionsLength, jobPath, startJob } from './jobText.js';
 import { InstructionsCount, JobActiveLine, NoWorkerLine } from './jobLines.jsx';
 
 // Number order, so "Text 2" comes before "Text 10" (RP-9), the order of
 // every document list (compareNames).
 const byName = (a, b) => compareNames(a.name, b.name) || a.id.localeCompare(b.id);
-
-// Where the full Assistant tab opens on a new job setup conversation, whose
-// turns are asked from the document when one is named (AssistantTab).
-const setUpHref = (projectId, documentId) =>
-  `/projects/${projectId}?tab=assistant&purpose=${JOB_SETUP}` +
-  (documentId ? `&document=${encodeURIComponent(documentId)}` : '');
-
-/**
- * Set up job: a job is set up in a new assistant conversation, which drafts
- * the job card the job is started from (BRIEF-SU). From the project's
- * Documents and Jobs tabs and from a document's header, where the
- * conversation's turns are asked from that document. The docked panel opens
- * on it, or the full Assistant tab where the window has no room for the
- * panel, and from a document's header it names the document to the tab, so
- * the turns are asked from it there too. With no assistant online for the
- * project the button opens the Start job form instead. Pressed before the app knows whether one is (discovery
- * not answered yet, on a cold load), it waits for the answer, pending as a
- * service's run button is, and then does what the answer says.
- *
- * `documents` is the project's listing when the caller already has it (the
- * Documents tab), else the form reads it on open. `documentId` opens the form
- * with that one document chosen. `small` draws the button at the size of a
- * document header's buttons.
- */
-export const SetUpJob = ({
-  projectId,
-  client,
-  documents: given = null,
-  documentId = null,
-  small = false,
-}) => {
-  const [open, setOpen] = useState(false);
-  // Pressed while it is not yet known whether an assistant is online.
-  const [waiting, setWaiting] = useState(false);
-  const available = useAssistantAvailable(client, projectId, IGT_ASSISTANT.app);
-  const wide = useWideEnoughToDock();
-  const startConversation = useStartConversation();
-  const navigate = useNavigate();
-  const act = () => {
-    if (available !== true) setOpen(true);
-    else if (wide) startConversation({ purpose: JOB_SETUP });
-    else navigate(setUpHref(projectId, documentId));
-  };
-  const setUp = () => (available === null ? setWaiting(true) : act());
-  // It opens a conversation: the assistant's mark, as Discuss with the
-  // assistant has (REV-SU-F-6).
-  const Icon = waiting ? Loader2 : AssistantMark;
-  useEffect(() => {
-    if (!waiting || available === null) return;
-    setWaiting(false);
-    act();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [waiting, available]);
-  return (
-    <>
-      <Button
-        variant="outline"
-        size={small ? 'sm' : 'default'}
-        className="gap-1.5"
-        onClick={setUp}
-        disabled={waiting}
-        aria-busy={waiting || undefined}
-      >
-        <Icon className={waiting ? 'h-4 w-4 animate-spin' : 'h-4 w-4'} /> Set up job
-      </Button>
-      {open && (
-        <StartJobDialog
-          projectId={projectId}
-          client={client}
-          documents={given}
-          documentId={documentId}
-          onClose={() => setOpen(false)}
-        />
-      )}
-    </>
-  );
-};
 
 /**
  * The Jobs tab's way to the Start job form with no assistant: a "⋯" menu with
@@ -136,7 +53,6 @@ export const StartWithoutAssistant = ({ projectId, client, documents = null }) =
           projectId={projectId}
           client={client}
           documents={documents}
-          documentId={null}
           onClose={() => setOpen(false)}
         />
       )}
@@ -146,15 +62,14 @@ export const StartWithoutAssistant = ({ projectId, client, documents = null }) =
 
 // The dialog itself, mounted per opening: everything chosen in it, and the id
 // its job is made under, start fresh each time it opens.
-const StartJobDialog = ({ projectId, client, documents: given, documentId, onClose }) => {
+const StartJobDialog = ({ projectId, client, documents: given, onClose }) => {
   const navigate = useNavigate();
   const [listed, setListed] = useState(given);
   const [worker, setWorker] = useState(null);
   // Nothing is chosen until the person chooses (RP-9: every document was, and
-  // a Start pressed unread ran the job on the whole project). From a
-  // document, that document.
+  // a Start pressed unread ran the job on the whole project).
   const [all, setAll] = useState(false);
-  const [chosen, setChosen] = useState(() => new Set(documentId ? [documentId] : []));
+  const [chosen, setChosen] = useState(() => new Set());
   const [query, setQuery] = useState('');
   const [instructions, setInstructions] = useState('');
   const [starting, setStarting] = useState(false);
