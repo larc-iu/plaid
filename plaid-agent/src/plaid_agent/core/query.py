@@ -330,7 +330,10 @@ def render(res: Any, q: Dict[str, Any], limit: int, refs: Dict[str, str],
     cols = res.get('columns') or []
     rows = res.get('results') or []
     if res.get('return') == 'aggregate':
-        lines = [f'{len(rows)} group{"s" if len(rows) != 1 else ""}: ' + '\t'.join(cols)]
+        # Cut as a row answer is, and said as one is: a grouped answer read as
+        # whole was the survey's partial plan (2026-11-17 item 4).
+        lines = [f'{len(rows)} group{"s" if len(rows) != 1 else ""}'
+                 + (' (truncated by the engine limit)' if res.get('truncated') else '') + ': ' + '\t'.join(cols)]
         for r in rows[:limit]:
             lines.append('  ' + '\t'.join(
                 str(doc_names.get(c, c)) if isinstance(c, str) else str(c) for c in r))

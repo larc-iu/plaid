@@ -198,7 +198,13 @@ def link_counts(ws: Workspace, vocab: dict) -> Counter:
     base = [['vocab', '?v', {'layer': vocab['id']}], ['vocab-link', '?t', '?v']]
     out: Counter = Counter()
     for tok in [c.word('?t')] + ([c.morph('?t')] if c.M else []):
-        for iid, n in c.group(base + [tok], ['?v']):
+        rows = c.group(base + [tok], ['?v'])
+        if c.truncated:
+            # A count read from part of the links reads as an entry no word
+            # links to, so it is refused, as a cut query() is (core.sandbox).
+            raise ValueError(f'lexicon() could not count the links of every entry of "{vocab.get("name")}": '
+                             f'the engine cut the count. Read the links with query() instead.')
+        for iid, n in rows:
             out[iid] += n
     return out
 

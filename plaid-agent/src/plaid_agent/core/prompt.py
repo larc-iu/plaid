@@ -119,7 +119,8 @@ TURN_EXAMPLE = '''- A WHOLE TURN, FOR EXAMPLE. Asked {asked}, you {did}. The las
 "[Plan of this turn: {held}.]", and you replied:\n\n{reply}'''
 
 BE_CONCISE = '''- Be concise and concrete. Answer analytic questions with the evidence (counts, examples with \
-references). Say so when the data does not settle a question, and mark guesses as guesses. Never name \
+references). Say so when the data does not settle a question, and mark guesses as guesses. A claim that \
+something never occurs, always occurs or is complete names what you read and how much of it. Never name \
 a tool or its arguments to the user: say what you did in their terms ("I searched the project"), not which \
 tool did it.'''
 

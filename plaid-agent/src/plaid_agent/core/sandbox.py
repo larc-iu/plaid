@@ -461,9 +461,9 @@ The project reaches the code through the functions here and any named further do
                                  is a LIST, one item per find variable: [entity dict] for "entities"
                                  (the default), [id] for "ids". An aggregate's row is its group values
                                  then its aggregates, e.g. ["NOUN", 412]. "count" gives {{"count": n}}
-                                 and no rows. "truncated" is true when rows were cut: "ids" and
-                                 "entities" stop at {query_rows}, so count with an aggregate return, or split
-                                 the where and query once per part.
+                                 and no rows. An answer the engine cut ("ids" and "entities" stop at
+                                 {query_rows} rows) raises, unless query(q, partial=True): count with an
+                                 aggregate return, or split the where and query once per part.
   plan(tool, **args)          -> stage a proposal through a plan tool by name, with the same arguments
                                  the tool takes; returns the tool's own reply as text. Nothing is written:
                                  the user approves the plan afterwards, exactly as with the tools.
@@ -610,19 +610,35 @@ def api(ws, view: Callable[[Any], Any], call_tool, write_tools,
             loads[id(w)] = load_proxy(w, view_of(w) if view_of and w is not ws else view)
         return loads[id(w)](document)
 
-    def query(q, project=None):
+    def query(q, project=None, partial=False):
         w = workspace(project)
         try:
             parsed = parse_query(q)
             idx = layer_index(w)
             docs = {(d.get('name') or '').casefold(): d['id'] for d in w.documents()}
-            return run_query(w.client, rewrite(parsed, idx, display(idx), docs), w.project.id)
+            res = run_query(w.client, rewrite(parsed, idx, display(idx), docs), w.project.id)
         except (QueryRefused, ToolError) as e:
             raise ValueError(str(e))
+        # A cut answer is refused unless the code asks for one: code that
+        # never read "truncated" built a project-wide plan from 500 of 1,768
+        # values (survey 2026-11-17 item 4). A printed line is as easily
+        # missed as the key, so the code stops here.
+        if isinstance(res, dict) and res.get('truncated') and partial is not True:
+            raise ValueError(cut_refusal(len(res.get('results') or ())))
+        return res
 
     return {'documents': documents, 'load': load, 'query': query,
             'plan': plan_proxy(ws, call_tool, write_tools),
             **filetools.api(ws), **filetools.save_api(ws)}
+
+
+def cut_refusal(rows: int) -> str:
+    """What query() in code raises on an answer the engine cut at ``rows``.
+    The language has no paging, so the ways on are a count or the where
+    split, or the part taken knowingly."""
+    return (f'The query answer was cut at {rows} rows, so it is not the whole answer. Count with a "count" or '
+            f'aggregate return, or split the where (one document at a time) and query each part. '
+            f'query(q, partial=True) returns the cut answer.')
 
 
 # The host functions whose answers stage or store something rather than read
