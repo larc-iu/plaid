@@ -239,7 +239,7 @@ describe("a lexicon's Tagsets save carries its fields along", () => {
 
   it('a delete frees the fields that named the tagset (H6-3)', () => {
     expect(lexiconFieldsAfterTagsetsSave(fields, before, { Gloss: LEIPZIG }, null)).toEqual([
-      { name: 'pos', tagset: '' },
+      { name: 'pos', tagset: null },
       { name: 'gloss', tagset: 'Gloss' },
       { name: 'note', tagset: '' },
     ]);

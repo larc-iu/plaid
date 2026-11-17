@@ -253,7 +253,7 @@ export const lexiconFieldsAfterTagsetsSave = (fields, tagsetsBefore, next, renam
   if (!fields.some(changes)) return null;
   return fields.map((f) => {
     if (renamed && f.tagset === renamed.from) return { ...f, tagset: renamed.to };
-    if (removed.has(f.tagset)) return { ...f, tagset: '' };
+    if (removed.has(f.tagset)) return { ...f, tagset: null };
     return f;
   });
 };
