@@ -175,14 +175,18 @@ def entry(view: LexView, it: dict, links: int) -> Dict[str, Any]:
             'senses': [s['id'] for s in view.tree.senses_of(iid)], 'links': links, 'staged': False}
 
 
-def staged_entry(view: LexView, key: str, e: dict) -> Dict[str, Any]:
+def staged_entry(ws: Workspace, view: LexView, key: str, e: dict) -> Dict[str, Any]:
     """An entry this plan creates, as :func:`entry` gives one, under the
-    entry_id create_entry answered: a later plan() call names it by that."""
+    entry_id create_entry answered: a later plan() call names it by that.
+    Its links are the ones the plan makes to it. It has no senses: a sense
+    hangs only off a stored entry."""
     meta = e.get('metadata') or {}
     it = {'id': key, 'form': e['form'], 'metadata': meta}
+    parent = meta.get(PARENT_KEY) or None
+    links = sum(1 for o in ws.ops if o.get('kind') in ('link', 'link_phrase') and o.get('new_entry_key') == key)
     return {'id': key, 'lexicon': view.vocab['name'], 'form': e['form'], 'address': e['form'],
-            'type': meta.get('morphType'), 'fields': _fields(view, it, set()),
-            'parent': meta.get(PARENT_KEY) or None, 'senses': [], 'links': 0, 'staged': True}
+            'type': meta.get('morphType') or (morph_type_of(view.tree, parent) if parent else None),
+            'fields': _fields(view, it, set()), 'parent': parent, 'senses': [], 'links': links, 'staged': True}
 
 
 def _fields(view: LexView, it: dict, hidden) -> Dict[str, Any]:
@@ -244,7 +248,7 @@ def lexicon_api(ws: Workspace) -> Callable:
                 counts[key] = link_counts(w, v)
             view = w.view(v)
             out.extend(entry(view, it, counts[key][it['id']]) for it in view.items)
-            out.extend(staged_entry(view, k, e) for k, e in w.new_entries.items() if e.get('vocab_id') == v['id'])
+            out.extend(staged_entry(w, view, k, e) for k, e in w.new_entries.items() if e.get('vocab_id') == v['id'])
         return out
     return lexicon
 

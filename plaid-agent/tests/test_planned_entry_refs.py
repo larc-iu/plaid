@@ -104,3 +104,16 @@ def test_taking_back_a_link_keeps_an_entry_another_planned_entry_names():
     w.ops.append(link)
     assert take_back(w, [link]) == []
     validate_ops(w.ops)
+
+
+def test_a_staged_entry_in_lexicon_counts_the_links_the_plan_gives_it():
+    """REV-SVB-11: never a false 0. A planned entry has no senses (a sense is
+    hung only off a stored entry), and its links are the plan's."""
+    from plaid_agent.igt.sandbox import staged_entry
+    w = dict_ws()
+    key = _key(call_tool(w, 'create_entry', {'form': 'gam', 'fields': {'gloss': 'fish'}}))
+    out = call_tool(w, 'link_entry', {'document': 'Text 1', 'refs': ['s1.w2', 's2.w1'], 'entry_id': key})
+    assert out.startswith('Planned'), out
+    v = w.project.vocabs[0]
+    e = staged_entry(w, w.view(v), key, w.new_entries[key])
+    assert (e['links'], e['senses'], e['staged']) == (2, [], True)
