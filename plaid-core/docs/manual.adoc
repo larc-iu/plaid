@@ -778,6 +778,11 @@ class Glosser(BaseService):
 In Python the stop is a `ServiceCancelled` exception derived from `BaseException`, so `except Exception` does not swallow it.
 In JavaScript, a handler that catches every error must re-throw a `ServiceCancelled`.
 
+A request the server no longer knows ends the same way at the next checkpoint, as a `ServiceRequestGone`, a kind of `ServiceCancelled`.
+The server answers 404 to the service's progress report when the request was ended for it: its connection dropped and did not come back in time, or the server restarted.
+Nobody asked for that stop and nobody waits for an answer, so the helper's `gone` is true and nothing more is reported for the request.
+A service that records how its work ended catches `ServiceRequestGone` before `ServiceCancelled`.
+
 === Presence and persistence
 
 A service can take work only while it is connected.
@@ -800,6 +805,9 @@ Deactivating the account releases every id it holds.
 The project's services listing (`GET /api/v1/projects/{id}/services`) gives the display name of whoever holds each id in `claimed-by-name`, absent when no account holds it.
 An administrator also gets the account in `claimed-by`, and an entry with `seen` false for each held id whose registration was forgotten, so it can still be released.
 Both clients reconnect a service whenever its connection drops, so restarting the Plaid server does not mean restarting its services.
+A request in flight when a service's connection drops is held for 20 seconds.
+If the same account connects the service again within that time, the requests the service had reported progress on go on, its reports are taken meanwhile, and a stop asked for in between reaches it on the new connection.
+The others, and all of them when the service does not come back, end with the error `Service disconnected`.
 `registration.is_connected()` / `isConnected()` tells whether the server sees the service as online right now.
 
 NOTE: Service requests are not recorded in the audit log, but the writes a service makes are, under the token it runs with. Giving a service its own named API token makes its edits easy to pick out.

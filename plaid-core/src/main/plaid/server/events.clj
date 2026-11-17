@@ -479,12 +479,13 @@
 
 (defn record-progress!
   "Remember the latest progress payload (replayed to a requester that attaches
-  later). Returns the channels to relay it to now."
+  later), and that the service has reported on the request (`:heard`), so it
+  surely received it. Returns the channels to relay it to now."
   [request-id progress]
   (:requesters (get (swap! inflight-requests
                            (fn [reqs]
                              (if (get reqs request-id)
-                               (assoc-in reqs [request-id :last-progress] progress)
+                               (update reqs request-id assoc :last-progress progress :heard true)
                                reqs)))
                     request-id)))
 

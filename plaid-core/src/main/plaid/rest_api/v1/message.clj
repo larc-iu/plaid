@@ -240,6 +240,75 @@
       (try (http-kit/send! ch (sse-event event data) false) (catch Exception _))
       (try (http-kit/close ch) (catch Exception _)))))
 
+;; A service's channel can drop and reopen within seconds (a proxy, the
+;; network, a read timeout on the service's side) while the work it was sent
+;; goes on in the service's process and the requester still waits. So when the
+;; last channel of a service closes with requests in flight, they are held for
+;; `reconnect-grace-ms`. The service's reports on them are taken meanwhile
+;; (`reply-handler` asks only who reports). A channel the same account opens
+;; for the service id within that time adopts each request the service has
+;; reported on, which it surely received, and ends the others, which may have
+;; been lost on the dead connection. When the time is up with no channel
+;; back, every one ends "Service disconnected", as it did at once before. A
+;; channel closed because its credential no longer admits it
+;; (`drop-service-channel!`) ends them at once: their work must not go on.
+
+(def reconnect-grace-ms
+  "How long a service's in-flight requests wait for its channel to come back."
+  20000)
+
+(defonce ^:private orphaned
+  ;; [project-id service-id] -> a token for the close that left the service's
+  ;; requests waiting for it, while no channel has come back.
+  (atom {}))
+
+(defn- end-service-requests!
+  "End every unfinished request of service `service-id` on `project-id` for
+  which `end?` is true of its entry, as disconnected."
+  [project-id service-id end?]
+  (doseq [[request-id entry] (events/requests-for-service project-id service-id)
+          :when (end? entry)]
+    (finish-request! request-id "error" {:error "Service disconnected"})))
+
+(defn service-channel-closed!
+  "The `:on-close` of a service channel: deregister it, and when no channel of
+  the service is left, stamp it last seen and hold its in-flight requests for
+  `reconnect-grace-ms`, then end those no channel adopted."
+  [db project-id service-id channel]
+  (events/unregister-service-channel! project-id service-id channel)
+  ;; A superseded or losing channel closing does nothing more: a live
+  ;; takeover is serving the requests.
+  (when-not (events/get-service-channel project-id service-id)
+    (try (service-registry/touch-last-seen! db project-id service-id)
+         (catch Exception _))
+    (when (seq (events/requests-for-service project-id service-id))
+      (let [k [project-id service-id]
+            token (Object.)
+            wait reconnect-grace-ms]
+        (swap! orphaned assoc k token)
+        (async/go
+          (when (pos? wait)
+            (async/<! (async/timeout wait)))
+          ;; Only if no channel came back since, and no later close took over.
+          (when (= token (get @orphaned k))
+            (swap! orphaned (fn [m] (if (= token (get m k)) (dissoc m k) m)))
+            (end-service-requests! project-id service-id (constantly true))))))))
+
+(defn service-channel-opened!
+  "A service channel registered by `user-id`: it adopts the requests the
+  service left waiting when its last channel closed (`service-channel-closed!`)
+  that were sent to this account and that the service has reported on, and
+  hears again of each one stopped meanwhile. The rest end now."
+  [project-id service-id user-id channel]
+  (when (get @orphaned [project-id service-id])
+    (swap! orphaned dissoc [project-id service-id])
+    (let [adopt? (fn [{:keys [service-user-id heard]}] (and heard (= service-user-id user-id)))]
+      (end-service-requests! project-id service-id (complement adopt?))
+      (doseq [[request-id entry] (events/requests-for-service project-id service-id)
+              :when (and (adopt? entry) (:cancelled entry))]
+        (try (http-kit/send! channel (sse-event "service_cancel" {:request-id request-id}) false)
+             (catch Exception _))))))
+
 (defn- drop-service-channel!
   "Deregister a service channel whose holder lost the right to it, fail the
   requests routed to it, and close it."
@@ -439,22 +508,13 @@
                   (catch Exception e
                     (log/warn e "Failed to record seen-service row for" service-id "on project" id)))
                 (log/debug "Service channel opened for" service-id "on project" id)
+                (service-channel-opened! id service-id user-id channel)
                 (start-keepalive! channel)
                 (close-at-expiry! (assoc info :project-id id :service-id service-id
                                          :user-id user-id :channel channel))))))
         :on-close
         (fn [channel _]
-          (events/unregister-service-channel! id service-id channel)
-          ;; Only run the "service is gone" cleanup when it actually is gone —
-          ;; a superseded/losing channel closing must not stamp last-seen or
-          ;; fail in-flight requests that a live takeover is still serving.
-          (when-not (events/get-service-channel id service-id)
-            ;; Best-effort "last seen alive" stamp.
-            (try (service-registry/touch-last-seen! db id service-id)
-                 (catch Exception _))
-            ;; Fail any in-flight requests that were routed to this now-gone service.
-            (doseq [[request-id _] (events/requests-for-service id service-id)]
-              (finish-request! request-id "error" {:error "Service disconnected"})))
+          (service-channel-closed! db id service-id channel)
           (log/debug "Service channel closed for" service-id "on project" id))}))))
 
 (defn- request-visible?
