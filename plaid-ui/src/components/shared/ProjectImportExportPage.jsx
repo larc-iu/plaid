@@ -253,7 +253,8 @@ export const ProjectImportExportPage = ({ tabs: Tabs, setupHref, format }) => {
       const skippedAcc = found.skipped || [];
       setSkipped(skippedAcc);
       if (found.entries.length === 0) {
-        notifyError('No documents could be exported. All are empty.');
+        // The list under the button says why each was skipped.
+        notifyError('No documents could be exported.');
         return;
       }
       const used = new Set([NAMES_FILE]);
@@ -269,7 +270,7 @@ export const ProjectImportExportPage = ({ tabs: Tabs, setupHref, format }) => {
       const count = files.length;
       saveBlob(blob, `${sanitizeFilename(project?.name)}.zip`);
       if (skippedAcc.length > 0) {
-        notifyWarning(`Exported ${count}. ${skippedAcc.length} skipped (empty).`);
+        notifyWarning(`Exported ${countOf(count, 'document')}. ${skippedAcc.length} skipped.`);
       } else {
         notifySuccess(`Exported ${countOf(count, 'document')}.`);
       }

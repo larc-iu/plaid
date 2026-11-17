@@ -271,7 +271,26 @@ describe('export', () => {
     const box = view.container.querySelector('[data-tone="warning"]');
     expect(box.textContent).toContain('1 document skipped');
     expect(box.querySelector('li').textContent).toBe('Two: No tokenized content available');
-    expect(notify.notifyWarning).toHaveBeenCalledWith('Exported 1. 1 skipped (empty).');
+    // H18-3: the toast gives no reason of its own. The list says why each was
+    // skipped, and 'empty' was wrong for a document holding untokenized text.
+    expect(notify.notifyWarning).toHaveBeenCalledWith('Exported 1 document. 1 skipped.');
+    await view.unmount();
+  });
+
+  it('says none could be exported, with no reason of its own, when every one is skipped', async () => {
+    const format = baseFormat();
+    format.exportDocuments = vi.fn(async () => ({
+      documents: 1,
+      entries: [],
+      skipped: [{ name: 'Notes', reason: 'No tokens' }],
+    }));
+    const view = await mount(format);
+    await run(view);
+    expect(notify.notifyError).toHaveBeenCalledWith('No documents could be exported.');
+    expect(view.container.querySelector('[data-tone="warning"] li').textContent).toBe(
+      'Notes: No tokens',
+    );
+    expect(format.zip).not.toHaveBeenCalled();
     await view.unmount();
   });
 
