@@ -42,6 +42,7 @@ import { authService } from '../../services/auth.js';
 import { turnContext } from './transcript.js';
 import { useReadable, useRounds } from './rounds.js';
 import { TraceSteps } from './WorkTrace.jsx';
+import { roundSince as roundSinceOf } from './roundClock.js';
 import { Turn } from './Turn.jsx';
 import { formatElapsed } from '../../hooks/useRunProgress.js';
 import { useAssistantChoice } from './useAssistantChoice.js';
@@ -378,7 +379,7 @@ export const AssistantChat = ({
     setLiveTrace(j.trace || []);
     setPartial(j.partial || '');
     setLiveThinking(j.thinking || '');
-    setRoundSince(j.kind === 'turn' && j.round?.shown && !j.stopping ? j.round.at : null);
+    setRoundSince(roundSinceOf(j));
     setStopping(!!j.stopping);
   };
   const clearJob = () => {

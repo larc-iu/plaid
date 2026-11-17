@@ -227,6 +227,26 @@ def test_the_service_shows_the_wait_and_records_the_busy_line(monkeypatch, clock
     assert turn_end({**item, 'lost': True}) == 'busy'
 
 
+def test_a_round_waiting_for_a_busy_model_says_so_and_keeps_its_start(monkeypatch, clock):
+    """The page shows no "Thinking" count while the round waits for a slot,
+    and counts on from the round's start once it has one (REV-SVU-3)."""
+    client = FakeClient()
+    _seed(client)
+    _script(monkeypatch, busy(), _resp(content='Done.'))
+
+    class Logged(Helper):
+        def progress(self, pct, msg='', **extra):
+            super().progress(pct, msg, **extra)
+            self.rounds = getattr(self, 'rounds', []) + [(msg, extra.get('round'))]
+    helper = Logged()
+    _service().process_request(_request(client), helper)
+    assert not helper.errors, helper.errors
+    rounds = [r for _, r in helper.rounds if r]
+    waiting = [r['waiting'] for r in rounds]
+    assert waiting[0] is False and True in waiting and waiting[-1] is False
+    assert len({r['began'] for r in rounds}) == 1 and {r['n'] for r in rounds} == {1}
+
+
 def test_a_stop_during_the_wait_is_recorded_as_stopped(monkeypatch, clock):
     client = FakeClient()
     store = _seed(client)

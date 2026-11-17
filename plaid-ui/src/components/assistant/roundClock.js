@@ -1,21 +1,21 @@
-// How long the model call under way has been working, as the page counts it.
+// How long the model call under way has been working, for the trace's
+// "Thinking, 45 s".
 //
-// A turn is a run of model calls ("rounds"). The service says a round has
-// begun by sending one of these lines as the turn's progress message
-// (plaid_agent/core/agent.py, at the top of its loop), and says something
-// else once the round has an outcome: a tool's own line while the tool runs,
-// "Writing…" once the reply's text streams, or the line of a wait for a busy
-// model. A round's steps land in the trace after its tools ran, so the next
-// round's line arrives with a longer trace.
-export const ROUND_LINES = new Set(['Thinking…', 'Thinking more…']);
+// A turn is a run of model calls ("rounds"). Every progress event of a chat
+// turn carries `round` (plaid_agent core/turn.py, set by the loop in
+// core/agent.py): the call under way as `{n, began, waiting}`, `began` the
+// service's clock in ISO, `waiting` while it waits for a busy model, or null
+// while a tool runs. The page reads that and never the event's line, so a
+// reload or a second tab joining mid-round counts from the true start.
 
-// The round after a progress event, as `{steps, at, shown}`: `at` is when the
-// page first saw this round (keyed by how many steps the trace held), so a
-// wait for a busy model in the middle of it does not start the count again,
-// and `shown` says whether the model is working on it now.
-export const roundAfter = (round, message, steps, now) => {
-  if (!ROUND_LINES.has(message)) return round ? { ...round, shown: false } : null;
-  return { steps, at: round?.steps === steps ? round.at : now, shown: true };
+// When the model call under way began (ms), while the model works on it with
+// no text yet, else null. Null too where the service says nothing of the
+// round (another assistant, an older service): no count is shown.
+export const roundSince = (job) => {
+  const round = job?.round;
+  if (job?.kind !== 'turn' || !round || round.waiting || job.partial || job.stopping) return null;
+  const at = typeof round.began === 'string' ? Date.parse(round.began) : NaN;
+  return Number.isFinite(at) ? at : null;
 };
 
 // "Thinking, 45 s", or "Thinking, 2 min 5 s" from a minute on.

@@ -29,7 +29,7 @@ from plaid_client.workflows.llm import (BUSY_LINE, BUSY_WAITING, RETRIES, TIMEOU
                                         close_stream, is_busy, is_timeout, retrying, transient_errors)
 
 from .bidi import for_model
-from .conversation import DROPPED, FAILED_TURN
+from .conversation import DROPPED, FAILED_TURN, now_iso
 from .filetools import vouches
 from .limits import cuts
 from .rounds import call_record, new_round
@@ -1350,6 +1350,8 @@ def _run_turn(cfg, kit, ws, system, transcript, on_progress, cancelled, on_text,
         reported(pct, msg)
 
     def on_busy(waiting: bool) -> None:
+        if getattr(ws, 'model_round', None):
+            ws.model_round = {**ws.model_round, 'waiting': waiting}
         reported(shown['pct'], BUSY_WAITING if waiting else shown['msg'])
 
     def text_seen(t: str) -> None:
@@ -1561,6 +1563,7 @@ def _run_turn(cfg, kit, ws, system, transcript, on_progress, cancelled, on_text,
     while True:
         if cancelled():
             raise TurnCancelled()
+        ws.model_round = {'n': rounds + 1, 'began': now_iso(), 'waiting': False}
         on_progress(min(85, 8 + rounds * 5), 'Thinking…' if rounds == 0 else 'Thinking more…')
         kwargs: Dict[str, Any] = dict(**_provider_kwargs(cfg), tools=kit.tools_for(ws), tool_choice='auto',
                                       messages=[{'role': 'system', 'content': system}] + history + sent(new))
@@ -1754,6 +1757,7 @@ def _run_turn(cfg, kit, ws, system, transcript, on_progress, cancelled, on_text,
                 # already held (``add_op``'s ``replaced``).
                 replaced_before = getattr(ws, 'replaced', 0)
                 line = kit.tracer.progress(name, named_args(ws, args))
+                ws.model_round = None
                 on_progress(min(85, 8 + rounds * 5), line)
                 ws.announced = line
                 # A value typed in a rare script can come out garbled, and is

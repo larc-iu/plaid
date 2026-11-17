@@ -319,6 +319,35 @@ def test_progress_events_carry_the_turn_so_far(monkeypatch):
     assert [r['said'] for r in _rounds(client)] == ['Looking.', 'Again.']
 
 
+def test_progress_events_say_which_round_the_model_is_working_on_and_since_when(monkeypatch):
+    """The page's "Thinking, 45 s" reads these fields, never the line
+    (REV-SVU-2, REV-SVU-3): every event of a chat turn carries ``round``, the
+    model call under way as its number and when it began (the service's
+    clock, ISO), or None while a tool runs."""
+    from datetime import datetime
+    client = FakeClient()
+    flow._seed(client)
+    svc = flow._service()
+    svc.kit = Toolkit(tools_for=lambda ws: [], call_tool=lambda ws, n, a: 'found', tracer=TRACER)
+    svc.cfg = ModelConfig(model='fake/model', stream=False)
+    monkeypatch.setattr(agent.litellm, 'completion', _model([
+        _calls(('c1', 'search', '{"q": "1"}')),
+        _reply('Done.')]))
+    helper = _Logged()
+    svc.process_request(flow._request(client), helper)
+    assert not helper.errors, helper.errors
+    assert all('round' in e for e in helper.events), [e['message'] for e in helper.events if 'round' not in e]
+    by_line = [(e['message'], e['round'] and e['round']['n']) for e in helper.events]
+    assert ('Thinking…', 1) in by_line and ('Working…', None) in by_line and ('Thinking more…', 2) in by_line
+    first = next(e['round'] for e in helper.events if e['round'] and e['round']['n'] == 1)
+    second = next(e['round'] for e in helper.events if e['round'] and e['round']['n'] == 2)
+    assert first['waiting'] is False
+    assert datetime.fromisoformat(first['began'].replace('Z', '+00:00')) <= \
+        datetime.fromisoformat(second['began'].replace('Z', '+00:00'))
+    # The start of a round is the same on every event of it.
+    assert len({e['round']['began'] for e in helper.events if e['round'] and e['round']['n'] == 2}) == 1
+
+
 def test_a_dead_turns_rounds_are_kept_until_the_conversation_goes(monkeypatch):
     # A turn whose service died leaves rounds no item names. They are not
     # swept while the conversation lives, and go with it.

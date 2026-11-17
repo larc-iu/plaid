@@ -84,14 +84,18 @@ class Turn:
         # watcher (or one that rejoins, which core replays only the last event
         # to) draws it as it grows: the steps as they will be stored
         # (`RoundKeeper.live_trace`), the text of the model call under way,
-        # and the end of its reasoning (`THINKING_TAIL`).
+        # the end of its reasoning (`THINKING_TAIL`), and the model call under
+        # way (`ws.model_round`, set by the loop in core.agent: its number,
+        # when it began on this service's clock, whether it waits for a busy
+        # model), or None while a tool runs, for the page's "Thinking, 45 s".
         state = {'pct': 5, 'msg': ''}
         keeper = RoundKeeper(store, conv_id)
 
         def send(msg):
             state['msg'] = msg
             response_helper.progress(state['pct'], msg, text=keeper.text, trace=keeper.live_trace(),
-                                     thinking=keeper.thinking[-THINKING_TAIL:])
+                                     thinking=keeper.thinking[-THINKING_TAIL:],
+                                     round=getattr(ws, 'model_round', None))
 
         def on_progress(pct, msg):
             state['pct'] = max(state['pct'], pct)
@@ -348,7 +352,7 @@ class Turn:
             # turn stored.
             ws.keeper.discard()
         try:
-            response_helper.progress(100, 'Done')
+            response_helper.progress(100, 'Done', round=None)
         except ServiceCancelled:
             # Stopped after the answer was written: it is the outcome all the same.
             pass

@@ -349,7 +349,7 @@ class RecordOps:
             self._busy[ctx.key] = {'request_id': ctx.request_id, 'kind': 'turn'}
         try:
             try:
-                ctx.helper.progress(2, 'Thinking…', recorded=True)
+                ctx.helper.progress(2, 'Thinking…', recorded=True, round=None)
             except ServiceCancelled:
                 # Stopped (or gone) before the turn began: the helper still
                 # says so, and the turn records it at its first check.

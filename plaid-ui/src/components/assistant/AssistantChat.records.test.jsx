@@ -200,6 +200,8 @@ describe('a turn as it runs', () => {
 describe('the round under way', () => {
   // A round that thinks for minutes with no step and no text looked stalled,
   // and people stopped turns that were nearly done (survey 2026-11-17, item 3).
+  // The page counts from the round's own start, which the service sends on
+  // every progress event (REV-SVU-2, REV-SVU-3), never from its line.
   const STEP = {
     id: 'c1',
     name: 'search',
@@ -209,40 +211,75 @@ describe('the round under way', () => {
     stored: true,
   };
   const thinkingLine = (m) =>
-    all(m.container, 'li').find((li) => /^Thinking, \d+ s$/.test(li.textContent)) ?? null;
+    all(m.container, 'li').find((li) => /^Thinking, /.test(li.textContent)) ?? null;
+  const ago = (ms) => new Date(Date.now() - ms).toISOString();
 
-  it('says the model is working on it, until a tool, a step or the text takes its place', async () => {
+  const turnOf = async (first) => {
     const client = fakeClient();
-    const emitted = [];
     let emitNow;
     client.assistant.during = async (emit) => {
       emitNow = emit;
-      emit({ message: 'Thinking…', text: '', trace: [] });
+      emit(first);
       await new Promise(() => {});
     };
     const m = await mount(client);
     await flush(m);
     await typeAndSend(m, 'Find kai.');
     await flush(m);
+    const say = async (p) => {
+      await m.step(() => emitNow(p));
+      await flush(m);
+    };
+    return { m, say };
+  };
+
+  it('says the model is working on it, until a tool, a step or the text takes its place', async () => {
+    const one = { n: 1, began: ago(0), waiting: false };
+    const { m, say } = await turnOf({ message: 'Thinking…', text: '', trace: [], round: one });
     expect(thinkingLine(m)?.textContent).toBe('Thinking, 0 s');
     // The line under the conversation does not show it twice, and still
     // tells a screen reader (REV-SVU-4).
     const status = m.container.querySelector('[role="status"].animate-pulse');
     expect(status?.textContent).toBe('Thinking');
     expect(status?.querySelector('.sr-only')?.textContent).toBe('Thinking');
-    const say = async (p) => {
-      emitted.push(p);
-      await m.step(() => emitNow(p));
-      await flush(m);
-    };
-    await say({ message: 'Searching…', text: '', trace: [] });
+    await say({ message: 'Searching…', text: '', trace: [], round: null });
     expect(thinkingLine(m)).toBeNull();
-    await say({ message: 'Thinking more…', text: '', trace: [STEP] });
+    const two = { n: 2, began: ago(0), waiting: false };
+    await say({ message: 'Thinking more…', text: '', trace: [STEP], round: two });
     expect(m.container.textContent).toContain('Searched for “kai”: 3 matches');
     expect(thinkingLine(m)?.textContent).toBe('Thinking, 0 s');
-    await say({ message: 'Writing…', text: 'Three matches.', trace: [STEP] });
+    // A wait for a busy model is said by the status line, not counted.
+    await say({
+      message: 'The model is busy.',
+      text: '',
+      trace: [STEP],
+      round: { ...two, waiting: true },
+    });
+    expect(thinkingLine(m)).toBeNull();
+    // The text streams: no count. A retry of the call sends its text again
+    // from nothing, whatever its line: the count is back.
+    await say({ message: 'Writing…', text: 'Three matches.', trace: [STEP], round: two });
     expect(thinkingLine(m)).toBeNull();
     expect(m.container.textContent).toContain('Three matches.');
+    await say({ message: 'Writing…', text: '', trace: [STEP], round: two });
+    expect(thinkingLine(m)?.textContent).toBe('Thinking, 0 s');
+    await m.unmount();
+  });
+
+  it('counts from when the round began, not from when this page first heard of it', async () => {
+    // A reload or a second tab joins a round three minutes in.
+    const round = { n: 4, began: ago(180_000), waiting: false };
+    const { m } = await turnOf({ message: 'Thinking more…', text: '', trace: [STEP], round });
+    expect(thinkingLine(m)?.textContent).toMatch(/^Thinking, 3 min \d+ s$/);
+    await m.unmount();
+  });
+
+  it('shows no count where the service says nothing of the round', async () => {
+    const { m } = await turnOf({ message: 'Thinking…', text: '', trace: [] });
+    expect(thinkingLine(m)).toBeNull();
+    expect(m.container.querySelector('[role="status"].animate-pulse')?.textContent).toBe(
+      'Thinking…',
+    );
     await m.unmount();
   });
 });
