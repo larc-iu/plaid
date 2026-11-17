@@ -117,3 +117,21 @@ def test_a_staged_entry_in_lexicon_counts_the_links_the_plan_gives_it():
     v = w.project.vocabs[0]
     e = staged_entry(w, w.view(v), key, w.new_entries[key])
     assert (e['links'], e['senses'], e['staged']) == (2, [], True)
+
+
+def test_a_planned_entry_is_created_before_anything_that_names_it():
+    """REV-SVB-9: a plan that stops between two writes never leaves a
+    reference to an id that was not made yet. A plan naming no planned entry
+    early keeps its order (and so its ids, test_minted_ids.py)."""
+    w = dict_ws()
+    call_tool(w, 'set_entry_field', {'entry_form': 'nyumba', 'field': 'seeAlso', 'value': 'kwatha'})
+    lalo = _key(call_tool(w, 'create_entry', {'form': 'lalo', 'fields': {'gloss': 'cook'}}))
+    lalu = _key(call_tool(w, 'create_entry', {'form': 'lalu', 'fields': {'gloss': 'cook'}}))
+    call_tool(w, 'set_entry_field', {'entry_id': lalo, 'field': 'variantOf', 'value': lalu})
+    # Replaces the first change in its place, before both creates.
+    call_tool(w, 'set_entry_field', {'entry_form': 'nyumba', 'field': 'seeAlso', 'value': lalo})
+    c = applied(w)
+    order = [(k, p['args'][1] if k == 'vocab_items.create' else p[0]) for k, p in c.calls
+             if k in ('vocab_items.create', 'vocab_items.patch_metadata')]
+    assert order == [('vocab_items.create', 'lalu'), ('vocab_items.create', 'lalo'),
+                     ('vocab_items.patch_metadata', 'd-nyumba')], order

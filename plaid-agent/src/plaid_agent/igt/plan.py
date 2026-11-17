@@ -2081,8 +2081,28 @@ def _doc_name(ws, doc_id: str) -> str:
         return qv(doc_id)
 
 
+def creates_first(ops: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """``ops`` with each planned entry created before any op naming its key
+    (REV-SVB-9), so a plan that stops partway never leaves a reference to an
+    id not made yet: when an op names a key before its create, every create
+    goes first, each after the creates it names (two that name each other
+    keep their order). Otherwise ``ops`` as they are, ids and all."""
+    texts = [json.dumps(o, default=str) for o in ops]
+    creates = [i for i, o in enumerate(ops) if o.get('kind') == 'create_entry' and is_new_key(o.get('key'))]
+    if not any(json.dumps(ops[c]['key']) in texts[i] for c in creates for i in range(c)):
+        return ops
+    left, order = list(creates), []
+    while left:
+        ready = [c for c in left if not any(json.dumps(ops[d]['key']) in texts[c] for d in left if d != c)]
+        pick = ready[0] if ready else left[0]
+        order.append(pick)
+        left.remove(pick)
+    return [ops[c] for c in order] + [o for i, o in enumerate(ops) if i not in set(creates)]
+
+
 def _execute(client, ops, *, label, project, counts, notes, stamps: Stamps, tracker=None,
              ids: Optional[Minter] = None) -> Dict[str, int]:
+    ops = creates_first(ops)
     # Tagset changes, always a plan of their own, are written by the app with
     # the user's session before it sends the approval (igt/tagsets.py): here
     # they are only read back.
