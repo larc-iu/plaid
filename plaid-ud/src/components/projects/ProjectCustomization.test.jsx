@@ -9,6 +9,8 @@ import { renderComponent } from '@ui/test/renderComponent.jsx';
 const managed = vi.hoisted(() => ({ current: null }));
 vi.mock('@ui/hooks/useManagedProject.js', () => ({ useManagedProject: () => managed.current }));
 vi.mock('../../contexts/AuthContext.jsx', () => ({ useAuth: () => ({ getClient: () => null }) }));
+const feedback = vi.hoisted(() => ({ notifySuccess: vi.fn(), notifyError: vi.fn() }));
+vi.mock('../../utils/feedback.jsx', () => feedback);
 
 // The tab reads the project only through this resolver, so a hand-made answer
 // stands in for a configured project.
@@ -30,6 +32,16 @@ vi.mock('../../utils/udLayerUtils.js', async (orig) => ({
 }));
 
 const { ProjectCustomization } = await import('./ProjectCustomization.jsx');
+const { autoColor } = await import('../../utils/udVocab.js');
+
+// A typed value, as React hears it from the keyboard.
+const type = (input, value) => {
+  Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set.call(
+    input,
+    value,
+  );
+  input.dispatchEvent(new Event('input', { bubbles: true }));
+};
 const { hasUnsavedDraft } = await import('@ui/hooks/useUnsavedDraft.js');
 
 const button = (root, text) =>
@@ -84,6 +96,35 @@ describe('UD customization', () => {
     expect(classes).toContain('text-muted-foreground');
     expect(classes).toContain('hover:text-destructive');
     expect(classes).not.toContain('text-destructive');
+    await view.unmount();
+  });
+
+  // H18-2: emptying a hex box filled it again with the automatic color, so a
+  // hex typed next was appended to it, and a malformed one was saved.
+  it('leaves an emptied hex box empty, showing the automatic color as its placeholder', async () => {
+    const view = await mount();
+    const hex = view.container.querySelector('[aria-label="VERB hex"]');
+    expect(hex.value).toBe('');
+    expect(hex.placeholder).toBe(autoColor('VERB'));
+    await view.step(() => type(hex, '#00ff00'));
+    expect(hex.value).toBe('#00ff00');
+    await view.step(() => type(hex, ''));
+    expect(hex.value).toBe('');
+    await view.unmount();
+  });
+
+  it('refuses to save a hex that is not a color, and says which', async () => {
+    feedback.notifyError.mockClear();
+    const view = await mount();
+    const hex = view.container.querySelector('[aria-label="NOUN hex"]');
+    await view.step(() => type(hex, '#12'));
+    expect(hex.getAttribute('aria-invalid')).toBe('true');
+    await view.step(() => button(view.container, 'Save').click());
+    expect(feedback.notifyError).toHaveBeenCalledWith(
+      'NOUN: "#12" is not a color of the form #RRGGBB.',
+      'UD settings not saved',
+    );
+    expect(managed.current.fetchProject).not.toHaveBeenCalled();
     await view.unmount();
   });
 });

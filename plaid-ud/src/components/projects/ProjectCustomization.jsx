@@ -6,6 +6,7 @@ import {
   UNIVERSAL_DEPRELS,
   autoColor,
   cleanColorMap,
+  isHexColor,
   baseRel,
   vocabCells,
 } from '../../utils/udVocab.js';
@@ -248,6 +249,18 @@ export const ProjectCustomization = () => {
   // then refuses the batch (409), and the tab reads the project again and
   // keeps every change whose setting did not change there.
   const handleSave = async () => {
+    // A hex box holding something that is not a color is refused here, by
+    // name: saved, it left the label uncolored with nothing to say why.
+    const notColor = [...Object.entries(uposColors), ...Object.entries(deprelColors)].find(
+      ([, color]) => color && !isHexColor(color),
+    );
+    if (notColor) {
+      notifyError(
+        `${notColor[0]}: "${notColor[1]}" is not a color of the form #RRGGBB.`,
+        'UD settings not saved',
+      );
+      return;
+    }
     setSaving(true);
     const current = {
       uposVocab,
@@ -429,7 +442,8 @@ export const ProjectCustomization = () => {
               <ColorField
                 key={rel}
                 label={rel}
-                value={deprelColors[rel] || autoColor(rel)}
+                value={deprelColors[rel] || ''}
+                auto={autoColor(rel)}
                 onChange={(v) => setColorIn(setDeprelColors)(rel, v)}
               />
             ))}
@@ -451,7 +465,8 @@ export const ProjectCustomization = () => {
               <ColorField
                 key={tag}
                 label={tag}
-                value={uposColors[tag] || autoColor(tag)}
+                value={uposColors[tag] || ''}
+                auto={autoColor(tag)}
                 onChange={(v) => setColorIn(setUposColors)(tag, v)}
               />
             ))}

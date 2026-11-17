@@ -253,6 +253,10 @@ export const readFeatureInventory = (config) => {
 
 // ---- config write payload shapes (define write-shape next to read-shape) ----
 
+// A color as the settings store it and the swatch takes it: `#` and six hex
+// digits.
+export const isHexColor = (value) => typeof value === 'string' && /^#[0-9a-f]{6}$/i.test(value);
+
 // Drop empty assignments before persisting a {label: '#hex'} map. Pass to setConfig.
 export const cleanColorMap = (colorMap) =>
   Object.fromEntries(Object.entries(colorMap || {}).filter(([label, color]) => label && color));
