@@ -526,6 +526,28 @@ describe('the entry form', () => {
     await view.unmount();
   });
 
+  it('refuses a sense whose headword was deleted elsewhere, and keeps what is typed (H15-3)', async () => {
+    const { client, calls, items } = stub([{ id: 'a', form: 'uno', metadata: { gloss: 'one' } }]);
+    const view = await mount(client, '/vocabularies/v1?item=a');
+    await view.step(() =>
+      all(document.body, 'a')
+        .find((a) => a.textContent.trim() === 'Add sense')
+        .click(),
+    );
+    // Someone else deletes "uno".
+    items.splice(0, items.length);
+    feedback.notifyError.mockClear();
+    await view.step(() => setValue(glossInput(), 'puppy'));
+    await view.step(async () => {
+      button('Create').click();
+      await settle(5);
+    });
+    expect(calls.map(([kind]) => kind)).toEqual([]);
+    expect(feedback.notifyError).toHaveBeenCalledTimes(1);
+    expect(glossInput().value).toBe('puppy');
+    await view.unmount();
+  });
+
   it('asks before an entry with unsaved edits is left, whichever way out', async () => {
     const { client } = stub([{ id: 'a', form: 'uno' }]);
     const view = await mount(client, '/vocabularies/v1?item=a');

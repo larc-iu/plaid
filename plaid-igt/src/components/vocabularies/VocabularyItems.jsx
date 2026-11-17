@@ -686,6 +686,20 @@ export const VocabularyItems = ({
     },
   });
 
+  // Throws the refusal a write to a deleted entry gets when `id` is gone.
+  const entryStillThere = (id) =>
+    client.vocabItems.get(id).then(
+      () => {},
+      (err) => {
+        if (![403, 404].includes(statusOf(err))) throw err;
+        throw Object.assign(new Error('Changed or removed by someone else.'), {
+          status: 403,
+          method: 'POST',
+          responseData: { unresolved: true },
+        });
+      },
+    );
+
   const handleSave = async () => {
     if (!draft.form.trim()) {
       notifyError('The form cannot be empty', 'Invalid form');
@@ -768,6 +782,10 @@ export const VocabularyItems = ({
       sendInTurn(
         `Add entry "${form}"`,
         async () => {
+          // A sense under a headword someone else deleted since the tree was
+          // read is refused as gone, and goes back to the form with what is
+          // typed, rather than stored under a parent that names nothing.
+          if (parent) await entryStillThere(settledId(parent));
           const meta = followIds(withPlace);
           const created = await client.vocabItems.create(
             vocabularyId,
