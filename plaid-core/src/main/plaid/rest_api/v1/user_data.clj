@@ -67,13 +67,19 @@
                           "<query>version</query> (the version the writer read, 0 for an entry "
                           "that must not exist yet) the write lands only when the entry is still "
                           "at that version, and is otherwise refused with 409 and the stored "
-                          "`version` and `updated-at`.")
+                          "`version` and `updated-at`. A key cannot be `.` or `..`, which no URL carries.")
             :middleware [wrap-own-writes-for-named-tokens]
             :parameters {:body any?
                          :query [:map [:version {:optional true} [:int {:min 0}]]]}
             :handler (fn [{{{:keys [user-id key]} :path {:keys [version]} :query body :body} :parameters db :db}]
-                       (let [{:keys [error current] :as result} (user-data/put! db user-id key body version)]
+                       (let [{:keys [error current] :as result}
+                             ;; no URL can carry a dot segment, so no client could
+                             ;; read such an entry back (H20-4)
+                             (if (#{"." ".."} key)
+                               {:error :dot-segment}
+                               (user-data/put! db user-id key body version))]
                          (case error
+                           :dot-segment {:status 400 :body {:error "A key cannot be . or .."}}
                            :too-large {:status 413 :body {:error (str "Value exceeds " (user-data/max-value-bytes) " bytes")}}
                            :version-mismatch {:status 409
                                               :body (merge {:error "version-mismatch"} current)}

@@ -62,3 +62,22 @@ test("a refused write carries the stored version", async () => {
     net.restore();
   }
 });
+
+test("a dot segment key is refused before sending", async () => {
+  // H20-4: fetch resolves '.' and '..' (and %2E) as dot segments, so the
+  // request reached another URL and answered 404.
+  const net = capture({ status: 200, body: { key: "k", "updated-at": "t", version: 1 } });
+  try {
+    const client = new PlaidClient("http://x", "tok");
+    for (const key of [".", ".."]) {
+      await assert.rejects(client.userData.get("u", key), /A key cannot be \. or \.\./);
+      await assert.rejects(client.userData.delete("u", key), /A key cannot be \. or \.\./);
+      await assert.rejects(client.userData.put("u", key, 1), /A key cannot be \. or \.\./);
+    }
+    assert.equal(net.sent.length, 0);
+    await client.userData.put("u", "...", 1);
+    assert.deepEqual(net.sent.map((s) => s.url), ["http://x/api/v1/users/u/data/..."]);
+  } finally {
+    net.restore();
+  }
+});

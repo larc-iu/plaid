@@ -578,6 +578,14 @@ export function authApi(client) {
   };
 }
 
+// The path of one entry. '.' and '..' are dot segments to every URL layer,
+// fetch's included (WHATWG URL treats %2E as one too), so neither can reach the
+// server as a key, and the server refuses to store one (H20-4).
+const userDataPath = (userId, key) => {
+  if (key === "." || key === "..") throw new Error("A key cannot be . or ..");
+  return `/api/v1/users/${userId}/data/${encodeURIComponent(key)}`;
+};
+
 /** @param {import("./client.js").PlaidClient} client */
 export function userDataApi(client) {
   return {
@@ -587,11 +595,8 @@ export function userDataApi(client) {
      * @param {string} key
      * @returns {Promise<UserDataEntry & {value: any}>}
      */
-    get: (userId, key) =>
-      client._request(
-        "GET",
-        `/api/v1/users/${userId}/data/${encodeURIComponent(key)}`,
-      ),
+    get: async (userId, key) =>
+      client._request("GET", userDataPath(userId, key)),
     /**
      * List a user's private data entries ({key, updatedAt}, plus value when
      * includeValues), ordered by key. Owner or admin only. Transparently
@@ -665,16 +670,13 @@ export function userDataApi(client) {
      * @param {string} key
      * @returns {Promise<void>}
      */
-    delete: (userId, key) =>
-      client._request(
-        "DELETE",
-        `/api/v1/users/${userId}/data/${encodeURIComponent(key)}`,
-        {
-          noBatch: true,
-        },
-      ),
+    delete: async (userId, key) =>
+      client._request("DELETE", userDataPath(userId, key), {
+        noBatch: true,
+      }),
     /**
-     * Create or replace one private data entry. `value` is any JSON, up to
+     * Create or replace one private data entry. `key` is any string but `.`
+     * and `..`, which no URL carries (refused here). `value` is any JSON, up to
      * the server's `userDataValueBytes` (`server.limits()`, 5 MB by
      * default), and is refused with 413 over it, after which
      * `server.limits()` answers the figure the server has now. Not audited,
@@ -701,15 +703,11 @@ export function userDataApi(client) {
      */
     put: async (userId, key, value, { version } = {}) => {
       try {
-        return await client._request(
-          "PUT",
-          `/api/v1/users/${userId}/data/${encodeURIComponent(key)}`,
-          {
-            body: value,
-            noBatch: true,
-            queryParams: { version },
-          },
-        );
+        return await client._request("PUT", userDataPath(userId, key), {
+          body: value,
+          noBatch: true,
+          queryParams: { version },
+        });
       } catch (err) {
         if (err?.status === 413) {
           // The cap may have changed since it was read: the caller deciding

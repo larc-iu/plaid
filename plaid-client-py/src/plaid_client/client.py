@@ -1341,6 +1341,15 @@ class ApiTokensResource(_Resource):
         return self._request('DELETE', f'/api/v1/users/{user_id}/tokens/{token_id}', audit_message=audit_message)
 
 
+def _user_data_path(user_id: str, key: str) -> str:
+    """The path of one entry. '.' and '..' are dot segments to every URL
+    layer, so neither can reach the server as a key, and the server refuses to
+    store one (H20-4)."""
+    if key in ('.', '..'):
+        raise ValueError('A key cannot be . or ..')
+    return f'/api/v1/users/{user_id}/data/{quote(key, safe="")}'
+
+
 class UserDataResource(_Resource):
     """Private per-user key/value storage: small JSON documents that follow a
     user across devices and sessions (assistant conversations, drafts,
@@ -1349,7 +1358,7 @@ class UserDataResource(_Resource):
 
     def get(self, user_id: str, key: str) -> Any:
         """Read one entry ({key, updated_at, version, value}); 404 if absent."""
-        return self._request('GET', f'/api/v1/users/{user_id}/data/{quote(key, safe="")}')
+        return self._request('GET', _user_data_path(user_id, key))
 
     def list(self, user_id: str, *, prefix: str | None = None, pattern: str | None = None,
              include_values: bool = False, page_size: int = 100) -> Any:
@@ -1415,11 +1424,12 @@ class UserDataResource(_Resource):
 
     def delete(self, user_id: str, key: str) -> Any:
         """Delete one entry; 404 if absent."""
-        return self._request('DELETE', f'/api/v1/users/{user_id}/data/{quote(key, safe="")}',
+        return self._request('DELETE', _user_data_path(user_id, key),
                              no_batch=True)
 
     def put(self, user_id: str, key: str, value: Any, version: int | None = None) -> Any:
-        """Create or replace one entry. ``value`` is any JSON, up to the
+        """Create or replace one entry. ``key`` is any string but ``.`` and
+        ``..``, which no URL carries (refused here). ``value`` is any JSON, up to the
         server's ``user_data_value_bytes`` (``server.limits()``, 5 MB by
         default), and is refused with 413 over it, after which
         ``server.limits()`` answers the figure the server has now. Answers
@@ -1439,7 +1449,7 @@ class UserDataResource(_Resource):
         it again and make the change on what is there.
         """
         try:
-            return self._request('PUT', f'/api/v1/users/{user_id}/data/{quote(key, safe="")}',
+            return self._request('PUT', _user_data_path(user_id, key),
                                  body=value, no_batch=True,
                                  **({'query_params': {'version': version}} if version is not None else {}))
         except PlaidAPIError as e:

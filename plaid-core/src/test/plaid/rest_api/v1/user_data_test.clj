@@ -208,6 +208,16 @@
         (is (= (apply str (repeat 3 beh)) (do (api-call user1-request {:method :put :path (path u1 "few") :body (apply str (repeat 3 beh))})
                                               (:value (:body (api-call user1-request {:method :get :path (path u1 "few")}))))))))))
 
+(deftest a-dot-segment-is-no-key
+  ;; H20-4: '.' and '..' cannot reach the server through a URL (every HTTP
+  ;; layer resolves them as dot segments), so a value stored under one could
+  ;; be read by neither client. Core refuses to store one.
+  (doseq [k ["." ".."]]
+    (let [{:keys [status body]} (api-call user1-request {:method :put :path (str (path u1) "/" k) :body 1})]
+      (is (= 400 status) k)
+      (is (= "A key cannot be . or .." (:error body)))))
+  (is (= 200 (:status (api-call user1-request {:method :put :path (path u1 "...") :body 1}))) "three dots are a key"))
+
 (deftest a-prefix-holding-an-astral-character-still-matches
   ;; The prefix is compared with SQLite's `substr`, which counts code points,
   ;; against a length taken with Clojure's `count`, which counts UTF-16 units.
