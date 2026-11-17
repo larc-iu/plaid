@@ -1541,6 +1541,9 @@ Enter and Tab, each with or without Shift, the arrow keys, Escape, Backspace, De
 | **Ctrl/Cmd+Enter** (comment popover) | Post the comment. **Esc** closes the popover.
 |===
 
+A key that moves along the row from the last or first cell of a page goes on to the next or previous page, to the same row there, or to its first or last cell when it has none of that row.
+A value the cell refuses keeps the page.
+
 == Tokenize tab
 
 [cols="1,3"]

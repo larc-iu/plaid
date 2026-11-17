@@ -440,9 +440,13 @@ export const cells = {
       return true;
     }
     this._setPage(target);
-    const same = this._navFields().filter((el) => this._tierOf(el) === tier);
-    const best = dir === 'next' ? same[0] : same[same.length - 1];
-    if (!best) return false;
+    // That row's first or last cell there, else the first or last cell of
+    // the page (a page with none of the row, REV-HFT-6).
+    const fields = this._navFields();
+    const same = fields.filter((el) => this._tierOf(el) === tier);
+    const from = same.length ? same : fields;
+    const best = dir === 'next' ? from[0] : from[from.length - 1];
+    if (!best) return true;
     this._navAnchor = null;
     best.focus();
     try {

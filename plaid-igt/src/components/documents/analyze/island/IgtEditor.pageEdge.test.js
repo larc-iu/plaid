@@ -25,14 +25,18 @@ afterEach(() => {
 
 const LEIPZIG = { delimiters: '.', mode: 'closed', values: [{ value: 'PL' }] };
 
-function mount({ closed = false } = {}) {
+function mount({ closed = false, wordless = false } = {}) {
   const raw = buildRawDoc({
     body: 'the cat sat down',
     words: [
       { id: 'w-1', begin: 0, end: 3 },
       { id: 'w-2', begin: 4, end: 7 },
-      { id: 'w-3', begin: 8, end: 11 },
-      { id: 'w-4', begin: 12, end: 16 },
+      ...(wordless
+        ? []
+        : [
+            { id: 'w-3', begin: 8, end: 11 },
+            { id: 'w-4', begin: 12, end: 16 },
+          ]),
     ],
     sentences: [
       { id: 's-1', begin: 0, end: 7 },
@@ -148,5 +152,19 @@ describe('Enter and Tab at the edge of a page', () => {
     key(el, { key: 'Tab' });
     expect(editor._page).toBe(1);
     expect(document.activeElement.closest('[data-sentence-id]').dataset.sentenceId).toBe('s-2');
+  });
+
+  // REV-HFT-6: a next page with no cell of the row got the page turned and
+  // focus nowhere. Focus goes to the first cell there the key would reach.
+  it('goes to the first cell of the next page when it has none of the row', () => {
+    IgtEditor.PAGE_SIZE = 1;
+    mount({ wordless: true });
+    const el = pos('cat');
+    el.focus();
+    key(el, { key: 'Enter' });
+    expect(editor._page).toBe(1);
+    const at = document.activeElement;
+    expect(at.classList.contains('igt-field')).toBe(true);
+    expect(at.closest('[data-sentence-id]').dataset.sentenceId).toBe('s-2');
   });
 });
