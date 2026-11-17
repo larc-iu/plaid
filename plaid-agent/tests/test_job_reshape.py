@@ -413,6 +413,31 @@ def test_a_merge_between_the_walks_read_and_the_stretchs_puts_the_sentence_out_o
     assert seen == [['d1-s1w1', 'd1-s1w2']], seen
 
 
+def test_a_merge_after_the_walks_look_puts_the_document_off_and_s2_is_not_written(monkeypatch):
+    """The twin of the test above with the merge placed after the walk's
+    look, as the test first had it (REV-HFA-R2-3): the starter wrote after the
+    mark, so the stretch's write is put off and nothing of it is sent."""
+    client, job, clock = _job(monkeypatch, [{'words': ['ka', 'ta']}, {'words': ['sa']}])
+    client.after_write['d1'] = document('d1', 'Story', [{'words': [mine('ka'), mine('ta')]}, {'words': ['sa']}],
+                                        version=2)
+    merged = reshaped(document('d1', 'Story', [{'words': [mine('ka'), 'ta', 'sa']}], version=3),
+                      {'d1-s1': 'd1-s2', 'd1-s1w3': 'd1-s2w1'})
+    r = runner(job)
+    real = r.model_work
+
+    def model_work(project, document_id, sentence_ids):
+        if sentence_ids == ['d1-s2']:
+            _person_leaves(client, merged, clock)
+            # Core stamps the merge now, after the look's mark.
+            unit = client._holder('d1')['audit'][-1]
+            unit['time'] = unit['end_time'] = _iso(clock['t'] + 1)
+        return real(project, document_id, sentence_ids)
+    monkeypatch.setattr(r, 'model_work', model_work)
+    seen = _written(monkeypatch)
+    assert r.document('d1') == 'deferred'
+    assert seen == [['d1-s1w1', 'd1-s1w2']], seen
+
+
 # --- the size of a writing row -----------------------------------------------------------
 
 def test_a_writing_row_holds_every_word_of_the_longest_sentence_a_job_takes():

@@ -260,3 +260,69 @@ def test_core_ns_reads_the_forms_core_and_the_fake_write():
     assert ns('1970-01-01T00:00:01.000000001Z') == 1_000_000_001
     assert ns('1970-01-01T01:00:01.25+01:00') == 1_250_000_000
     assert ns('not a time') is None and ns(None) is None
+
+
+def test_a_selection_over_many_documents_puts_off_only_the_one_edited(monkeypatch):
+    """REV-HFA-R2-3, the reviewer's probe: six documents, a person edits
+    Story 3 while the whole-selection piece runs. The other five are written
+    in the one step, Story 3 is put off and written only after it."""
+    n = 6
+    client = JobClient({f'd{i}': _doc(f'd{i}', f'Story {i}', 1) for i in range(1, n + 1)})
+    job = _job(client, plan='selection')
+    events = []
+    _spy(monkeypatch, events)
+    typed = {'n': 0}
+
+    def answer(asked, k, kwargs):
+        if k > 1:
+            return reply('Done.')
+        if 'Your piece: the whole selection' in asked:
+            if not typed['n']:
+                typed['n'] += 1
+                _person(client, job, 'd3', 1, 'PERSON')
+            return reply(calls=[call(i, 'set_field', {'document': f'Story {i}', 'refs': ['s1.w1.m1'],
+                                                      'field': 'Morph Gloss', 'value': 'JOB'})
+                                for i in range(1, n + 1)])
+        doc = asked.split('"')[1]
+        return reply(calls=[call(1, 'set_field', {'document': doc, 'refs': ['s1.w1.m1'],
+                                                  'field': 'Morph Gloss', 'value': 'JOB'})])
+    use(monkeypatch, Model(answer))
+    finished = run_job(job, runner(job))
+    assert typed['n'] == 1
+    put_off = _defers(events, 'd3')
+    assert put_off, events
+    writes = [(i, v) for i, (k, v) in enumerate(events) if k == 'write']
+    assert not [i for i, v in writes if 'd3-' in v and i < put_off[0]], 'nothing in Story 3 before it was put off'
+    assert [i for i, v in writes if 'd3-' in v and i > put_off[0]], 'Story 3 written after the wait'
+    for d in ('d1', 'd2', 'd4', 'd5', 'd6'):
+        assert not _defers(events, d), d
+        assert any(f'{d}-' in v for _, v in writes), d
+    rows = {d['name']: d['state'] for d in finished['report']['documents']}
+    assert all(s == 'done' for s in rows.values()), rows
+
+
+def test_steady_editing_ends_the_document_in_use_and_the_report_counts_it(monkeypatch):
+    """REV-HFA-R2-3, the reviewer's probe: a person types in Story 1 during
+    every piece there. Nothing is written in it, it ends In use, the report
+    counts it, and the job ends."""
+    client = JobClient({'d1': _doc('d1', 'Story 1', 2), 'd2': _doc('d2', 'Story 2', 1)})
+    job = _job(client)
+    events = []
+    _spy(monkeypatch, events)
+
+    def answer(asked, k, kwargs):
+        doc = asked.split('"')[1]
+        if k == 1:
+            if doc == 'Story 1':
+                _person(client, job, 'd1', 2, 'PERSON')
+            return reply(calls=[call(1, 'set_field', {'document': doc, 'refs': ['s1.w1.m1'],
+                                                      'field': 'Morph Gloss', 'value': 'JOB'})])
+        return reply('Done.')
+    use(monkeypatch, Model(answer))
+    finished = run_job(job, runner(job))
+    report = finished['report']
+    assert finished['state'] == 'done'
+    assert {d['name']: d['state'] for d in report['documents']}['Story 1'] == 'in-use'
+    assert report['totals']['documents_in_use'] == 1
+    assert not any('d1-' in v for k, v in events if k == 'write'), 'nothing written in Story 1'
+    assert any('d2-' in v for k, v in events if k == 'write')
