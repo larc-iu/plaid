@@ -2219,9 +2219,14 @@ class IgtRunner:
         self.changes_dropped = 0
         #: documents the job has waited for once at least: their defers count
         self.waited: set = set()
-        #: document id -> when the stretch in flight there began: the look
-        #: after it counts what anyone else wrote since (:meth:`newest_change`)
-        self.looked_at: Dict[str, float] = {}
+        #: document id -> the MARK, core's own stamp of the newest History
+        #: unit there at the look before a piece read the document: the
+        #: piece's write is put off when anyone else wrote after it
+        #: (:meth:`someone_since_mark`, REV-HFA-1, -2, -6)
+        self.seen_marks: Dict[str, float] = {}
+        #: documents a worker before this one was working in when it stopped:
+        #: their first look marks the job's making (REV-HFA-6, fail safe)
+        self.in_flight: set = set()
         #: document id -> sentences skipped past the cap of the row's list:
         #: failed or changed, and too long for a stretch
         self.unlisted: Dict[str, set] = {}
@@ -2355,6 +2360,7 @@ class IgtRunner:
         sentences, or the whole document as one piece), or the whole
         selection as one piece. Documents the plan leaves out are not
         reached."""
+        self.in_flight = {d for d in job.order if (job.rows.get(d) or {}).get('state') == 'working'}
         plan = self.plan_made or self.plan(job)
         order = self.planned_order(job, plan)
 
@@ -2684,6 +2690,12 @@ class IgtRunner:
             for d in live_:
                 if (job.rows.get(d) or {}).get('state') != 'working':
                     job.update_row(d, state='working')
+                # The piece reads them as it goes: its write in each is put
+                # off when anyone else wrote there since (REV-HFA-1).
+                try:
+                    self.mark(job.client(), d)
+                except Gone:
+                    pass  # its write finds it gone
             return project_, live_
         project, live = core_job.through_core(job, begin)
         if not live:
@@ -2988,31 +3000,39 @@ class IgtRunner:
         JOB_DEFER_ROUNDS times before it ends ``in-use`` (SPEC 5.3), never
         counted twice within a second by passes with no wait between."""
         # Taken up again later, it is looked at afresh.
-        self.looked_at.pop(document_id, None)
+        self.seen_marks.pop(document_id, None)
         row = self.job.rows.get(document_id) or {}
         defers = (row.get('defers') or 0) + (1 if document_id in self.waited else 0)
         self.job.update_row(document_id, defers=defers,
                             state='in-use' if defers >= JOB_DEFER_ROUNDS else 'deferred')
         return 'deferred'
 
-    def newest_change(self, client, document_id: str) -> Optional[Dict[str, Any]]:
-        """The newest unit of the document's History that is not this job's
-        and that tells the job someone is in the document, or None: one that
-        ended after the job was made and either within the quiet window or
-        since the stretch just worked began (one can take longer than the
-        window: :attr:`looked_at`, set by the walk before a stretch and
-        taken by the next look only). Whoever wrote last: the job's own units are read past, so a
-        person who wrote while a stretch was in flight is still seen once
-        that stretch's write lands on top (H14-1). The read stops at the
-        first unit that ended before that, which nothing older can change.
-        Core places a unit by its newest operation, at its ``end_time`` (its
-        ``time`` is its first operation's, REV-B4-4)."""
-        mine = f'job:{self.job.id}/'
-        now = self.job.now()
-        cutoff = min(now - JOB_PERSON_QUIET_S, self.looked_at.pop(document_id, now))
-        created = core_job._iso_seconds(self.job.job.get('created_at'))
-        if created is not None:
-            cutoff = max(cutoff, created)
+    @property
+    def own_ref(self) -> str:
+        """The ref prefix of the job's own passes in a document. A person's
+        Undo or Redo of the job's entry (``job:<id>/undo``) is not the
+        job's: it is someone in the document (REV-HFA-3)."""
+        return f'job:{self.job.id}/'
+
+    def created(self) -> float:
+        when = core_job._iso_seconds(self.job.job.get('created_at'))
+        return when if when is not None else 0.0
+
+    def someone_after(self, client, document_id: str, since: float):
+        """``(unit, top)``: the newest unit of the document's History not the
+        job's own that ended after ``since`` (or has no end time, which
+        counts, REV-HFA-4), or None, and the end time of the newest unit of
+        anyone, the job's included (None for an empty History). The job's
+        own units are read past, so a person who wrote while a piece was in
+        flight is still seen once the piece's write lands on top (H14-1).
+        Core places a unit by its newest operation, at its ``end_time``
+        (REV-B4-4), stamped strictly increasing, so the read stops at the
+        first unit that ended at or before ``since``. One operation of each
+        unit is read (``ops_limit``): core takes ``end_time`` from all of
+        them (REV-HFA-5)."""
+        mine = self.own_ref
+        top = None
+        first = True
         cursor = None
         while True:
             try:
@@ -3022,21 +3042,59 @@ class IgtRunner:
             entries = page.get('entries') if isinstance(page, dict) else page
             for unit in entries or []:
                 when = core_job._iso_seconds(unit.get('end_time'))
-                if when is None or when <= cutoff:
-                    return None
-                if not str(unit.get('ref') or '').startswith(mine):
-                    return unit
+                if first:
+                    top, first = when, False
+                theirs = not str(unit.get('ref') or '').startswith(mine)
+                if when is None or when <= since:
+                    return None, top
+                if theirs:
+                    return unit, top
             cursor = page.get('next_cursor') if isinstance(page, dict) else None
             if not cursor:
-                return None
+                return None, top
+
+    def newest_change(self, client, document_id: str) -> Optional[Dict[str, Any]]:
+        """The look before a piece (SPEC 5.2): the newest unit of the
+        document's History by anyone else that ended after the job was made
+        and within the quiet window, or None. It also sets the document's
+        mark (:attr:`seen_marks`) for the piece that follows: the newest unit's
+        end time, core's own stamp, or the job's making for a document a
+        stopped worker was working in."""
+        created = self.created()
+        since = max(created, self.job.now() - JOB_PERSON_QUIET_S)
+        unit, top = self.someone_after(client, document_id, since)
+        if document_id in self.in_flight:
+            self.in_flight.discard(document_id)
+            self.seen_marks[document_id] = created
+        else:
+            self.seen_marks[document_id] = top if top is not None else created
+        return unit
+
+    def mark(self, client, document_id: str) -> None:
+        """Set the document's mark with no look, as a whole-selection piece
+        does for each of its documents as it begins."""
+        if document_id in self.in_flight:
+            self.in_flight.discard(document_id)
+            self.seen_marks[document_id] = self.created()
+            return
+        _unit, top = self.someone_after(client, document_id, float('inf'))
+        self.seen_marks[document_id] = top if top is not None else self.created()
+
+    def someone_since_mark(self, client, document_id: str) -> bool:
+        """Whether anyone else wrote in the document after its mark: asked
+        inside THE write, under the lock, just before it is sent. No worker
+        clock: both times are core's. No mark (none was set): the job's
+        making, so in doubt the document is put off, never written."""
+        unit, _top = self.someone_after(client, document_id, self.seen_marks.get(document_id, self.created()))
+        return unit is not None
 
     def in_use(self, last: Optional[Dict[str, Any]], job_ref: str) -> bool:
         """Someone else is in the document: a person, a service run, another
         job (SPEC 5.2), whether or not the job wrote after them. ``last`` is
         the document's :meth:`newest_change`, which holds the rule: what was
         written after the job was made (the edit its starter made just before
-        pressing Start is not a person in the document, REV-J-B S3-5), within
-        the quiet window or since the job last looked."""
+        pressing Start is not a person in the document, REV-J-B S3-5) and
+        within the quiet window."""
         return bool(last) and not str(last.get('ref') or '').startswith(job_ref)
 
     def document(self, document_id: str) -> str:
@@ -3081,7 +3139,7 @@ class IgtRunner:
             job.check()
             client = job.client()
             doc = self.read(project, document_id, client)
-            if self.in_use(self.newest_change(client, document_id), f'job:{job.id}/'):
+            if self.in_use(self.newest_change(client, document_id), self.own_ref):
                 return self.defer(document_id)
             if document_id in self.text_edited:
                 # A piece after a text edit put off earlier, taken first
@@ -3112,7 +3170,6 @@ class IgtRunner:
             part = pending if whole else pending[:JOB_STRETCH_SENTENCES]
             job.set(message=self.matching_line(doc, part) if self.searched() is not None else
                     self.progress_line(doc.name, whole, part[0].index, part[-1].index, len(doc.sentences)))
-            self.looked_at[document_id] = job.now()
             halve([s.id for s in part], lambda ids: self.attempt(project, document_id, ids),
                   lambda sid, kind: self.failed_piece(document_id, doc, sid, kind))
 
@@ -3330,7 +3387,7 @@ class IgtRunner:
                 self.after_text_put_off.add(document_id)
                 self.text_edited[document_id] = set(ids)
             raise Deferred(document_id)
-        if self.in_use(self.newest_change(client, document_id), f'job:{job.id}/'):
+        if self.in_use(self.newest_change(client, document_id), self.own_ref):
             put_off()
         ws = JobWorkspace(client, project)
         try:
@@ -4201,6 +4258,10 @@ class IgtRunner:
             lock = self.hold(client, document_id)
             try:
                 try:
+                    if self.someone_since_mark(client, document_id):
+                        # Someone wrote after the piece's look (REV-HFA-1,
+                        # -2): nothing is sent, the document is put off.
+                        raise Deferred(document_id)
                     w, changed, after, vouched, proposed = self.write_held(
                         project, document_id, client, ws, st, prints, ops, group, piece, repeated, undone, summary)
                 finally:
@@ -5302,7 +5363,7 @@ class IgtRunner:
             if attempt:
                 self.wait_for_people([document_id])
             client = job.client()
-            if self.in_use(self.newest_change(client, document_id), f'job:{job.id}/'):
+            if self.in_use(self.newest_change(client, document_id), self.own_ref):
                 continue
             row = job.rows.get(document_id) or {}
             group = row.get('harmonize_group')
