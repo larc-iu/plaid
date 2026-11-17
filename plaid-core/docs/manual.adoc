@@ -1172,7 +1172,7 @@ A word layer with no rule leaves nothing out.
 A replacement, or any change that deletes text and types new text in the same place, counts as a deletion followed by an insertion there.
 The text it shares with the old text at its start and at its end is no change.
 Where it replaces text over two or more words, that shared text is no change only back to a word edge, never inside a word, so no word keeps letters of another's: `ab a` replaced whole by `a` deletes both words, and the new `a` belongs to no word. One word typed over keeps what it shares: `cat` replaced by `cats` keeps the word, now `cats`.
-A word all of whose letters it replaces is deleted with its annotations, even when the new text spells the same word again.
+A word all of whose letters it replaces, once that shared text is taken off, is deleted with its annotations: `cat` replaced by `dog` deletes the word, `cat` replaced by `cut` keeps it, now `cut`, and `cat` replaced by `cat` changes nothing.
 A word it replaces only part of keeps its other letters and takes the letters typed against them, and the rest of the new text belongs to no word.
 In `the cat sat`, `cat` replaced by `dog` deletes the word `cat`, and `dog` belongs to no word, while `at s` replaced by `ow r` leaves the words `cow` and `rat`.
 Tokens under a word, such as morphemes, and tokens beside the words on a layer that allows overlap, such as UMR nodes, are deleted the same way when none of their letters is left.
