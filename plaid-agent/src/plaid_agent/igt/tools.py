@@ -792,8 +792,9 @@ def morpheme_form_op(ws: Workspace, doc, ref: str, w: Word, m: Morpheme, new: st
 def t_respell(ws: Workspace, document: str, ref: str, new_text: str, morpheme_forms: bool = True) -> str:
     doc = ws.doc(document)
     w = _need(resolve_in(ws, doc, ref), Word, ref)
-    new_text = (new_text or '').strip()
-    if not new_text:
+    # Not stripped: a space at an end is refused, as the page refuses it (REV-HFT-R2-4).
+    new_text = new_text or ''
+    if not new_text.strip():
         raise ToolError('new_text must not be empty (to remove a word from the text, retype_sentence without it; '
                         'delete_word removes only the token)', kind='invalid-argument')
     if new_text == w.surface:

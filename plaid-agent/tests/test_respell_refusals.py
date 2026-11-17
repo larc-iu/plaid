@@ -26,6 +26,9 @@ RULE = {'type': 'unicodePunctuation', 'whitelist': []}
 def test_the_three_refusals_and_what_passes():
     assert 'split_word' in respell_refusal('b o', RULE)
     assert 'split_word' in respell_refusal('b\no', RULE)
+    # REV-HFT-R2-4: U+FEFF is whitespace to the page (JS \\s), so it is here.
+    assert 'split_word' in respell_refusal('b\ufeffo', RULE)
+    assert 'split_word' in respell_refusal('\ufeffbo', RULE)
     assert 'combining mark' in respell_refusal('̀KALA', RULE)
     assert 'ignored token' in respell_refusal('—', RULE)
     assert 'ignored token' in respell_refusal('...', RULE)
@@ -50,7 +53,10 @@ def doc_a(live_client):
 
 
 @pytest.mark.parametrize('typed,says', [('b o', 'split_word'), ('̀bo', 'combining mark'),
-                                        ('—', 'ignored token')])
+                                        ('—', 'ignored token'),
+                                        # REV-HFT-R2-4: as on the page, a space at an end is
+                                        # refused, not taken off.
+                                        (' bo2', 'split_word'), ('bo2\n', 'split_word')])
 def test_respell_refuses_and_stages_nothing(doc_a, typed, says):
     _s, ws = doc_a
     out = call_tool(ws, 'respell', {'document': 'Doc A', 'ref': 's1.w2', 'new_text': typed})

@@ -1590,7 +1590,8 @@ def respell_guard(ws: Workspace, words: List[Dict[str, Any]], earlier_words: Dic
                                 'text. Apply one, then plan the other.', kind='conflict')
 
 
-_RESPELL_SPACE = re.compile(r'[\s\u0085]')
+# The page's whitespace: JS's \s, which holds U+FEFF, and NEL (REV-HFT-R2-4).
+_RESPELL_SPACE = re.compile(r'[\s\u0085\ufeff]')
 
 
 def respell_refusal(new: str, ignored_cfg: Optional[dict]) -> Optional[str]:
