@@ -1247,8 +1247,13 @@ export class ConlluDocument extends DocumentModel {
     }
 
     // UPOS and XPOS hold no space in CoNLL-U, so neither is stored with one.
+    // Only a value being changed: one already stored can still be verified
+    // by picking it (REV-HFU-5).
     const spaced = spaceRefusal(field, value);
-    if (spaced) return this.refuse(spaced);
+    const stored = (targetLayer.spans || []).find(
+      (span) => Array.isArray(span.tokens) && span.tokens.includes(tokenId),
+    );
+    if (spaced && stored?.value !== value) return this.refuse(spaced);
 
     // FEATS is the one field whose value has structure, and every write of one
     // lands here, so the pair is read once for all of them (src/utils/feats.js).
@@ -1644,6 +1649,26 @@ export class ConlluDocument extends DocumentModel {
     return suppressorIdsOver(pairs, info.enhancedRelationLayer?.relations);
   }
 
+  // The refusal for a relation label with a space in it, unless a relation
+  // into the same word already holds that label: a new head keeps the stored
+  // label, and the person typed nothing (REV-HFU-5). `target` is a lemma span
+  // id or a word's token id, as the writers below take it.
+  _newLabelRefusal(target, deprel) {
+    const spaced = spaceRefusal('deprel', deprel);
+    if (!spaced) return null;
+    const info = this.layerInfo;
+    const id = settledId(target);
+    const lemma = (info.lemmaLayer?.spans || []).find(
+      (span) => span.id === id || (Array.isArray(span.tokens) && span.tokens.includes(id)),
+    );
+    const kept =
+      lemma &&
+      dependencyRelationLayers(info).some((layer) =>
+        (layer.relations || []).some((r) => r.target === lemma.id && r.value === deprel),
+      );
+    return kept ? null : spaced;
+  }
+
   // Create (or replace) a dependency relation between two lemma spans.
   // Source/target may be span ids OR morpheme token ids (the latter is the
   // common case when called from the annotation grid). Special value
@@ -1652,7 +1677,7 @@ export class ConlluDocument extends DocumentModel {
   async createRelation(sourceSpanId, targetSpanId, deprel) {
     const made = this._making;
     const info = this.layerInfo;
-    const spaced = spaceRefusal('deprel', deprel);
+    const spaced = this._newLabelRefusal(targetSpanId, deprel);
     if (spaced) return this.refuse(spaced);
     if (!info.relationLayer) {
       this.refuse(notSetUp('UD relation layer missing'));
@@ -1786,7 +1811,7 @@ export class ConlluDocument extends DocumentModel {
   async createEnhancedRelation(sourceSpanId, targetSpanId, deprel) {
     const made = this._making;
     const info = this.layerInfo;
-    const spaced = spaceRefusal('deprel', deprel);
+    const spaced = this._newLabelRefusal(targetSpanId, deprel);
     if (spaced) return this.refuse(spaced);
     if (!info.enhancedRelationLayer) {
       this.refuse(notSetUp('UD enhanced relation layer missing'));
@@ -1938,9 +1963,12 @@ export class ConlluDocument extends DocumentModel {
 
   // A relation's label, in the tree or in the enhanced layer: the id says which.
   async updateRelation(rawRelationId, deprel) {
-    const spaced = spaceRefusal('deprel', deprel);
-    if (spaced) return this.refuse(spaced);
     const relationId = settledId(rawRelationId);
+    const spaced = spaceRefusal('deprel', deprel);
+    const stored = dependencyRelationLayers(this.layerInfo)
+      .flatMap((layer) => layer.relations || [])
+      .find((r) => r.id === relationId);
+    if (spaced && stored?.value !== deprel) return this.refuse(spaced);
     const label = 'Failed to update relation';
     if (!this._canWrite(label)) return false;
     // Human edit of a machine relation verifies it (provenance write

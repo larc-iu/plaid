@@ -303,6 +303,51 @@ test('a UPOS, XPOS or relation with a space inside is not written', async () => 
   assert.equal(await doc.updateAnnotation(perro, 'lemma', 'el perro'), true);
 });
 
+// REV-HFU-5: the rule is for a value a person writes. A value already stored
+// with a space (an import, the assistant) can still be verified by picking it,
+// and a new head keeps the stored label, as the closed lists do.
+test('a stored value with a space is not refused when it is not being changed', async () => {
+  const raw = rawDocFromConllu(
+    [
+      '# text = del perro',
+      '1-2\tdel\t_\t_\t_\t_\t_\t_\t_\t_',
+      '1\tde\tde\tADP\t_\t_\t3\tcase\t_\t_',
+      '2\tel\tel\tDET\t_\t_\t3\tdet x\t_\t_',
+      '3\tperro\tperro\tPROP N\tNN\t_\t0\troot\t_\t_',
+    ].join('\n'),
+    'mut-doc',
+  );
+  const calls = [];
+  const record =
+    (name) =>
+    (...args) => {
+      calls.push(name);
+      return { id: `new-${calls.length}` };
+    };
+  const client = {
+    spans: { update: record('spans.update'), patchMetadata: record('spans.patchMetadata') },
+    relations: {
+      update: record('relations.update'),
+      patchMetadata: record('relations.patchMetadata'),
+      create: record('relations.create'),
+      delete: record('relations.delete'),
+      setSource: record('relations.setSource'),
+    },
+  };
+  const doc = new ConlluDocument({ raw, client: withOps(client) });
+  const perro = doc.layerInfo.uposLayer.spans.find((s) => s.value === 'PROP N').tokens[0];
+  const lemmaOf = (v) => doc.layerInfo.lemmaLayer.spans.find((s) => s.value === v).id;
+  const rel = doc.layerInfo.relationLayer.relations.find((r) => r.value === 'det x');
+  assert.equal(await doc.updateAnnotation(perro, 'upos', 'PROP N'), true);
+  assert.equal(await doc.updateRelation(rel.id, 'det x'), true);
+  // A new head for el, keeping its label.
+  assert.equal(await doc.createRelation(lemmaOf('de'), lemmaOf('el'), 'det x'), true);
+  assert.equal(doc.error, '');
+  // A changed value is still refused.
+  assert.equal(await doc.updateAnnotation(perro, 'upos', 'PROP NN'), false);
+  assert.match(doc.error, /UPOS value cannot contain spaces/);
+});
+
 test('typing a feature the word does not have creates a span and confirms nothing', async () => {
   const raw = rawDocFromConllu(INPUT, 'mut-doc');
   const client = provClient();
