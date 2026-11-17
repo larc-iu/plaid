@@ -235,3 +235,23 @@
       (let [res (tok/bulk-update db [{:id (:t1 d1) :value "x"}] "admin@example.com")]
         (is (false? (:success res)))
         (is (= 400 (:code res)))))))
+
+(deftest an-entry-that-changes-nothing-is-refused
+  ;; H20-3: an entry with neither a value nor metadata (a key the route does
+  ;; not take, such as tokens, is dropped by coercion) answered 200 count 1,
+  ;; changed nothing and bumped the document's version, so a collaborator in
+  ;; strict mode got a 409 for a write that wrote nothing.
+  (let [{:keys [d1]} (setup)
+        v0 (version (:doc d1))]
+    (doseq [[what res] [["a span with tokens only" (bulk-update-spans admin-request [{:id (:s1 d1) :tokens [(:t2 d1)]}])]
+                        ["a span with its id only" (bulk-update-spans admin-request [{:id (:s1 d1)}])]
+                        ["one of two spans with its id only"
+                         (bulk-update-spans admin-request [{:id (:s2 d1) :value "Q"} {:id (:s1 d1)}])]
+                        ["a relation with its id only" (bulk-update-relations admin-request [{:id (:r d1)}])]]]
+      (testing what
+        (assert-bad-request res)
+        (is (= "A span has nothing to update: give it a value or metadata"
+               (clojure.string/replace (-> res :body :error) "relation" "span")))))
+    (is (= v0 (version (:doc d1))) "no version bumped")
+    (is (= "A" (-> (get-span admin-request (:s1 d1)) :body :span/value)))
+    (is (= "B" (-> (get-span admin-request (:s2 d1)) :body :span/value)) "nothing of the request was written")))

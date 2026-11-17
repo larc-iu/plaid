@@ -74,6 +74,12 @@
      (when-not values?
        (when (some #(contains? % :value) items)
          (throw (ex-info (str "A " noun " has no value to update") {:code 400}))))
+     ;; an entry with nothing to write would be counted and bump its
+     ;; document while changing nothing (H20-3)
+     (when (some #(not (or (and values? (contains? % :value)) (contains? % :metadata))) items)
+       (throw (ex-info (str "A " noun " has nothing to update: give it "
+                            (if values? "a value or metadata" "metadata"))
+                       {:code 400})))
      (metadata/validate-entity-type! entity-type)
      (let [rows (psc/fetch-ids tx table ids)
            by-id (into {} (map (juxt :id identity)) rows)
