@@ -346,22 +346,36 @@ describe('formatExample', () => {
 
   it('joins no two runs of punctuation that spaces part (H9-2)', () => {
     const gap = (content) => ({ type: 'gap', content });
+    const line = (pieces) => lineOf(formatExample(sentenceOf([], {}, pieces), SEL), 'gla')[0];
+    // Runs of punctuation alone stay three columns, not "...!!!???".
+    expect(line([gap('... !!! ???')])).toBe('\\PlaidWord{...} \\PlaidWord{!!!} \\PlaidWord{???}');
+  });
+
+  // REV-HFM-9: what follows a word prints as before H9-2, French spacing and
+  // spaced runs of closing marks included.
+  it('sets every spaced closing mark after a word with that word, as before', () => {
+    const gap = (content) => ({ type: 'gap', content });
     const tok = (t) => ({ type: 'token', ...t });
     const line = (pieces, words) =>
       lineOf(formatExample(sentenceOf(words, {}, pieces), SEL), 'gla')[0];
-    // Runs of punctuation alone stay three columns, not "...!!!???".
-    expect(line([gap('... !!! ???')], [])).toBe(
-      '\\PlaidWord{...} \\PlaidWord{!!!} \\PlaidWord{???}',
+    const [bonjour, quoi, waited, then, unbalanced, end] = [
+      'Bonjour',
+      'Quoi',
+      'waited',
+      'then',
+      'unbalanced',
+      'end',
+    ].map((w) => word(w));
+    expect(line([gap('« '), tok(bonjour), gap(' ! »')], [bonjour])).toBe(
+      '\\PlaidWord{«}\\PlaidWord{Bonjour}\\PlaidWord{!»}',
     );
-    // The first spaced closing mark goes with its word, as ever, and the
-    // next one keeps its space: "waited. . . then", not "waited... then".
-    const [waited, then] = [word('waited'), word('then')];
+    expect(line([tok(quoi), gap(' ? !')], [quoi])).toBe('\\PlaidWord{Quoi}\\PlaidWord{?!}');
+    expect(line([tok(quoi), gap(' ?!')], [quoi])).toBe('\\PlaidWord{Quoi}\\PlaidWord{?!}');
     expect(line([tok(waited), gap(' . . . '), tok(then)], [waited, then])).toBe(
-      '\\PlaidWord{waited}\\PlaidWord{.} \\PlaidWord{.} \\PlaidWord{.} \\PlaidWord{then}',
+      '\\PlaidWord{waited}\\PlaidWord{...} \\PlaidWord{then}',
     );
-    const [unbalanced, end] = [word('unbalanced'), word('end')];
     expect(line([gap('{'), tok(unbalanced), gap(' } } '), tok(end)], [unbalanced, end])).toBe(
-      '\\PlaidWord{{}\\{}\\PlaidWord{unbalanced}\\PlaidWord{{}\\}} \\PlaidWord{{}\\}} \\PlaidWord{end}',
+      '\\PlaidWord{{}\\{}\\PlaidWord{unbalanced}\\PlaidWord{{}\\}\\}} \\PlaidWord{end}',
     );
   });
 
