@@ -11,7 +11,7 @@ import {
 import { readLexiconField } from '@/domain/igtConfig';
 import { notifyError, notifyInfo } from '@/utils/feedback';
 import { arrowStep, caretAtArrowEdge } from '@ui/lib/bidi.js';
-import { isImeKey } from '@ui/lib/chords.js';
+import { isEnter, isImeKey } from '@ui/lib/chords.js';
 import { keys } from '@/lib/keymap.js';
 import { namesPendingId, settleKey } from '@ui/domain/pendingIds.js';
 import { cellByKey, morphFormOf, sameCell } from './shared.js';
@@ -235,9 +235,8 @@ export const cells = {
     // nobody backing out of a cell means to commit what it shows; in FLEx the
     // same chord is "move on without approving", so a hand trained there was
     // writing guesses it meant to skip.
-    // enter-ok: the cell's keydown returned on isImeKey first
-    if (e.key === 'Enter' && !e.shiftKey) this._maybeConfirmGuess(e.target);
-    if (e.key === 'Enter') {
+    if (isEnter(e) && !e.shiftKey) this._maybeConfirmGuess(e.target);
+    if (isEnter(e)) {
       // Commit and advance to the next cell in the same tier (the "fill a row
       // across" glossing workflow). Shift+Enter goes back, adopting nothing.
       // Falls back to blur (which commits) when there's no next cell.
@@ -778,8 +777,7 @@ export const cells = {
       });
       return;
     }
-    // enter-ok: the cell's keydown returned on isImeKey first
-    if (e.key === 'Enter' && !e.shiftKey) {
+    if (isEnter(e) && !e.shiftKey) {
       e.preventDefault();
       e.target.blur();
     } else if (e.key === 'Tab') {

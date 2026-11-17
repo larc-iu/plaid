@@ -4,6 +4,7 @@ import { TAGSET_SOURCE } from '@/domain/glossGuess';
 import { isValueAllowed, partAtCaret, replacePartAtCaret } from '@/domain/tagsets';
 import { anchoredPos, cellByKey } from './shared.js';
 import { keys } from '@/lib/keymap.js';
+import { isEnter } from '@ui/lib/chords.js';
 
 // The alternatives list: Alt+Down on a cell lists every value the project
 // has given that form, and a pick adopts one. On a morpheme's gloss the rows
@@ -111,8 +112,7 @@ export const alternatives = {
     // never takes it.
     // Any Ctrl/Cmd+Enter as well, whatever it is bound to now: with a modifier
     // held it is never "take the highlighted row".
-    // enter-ok: the cell's keydown returned on isImeKey first
-    if (keys.is('analyze.accept', e) || (e.key === 'Enter' && (e.ctrlKey || e.metaKey))) {
+    if (keys.is('analyze.accept', e) || (isEnter(e) && (e.ctrlKey || e.metaKey))) {
       this._closeAlts();
       return false;
     }
@@ -131,8 +131,7 @@ export const alternatives = {
       }
       return true;
     }
-    // enter-ok: the cell's keydown returned on isImeKey first
-    if (e.key === 'Enter') {
+    if (isEnter(e)) {
       // Whose key is this, the list's or the cell's? A list the person asked
       // for (Alt+Down, or moved in) takes Enter on its highlighted row,
       // whatever it is (R55). A list a governed cell opened on focus hands

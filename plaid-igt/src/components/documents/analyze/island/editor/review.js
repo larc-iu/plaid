@@ -9,6 +9,7 @@ import {
   reviewSelector,
   reviewStates,
 } from './shared.js';
+import { isEnter } from '@ui/lib/chords.js';
 
 // Reviewing proposals: the beat and pulse that say a confirmation landed,
 // Ctrl+Enter and Ctrl+Backspace on a word, the jump between unverified
@@ -504,8 +505,7 @@ export const review = {
       this.doc.discardWordAnalysis(wordId);
       return;
     }
-    // enter-ok: a chip, it takes no typed text
-    if (e.key === 'Enter') {
+    if (isEnter(e)) {
       e.preventDefault();
       // One link, so the pulse is on that link, and focus hops to the next
       // chip as before. Backspace below removes rather than confirms, and a

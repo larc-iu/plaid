@@ -419,8 +419,7 @@ export const vocabPopover = {
       // Creating is what this box is for, so only the "and link them all"
       // half of either chord says anything here.
       const takeAll = keys.which(['popover.createAndLinkAll', 'popover.linkAll'], e);
-      // enter-ok: the handler returned on isImeKey above
-      if (e.key === 'Enter' || takeAll) {
+      if (isEnter(e) || takeAll) {
         e.preventDefault();
         const v = (e.target.value || '').trim();
         if (v) act.create(v, true, !!takeAll);

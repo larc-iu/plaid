@@ -5,6 +5,7 @@ import { activeComposeTable, composePendingOn } from '@/lib/composeInput';
 import { morphFormOf } from './shared.js';
 import { cellKeyParts } from './cellReader.js';
 import { keys } from '@/lib/keymap.js';
+import { isEnter } from '@ui/lib/chords.js';
 
 // The morpheme form field: split, merge, and delete from the keyboard, paste
 // that splits, and the commit of a form.
@@ -23,8 +24,8 @@ export const morphForm = {
         // A backslash code half-typed into the buffer: `-` and `=` belong to
         // the code (`\i-` is ɨ, `\-5` is ˥), not to a new boundary.
         const midCode = composePending(st.buffer, st.buffer.length, { escapedAt: st.escapedAt });
-        // enter-ok: the cell's keydown returned on isImeKey first
-        if (e.key === 'Enter' || e.key === 'Tab') st.commitKey = e.key;
+        if (isEnter(e)) st.commitKey = 'enter';
+        else if (e.key === 'Tab') st.commitKey = 'tab';
         else if (e.key === 'Backspace') {
           // Takes back whatever was typed last: a boundary if one sits at the
           // end of the buffer, else a character.
@@ -63,8 +64,7 @@ export const morphForm = {
       // The review sweep's chords belong to the container listener.
       if (this._isSweepChord(e)) return;
       if (this._maybeArrowOutOfCell(e)) return;
-      // enter-ok: the cell's keydown returned on isImeKey first
-      if (e.key === 'Enter') {
+      if (isEnter(e)) {
         e.preventDefault();
         if (!this._navMove(e.target, e.shiftKey ? 'prev' : 'next')) e.target.blur();
         return;
@@ -242,8 +242,8 @@ export const morphForm = {
   // `split` describes the cell the buffer belongs in: `left` and `right` are
   // the text around the caret as stored ('' and the split's right-hand form
   // for a fresh split), `buffer` the characters typed since, `splits` the
-  // boundaries typed among them (offsets into `buffer`), `commitKey` an
-  // Enter/Tab typed last.
+  // boundaries typed among them (offsets into `buffer`), `commitKey`
+  // 'enter' or 'tab', whichever was typed last.
   async _applyMorphSplitReplay(split) {
     if (!split) return;
     const el = this.container.querySelector(
@@ -327,9 +327,9 @@ export const morphForm = {
       return;
     }
     // A buffered Enter/Tab commits the new cell and advances (blur → commit).
-    if (split.commitKey === 'Enter') {
+    if (split.commitKey === 'enter') {
       if (!this._navMove(el, 'next')) el.blur();
-    } else if (split.commitKey === 'Tab') {
+    } else if (split.commitKey === 'tab') {
       this._navMove(el, 'next');
     }
   },

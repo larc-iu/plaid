@@ -9,6 +9,7 @@ import { cellKeyParts } from './cellReader.js';
 import { arrowStep, caretAtArrowEdge, isRtlBox } from '@ui/lib/bidi.js';
 import { keys } from '@/lib/keymap.js';
 import { tokenizeFocus } from '../../../hooks/focusHandoff.js';
+import { isEnter } from '@ui/lib/chords.js';
 
 // Multi-word expressions: gathering words into one link, the bracket and its
 // lanes, and the popover for the expression as a whole.
@@ -195,8 +196,7 @@ export const mwe = {
     e.igtMweSeen = true;
     if (!this._canLinkMwe()) return false;
     const sel = this._mweSel;
-    // enter-ok: cells return on isImeKey first, chips take no typed text
-    if (e.key === 'Enter' && sel && !e.ctrlKey && !e.metaKey && !e.altKey && !e.shiftKey) {
+    if (isEnter(e) && sel && !e.ctrlKey && !e.metaKey && !e.altKey && !e.shiftKey) {
       e.preventDefault();
       e.stopPropagation();
       if (sel.tokenIds.size >= 2) this._openMwePopover();

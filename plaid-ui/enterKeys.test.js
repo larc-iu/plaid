@@ -1,13 +1,12 @@
 import { describe, it, expect } from 'vitest';
-import { gitGrep, isComment, scratchRepo, unmarked } from './src/test/repoGates.js';
+import { gitGrep, scratchRepo } from './src/test/repoGates.js';
 import { repoRoot } from './src/test/apps.js';
 
 // The Enter that confirms an input method's candidate (typing Chinese or
 // Japanese) is the input method's, never the Enter that sends or commits
-// what was typed. One rule in one helper, plaid-ui's `isEnter` (or an early
-// return on `isImeKey` for every key a handler reads). A handler that reads
-// Enter by hand says why it may: its element takes no typed text, or a guard
-// before it already returned on `isImeKey`.
+// what was typed. Every Enter is read by plaid-ui's `isEnter`
+// (src/lib/chords.js), with no exceptions: no other source file of plaid-ui
+// or plaid-igt compares a key to 'Enter' itself.
 
 const PATHSPECS = [
   'plaid-ui/src/**',
@@ -17,40 +16,42 @@ const PATHSPECS = [
   ':!plaid-ui/src/lib/chords.js',
 ];
 
-const ENTER_BY_HAND = `\\.key\\s*(===|!==)\\s*['"]Enter['"]`;
+const BY_HAND = [
+  `(===|!==|==|!=)\\s*['"]Enter['"]`,
+  `['"]Enter['"]\\s*(===|!==|==|!=)`,
+  `case\\s+['"]Enter['"]`,
+];
 
 const offenders = (root) =>
-  unmarked(
-    root,
-    gitGrep(root, [ENTER_BY_HAND], PATHSPECS).filter(({ text }) => !isComment(text)),
-    'enter-ok',
+  gitGrep(root, BY_HAND, PATHSPECS).map(
+    ({ file, line, text }) => `${file}:${line}: ${text.trim()}`,
   );
 
-const failure = (found) =>
-  `Enter read by hand, which also takes the Enter of an input-method composition:\n  ${found.join('\n  ')}\n` +
-  'Ask `isEnter(e)` from plaid-ui/src/lib/chords.js. If the element takes no typed text, or a guard ' +
-  'above returns on `isImeKey`, say so on the line or the line above: `// enter-ok: <reason>`.';
-
-describe('no Enter read past an input-method composition', () => {
+describe('Enter is read only by isEnter', () => {
   it('holds over plaid-ui and plaid-igt', () => {
     const found = offenders(repoRoot());
-    expect(found, failure(found)).toEqual([]);
+    expect(
+      found,
+      `Read Enter with isEnter(e) from plaid-ui/src/lib/chords.js:\n  ${found.join('\n  ')}`,
+    ).toEqual([]);
   });
 
-  it('finds an Enter read by hand and lets a marked or helper line through', () => {
+  it('finds every way of comparing a key to Enter', () => {
     const root = scratchRepo({
-      'plaid-ui/src/bad.jsx': "onKeyDown={(e) => e.key === 'Enter' && send()}\n",
-      'plaid-igt/src/bad.js': "if (event.key !== 'Enter') return;\n",
-      'plaid-igt/src/clean.js': [
-        'if (isEnter(e)) send();',
-        '// enter-ok: a button, it takes no typed text',
-        "if (e.key === 'Enter' || e.key === ' ') open();",
-        '',
-      ].join('\n'),
+      'plaid-ui/src/a.jsx': "onKeyDown={(e) => e.key === 'Enter' && send()}\n",
+      'plaid-igt/src/b.js': "if (event.key !== 'Enter') return;\n",
+      'plaid-igt/src/c.js': "if ('Enter' === e.key) go();\n",
+      'plaid-igt/src/d.js': 'if (e.code === "Enter") go();\n',
+      'plaid-igt/src/e.js': "switch (e.key) {\n  case 'Enter':\n    go();\n}\n",
+      'plaid-igt/src/clean.js': 'if (isEnter(e)) send();\n',
+      'plaid-ui/src/lib/chords.js': "export const isEnter = (e) => e?.key === 'Enter';\n",
     });
     expect(offenders(root).map((f) => f.split(': ')[0])).toEqual([
-      'plaid-igt/src/bad.js:1',
-      'plaid-ui/src/bad.jsx:1',
+      'plaid-igt/src/b.js:1',
+      'plaid-igt/src/c.js:1',
+      'plaid-igt/src/d.js:1',
+      'plaid-igt/src/e.js:2',
+      'plaid-ui/src/a.jsx:1',
     ]);
   });
 });

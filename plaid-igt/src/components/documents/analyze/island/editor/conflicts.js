@@ -1,5 +1,6 @@
 import { html, nothing } from 'lit-html';
 import { conflictNoteParts } from '@ui/lib/cellConflict.js';
+import { isEnter } from '@ui/lib/chords.js';
 
 // A cell edit refused because another user changed the cell first (Luke's
 // ruling Q1, 2026-09-29, the same in plaid-ud). The cell shows the stored
@@ -72,8 +73,7 @@ export const conflicts = {
       e.igtNoteDismissed = true;
       return;
     }
-    // enter-ok: the cell's keydown returned on isImeKey first
-    if (e.key !== 'Enter' || e.shiftKey || e.ctrlKey || e.metaKey || e.altKey) return;
+    if (!isEnter(e) || e.shiftKey || e.ctrlKey || e.metaKey || e.altKey) return;
     if (el.value !== (el.dataset.orig ?? '')) return;
     // After a split or merge only the stored value is kept: Enter goes on as
     // in any cell.

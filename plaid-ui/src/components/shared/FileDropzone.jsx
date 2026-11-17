@@ -1,5 +1,6 @@
 import { useRef, useState } from 'react';
 import { cn } from '../../lib/utils.js';
+import { isEnter } from '../../lib/chords.js';
 
 /**
  * The dashed box a file is dropped on, with a hidden file input behind it, for
@@ -48,8 +49,7 @@ export const FileDropzone = ({
         clickable
           ? (e) => {
               if (disabled || e.target !== e.currentTarget) return;
-              // enter-ok: a drop zone, it takes no typed text
-              if (e.key === 'Enter' || e.key === ' ') {
+              if (isEnter(e) || e.key === ' ') {
                 e.preventDefault();
                 open();
               }

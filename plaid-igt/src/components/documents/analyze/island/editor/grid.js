@@ -14,6 +14,7 @@ import {
   provTitle,
   uncontrolledValue,
 } from './shared.js';
+import { isEnter } from '@ui/lib/chords.js';
 
 // The cells themselves: row labels, a word's column, its morphemes, gaps
 // and inert columns, sentence annotations, and the face of a vocab chip.
@@ -40,8 +41,7 @@ export const grid = {
         @click=${openMenu}
         @keydown=${(e) => {
           // preventDefault: Space on a div scrolls the page.
-          // enter-ok: a button or chip, it takes no typed text
-          if (e.key === 'Enter' || e.key === ' ') {
+          if (isEnter(e) || e.key === ' ') {
             e.preventDefault();
             openMenu(e);
           }
@@ -476,8 +476,7 @@ export const grid = {
                 aria-expanded=${collapsed ? 'false' : 'true'}
                 @click=${(e) => this._openRowMenuFrom(e)}
                 @keydown=${(e) => {
-                  // enter-ok: a button or chip, it takes no typed text
-                  if (e.key === 'Enter' || e.key === ' ') {
+                  if (isEnter(e) || e.key === ' ') {
                     e.preventDefault();
                     this._openRowMenuFrom(e);
                   }
