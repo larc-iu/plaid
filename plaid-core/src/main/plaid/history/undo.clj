@@ -25,7 +25,12 @@
                         (`by`): a span, link or child token on a token, a
                         token on a text, a relation on a span, a link to an
                         entry or a reference to it in metadata, a comment,
-                        and for a document anything written in it since,
+                        and for a document anything written in it since.
+                        The token rows of the entry in one layer on one
+                        text whose extents overlap (the morphemes of one
+                        word) and what the entry wrote on them go back
+                        together or stay together (`sibling-groups`),
+                        listed so,
     needs               it needs a row that will not be there (`needs`): its
                         parent, gone since, a row of this undo that is left,
                         or a row its metadata would name again,
@@ -670,6 +675,66 @@
       (union! (:k i) (:k j)))
     (into {} (keep (fn [i] (when (.containsKey parent (:k i)) [(:k i) (root (:k i))]))) tok)))
 
+(defn- sibling-groups
+  "`{key group}` for the token rows of the entry that lie over the same
+  characters of one text in one layer: two rows whose extents before the
+  entry, or whose extents after it, overlap or are the same. These are the
+  morphemes of one word (igt keeps every morpheme on its word's extent,
+  ordered by precedence, its form in metadata), so a segmentation changes
+  no offsets and `tie-groups` never sees it. They go back together or stay
+  together, so no word is left with some morphemes of each analysis
+  (H14-2). Only groups of two or more rows. Extents before and after are
+  never compared with each other (a text edit shifts every token after it),
+  so a layer whose tokens never overlap has no such group."
+  [items]
+  (let [tok (filter #(= "tokens" (:table %)) items)
+        parent (java.util.HashMap.)
+        root (fn [k] (loop [x k] (let [p (.get parent x)] (if (or (nil? p) (= p x)) x (recur p)))))
+        union! (fn [a b] (let [ra (root a) rb (root b)]
+                           (.put parent a ra)
+                           (when (not= ra rb) (.put parent rb ra) (.put parent b ra))))]
+    (doseq [[_ is] (group-by (fn [i] (let [r (or (:before i) (:after i))] [(:text_id r) (:token_layer_id r)])) tok)
+            frame [:before :after]
+            :let [xs (sort-by (fn [[b e]] [b e])
+                              (for [i is :let [r (frame i)] :when r] [(:begin r) (:end_ r) (:k i)]))]]
+      ;; the same extent ties, a zero-width one too
+      (doseq [[_ same] (group-by (fn [[b e]] [b e]) xs)
+              [[_ _ a] [_ _ c]] (partition 2 1 same)]
+        (union! a c))
+      ;; overlapping extents: sorted by begin, each ties to the run before it
+      ;; while it begins before the run's furthest end
+      (loop [[[b e k] & more] xs run-end nil run-key nil]
+        (when k
+          (if (and run-end (< b run-end) (< b e))
+            (do (union! run-key k) (recur more (max run-end e) run-key))
+            (recur more (when (< b e) e) (when (< b e) k))))))
+    (let [roots (into {} (keep (fn [i] (when (.containsKey parent (:k i)) [(:k i) (root (:k i))]))) tok)
+          sizes (frequencies (vals roots))]
+      (into {} (filter (fn [[_ r]] (< 1 (sizes r)))) roots))))
+
+(defn- sibling-held
+  "`built-on` when `i` stays with the morphemes of its word (`sibling-groups`):
+  a token of a group of which a row is left, a token the entry changed that
+  a value stays on (the entry's own left, or one someone else wrote since,
+  `:sib-since`), or a span or link the entry wrote on a token of a group of
+  which a row is left. Else nil. `sib-holder` gives the row left in a token's
+  group."
+  [i {:keys [sibs sib-deps sib-since item-of]} applied? sib-holder]
+  (let [{:keys [table op k before after]} i
+        by (fn [rk] {:reason "built-on" :by (row-ref rk (place-of i))})]
+    (case table
+      "tokens" (when (sibs k)
+                 (or (when-let [h (sib-holder k)] (by h))
+                     (when (= :update op)
+                       (when-let [d (first (filter (fn [d] (let [di (item-of d)]
+                                                             (if di (not (applied? di)) (contains? sib-since d))))
+                                                   (get sib-deps k)))]
+                         (by d)))))
+      ("spans" "vocab_links") (when-let [t (first (filter #(sib-holder ["tokens" %])
+                                                          (concat (:tokens before) (:tokens after))))]
+                                (by ["tokens" t]))
+      nil)))
+
 (defn- fixpoint
   "`{[table id] reason}` for every row left: the base reasons, then each
   row's checks against what the others leave, until nothing more is left."
@@ -690,11 +755,16 @@
             ctx (assoc ctx :applied? applied? :on? on? :why #(get left %))
             ties (:ties ctx)
             tied-left (into #{} (keep ties) (keys left))
+            sibs (:sibs ctx)
+            ;; each sibling group with a row left, to the first such row
+            sib-left (reduce (fn [m k] (if-let [g (sibs k)] (if (contains? m g) m (assoc m g k)) m)) {} (keys left))
+            sib-holder (fn [tk] (some-> (sibs tk) sib-left))
             more (into {} (keep (fn [i]
                                   (when (applied? i)
                                     (when-let [r (or (check i ctx)
                                                      (when (contains? tied-left (ties (:k i)))
                                                        {:reason "text-changed-since"})
+                                                     (sibling-held i ctx applied? sib-holder)
                                                      (on-held-tokens i (:why ctx) item-of))]
                                       [(:k i) r]))))
                        items)]
@@ -1033,6 +1103,26 @@
                                                                     [:in :parent_token_layer_id (mapv str %)]]})
                                                 token-layers)))
             ties (tie-groups items layer-parent)
+            sibs (sibling-groups items)
+            ;; the values on each token the entry changed in a sibling group,
+            ;; and which of them someone else wrote since the entry began
+            sib-updated (into [] (keep #(when (and (= :update (:op %)) (sibs (:k %))) (:id %))) items)
+            sib-deps (reduce (fn [m [table col tcol]]
+                               (reduce (fn [m r] (update m ["tokens" (psc/->uuid (str (:token_id r)))] (fnil conj [])
+                                                         [table (psc/->uuid (str (col r)))]))
+                                       m
+                                       (psc/in-chunks #(psc/q tx {:select [col :token_id] :from [tcol]
+                                                                  :where [:in :token_id (mapv str %)]})
+                                                      sib-updated)))
+                             {}
+                             (when (seq sib-updated)
+                               [["spans" :span_id :span_tokens] ["vocab_links" :vocab_link_id :vocab_link_tokens]]))
+            sib-since (into #{}
+                            (keep (fn [r] (when-not (unit? (:op_id r))
+                                            [(:target_table r) (psc/->uuid (str (:target_id r)))])))
+                            (psc/in-chunks #(psc/q tx {:select-distinct [:target_table :target_id :op_id] :from [:audit_writes]
+                                                       :where [:and [:in :target_id (mapv str %)] [:>= :ts start]]})
+                                           (distinct (map (comp str second) (mapcat val sib-deps)))))
             wanted (reduce (fn [m [t id]] (if id (update m t (fnil conj #{}) id) m))
                            {}
                            (concat (for [i items :when (#{:insert :update} (:op i)) p (parents-of (:table i) (:before i))] p)
@@ -1054,7 +1144,7 @@
             ctx {:may-document? may-document? :may-vocab? may-vocab? :live live :locked locked
                  :excluded excluded :item-of item-of :exists exists :deps deps :refs refs
                  :foreign foreign :doc-commented (doc-comments tx made-docs) :moving moving
-                 :tokens-on tokens-on :rows-in rows-in :ties ties :project-of project-of :vocab-of item-vocab
+                 :tokens-on tokens-on :rows-in rows-in :ties ties :sibs sibs :sib-deps sib-deps :sib-since sib-since :project-of project-of :vocab-of item-vocab
                  :linked? (fn [p v] (contains? pv [p v]))
                  :texts-since (texts-written tx docs unit? start)
                  :slots (slot-holders tx docs)

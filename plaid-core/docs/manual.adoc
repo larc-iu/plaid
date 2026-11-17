@@ -363,6 +363,7 @@ A token goes back onto its offsets only when nothing outside the entry wrote its
 The entry's own later writes are never "since": a text it edited several times goes back to its body before the first.
 A text and the tokens the entry wrote on it go back together or not at all: when the text stays, the tokens the entry made or reshaped on it stay too, and so do the annotations and links the entry wrote on the tokens it made, each listed as `text-changed-since`.
 Two token rows of the entry on one text, in one layer, or in a parent and child layer with the child not inside the parent, that traded characters (a split's halves, a merge's source and survivor, a word and the morphemes deleted to split it) go back together or stay together (`text-changed-since`).
+Token rows of the entry in one layer on one text whose extents overlap, before the entry or after it, such as the morphemes of one word, go back together or stay together, with the annotations and links the entry wrote on them: when anyone wrote one of them or a value on one since, all are left (`built-on`), so no word keeps some morphemes of each analysis.
 A row is never set back to name, in its metadata, a row that will not be there afterwards (`needs`).
 When a document's layers would no longer hold with the entry's rows put back, that document's rows are all left (`does-not-fit`).
 An undo is held to each layer's closed list as it is now, unlike a restore, since it puts single values back into today's document: a value the list no longer allows is left (`value-not-allowed`).

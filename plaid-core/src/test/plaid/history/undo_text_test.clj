@@ -970,3 +970,65 @@
           _ (edit! r w text [(insert-op 0 (str nul " "))])
           _ (edit! r w text [(replace-op (at text "\"") "\"" nul)])]
       (exact-undo! g [doc] before))))
+
+;; ============================================================
+;; H14-2: the morphemes of one word go back together
+;; ============================================================
+
+(defn- morphemes-of
+  "`#{[id precedence form]}` for the tokens of `layer` over [b e) in `text`."
+  [layer text b e]
+  (into #{} (map (fn [t] [(:token/id t) (:token/precedence t) (get-in t [:metadata "form"])]))
+        (for [r (psc/q db {:select [:id] :from [:tokens]
+                           :where [:and [:= :token_layer_id (str layer)] [:= :text_id (str text)]
+                                   [:= :begin b] [:= :end_ e]]})]
+          (:body (get-token admin-request (:id r))))))
+
+(deftest the-morphemes-of-one-word-go-back-together-or-stay-together
+  ;; igt's set_analysis as the job's worker writes it: the word's stored
+  ;; morpheme takes the first form and a gloss, a second morpheme is made
+  ;; over the same characters with the second form and a gloss. Whatever a
+  ;; person then does to the analysis, the undo leaves the word's morphemes
+  ;; as before the job or as the job left them, never some of each.
+  (doseq [stored? [true false]
+          [what person] [["nobody" nil]
+                         ["a person retypes the gloss of the made morpheme" (fn [{:keys [g2]}] (update-span user1-request g2 :value "PRS"))]
+                         ["a person retypes the gloss of the stored morpheme" (fn [{:keys [g1]}] (update-span user1-request g1 :value "come"))]
+                         ["a person adds a note to the first morpheme" (fn [{:keys [note m1]}] (create-span user1-request note [m1] "seen"))]
+                         ["a person adds a note to the second morpheme" (fn [{:keys [note m2]}] (create-span user1-request note [m2] "seen"))]
+                         ["a person retypes the second form" (fn [{:keys [m2]}] (update-token-metadata user1-request m2 {"form" "iy"}))]]]
+    (testing (str what (if stored? ", the word's morpheme stored" ", the word's morpheme derived"))
+      (let [{:keys [tl doc text words] :as w} (world! ["kaii pele" "kaii lo"])
+            morphs (id (create-token-layer-opts admin-request tl "IgtMorphs" {:overlap-mode "any" :parent-token-layer-id words}))
+            gloss (id (create-span-layer admin-request morphs "Gloss"))
+            note (id (create-span-layer admin-request morphs "Note"))
+            b (at text "kaii lo")
+            m0 (when stored? (id (create-token admin-request morphs text b (+ b 4) 1)))
+            then (snapshot [doc])
+            before (morphemes-of morphs text b (+ b 4))
+            g (str (random-uuid))
+            r (in-group admin-request g)
+            m1 (or (when m0
+                     (assert-ok (patch-token-metadata r m0 [{:op "set" :path ["form"] :value "ka"}]))
+                     (assert-ok (update-token r m0 :precedence 1))
+                     m0)
+                   (id (create-token r morphs text b (+ b 4) 1 {"form" "ka"})))
+            g1 (id (create-span r gloss [m1] "go"))
+            m2 (id (create-token r morphs text b (+ b 4) 2 {"form" "ii"}))
+            g2 (id (create-span r gloss [m2] "PST"))
+            pele-v (id (create-span r (:pos w) [(word-of w text "pele")] "JOBV"))
+            job-left (morphemes-of morphs text b (+ b 4))
+            _ (when person (assert-done (person {:g1 g1 :g2 g2 :m1 m1 :m2 m2 :note note})))
+            person-left (morphemes-of morphs text b (+ b 4))
+            real (undo-checked! [doc] then #(undo-entry admin-request g :dry-run %))
+            now (morphemes-of morphs text b (+ b 4))]
+        (is (nil? (psc/fetch-by-id db :spans pele-v)) "the job's value on pele is undone")
+        (if person
+          (do (is (= person-left now) "the word's analysis stays whole, as the person left it")
+              (is (= 2 (count now)))
+              (is (every? #(some? (psc/fetch-by-id db :spans %)) [g1 g2]) "both glosses stay with their morphemes")
+              (is (every? (comp #{"built-on" "changed-since"} (reasons real)) [m1 m2])
+                  (pr-str (:skipped real))))
+          (do (is (= before now) "nobody touched it: the word as before the job")
+              (is (not= job-left now))
+              (is (zero? (:skipped-count real)) (pr-str (:skipped real)))))))))
