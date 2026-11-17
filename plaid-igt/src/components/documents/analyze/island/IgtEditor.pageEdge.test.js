@@ -23,7 +23,9 @@ afterEach(() => {
   host?.remove();
 });
 
-function mount() {
+const LEIPZIG = { delimiters: '.', mode: 'closed', values: [{ value: 'PL' }] };
+
+function mount({ closed = false } = {}) {
   const raw = buildRawDoc({
     body: 'the cat sat down',
     words: [
@@ -37,9 +39,26 @@ function mount() {
       { id: 's-2', begin: 8, end: 16 },
     ],
   });
+  if (closed) {
+    raw.textLayers[0].tokenLayers
+      .flatMap((tl) => tl.spanLayers || [])
+      .find((sl) => sl.id === 'ssl-0').config.igt.tagset = 'Leipzig';
+  }
   const client = makeFakeClient();
   client.query = async () => ({ results: [] });
-  const doc = makeIgtDoc({ raw, client });
+  const doc = makeIgtDoc({
+    raw,
+    client,
+    ...(closed
+      ? {
+          project: {
+            id: 'proj-1',
+            vocabs: [],
+            config: { plaid: {}, igt: { tagsets: { Leipzig: LEIPZIG } } },
+          },
+        }
+      : {}),
+  });
   ({ host, editor } = mountIsland(doc));
 }
 
@@ -92,5 +111,42 @@ describe('Enter and Tab at the edge of a page', () => {
     el.focus();
     expect(editor._navMove(el, 'next')).toBe(false);
     expect(editor._page).toBe(1);
+  });
+
+  // REV-HFT-1: the page turned under a value the tagset refused, and the
+  // typed value was lost. The cell is committed first, and a refusal keeps
+  // the page, the cell, focus and the typed text.
+  it('a value the tagset refuses keeps the page, the cell and the text', async () => {
+    IgtEditor.PAGE_SIZE = 1;
+    mount({ closed: true });
+    const el = translation();
+    el.focus();
+    el.value = 'BAD';
+    el.dispatchEvent(new Event('input', { bubbles: true }));
+    const tab = key(el, { key: 'Tab' });
+    expect(tab.defaultPrevented).toBe(true);
+    await new Promise((r) => setTimeout(r, 10));
+    expect(editor._page).toBe(0);
+    expect(el.isConnected).toBe(true);
+    expect(document.activeElement).toBe(el);
+    expect(el.value).toBe('BAD');
+    // Enter, the same.
+    key(el, { key: 'Enter' });
+    await new Promise((r) => setTimeout(r, 10));
+    expect(editor._page).toBe(0);
+    expect(document.activeElement).toBe(el);
+    expect(el.value).toBe('BAD');
+  });
+
+  it('an allowed value is committed and the page turns', async () => {
+    IgtEditor.PAGE_SIZE = 1;
+    mount({ closed: true });
+    const el = translation();
+    el.focus();
+    el.value = 'PL';
+    el.dispatchEvent(new Event('input', { bubbles: true }));
+    key(el, { key: 'Tab' });
+    expect(editor._page).toBe(1);
+    expect(document.activeElement.closest('[data-sentence-id]').dataset.sentenceId).toBe('s-2');
   });
 });

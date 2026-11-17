@@ -413,7 +413,7 @@ export const cells = {
 
     // Off the page's last or first cell of the row: the next or previous
     // page, on the same row's first or last cell (H2-2).
-    if (!best && !vertical) return this._navAcrossPage(tier, dir);
+    if (!best && !vertical) return this._navAcrossPage(current, tier, dir);
     if (!best) return false;
     this._navAnchor = vertical ? { el: best, x: ax } : null;
     best.focus();
@@ -426,12 +426,19 @@ export const cells = {
   },
 
   // Turn to the next ('next') or previous page, when there is one, and focus
-  // the first or last cell there of `tier`. Turning the page takes the focus
-  // off the cell being left first, which commits it (_setPage).
-  _navAcrossPage(tier, dir) {
+  // the first or last cell there of `tier`. The cell being left is committed
+  // first: a value it refuses (a closed tagset) keeps the page, and the
+  // refusal puts focus and the typed text back in the cell (REV-HFT-1).
+  _navAcrossPage(current, tier, dir) {
     const pageCount = Math.ceil((this.doc.sentences || []).length / this.constructor.PAGE_SIZE);
     const target = this._page + (dir === 'next' ? 1 : -1);
     if (target < 0 || target >= pageCount) return false;
+    this._refusedLeave = null;
+    current.blur();
+    if (this._refusedLeave === current) {
+      this._refusedLeave = null;
+      return true;
+    }
     this._setPage(target);
     const same = this._navFields().filter((el) => this._tierOf(el) === tier);
     const best = dir === 'next' ? same[0] : same[same.length - 1];
@@ -505,6 +512,8 @@ export const cells = {
       // had just been refused.) Leaving again with the same text is refused
       // again, out loud: each attempt gets its answer.
       const orig = el.dataset.orig ?? '';
+      // A page turn waiting on this leave stays put (_navAcrossPage).
+      this._refusedLeave = el;
       queueMicrotask(() => {
         el.focus();
         el.value = next;
