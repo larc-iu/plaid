@@ -606,7 +606,6 @@ def t_check_integrity(ws: Workspace, document: Optional[str] = None) -> str:
                 if any(m.form == '' for m in w.morphemes):
                     formless_n += 1
                     if len(formless) < 15:
-                        ws.note_numbered(d, [s.index])
                         formless.append(f'{tag}{word_ref(s, w)} {w.surface}')
                     continue
                 if len(w.morphemes) > 1 or (w.morphemes and w.morphemes[0].form != w.surface):
@@ -614,7 +613,6 @@ def t_check_integrity(ws: Workspace, document: Optional[str] = None) -> str:
                     if joined.replace('-', '').replace('=', '').casefold() != w.surface.replace('-', '').replace('=', '').casefold():
                         mismatch_n += 1
                         if len(mismatch) < 25:
-                            ws.note_numbered(d, [s.index])
                             mismatch.append(f'{tag}{word_ref(s, w)} {w.surface} ≠ {segmentation(w)}')
     lines = [f'Integrity check over {len(docs)} document{"s" if len(docs) != 1 else ""}.']
     lines.append(f'{formless_n} words with a morpheme that has no form (shown as ?)' + (': ' + '; '.join(formless) + (' …' if formless_n > len(formless) else '') if formless else '.'))

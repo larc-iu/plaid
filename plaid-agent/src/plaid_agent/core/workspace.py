@@ -508,10 +508,13 @@ class BaseWorkspace:
 
     def note_numbered(self, doc, positions) -> None:
         """Keep the print of each sentence of ``doc`` at ``positions``
-        (1-based) as this turn showed its word numbers to the model: the one
-        helper every read that prints those numbers calls (read_document,
-        run_code's load() and each app's own reads). A staging call by those
-        numbers is then held to the sentence as shown
+        (1-based) as this turn showed it to the model, every word number of
+        it (REV-SVB-R2-1): only a read that prints all of them calls this
+        (read_document and the app's whole-sentence reads, through
+        :meth:`note_shown`, and run_code's load()). A line that prints one
+        word's number records nothing, since a print records the whole
+        sentence and would let another number remembered from it pass. A
+        staging call by the numbers is then held to the sentence as shown
         (:meth:`refuse_moved_sentence`). Unlike :meth:`note_shown` it says
         nothing of what a job counts as read."""
         held = self.read_now.setdefault(doc.id, {})

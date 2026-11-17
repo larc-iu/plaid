@@ -316,26 +316,33 @@ def test_numbers_code_printed_in_an_earlier_turn_are_held_to_the_sentence_as_loa
 CONCORDANCE = ('concordance', {'pattern': 'gam', 'where': 'baseline'})
 
 
-def test_numbers_a_concordance_just_showed_are_planned_by(monkeypatch):
-    """REV-SVB-4: a corpus tool's hits record their sentences, so staging by
-    the number it just printed is no false refusal..."""
+def test_a_concordance_hit_records_nothing_so_a_changed_sentence_is_read_again(monkeypatch):
+    """REV-SVB-R2-1: a hit line prints one word's number, not the
+    sentence's, so it records no print. Staging by it in a sentence that
+    changed since the last read costs one read, the accepted direction."""
     c = Conversation(monkeypatch)
     c.turn(READ_S1)
     c.edit(_insert_word)
     hits, out = c.turn(CONCORDANCE, _gloss('s1.w3'))
     assert 's1.w3' in hits, hits
-    assert out.startswith('Planned') and c.planned_on() == ['w-2'], out
+    assert out.startswith('Error: "Text 1" s1.w3: the words of s1 have changed'), out
 
 
-def test_numbers_a_concordance_showed_in_an_earlier_turn_are_held_to_that(monkeypatch):
-    """...and one it printed in an earlier turn is held to the sentence as it
-    printed it."""
+def test_a_query_row_in_another_sentence_lets_no_remembered_number_through(monkeypatch):
+    """REV-SVB-R2-1, the reviewer's probe R2i: a query row naming s2.w1 must
+    not record s1, whose remembered s1.w2 now names a word a person typed."""
+    from plaid_agent.igt import toolkit as tk
+    from plaid_agent.igt.query import _ref_index
+
+    def fake_query(ws, query=None, limit=None, **_):
+        return 'row: ' + _ref_index(ws, ['d1']).get('w-4', '?') + ' Gam-ar'
+    monkeypatch.setitem(tk._IMPL, 'query', fake_query)
     c = Conversation(monkeypatch)
-    hits, = c.turn(CONCORDANCE)
-    assert 's1.w2' in hits, hits
+    c.turn(READ_S1)
     c.edit(_insert_word)
-    out, = c.turn(_gloss('s1.w2'))
-    assert out == f'Error: {MOVED}'
+    rows, out = c.turn(('query', {'query': {}}), _gloss('s1.w2', 'fish'))
+    assert 's2.w1' in rows, rows
+    assert out == f'Error: {MOVED}', out
 
 
 def test_a_split_before_a_remembered_word_number_is_refused(monkeypatch):
