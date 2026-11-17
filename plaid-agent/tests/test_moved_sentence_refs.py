@@ -11,6 +11,8 @@ no conversation, so it is never refused by this."""
 
 import copy
 
+import pytest
+
 from fixtures import FakeClient, document_raw, fake_ws
 
 from plaid_agent.core import turn as turn_mod
@@ -306,3 +308,41 @@ def test_analyze_sentence_names_words_by_their_order_and_is_held_to_the_read(mon
     out, = c.turn(('analyze_sentence', {'document': 'Text 1', 'sentences': [
         {'ref': 's1', 'words': ['Ali-di Ali-ERG', 'gam fish', 'akuna see']}]}))
     assert 'the words of s1 have changed since this conversation read them' in out, out
+
+
+def _split_s1(raw):
+    """A person splits s1 after "gam": what was s2 is s3 now."""
+    raw = copy.deepcopy(raw)
+    sents = raw['text_layers'][0]['token_layers'][0]['tokens']
+    sents[0]['end'] = 10
+    sents.insert(1, {'id': 's-new', 'begin': 11, 'end': 17})
+    raw['version'] += 1
+    return raw
+
+
+SENTENCE_MOVED = ('"Text 1" s2: s2 now names another sentence than when this conversation read it. Read s2 again '
+                  'with read_document and use the numbers it shows now.')
+
+
+@pytest.mark.parametrize('call', [
+    ('set_field', {'document': 'Text 1', 'refs': ['s2'], 'field': 'Translation', 'value': 'The fish.'}),
+    ('retype_sentence', {'document': 'Text 1', 'ref': 's2', 'text': 'Gam-ar ka.'}),
+    ('merge_sentences', {'document': 'Text 1', 'ref': 's2'}),
+    ('delete_sentence', {'document': 'Text 1', 'refs': ['s2']}),
+    ('add_comment', {'document': 'Text 1', 'ref': 's2', 'body': 'Check this.'}),
+], ids=lambda c: c[0])
+def test_a_sentence_named_by_a_number_another_sentence_now_has_is_refused(monkeypatch, call):
+    """REV-SVB-12: the number must still name the sentence that was read."""
+    c = Conversation(monkeypatch)
+    c.turn(('read_document', {'document': 'Text 1', 'sentences': [1, 2]}))
+    c.edit(_split_s1)
+    out, = c.turn(call)
+    assert out == f'Error: {SENTENCE_MOVED}', out
+
+
+def test_a_sentence_whose_words_changed_is_still_the_same_sentence(monkeypatch):
+    c = Conversation(monkeypatch)
+    c.turn(READ_S1)
+    c.edit(_insert_word)
+    out, = c.turn(('set_field', {'document': 'Text 1', 'refs': ['s1'], 'field': 'Translation', 'value': 'Ali.'}))
+    assert out.startswith('Planned'), out

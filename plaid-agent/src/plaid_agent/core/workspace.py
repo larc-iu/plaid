@@ -526,10 +526,11 @@ class BaseWorkspace:
     # --- numbers read in an earlier turn ------------------------------------
 
     def words_print(self, sentence) -> Optional[str]:
-        """A short print of a sentence's words, in order, which changes when a
-        word is added, removed, joined, split or retyped, and when another
-        sentence takes its place. None where the app names no word by its
-        number, and then no number is checked."""
+        """A short print of a sentence, ``<which sentence>:<its words>``. The
+        first part changes when another sentence takes its number, the second
+        when a word is added, removed, joined, split, retyped or segmented
+        again. None where the app names no word by its number, and then no
+        number is checked."""
         return None
 
     def reads_kept(self) -> Dict[str, Dict[str, str]]:
@@ -546,14 +547,16 @@ class BaseWorkspace:
                 left -= 1
         return out
 
-    def refuse_moved_sentence(self, doc, n: int, ref: str) -> None:
-        """Refuse a staging call naming a word of sentence ``n`` (1-based) of
-        ``doc`` by its number, ``ref`` as given, when the sentence's words are
-        not as this conversation last read them: a number read then may name
-        another word now (2026-11-17 survey). A sentence read again in this
-        turn (:meth:`note_numbered`) and a sentence never read are not
-        asked. The refusal names every sentence of the document that has
-        changed since it was read, so one read puts them all right."""
+    def refuse_moved_sentence(self, doc, n: int, ref: str, words: bool = True) -> None:
+        """Refuse a staging call naming sentence ``n`` (1-based) of ``doc``
+        by its number, ``ref`` as given, when it is not as this conversation
+        last read it (2026-11-17 survey): with ``words``, a word or morpheme
+        of it is named by number and its words must be as read; without, the
+        sentence alone is named and the number must still name the sentence
+        read (REV-SVB-12). A sentence read again in this turn
+        (:meth:`note_numbered`) and a sentence never read are not asked. The
+        refusal names the sentences of the document that have changed since
+        they were read, so one read puts them right."""
         if not self.planning or getattr(self, 'restaging', False):
             return
         before = self.read_before.get(doc.id) or {}
@@ -561,20 +564,28 @@ class BaseWorkspace:
         if str(n) not in before or n in now:
             return
 
+        def part(printed: Optional[str]) -> Optional[str]:
+            return printed if words or printed is None else printed.split(':', 1)[0]
+
         def moved(k: int) -> bool:
             if k in now:
                 return False
             if not 1 <= k <= len(doc.sentences):
                 return True
-            return self.words_print(doc.sentences[k - 1]) != before[str(k)]
+            return part(self.words_print(doc.sentences[k - 1])) != part(before[str(k)])
         if not moved(n):
             return
         names = [f's{k}' for k in sorted(int(k) for k in before if k.isdigit()) if moved(k)]
         listed = names[0] if len(names) == 1 else ', '.join(names[:-1]) + ' and ' + names[-1]
         one = len(names) == 1
-        raise ToolError(f'{plain_quote(doc.name or "")} {ref}: the words of {listed} have changed since this '
-                        f'conversation read them. Read {listed if one else "them"} again with read_document and '
-                        f'name {"its" if one else "their"} words by the numbers it shows now.', kind='conflict')
+        where = f'{plain_quote(doc.name or "")} {ref}'
+        if words:
+            raise ToolError(f'{where}: the words of {listed} have changed since this conversation read them. Read '
+                            f'{listed if one else "them"} again with read_document and name {"its" if one else "their"} '
+                            'words by the numbers it shows now.', kind='conflict')
+        raise ToolError(f'{where}: {listed} now name{"s another sentence" if one else " other sentences"} than when '
+                        f'this conversation read {"it" if one else "them"}. Read {listed if one else "them"} again '
+                        'with read_document and use the numbers it shows now.', kind='conflict')
 
     def sentence_position(self, doc, item) -> Optional[int]:
         """The position of the sentence a read_document argument names in

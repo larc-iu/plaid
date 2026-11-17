@@ -721,13 +721,17 @@ def resolve_in(ws, doc, ref: str, renumber: bool = True):
 
     A word named by its number alone (a morpheme by its word's), in a
     staging call, is refused first when its sentence's words are not as this
-    conversation last read them (``BaseWorkspace.refuse_moved_sentence``). A
-    word named with its form beside the number, or by its form, is the one
+    conversation last read them, and a sentence by its number when the
+    number names another sentence now (``BaseWorkspace.refuse_moved_sentence``).
+    A word named with its form beside the number, or by its form, is the one
     read."""
     r = read_ref(ref, 'wm')
-    if (r is not None and not r.by_form and r.parts[0] is not None and (not r.form or r.parts[1] is not None)
-            and 1 <= r.sentence <= len(doc.sentences)):
-        ws.refuse_moved_sentence(doc, r.sentence, ref)
+    if r is not None and not r.by_form and 1 <= r.sentence <= len(doc.sentences):
+        if r.parts[0] is None:
+            # A sentence by its number: it must still be the one read.
+            ws.refuse_moved_sentence(doc, r.sentence, ref, words=False)
+        elif not r.form or r.parts[1] is not None:
+            ws.refuse_moved_sentence(doc, r.sentence, ref)
     try:
         obj = resolve(doc, ref)
     except ValueError:

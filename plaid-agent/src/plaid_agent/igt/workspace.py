@@ -365,11 +365,12 @@ class Workspace(BaseWorkspace):
         joined, split, retyped or segmented again, or another sentence in its
         place, changes it, and a value on a word or a morpheme does not
         (``BaseWorkspace.refuse_moved_sentence``). An unsegmented word's
-        morpheme is named from its word, so it moves nothing. Eight hex
-        digits: it tells an edit from none, and one is kept per sentence
-        read."""
-        return fingerprint([sentence.id, [[w.id, w.surface, [m.id for m in w.morphemes]]
-                                          for w in sentence.words]])[:8]
+        morpheme is named from its word, so it moves nothing. Four hex digits
+        of the sentence's id, then eight of the rest: it tells an edit from
+        none, and one is kept per sentence read."""
+        return (fingerprint(sentence.id)[:4] + ':'
+                + fingerprint([sentence.id, [[w.id, w.surface, [m.id for m in w.morphemes]]
+                                             for w in sentence.words]])[:8])
 
     def doc_tag(self, doc, show: bool = True) -> str:
         """The ``"<document>" `` prefix on a printed reference: the document's

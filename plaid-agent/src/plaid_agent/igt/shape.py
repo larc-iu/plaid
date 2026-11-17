@@ -455,6 +455,7 @@ def t_merge_sentences(ws: Workspace, document: str, ref: str) -> str:
     doc = ws.doc(document)
     reshape_guards(ws, doc)
     s = _need(resolve(doc, ref), Sentence, ref)
+    ws.refuse_moved_sentence(doc, s.index, ref, words=False)
     if s.index < 2:
         raise ToolError(f'{ref} is the first sentence; name the sentence to merge into the one before it',
                         kind='invalid-argument')
@@ -500,6 +501,7 @@ def t_delete_sentence(ws: Workspace, document: str, refs) -> str:
     found = []
     for ref in refs:
         s = _need(resolve(doc, ref), Sentence, ref)
+        ws.refuse_moved_sentence(doc, s.index, ref, words=False)
         if all(s.id != x.id for _, x in found):
             found.append((ref, s))
     full = _other_layers(ws, doc)
@@ -596,6 +598,7 @@ def t_retype_sentence(ws: Workspace, document: str, ref: str, text: str) -> str:
     doc = ws.doc(document)
     reshape_guards(ws, doc)
     s = _need(resolve(doc, ref), Sentence, ref)
+    ws.refuse_moved_sentence(doc, s.index, ref, words=False)
     if not (text or '').strip():
         raise ToolError('text must not be empty (delete_sentence deletes a sentence)', kind='invalid-argument')
     text = _clean_text(text)
