@@ -982,7 +982,9 @@ These changes are not written but listed in its report under **Proposed changes*
 * renaming, merging or deleting an entry when the person who started the job is not a maintainer of the project.
 
 Editing stays open while a job works in a document.
-When someone changes a sentence while the job works on it, the job does not write over the change: it puts the document off and later takes the sentence again as it then reads, and skips it as **Changed during the job** when it changes once more.
+When someone writes in a document while the job works on it, the job drops what it was about to write there and puts the document off.
+When it comes back, it works the document as it then reads, and may change what they wrote.
+The report counts such changes under **People's work**.
 
 When it finishes, the job makes its own analyses consistent.
 A form it analyzed in more than one way takes the analysis people gave that form, when they all gave the same one, or else the analysis the job gave it at least two times in three.
