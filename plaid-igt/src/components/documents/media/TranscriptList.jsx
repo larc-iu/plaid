@@ -144,6 +144,23 @@ const autoGrow = (el) => {
   el.style.height = `${el.scrollHeight + el.offsetHeight - el.clientHeight}px`;
 };
 
+// The cell engine's outcomes that leave a row's edit waiting to be sent
+// again (Enter keeps yours, or taken up again by the row).
+const WAITS_TO_RESEND = new Set(['conflict', 'takenUp', 'putBack']);
+
+// Whether a Save anyway given for `answer` covers saving `text` now with
+// `loss`: the same text, and no count above the one asked about.
+const coveredBy = (answer, text, loss) => {
+  if (!answer || answer.text !== text) return false;
+  const was = answer.loss;
+  return (
+    loss.annotations <= was.annotations &&
+    loss.links <= was.links &&
+    (loss.shortened?.annotations ?? 0) <= (was.shortened?.annotations ?? 0) &&
+    (loss.shortened?.links ?? 0) <= (was.shortened?.links ?? 0)
+  );
+};
+
 // "3 annotations and 1 vocabulary link on this text." A link or annotation
 // the delete only cuts down is named apart: "Shortens 1 vocabulary link."
 const lossSentence = (loss) => {
@@ -1129,9 +1146,10 @@ export function TranscriptList({
   );
 
   const confirm = useConfirm();
-  // The typed text each segment's question was answered Save anyway for, so
-  // a save the server refused for a change elsewhere, sent again by Enter,
-  // asks once and not twice.
+  // What each segment's question was answered Save anyway for, `{ text,
+  // loss }`, so a save the server refused for a change elsewhere, sent again
+  // by Enter, asks once and not twice. It covers that text and no more loss
+  // than was asked about, and only while the edit waits for Enter.
   const answered = useRef(new Map());
   const handleCommit = useCallback(
     async (id, { text, speaker, edits, saved, what }) => {
@@ -1147,7 +1165,7 @@ export function TranscriptList({
         // row's trash asks only then.
         const { stretches, loss } = doc.segmentEditLoss(id, { text, edits });
         const loses =
-          hasLoss(loss) && answered.current.get(id) !== text
+          hasLoss(loss) && !coveredBy(answered.current.get(id), text, loss)
             ? baselineLossSentence(doc, stretches)
             : '';
         if (loses) {
@@ -1172,7 +1190,7 @@ export function TranscriptList({
             }
             return false;
           }
-          answered.current.set(id, text);
+          answered.current.set(id, { text, loss });
           storedText = cpSlice(doc.body || '', token.begin, token.end);
         }
         const before = doc.dataVersion;
@@ -1188,7 +1206,10 @@ export function TranscriptList({
           { engine: true },
         );
         // Refused by a check before it showed: nothing went out.
-        if (doc.dataVersion === before) return (await outcome).landed;
+        if (doc.dataVersion === before) {
+          answered.current.delete(id);
+          return (await outcome).landed;
+        }
         const ticket = cells.sending(segmentKey(token), {
           saved: saved ?? storedText,
           typed: text,
@@ -1198,12 +1219,12 @@ export function TranscriptList({
         });
         const times = { timeBegin: timeBeginOf(token), timeEnd: timeEndOf(token) };
         outcome.then((o) => {
-          if (o.landed) answered.current.delete(id);
+          const { kind } = cells.settle(ticket, o);
+          // The answer stands only for the edit put back to be sent again.
+          if (!WAITS_TO_RESEND.has(kind)) answered.current.delete(id);
           // Refused, and its segment is gone: the text stays on screen until
           // dismissed.
-          if (cells.settle(ticket, o).kind === 'gone') {
-            doc.keepUnsavedRow({ typed: text, ...times });
-          }
+          if (kind === 'gone') doc.keepUnsavedRow({ typed: text, ...times });
         });
         return true;
       }

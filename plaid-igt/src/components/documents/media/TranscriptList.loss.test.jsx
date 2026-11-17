@@ -334,4 +334,73 @@ describe("a row's question, however the row is left", () => {
     expect(server.body).toBe('uno dos tres\nnueve diez once');
     await r.unmount();
   });
+
+  // REV-HFM-R2-1: the answer covers the loss it was given for, no more.
+  it('asks again on Enter when a word was glossed between the two saves', async () => {
+    const raw = RAW();
+    const morphs = raw.textLayers[0].tokenLayers.find((l) => l.id === 'morphL');
+    // Only "cuatro" glossed when the question is asked.
+    morphs.spanLayers[0].spans = morphs.spanLayers[0].spans.filter((sp) => sp.value === 'g.cuatro');
+    const { server, r, drain } = await mount(raw);
+    await retype(r, 2, 'nueve diez once');
+    await drain();
+    expect(dialog()?.textContent).toContain('Deletes 3 words and 1 annotation.');
+    // Meanwhile another user changes the row's text and glosses "cinco".
+    server.otherSaves([{ type: 'insert', index: 19, value: ' y' }]);
+    const stored = server.stored.textLayers[0].tokenLayers.find((l) => l.id === 'morphL');
+    stored.spanLayers[0].spans.push({ id: 'g-other', tokens: ['m-5'], value: 'g.cinco' });
+    await r.step(async () => {
+      button('Save anyway').click();
+      await settle();
+    });
+    await drain();
+    expect(row(r.container, 2).value).toBe('cuatro y cinco seis');
+    await r.step(() => row(r.container, 2).focus());
+    await r.step(async () => {
+      press(row(r.container, 2), 'Enter');
+      await settle();
+    });
+    await drain();
+    expect(dialog()?.textContent).toContain('2 annotations');
+    expect(server.body).toBe('uno dos tres\ncuatro y cinco seis');
+    await r.step(async () => {
+      button('Cancel').click();
+      await settle();
+    });
+    await r.unmount();
+  });
+
+  it('asks again after a save refused before it showed', async () => {
+    // The row's segment starts before the one whose text comes first: an
+    // edit of it is refused as out of order before anything shows.
+    const raw = RAW();
+    raw.textLayers[0].tokenLayers.find((l) => l.id === 'alignL').tokens = [
+      seg('a-1', 0, 12, 4, 5),
+      seg('a-2', 13, 30, 1, 3),
+    ];
+    const { server, r, drain } = await mount(raw);
+    // Row 1 in time order is "cuatro cinco seis".
+    await retype(r, 1, 'nueve diez once');
+    await drain();
+    expect(dialog()?.textContent).toContain('Deletes 3 words and 3 annotations.');
+    await r.step(async () => {
+      button('Save anyway').click();
+      await settle();
+    });
+    await drain();
+    expect(server.body).toBe(BODY);
+    expect(row(r.container, 1).value).toBe('nueve diez once');
+    await r.step(() => row(r.container, 1).focus());
+    await r.step(async () => {
+      press(row(r.container, 1), 'Enter');
+      await settle();
+    });
+    await drain();
+    expect(dialog()?.textContent).toContain('Deletes 3 words and 3 annotations.');
+    await r.step(async () => {
+      button('Cancel').click();
+      await settle();
+    });
+    await r.unmount();
+  });
 });
