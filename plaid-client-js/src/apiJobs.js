@@ -1,5 +1,5 @@
 /**
- * The jobs bundle: unattended assistant jobs (the core manual, "Jobs"). A
+ * The jobs bundle: unattended assistant jobs (the core manual, "Assistant jobs"). A
  * writer starts a job on a project, and one worker process, run by the
  * operator under an admin account, takes jobs one at a time and writes as the
  * person who started each. The bundle has the people's calls (create, list,
@@ -204,7 +204,7 @@ export function jobsApi(client) {
      * @param {string} jobId - The job
      * @param {string} workerId - The worker's id
      * @param {object} [fields]
-     * @param {string | null} [fields.phase] - `checking`, `glossing`, `harmonizing` or `reporting`
+     * @param {string | null} [fields.phase] - `checking`, `planning`, `working`, `harmonizing` or `reporting`
      * @param {string | null} [fields.message] - One line for the person (at most 300 characters)
      * @param {string | null} [fields.waitingFor] - `people` or `model`
      * @param {string | null} [fields.currentDocument] - The document being worked

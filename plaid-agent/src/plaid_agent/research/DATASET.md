@@ -219,7 +219,7 @@ One row per machine unit followed. A unit is an operation group, else a batch, e
 
 - `assistant-plan`: an approved assistant plan being applied. `legacy: true` when the operation has no kind and was recognized by its `Assistant: ` label.
 - `service-run`: a service's run, or an app's in-browser rule (`ref` is `builtin:<name>`).
-- `job`: an unattended assistant job's writes, machine proposals made in the name of the person who started it (`ref` is `job:<job id>/doc:<document id>/pass:gloss` or `/pass:harmonize`, or `job:<job id>/pass:entries`). Its actor class is `machine`.
+- `job`: an unattended assistant job's writes, machine proposals made in the name of the person who started it (`ref` is `job:<job id>/doc:<document id>/pass:gloss` or `/pass:harmonize`). Its actor class is `machine`.
 - `guess-adoption`: a person taking a suggested value (an igt guess) as their own.
 - `untagged-machine`: a unit with no kind (older than kinds) that wrote machine provenance (`prov` set, not confirmed, not contributed). An untagged unit whose machine stamps are all an importer's (`flex-import`) is an `import` instead.
 

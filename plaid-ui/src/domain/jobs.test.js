@@ -15,7 +15,7 @@ import {
   workerSeen,
 } from './jobs.js';
 
-// An assistant job (unattended glossing, the jobs round of 2026-11-12) as the
+// An assistant job (unattended work, the jobs round of 2026-11-12) as the
 // apps see it: the constants they poll by, the words for what core stores as
 // codes, and the banner a document shows while the job works in it.
 

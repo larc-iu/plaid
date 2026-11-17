@@ -1,6 +1,6 @@
-// An assistant job as the apps show it: a worker run by the operator glosses
-// a project's documents unattended, one stretch of sentences at a time, in the
-// name of the person who started it. Core stores the job and the worker moves
+// An assistant job as the apps show it: a worker run by the operator works
+// through a project's documents unattended, a part at a time, in the name of
+// the person who started it. Core stores the job and the worker moves
 // it on (CONTRACT.md of the jobs round, 2026-11-12). This file holds what every
 // app reads of it: how often to ask, the words for the codes core stores, and
 // the banner over the document the job is working in.

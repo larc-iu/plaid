@@ -3716,7 +3716,7 @@ def _or_none(answer):
 
 
 class JobsResource(_Resource):
-    """Unattended assistant jobs (the core manual, "Jobs"). A writer starts a
+    """Unattended assistant jobs (the core manual, "Assistant jobs"). A writer starts a
     job on a project, and one worker process, run by the operator under an
     admin account, takes jobs one at a time and writes as the person who
     started each. The resource has the people's calls (``create``, ``list``,
@@ -3902,7 +3902,7 @@ class JobsResource(_Resource):
         Args:
             job_id: The job
             worker_id: The worker's id
-            phase: ``checking``, ``glossing``, ``harmonizing`` or ``reporting``
+            phase: ``checking``, ``planning``, ``working``, ``harmonizing`` or ``reporting``
             message: One line for the person (at most 300 characters)
             waiting_for: ``people`` or ``model``
             current_document: The document being worked
@@ -3938,7 +3938,7 @@ class JobsResource(_Resource):
                 changed, proposed, analyzed, changes, deletions, repeated,
                 peoples_values_changed, text_changes}``
             skipped: ``[{sentence, sentence_id, reason, kind}]``, at most 500
-            gloss_group: The operation group of the job's glossing here
+            gloss_group: The operation group of the job's work here
             harmonize_group: The operation group of its harmonize here
         """
         return self._request('PUT', f'/api/v1/jobs/{job_id}/documents/{document_id}',
