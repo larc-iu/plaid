@@ -36,3 +36,29 @@ it('says a project not fully set up in the plain empty state', () => {
   expect(empty.textContent).toContain(NOT_SET_UP);
   expect(empty.className).toBe('igt-island__empty');
 });
+
+// H16-6: a document with no text sent the reader to Tokenize, which sent
+// them back to Baseline.
+it('sends a document with no text to the Baseline tab, and one with text to Tokenize', () => {
+  for (const [body, line, label, tab] of [
+    ['', 'No text. Add it on the Baseline tab.', 'Go to Baseline', 'baseline'],
+    ['ab cd', 'No sentences. Split the text on the Tokenize tab.', 'Go to Tokenize', 'tokenize'],
+  ]) {
+    resetIds();
+    const doc = makeIgtDoc({
+      raw: buildRawDoc({ body, words: [], morphemes: [], sentences: [] }),
+      client: makeFakeClient(),
+    });
+    const went = [];
+    ({ host, editor } = mountIsland(doc, { onNavigateTab: (t) => went.push(t) }));
+    const empty = host.querySelector('.igt-island__empty');
+    expect(empty.textContent).toContain(line);
+    const button = empty.querySelector('button');
+    expect(button.textContent.trim()).toBe(label);
+    button.click();
+    expect(went).toEqual([tab]);
+    editor.destroy();
+    host.remove();
+    editor = null;
+  }
+});
