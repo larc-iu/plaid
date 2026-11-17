@@ -1003,6 +1003,18 @@ export const alignmentMutations = {
     const cut = cuts.reduce((best, c) =>
       Math.abs(c.at - wanted) < Math.abs(best.at - wanted) ? c : best,
     );
+    // The second half starts at `time` and keeps the time-order rule like any
+    // other new segment: cross-talk that starts earlier with its text after
+    // this one would leave both segments' times unchangeable.
+    const inversion = findTemporalInversion(
+      info.alignmentTokenLayer?.tokens || [],
+      cut.at,
+      time,
+      segment.id,
+    );
+    if (inversion === 'previous')
+      return { error: 'Playback is past the start of the next segment.' };
+    if (inversion) return { error: 'The second half would be out of order with another segment.' };
     const loss = countSplitLoss(info.primaryTextLayer?.tokenLayers || [], segment.id, cut.at);
     return { segment, time, at: cut.at, leftEnd: cut.leftEnd, loss };
   },

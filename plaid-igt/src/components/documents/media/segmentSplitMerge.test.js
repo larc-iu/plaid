@@ -153,6 +153,40 @@ describe('splitting a segment', () => {
     expect(kinds(one)).toEqual([]);
   });
 
+  it('refuses a split whose second half would start after cross-talk that starts earlier (H10-4)', async () => {
+    // "he saw a fish" is Tom's, 3 to 6 s, and Ann's cross-talk after it in the
+    // text starts at 4. A second half from 4.5 would sit before Ann's text
+    // while starting after her, and neither segment's times could be changed
+    // again.
+    const doc = makeIgtDoc({
+      raw: annotated({
+        alignmentTokens: [
+          {
+            id: 'seg-1',
+            text: 'text-1',
+            begin: 0,
+            end: 13,
+            metadata: { timeBegin: 3, timeEnd: 6, speaker: 'Tom' },
+          },
+          {
+            id: 'seg-2',
+            text: 'text-1',
+            begin: 14,
+            end: 28,
+            metadata: { timeBegin: 4, timeEnd: 7, speaker: 'Ann' },
+          },
+        ],
+      }),
+    });
+    expect(doc.segmentSplitPlan('seg-1', { time: 4.5, at: 7 })).toEqual({
+      error: 'Playback is past the start of the next segment.',
+    });
+    expect(await doc.splitSegment('seg-1', { time: 4.5, at: 7 })).toBe(false);
+    expect(kinds(doc)).toEqual([]);
+    // Before Ann starts, the split is fine.
+    expect(doc.segmentSplitPlan('seg-1', { time: 3.5, at: 7 })).toMatchObject({ at: 7 });
+  });
+
   it('asks about a relation kept inside one segment that the split would cut, and takes it off', async () => {
     const raw = annotated();
     // Another layer's relation from "he" to "and", kept inside one segment.
