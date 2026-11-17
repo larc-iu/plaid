@@ -235,7 +235,8 @@ def test_a_failed_turns_steps_stay_for_the_next_turn_and_retry_takes_them_off(mo
     conv, _meta = store.load('c1')
     msgs = conv['messages']
     assert [m['role'] for m in msgs] == ['user', 'assistant', 'tool', 'user']
-    assert msgs[3]['content'] == f'(note) Your turn ended here without a reply{why}'
+    assert msgs[3]['content'] == (f'(note) Your turn ended here without a reply{why} '
+                                  'Nothing it staged, drafted or saved was kept.')
     assert all(m.get('failed_turn') for m in msgs[1:])
     # What the model is sent of them: the tag stays out.
     assert all('failed_turn' not in m for m in agent._clean_transcript(msgs))
@@ -281,3 +282,17 @@ def test_the_research_extractor_reads_the_output_limit_line_old_and_new():
                                   'Ask again, perhaps more narrowly.'):
         assert turn_end({'kind': 'error', 'text': text}) == 'cut_at_length'
         assert turn_end({'kind': 'assistant', 'failed': True, 'text': f'({text})'}) == 'cut_at_length'
+
+
+def test_a_turn_that_staged_and_then_failed_twice_is_an_answer_with_its_plan_and_no_note(monkeypatch):
+    """The note's "Nothing it staged ... was kept" and a kept plan cannot meet:
+    a failure after a plan was staged keeps the plan as the turn's answer."""
+    def stage(ws, name, args):
+        ws.ops.append({'kind': 'x'})
+        return 'Planned.'
+    tracer = Tracer(kind=lambda n: PLAN, describe=lambda n, a: 'Planned x', progress=lambda n, a: '')
+    kit = Toolkit(tools_for=lambda ws: [], call_tool=stage, tracer=tracer)
+    err = _errors()['server']
+    monkeypatch.setattr(agent, '_complete', Model(_resp(calls=[_call(1, 'plan_a')]), err, err))
+    turn = run_turn(ModelConfig(model='fake/m', stream=False), kit, Ws(), 'system', [{'role': 'user', 'content': 'hi'}])
+    assert turn.failure is err and turn.text == '(The model service did not answer.)'

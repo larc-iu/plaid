@@ -1141,6 +1141,10 @@ def turn_messages(e: BaseException) -> List[Dict[str, Any]]:
     return list(getattr(e, 'turn_messages', None) or [])
 
 
+#: What the note after a failed turn's kept steps says of what they made.
+NOTHING_KEPT = 'Nothing it staged, drafted or saved was kept.'
+
+
 def failed_turn_messages(e: BaseException) -> List[Dict[str, Any]]:
     """What a chat turn that failed with ``e`` leaves in the model
     transcript after its question: the calls it made and their results
@@ -1156,7 +1160,12 @@ def failed_turn_messages(e: BaseException) -> List[Dict[str, Any]]:
         why = ': the model service did not answer.'
     else:
         why = '.'
-    note = {'role': 'user', 'content': f'(note) Your turn ended here without a reply{why}'}
+    # The kept results still say what the turn staged, drafted or saved
+    # ("Its card is on your reply"), and a failed turn keeps none of it: a
+    # plan or card kept makes the turn an answer instead (`keep_the_plan`),
+    # and its saved files are discarded (core.turn). So this is true of
+    # every note written (REV-SVA-2).
+    note = {'role': 'user', 'content': f'(note) Your turn ended here without a reply{why} {NOTHING_KEPT}'}
     return [{**m, FAILED_TURN: True} for m in kept + [note]]
 
 
