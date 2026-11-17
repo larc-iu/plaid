@@ -18,7 +18,6 @@ from fixtures import FakeClient, document_raw, fake_ws
 from plaid_agent.core import turn as turn_mod
 from plaid_agent.core.agent import TurnResult
 from plaid_agent.core.conversation import ConversationStore, build_meta, earlier_reads, user_item
-from plaid_agent.core.limits import READ_PRINTS_MAX
 from plaid_agent.igt.toolkit import call_tool
 from test_service_flow import Helper, _request, _service
 
@@ -184,13 +183,13 @@ def test_code_that_loads_the_document_plans_by_the_numbers_it_read(monkeypatch):
     assert 'Planned' in out and 'have changed' not in out
 
 
-def test_the_refusal_lists_every_changed_sentence_of_the_document(monkeypatch):
+def test_the_refusal_names_the_sentence_first_and_the_other_changed_ones(monkeypatch):
     c = Conversation(monkeypatch)
     c.turn(('read_document', {'document': 'Text 1', 'sentences': [1, 2]}))
     c.edit(_insert_word)
     c.edit(lambda raw: _insert_word(raw, at=28, form='kwa', wid='w-s2'))
     out, = c.turn(_gloss('s2.w1'))
-    assert out == ('Error: "Text 1" s2.w1: the words of s1 and s2 have changed since this conversation read them. '
+    assert out == ('Error: "Text 1" s2.w1: the words of s2 and s1 have changed since this conversation read them. '
                    'Read them again with read_document and name their words by the numbers it shows now.')
 
 
@@ -208,15 +207,63 @@ def test_a_workspace_outside_a_conversation_never_refuses():
     piece.refuse_moved_sentence(piece.doc('Text 1'), 1, 's1.w2')
 
 
-def test_earlier_reads_take_the_newest_turn_and_the_record_is_capped():
+def test_earlier_reads_take_the_newest_turn():
     display = [user_item('a'), {'kind': 'assistant', 'read': {'d1': {'1': 'aaaa', '2': 'bbbb'}}},
                {'kind': 'error', 'read': {'d1': {'1': 'zzzz'}}},
                {'kind': 'assistant', 'read': {'d1': {'1': 'cccc'}, 'd2': {'4': 'dddd'}}}]
     assert earlier_reads(display) == {'d1': {'1': 'cccc', '2': 'bbbb'}, 'd2': {'4': 'dddd'}}
+
+
+def test_the_newest_reply_holds_the_one_map_of_what_the_conversation_read(monkeypatch):
+    """REV-SVB-6: one merged map, on the newest reply, of sentences that
+    still exist."""
+    c = Conversation(monkeypatch)
+    c.turn(READ_S1)
+    c.turn(('read_document', {'document': 'Text 1', 'sentences': [2]}))
+    display = c.store.load('c1')[0]['display']
+    assert [set((d.get('read') or {}).get('d1', ())) for d in display if d['kind'] == 'assistant'] == [set(), {'1', '2'}]
+
+    def one_sentence(raw):
+        raw = copy.deepcopy(raw)
+        tl = raw['text_layers'][0]
+        tl['text']['body'] = tl['text']['body'][:17]
+        for tk in tl['token_layers']:
+            tk['tokens'] = [t for t in tk['tokens'] if t['begin'] < 17]
+        raw['version'] += 1
+        return raw
+    c.edit(one_sentence)
+    c.turn(_gloss('s1.w2'))
+    assert set(c.last_item()['read']['d1']) == {'1'}
+
+
+def test_past_the_cap_a_sentence_has_no_print_and_is_not_checked(monkeypatch):
+    """REV-SVB-5: never refused on an older print."""
+    import plaid_agent.core.workspace as core_ws
+    c = Conversation(monkeypatch)
+    c.turn(READ_S1)
+    c.edit(_insert_word)
+    monkeypatch.setattr(core_ws, 'READ_PRINTS_MAX', 1)
+    # This turn reads s2 then s1 by code: only one fits, and the older print
+    # of s1 is not kept beside it.
+    c.turn(('read_document', {'document': 'Text 1', 'sentences': [2]}), CODE_REFS)
+    assert c.last_item()['read'] == {'d1': {'2': c.last_item()['read']['d1']['2']}}
+    c.edit(lambda raw: _insert_word(raw, at=0, form='na', wid='w-0'))
+    out, = c.turn(_gloss('s1.w2'))
+    assert out.startswith('Planned'), out
+
+
+def test_the_refusal_names_a_few_sentences_that_exist_and_counts_the_rest():
+    from types import SimpleNamespace
     ws = fake_ws(FakeClient())
-    ws.read_now = {'d1': {i: 'p' for i in range(1, READ_PRINTS_MAX + 50)}}
-    kept = ws.reads_kept()
-    assert len(kept['d1']) == READ_PRINTS_MAX and kept['d1']['1'] == 'p'
+    sentences = [SimpleNamespace(id=f's-{i}', words=[]) for i in range(1, 11)]
+    doc = SimpleNamespace(id='d1', name='Text 1', sentences=sentences)
+    ws.read_before = {'d1': {str(i): 'old' for i in range(1, 13)}}
+    ws.planning = True
+    with pytest.raises(Exception) as e:
+        ws.refuse_moved_sentence(doc, 5, 's5.w1')
+    assert str(e.value) == ('"Text 1" s5.w1: the words of s5, s1, s2 and 7 other sentences have changed since this '
+                            'conversation read them. Read them again with read_document and name their words by the '
+                            'numbers it shows now.')
 
 
 def _segmented_again(raw):

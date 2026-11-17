@@ -72,7 +72,7 @@ def shared_schemas(*, ref: str, comment_field: bool = False, restore: bool = Fal
 
 def _asks_help(args) -> bool:
     """Whether a plan tool's call only asks for its help text: action
-    "help", or help true (analyze_sentence)."""
+    "help", or help true."""
     return isinstance(args, dict) and (str(args.get('action') or '').strip().lower() == 'help'
                                        or args.get('help') is True)
 

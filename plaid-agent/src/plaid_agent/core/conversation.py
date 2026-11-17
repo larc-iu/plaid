@@ -973,6 +973,11 @@ def turn_ending(base: Dict[str, Any], asked: List[Dict[str, Any]], item: Dict[st
             # waiting too: approving one beside the job it led to would write
             # its changes a second time (RP-2, RPF-A2).
             earlier = replace_undecided_cards(replace_undecided(earlier))
+        if item.get('read'):
+            # The newest reply holds the conversation's one map of what it
+            # read (BaseWorkspace.reads_kept), so the older ones' go.
+            earlier = [{k: v for k, v in d.items() if k != 'read'} if isinstance(d, dict) and 'read' in d else d
+                       for d in earlier]
         held = stored['messages']
         notes = held[len(known):] if held[:len(known)] == known else []
         return fit({'messages': list(asked) + notes + list(added), 'display': earlier + kept + [item]})

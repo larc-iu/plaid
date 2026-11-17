@@ -108,12 +108,13 @@ MAX_SCOPE_DOCS = 100
 # rather than the promise.
 MAX_SENTENCES_PER_READ = 40
 
-# Sentences one reply keeps a print of, of those its turn showed the model
-# (``BaseWorkspace.reads_kept``), for a later turn to tell whether a number
-# read then still names the same word. About seventeen bytes each in the
-# record. Past it the rest are not kept, and a number read in them is
-# compared with an older read or with none.
-READ_PRINTS_MAX = 400
+# Sentences the conversation keeps a print of (``BaseWorkspace.reads_kept``),
+# in one map on its newest reply, for a later turn to tell whether a number
+# read then still names the same word or sentence. About 22 bytes each in the
+# record as stored (a print of thirteen characters under its number): 5,000
+# fill about 110 KB, against core's 5 MB default for a record. Past it a
+# sentence keeps no print and its numbers are not checked (REV-SVB-5).
+READ_PRINTS_MAX = 5000
 
 # Documents the project overview names. The rest are in list_documents, which
 # pages and filters, and the overview says so.

@@ -509,12 +509,11 @@ class BaseWorkspace:
     def note_numbered(self, doc, positions) -> None:
         """Keep the print of each sentence of ``doc`` at ``positions``
         (1-based) as this turn showed its word numbers to the model: the one
-        helper every read that prints a sentence's word or morpheme numbers
-        calls (read_document, read_sentences, run_code's load(), the hits of
-        the corpus tools, the query tool, an entry's usage examples, the
-        checks of validate). A staging call by those numbers is then held to
-        the sentence as shown (:meth:`refuse_moved_sentence`). Unlike
-        :meth:`note_shown` it says nothing of what a job counts as read."""
+        helper every read that prints those numbers calls (read_document,
+        run_code's load() and each app's own reads). A staging call by those
+        numbers is then held to the sentence as shown
+        (:meth:`refuse_moved_sentence`). Unlike :meth:`note_shown` it says
+        nothing of what a job counts as read."""
         held = self.read_now.setdefault(doc.id, {})
         for i in positions:
             if 1 <= i <= len(doc.sentences) and i not in held:
@@ -534,23 +533,39 @@ class BaseWorkspace:
         return None
 
     def reads_kept(self) -> Dict[str, Dict[str, str]]:
-        """What this turn showed the model, for its reply to keep (``read``):
-        document id -> sentence number as text -> print, at most
-        :data:`READ_PRINTS_MAX` sentences."""
-        out: Dict[str, Dict[str, str]] = {}
-        left = READ_PRINTS_MAX
+        """The conversation's one map of what it read (``read``), for the
+        newest reply to keep: the earlier replies' map with this turn's reads
+        over it, document id -> sentence number as text -> print (REV-SVB-6).
+        A document no longer listed goes, and so does a number past the end
+        of a document this turn loaded. At most :data:`READ_PRINTS_MAX`
+        sentences, this turn's first: a sentence past it keeps no print at
+        all and is not checked, never against an older one (REV-SVB-5)."""
+        merged: Dict[str, Dict[str, str]] = {d: dict(p) for d, p in self.read_before.items() if p}
         for doc_id, prints in self.read_now.items():
             for n, printed in prints.items():
-                if left <= 0:
-                    return out
-                out.setdefault(doc_id, {})[str(n)] = printed
-                left -= 1
+                merged.setdefault(doc_id, {})[str(n)] = printed
+        if not merged:
+            return {}
+        listed = {d.get('id') for d in self.documents()}
+        out: Dict[str, Dict[str, str]] = {}
+        left = READ_PRINTS_MAX
+        order = [(d, str(n)) for d, prints in self.read_now.items() for n in prints]
+        now = set(order)
+        order += [(d, n) for d, prints in merged.items() for n in prints if (d, n) not in now]
+        for doc_id, n in order:
+            doc = self._docs.get(doc_id)
+            if doc_id not in listed or (doc is not None and not 1 <= int(n) <= len(doc.sentences)):
+                continue
+            if left <= 0:
+                break
+            out.setdefault(doc_id, {})[n] = merged[doc_id][n]
+            left -= 1
         return out
 
     def refuse_moved_sentence(self, doc, n: int, ref: str, words: bool = True) -> None:
         """Refuse a staging call naming sentence ``n`` (1-based) of ``doc``
         by its number, ``ref`` as given, when it is not as this conversation
-        last read it (2026-11-17 survey): with ``words``, a word or morpheme
+        last read it (2026-11-17 survey): with ``words``, a word or a part of one
         of it is named by number and its words must be as read; without, the
         sentence alone is named and the number must still name the sentence
         read (REV-SVB-12). A sentence read again in this turn
@@ -575,8 +590,16 @@ class BaseWorkspace:
             return part(self.words_print(doc.sentences[k - 1])) != part(before[str(k)])
         if not moved(n):
             return
-        names = [f's{k}' for k in sorted(int(k) for k in before if k.isdigit()) if moved(k)]
-        listed = names[0] if len(names) == 1 else ', '.join(names[:-1]) + ' and ' + names[-1]
+        # The one named first, then at most two more and a count, each a
+        # sentence the document still has.
+        others = [k for k in sorted(int(k) for k in before if k.isdigit())
+                  if k != n and k <= len(doc.sentences) and moved(k)]
+        names = [f's{k}' for k in [n] + others[:2]]
+        rest = len(others) - 2
+        if rest > 0:
+            listed = ', '.join(names) + f' and {rest} other sentence{"s" if rest != 1 else ""}'
+        else:
+            listed = names[0] if len(names) == 1 else ', '.join(names[:-1]) + ' and ' + names[-1]
         one = len(names) == 1
         where = f'{plain_quote(doc.name or "")} {ref}'
         if words:
