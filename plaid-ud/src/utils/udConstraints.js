@@ -8,6 +8,7 @@
 // changes a closed list, never on an open.
 
 import { MODES, valueSetRule } from './udVocabMode.js';
+import { storesList } from './udVocab.js';
 import {
   queueRepairOfBareLayer,
   sameConstraints,
@@ -17,12 +18,17 @@ import { UD_NAMESPACE } from '../domain/udConfig.js';
 
 const stored = (layer) => layer?.constraints?.[UD_NAMESPACE] ?? null;
 
-const entry = (kind, layer, constraints) => ({
+// `listed`: the list is closed and the layer stores it. A list closed with
+// nothing stored (only before REV-TR-1) reads the shipped default, which can
+// have moved since its rule was declared, so the save that stores it declares
+// the rule again even where the values read the same (queueRuleChanges).
+const entry = (kind, layer, constraints, listed = false) => ({
   kind,
   layerId: layer.id,
   namespace: UD_NAMESPACE,
   constraints,
   stored: stored(layer),
+  listed,
 });
 
 /**
@@ -51,10 +57,9 @@ export const wantedConstraints = (info) => {
   const plain = (layer, field) => {
     if (!layer?.id) return;
     const constraints = [{ type: 'single-span' }];
-    if (field && info.modes?.[field] === MODES.CLOSED) {
-      constraints.push(valueSetRule(field, info.vocab?.[field]));
-    }
-    out.push(entry('span', layer, constraints));
+    const closed = field && info.modes?.[field] === MODES.CLOSED;
+    if (closed) constraints.push(valueSetRule(field, info.vocab?.[field]));
+    out.push(entry('span', layer, constraints, closed && storesList(layer, field)));
   };
   plain(info.formLayer);
   plain(info.lemmaLayer);
@@ -67,10 +72,10 @@ export const wantedConstraints = (info) => {
       { type: 'max-in-degree', max: 1 },
     ];
     if (sentences) constraints.push({ type: 'same-ancestor', tokenLayer: sentences });
-    if (info.modes?.deprel === MODES.CLOSED) {
-      constraints.push(valueSetRule('deprel', info.vocab?.deprel));
-    }
-    out.push(entry('relation', info.relationLayer, constraints));
+    const closed = info.modes?.deprel === MODES.CLOSED;
+    if (closed) constraints.push(valueSetRule('deprel', info.vocab?.deprel));
+    const listed = closed && storesList(info.relationLayer, 'deprel');
+    out.push(entry('relation', info.relationLayer, constraints, listed));
   }
   if (info.enhancedRelationLayer?.id && sentences) {
     out.push(
@@ -91,14 +96,17 @@ const BUNDLE = { token: 'tokenLayers', span: 'spanLayers', relation: 'relationLa
  * settings do. The declaration goes in the same batch as the settings
  * write, so a list the stored data breaks is refused with it. A layer that
  * holds no rules yet is repaired first in the batch, so only a violation
- * with no remedy refuses it. Returns how
- * many it queued.
+ * with no remedy refuses it. A closed list the save stores where nothing was
+ * stored is declared again too (see `entry`). Returns how many it queued.
  */
 export const queueRuleChanges = (b, before, after) => {
   const was = new Map(wantedConstraints(before).map((w) => [w.layerId, w]));
   let n = 0;
   for (const w of wantedConstraints(after)) {
-    if (sameConstraints(w.constraints, was.get(w.layerId)?.constraints)) continue;
+    const prior = was.get(w.layerId);
+    if (sameConstraints(w.constraints, prior?.constraints) && w.listed === !!prior?.listed) {
+      continue;
+    }
     queueRepairOfBareLayer(b, w);
     b[BUNDLE[w.kind]].setConstraints(w.layerId, w.namespace, w.constraints, undefined, {
       expected: w.stored ?? null,

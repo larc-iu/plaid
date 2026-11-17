@@ -8,6 +8,8 @@ import {
   withConfigWrites,
 } from '../src/utils/udConstraints.js';
 import { getUdLayerInfo } from '../src/utils/udLayerUtils.js';
+import { queueVocabCells } from '../src/domain/udVocabSave.js';
+import { UNIVERSAL_DEPRELS, UPOS_TAGS } from '../src/utils/udVocab.js';
 import { ConlluDocument } from '../src/domain/ConlluDocument.js';
 import { rawDocFromConllu } from './helpers/rawDoc.js';
 import { withOps } from './helpers/stubClient.js';
@@ -189,4 +191,126 @@ test('an open declares no rule, repairs nothing, sets no key and deletes no supp
   assert.deepEqual(await run('r@x.org', ['m@x.org']), []);
   assert.deepEqual(await run('w@x.org', ['m@x.org'], ['w@x.org']), []);
   assert.deepEqual(await run('m@x.org', ['m@x.org']), []);
+});
+
+// REV-TR-1: a closed list is stored. A list read from the shipped default
+// moves when the default does (`ref` joined the relations), and core's rule,
+// declared from the old default, would then refuse a value the page and the
+// assistant offer. So every save that leaves a list closed stores it, as the
+// person saw it, and an open list with nothing stored keeps following the
+// default.
+const recorder = () => {
+  const calls = [];
+  const bundle = (name) => ({
+    setConfig: (id, ns, key, value, _i, opts) =>
+      calls.push({ op: 'config', name, id, key, value, opts }),
+    setConstraints: (id, ns, constraints, _i, opts) =>
+      calls.push({ op: 'rule', name, id, constraints, opts }),
+    repairConstraints: () => {},
+  });
+  return {
+    calls,
+    b: {
+      spanLayers: bundle('spanLayers'),
+      relationLayers: bundle('relationLayers'),
+      tokenLayers: bundle('tokenLayers'),
+    },
+  };
+};
+
+test('a save that closes a list with nothing stored stores the list shown, and the rule is that list', () => {
+  const raw = rawDocFromConllu(INPUT, 'e');
+  const info = getUdLayerInfo(raw);
+  const { calls, b } = recorder();
+  queueVocabCells(b, raw, [
+    { bundle: 'relationLayers', entity: info.relationLayer, key: 'vocabMode', value: 'closed' },
+    { bundle: 'spanLayers', entity: info.uposLayer, key: 'vocabMode', value: 'closed' },
+    { bundle: 'spanLayers', entity: info.featuresLayer, key: 'vocabMode', value: 'closed' },
+  ]);
+  const stored = (id, key) => calls.find((c) => c.op === 'config' && c.id === id && c.key === key);
+  const deprel = stored(info.relationLayer.id, 'vocab');
+  assert.deepEqual(deprel.value, [...UNIVERSAL_DEPRELS]);
+  assert.ok(deprel.value.includes('ref'));
+  assert.deepEqual(stored(info.uposLayer.id, 'vocab').value, [...UPOS_TAGS]);
+  assert.deepEqual(
+    stored(info.featuresLayer.id, 'inventory').value,
+    info.vocab.featureInventory.list,
+  );
+  const rule = calls.find((c) => c.op === 'rule' && c.id === info.relationLayer.id);
+  assert.deepEqual(rule.constraints.at(-1).values, [...UNIVERSAL_DEPRELS]);
+  // An open list with nothing stored stores nothing: it follows the default.
+  assert.equal(stored(info.xposLayer.id, 'vocab'), undefined);
+});
+
+test('an open list with nothing stored stays unstored on a save', () => {
+  const raw = rawDocFromConllu(INPUT, 'e');
+  const info = getUdLayerInfo(raw);
+  const { calls, b } = recorder();
+  queueVocabCells(b, raw, [
+    {
+      bundle: 'relationLayers',
+      entity: info.relationLayer,
+      key: 'colors',
+      value: { nsubj: '#123456' },
+    },
+  ]);
+  assert.deepEqual(
+    calls.map((c) => [c.op, c.key]),
+    [['config', 'colors']],
+  );
+});
+
+test('a list found closed with nothing stored is stored and its rule declared again on the next save', () => {
+  const raw = rawDocFromConllu(INPUT, 'e');
+  const base = getUdLayerInfo(raw);
+  // Closed before lists were stored: the mode alone, and core's rule from the
+  // default of the day, which had no `ref`.
+  const legacy = withConfigWrites(raw, [
+    { entity: base.relationLayer, key: 'vocabMode', value: 'closed' },
+  ]);
+  const info = getUdLayerInfo(legacy);
+  const old = UNIVERSAL_DEPRELS.filter((r) => r !== 'ref');
+  const held = [
+    { type: 'acyclic', selfLoops: true },
+    { type: 'max-in-degree', max: 1 },
+    { type: 'same-ancestor', tokenLayer: info.sentenceTokenLayer.id },
+    { type: 'value-set', values: old, delimiters: ':', parts: 'first' },
+  ];
+  info.relationLayer.constraints = { ud: held };
+  const { calls, b } = recorder();
+  // Any save of the settings, here a colour.
+  queueVocabCells(b, legacy, [
+    {
+      bundle: 'relationLayers',
+      entity: info.relationLayer,
+      key: 'colors',
+      value: { nsubj: '#123456' },
+    },
+  ]);
+  const vocab = calls.find((c) => c.op === 'config' && c.key === 'vocab');
+  assert.equal(vocab.id, info.relationLayer.id);
+  assert.deepEqual(vocab.value, [...UNIVERSAL_DEPRELS]);
+  const rule = calls.find((c) => c.op === 'rule' && c.id === info.relationLayer.id);
+  assert.ok(rule, 'the rule is declared again');
+  assert.deepEqual(rule.constraints.at(-1).values, [...UNIVERSAL_DEPRELS]);
+  assert.deepEqual(rule.opts, { expected: held });
+
+  // Once stored, a save that changes no list re-declares nothing.
+  const healed = withConfigWrites(
+    legacy,
+    [vocab].map((c) => ({ entity: info.relationLayer, key: c.key, value: c.value })),
+  );
+  const again = recorder();
+  queueVocabCells(again.b, healed, [
+    {
+      bundle: 'relationLayers',
+      entity: getUdLayerInfo(healed).relationLayer,
+      key: 'colors',
+      value: {},
+    },
+  ]);
+  assert.deepEqual(
+    again.calls.map((c) => [c.op, c.key]),
+    [['config', 'colors']],
+  );
 });

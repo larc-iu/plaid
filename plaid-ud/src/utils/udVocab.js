@@ -37,7 +37,8 @@ export const UPOS_TAGS = Object.freeze([
 ]);
 
 // The 37 universal dependency relations and the enhanced relation `ref`
-// (REV-HFU-2), in alphabetical order. They seed the DEPREL vocabulary. Projects may add language-specific `:subtype` forms on top.
+// (REV-HFU-2), in alphabetical order. They seed the DEPREL
+// vocabulary. Projects may add language-specific `:subtype` forms on top.
 export const UNIVERSAL_DEPRELS = Object.freeze([
   'acl',
   'advcl',
@@ -232,6 +233,38 @@ export const readVocab = (config, { fallback = [] } = {}) => {
   const v = readUdConfig(config, 'vocab');
   return Array.isArray(v) && v.length ? v : fallback;
 };
+
+// Every list with a mode: the field, its layer in getUdLayerInfo's answer,
+// the bundle and key that store it, and the list as the page shows it.
+const MODED_LISTS = [
+  ['upos', 'uposLayer', 'spanLayers', 'vocab', (v) => v.upos],
+  ['xpos', 'xposLayer', 'spanLayers', 'vocab', (v) => v.xpos],
+  ['deprel', 'relationLayer', 'relationLayers', 'vocab', (v) => v.deprel],
+  ['feats', 'featuresLayer', 'spanLayers', 'inventory', (v) => v.featureInventory.list],
+];
+
+// Whether `layer` stores its own list for `field` (upos, xpos, deprel or
+// feats), as readVocab and readFeatureInventory read it: a list stored empty
+// is no list, and the shipped default stands in.
+export const storesList = (layer, field) => {
+  const key = MODED_LISTS.find(([f]) => f === field)?.[3];
+  const v = key && readUdConfig(layer?.config, key);
+  return Array.isArray(v) && v.length > 0;
+};
+
+// The cells that store each list of `info` (getUdLayerInfo's answer) that is
+// closed with nothing stored, as the page shows it, `{bundle, layer, key,
+// value}` with `layer` the key of its layer in `info` (REV-TR-1). A list with
+// nothing stored reads the shipped default, which moves (`ref` joined the
+// relations), so a closed one is pinned. An empty list pins nothing.
+export const unstoredClosedLists = (info) =>
+  MODED_LISTS.flatMap(([field, layer, bundle, key, shown]) => {
+    if (!info[layer] || info.modes?.[field] !== MODES.CLOSED || storesList(info[layer], field)) {
+      return [];
+    }
+    const value = shown(info.vocab);
+    return value?.length ? [{ bundle, layer, key, value }] : [];
+  });
 
 // Read the stored colors — a plain {label: '#hex'} map — returning a fresh copy
 // so callers can't mutate the layer config in place.
