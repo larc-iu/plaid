@@ -86,3 +86,38 @@ def test_code_that_reads_the_corpus_and_a_file_says_both_and_a_sum_says_neither(
     assert _run_code_label(monkeypatch, 'print(len(documents()))').startswith('Read across the corpus')
     assert _run_code_label(monkeypatch, 'print(2 + 2)').startswith('Ran a calculation'), \
         'code that read nothing read nothing across the corpus'
+
+
+def _tally_label(calls, inner=None):
+    from types import SimpleNamespace
+    from plaid_agent.core.sandbox import Tally
+    api = {'documents': lambda: [], 'load': lambda d: {'id': 'd1'}, 'file_text': lambda n: '',
+           'plan': lambda tool, **a: 'ok', 'recording': lambda d: 12.0, 'files': lambda: [{'name': 'a.csv'}]}
+    t = Tally({'lexicon': 'entry'}, reads=('recording',))
+    t.ws = SimpleNamespace(warnings=[])
+    w = t.wrap(api)
+    for c in calls:
+        if c == 'plan':
+            w[c]('set_field_for_form', form='x')
+        elif c in ('documents', 'files'):
+            w[c]()
+        else:
+            w[c]('a.csv' if c.startswith('file') else 'Text 1')
+    return t.label(inner).replace('⁨', '').replace('⁩', '')
+
+
+@pytest.mark.parametrize('calls, inner, label', [
+    (['plan'], 'Planned 3 changes. Kept s1.w2', 'Planned 3 changes. Kept s1.w2'),
+    (['load', 'plan'], 'Planned 3 changes', 'Planned 3 changes'),
+    (['plan'], None, 'Planned changes'),
+    (['load', 'plan'], None, 'Read across the corpus and planned changes'),
+    (['recording'], None, 'Read across the corpus'),
+    (['files'], None, 'Read the attached files'),
+    (['files', 'file_text'], None, 'Read the attached file “a.csv”'),
+    ([], None, 'Ran a calculation'),
+])
+def test_code_that_stages_keeps_the_inner_line_and_every_read_counts(calls, inner, label):
+    """REV-SVA-5: a run that only staged read "Ran a calculation", and
+    recording() and files() counted as no read."""
+    assert _tally_label(calls, inner) == label
+

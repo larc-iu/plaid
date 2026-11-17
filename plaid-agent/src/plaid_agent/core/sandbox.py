@@ -23,7 +23,7 @@ import ast
 import atexit
 import re
 import threading
-from typing import Any, Callable, Dict, List, Optional
+from typing import Any, Callable, Dict, Iterable, List, Optional
 
 from .limits import GROUP_LIMIT, MAX_RESULT_CHARS, QUERY_ROWS, cuts, forget_cuts, note_cut
 from .tools import ToolError, kind_of
@@ -711,8 +711,13 @@ class Tally:
     every read. ``counted`` names host functions an app adds whose answer is
     a list of things read, each with its unit."""
 
-    def __init__(self, counted: Optional[Dict[str, str]] = None):
+    def __init__(self, counted: Optional[Dict[str, str]] = None, reads: Iterable[str] = ()):
         self.counted = dict(counted or {})
+        # An app's host functions that read the project and answer no list
+        # (a recording's length): counted for the label, nothing for ``saw``.
+        self.reads = tuple(reads)
+        self.read_other = 0
+        self.files_listed = False
         self.read: Dict[str, int] = {}
         self.documents: set = set()
         self.queries = 0
@@ -739,6 +744,10 @@ class Tally:
                 answer = f(*args, **kwargs)
                 if name == 'documents':
                     self.documents_listed = True
+                elif name == 'files':
+                    self.files_listed = True
+                elif name in self.reads:
+                    self.read_other += 1
                 if name == 'load':
                     key = answer.get('id') if isinstance(answer, dict) and answer.get('id') else repr(args)
                     self.documents.add((kwargs.get('project'), key))
@@ -763,8 +772,9 @@ class Tally:
                             self.first_warning = self.first_warning or warnings[before]
                 return answer
             return call
-        return {name: counted(name, f) if name in ('documents', 'load', 'query', 'file_rows', 'file_text', 'plan')
-                or name in self.counted
+        return {name: counted(name, f) if name in ('documents', 'load', 'query', 'files', 'file_rows', 'file_text',
+                                                    'plan')
+                or name in self.counted or name in self.reads
                 else f
                 for name, f in api.items()}
 
@@ -803,22 +813,31 @@ class Tally:
                     + keep_waiting())
         return out
 
-    def label(self) -> str:
+    def label(self, inner: Optional[str] = None) -> str:
         """The step's line for the run, by what it read (survey 2026-11-17:
         a parse of an attached file read "Read across the corpus"): the
         corpus when it loaded a document, queried or used one of the app's
-        reads, the attached files it opened by name, and a calculation when
-        it read neither."""
+        reads, the attached files it opened by name (or listed), and a
+        calculation when it read neither. A run that staged through plan()
+        keeps the line the plan tool gave (``inner``), and without one says
+        it planned changes (REV-SVA-5)."""
         from .trace import plural, q
-        corpus = bool(self.documents or self.queries or self.read or self.documents_listed)
+        if self.plans and inner:
+            return inner
+        corpus = bool(self.documents or self.queries or self.read or self.documents_listed or self.read_other)
         files = list(self.files)
         attached = (f'the attached file {q(files[0])}' if len(files) == 1
-                    else plural(len(files), 'attached file') if files else '')
+                    else plural(len(files), 'attached file') if files
+                    else 'the attached files' if self.files_listed else '')
         if corpus:
-            return CODE_LABEL + (f' and {attached}' if attached else '')
-        if attached:
-            return f'Read {attached}'
-        return 'Ran a calculation'
+            read = CODE_LABEL + (f' and {attached}' if attached else '')
+        elif attached:
+            read = f'Read {attached}'
+        else:
+            read = ''
+        if self.plans:
+            return f'{read} and planned changes' if read else 'Planned changes'
+        return read or 'Ran a calculation'
 
     def note(self, ws) -> None:
         """The run's notes, in place of whatever the reads it made noted on
@@ -836,18 +855,23 @@ class Tally:
 
 
 def run_tool(ws, code: Optional[str], api: Callable[[Any], Dict[str, Callable]], shape: str = '',
-             counted: Optional[Dict[str, str]] = None, returns: Optional[Dict[str, str]] = None) -> str:
+             counted: Optional[Dict[str, str]] = None, returns: Optional[Dict[str, str]] = None,
+             reads: Iterable[str] = ()) -> str:
     """The ``run_code`` tool, for every app. One worker per turn, opened on the
     first call and released by the workspace's ``close()``; ``api(ws)`` is what
     the app lets the code see, and ``shape`` its short example of a loaded
-    document, and ``counted`` the app's own reads a step label counts, and
+    document, and ``counted`` the app's own reads a step label counts (and
+    ``reads`` those that answer no list), and
     ``returns`` the shape of what its own list-returning functions give. What
     the run read and printed is noted (:class:`Tally`), and
     what its plan() calls did is said after its output, on an error too."""
     if getattr(ws, 'code', None) is None:
         ws.code = Session()
-    tally = Tally(counted)
+    tally = Tally(counted, reads)
     tally.ws = ws
+    # The line a plan tool called through plan() gives, which the run's own
+    # line keeps (`Tally.label`).
+    before = getattr(ws, 'step_label', None)
     tally.waiting_unsaid = bool(getattr(ws, 'waiting', None)) and not getattr(ws, 'reported_waiting', False)
     try:
         out = run(code, noted(ws, tally.wrap(api(ws))), session=ws.code, shape=shape, tally=tally,
@@ -855,5 +879,6 @@ def run_tool(ws, code: Optional[str], api: Callable[[Any], Dict[str, Callable]],
     except CodeError as e:
         raise ToolError(str(e) + tally.plan_note(ws), kind=kind_of(e, 'code-failed'))
     tally.note(ws)
-    ws.step_label = tally.label()
+    after = getattr(ws, 'step_label', None)
+    ws.step_label = tally.label(after if after != before else None)
     return out + tally.plan_note(ws)

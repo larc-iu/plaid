@@ -295,7 +295,7 @@ def api(ws: Workspace) -> Dict[str, Callable]:
 
 def t_run_code(ws: Workspace, code: str = None) -> str:
     return sandbox.run_tool(ws, code, api, _shape(ws), counted={'lexicon': 'entry'},
-                            returns={'lexicon': LEXICON_RETURNS})
+                            returns={'lexicon': LEXICON_RETURNS}, reads=('recording',))
 
 
 def _lexicon_help(ws: Workspace) -> str:
