@@ -91,7 +91,7 @@ export const EntryDialogs = ({
                   </p>
                 )}
                 <p className="mt-1 text-muted-foreground">
-                  You are about to permanently delete the entry{' '}
+                  Deletes the entry{' '}
                   <strong>
                     "<FormLabel form={item?.form ?? ''} index={numbers?.get(item?.id)} />"
                   </strong>
@@ -123,7 +123,7 @@ export const EntryDialogs = ({
                       references are removed.{' '}
                     </>
                   )}
-                  This action cannot be undone.
+                  It can be undone from the vocabulary's History.
                 </p>
               </div>
             </div>

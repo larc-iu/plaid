@@ -55,6 +55,15 @@ describe('Delete entry asked again', () => {
 });
 
 describe('Delete entry', () => {
+  // H4-2: the vocabulary's History undoes an entry delete with its links.
+  it('says History can undo it, never that it is final', async () => {
+    await mount(<EntryDialogs {...props()} />);
+    const text = document.body.querySelector('[role="alertdialog"]').textContent;
+    expect(text).not.toMatch(/cannot be undone|permanently/);
+    expect(text).toContain('Deletes the entry "dog".');
+    expect(text).toContain("It can be undone from the vocabulary's History.");
+  });
+
   it('names a homonym with its number', async () => {
     await mount(<EntryDialogs {...props({ numbers: new Map([['e1', '2']]) })} />);
     const sub = document.body.querySelector('[role="alertdialog"] sub');
