@@ -41,7 +41,7 @@ def _model(stage=None, closing=lambda kwargs: reply('Staged s1 to s5. Nothing un
             return closing(kwargs)
         if n == 1:
             return reply(calls=(stage or _analyse)(asked))
-        return reply(calls=[call(100 + n, 'analyses_of', {'form': f'x{n}'})])
+        return reply(calls=[call(100 + n, 'no_such_tool', {'n': n})])
     return Model(answer)
 
 
@@ -119,7 +119,7 @@ def test_each_budget_closes_a_piece_that_holds_work(monkeypatch, budget):
 def test_a_piece_out_of_calls_with_nothing_staged_fails_as_before(monkeypatch):
     client = JobClient({'d1': document('d1', 'Story', blank(1))})
     job = start(client, id=J, plan='sentences')
-    model = use(monkeypatch, _model(stage=lambda asked: [call(1, 'analyses_of', {'form': 'x'})]))
+    model = use(monkeypatch, _model(stage=lambda asked: [call(1, 'no_such_tool', {'n': 0})]))
     runner(job).document('d1')
     assert not any(_closing(c['kwargs']) for c in model.calls)
     assert job.rows['d1']['skipped'] == [{'sentence': 's1', 'sentence_id': 'd1-s1', 'reason': 'failed',

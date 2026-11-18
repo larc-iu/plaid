@@ -48,7 +48,7 @@ def test_a_reading_tool_after_the_decide_now_line_is_refused_with_the_next_step(
         if 'after' in seen:
             seen['results'] = _results(kwargs)[-2:]
             return reply('Done.')
-        return reply(calls=[call(100 + n, 'analyses_of', {'form': f'x{n}'})])
+        return reply(calls=[call(100 + n, 'read_document', {'document': 'Story'})])
     use(monkeypatch, Model(answer))
     runner(job).document('d1')
     read, made_up = seen['results']
@@ -86,7 +86,7 @@ def test_the_round_that_carried_the_line_keeps_it_in_the_trace(monkeypatch, tmp_
             return reply(calls=[call(300, 'set_analysis', {'document': 'Story', 'ref': 's1.w1', 'morphemes': [
                 {'form': 'ka', 'type': 'stem', 'fields': {'Morph Gloss': 'go'}}]})]) \
                 if not any('Staged' in r for r in _results(kwargs)) else reply('Done.')
-        return reply(calls=[call(100 + n, 'analyses_of', {'form': f'x{n}'})])
+        return reply(calls=[call(100 + n, 'read_lexicon', {'pattern': f'x{n}'})])
     use(monkeypatch, Model(answer))
     runner(job, trace_dir=str(tmp_path)).document('d1')
     rounds = sorted((json.load(open(p)) for p in glob.glob(os.path.join(str(tmp_path), '**', 'round-*.json'),

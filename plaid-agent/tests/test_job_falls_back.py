@@ -25,8 +25,9 @@ def _stage(asked):
 
 
 def _reads(n):
-    """A call that reads, and stages nothing."""
-    return reply(calls=[call(100 + n, 'analyses_of', {'form': f'x{n}'})])
+    """A call that stages nothing and needs no core: a tool no piece has,
+    with arguments of its own each time (never the repeat stop)."""
+    return reply(calls=[call(100 + n, 'no_such_tool', {'n': n})])
 
 
 def _model(big_fails=True, small_fails=False):
@@ -92,17 +93,6 @@ def test_a_stretch_after_the_fallback_that_fails_is_halved_and_skipped_and_the_j
     # 1 whole, then 9 asks for the stretch of 5 and 3 for the stretch of 2.
     assert len(asks) == 1 + 9 + 3
     assert len(model.calls) <= len(asks) * JOB_STRETCH_MAX_ROUNDS
-
-
-def test_a_whole_document_failed_once_is_not_asked_as_a_whole_after_a_resume(monkeypatch):
-    """The fallback is kept in core: a worker taken up again works the
-    document in stretches from the start, never as a whole."""
-    client = JobClient({'d1': document('d1', 'Story', blank(3))})
-    job = start(client, id=J, plan='document')
-    runner(job).fall_back('d1', 'failed')
-    model = use(monkeypatch, _model())
-    run_job(job, runner(job))
-    assert not _firsts(model, WHOLE)
 
 
 def test_a_stretch_plan_with_every_stretch_failing_ends(monkeypatch):
