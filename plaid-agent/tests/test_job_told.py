@@ -359,3 +359,17 @@ def test_a_findings_piece_is_told_to_end_with_its_findings_at_every_closing_line
     assert pace.line == p.JOB_FINDINGS_DECIDE_NOW and pace.used_up == p.JOB_FINDINGS_STEPS_USED_UP
     r.document('d1')
     assert asked[1] == p.JOB_FINDINGS_ANSWER_AGAIN, asked
+
+
+# --- D28: the planner is told the tools a fills-nothing piece is offered ---------------------------
+
+@pytest.mark.parametrize('edits_text', [False, True])
+def test_a_fills_nothing_sentences_plan_names_the_tools_its_pieces_are_offered(edits_text):
+    ws = _job_ws()
+    ws.in_sentences, ws.fills, ws.edits_text = True, [], edits_text
+    offered = {t['function']['name'] for t in toolkit.job_piece_tools(ws)}
+    line = toolkit.fills_nothing_sentences(edits_text)
+    head = 'Its pieces are offered only '
+    assert line.startswith(head) and line.endswith('.'), line
+    named = line[len(head):-1].replace(' and ', ', ').split(', ')
+    assert set(named) == offered and len(named) == len(offered), (line, offered)

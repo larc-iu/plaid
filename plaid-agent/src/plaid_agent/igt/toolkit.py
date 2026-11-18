@@ -770,7 +770,8 @@ def t_plan_work(ws, pieces: str = None, piece_instructions: str = '', documents=
     if not chosen:
         # Said in one line, as the plan is kept: a planner that meant the job
         # to fill something plans again (REV-DF-D-1).
-        out.append(PLAN_FILLS_NOTHING + (' ' + PLAN_FILLS_NOTHING_SENTENCES if pieces == 'sentences' else ''))
+        out.append(PLAN_FILLS_NOTHING + (' ' + fills_nothing_sentences(bool(edits_text)) if pieces == 'sentences'
+                                         else ''))
     if nothing:
         # A fixed rule on the planning context's own counts: the walk would
         # take no sentence of any document the plan works (BRIEF OE).
@@ -934,7 +935,15 @@ PLAN_WORKS_NOTHING = 'This plan works no sentence: nothing it fills is empty in 
 #: and what it adds for a plan in sentences.
 PLAN_FILLS_NOTHING = ('This plan fills nothing: its pieces are shown nothing as empty, and the report lists nothing '
                       'as left blank.')
-PLAN_FILLS_NOTHING_SENTENCES = 'Its pieces are offered only set_field and reads.'
+
+
+def fills_nothing_sentences(edits_text: bool) -> str:
+    """What plan_work adds for a plan in sentences that fills nothing: the
+    tools its pieces are offered, from the one list that offers them
+    (:func:`sentences_piece_tools`, D28), the text tools only where the plan
+    edits the text."""
+    names = [n for n in sentences_piece_tools(()) if edits_text or n not in TEXT_TOOLS]
+    return f'Its pieces are offered only {", ".join(names[:-1])} and {names[-1]}.'
 
 
 #: What ends a sentence when a space or the end follows it: the full stop,
