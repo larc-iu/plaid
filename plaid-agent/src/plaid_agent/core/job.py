@@ -919,13 +919,18 @@ def _finish(job: Job, state: str, runner, harmonize, entries, reason: Optional[s
         report.update(_summary(job, runner, report))
         report.update(_findings(job, runner, report))
         fit_report(report)
+    def end():
+        # The end's line (or none) once more just before the finish, which
+        # carries no line: a heartbeat refused while it was set would leave
+        # the last progress line as the line the ended job shows (S4-2).
+        job.beat()
+        return job.admin.jobs.finish(job.id, job.worker_id, state, report, reason=reason)
     try:
         # Sent again while core is busy or out of reach, as every call is
         # (D13): a finish dropped leaves the job running for another run to
         # report again. A finish that landed and is sent again is refused
         # 409, as below. The waits do not stop at a stop: this is the end.
-        return through_core(job, lambda: job.admin.jobs.finish(job.id, job.worker_id, state, report,
-                                                                reason=reason), wait=job._sleep)
+        return through_core(job, end, wait=job._sleep)
     except PlaidAPIError as e:
         if state == 'done' and api_code(e) == 'job-state':
             # A stop came after the last check: the job ends as stopped, with
