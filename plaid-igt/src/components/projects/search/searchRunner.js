@@ -14,6 +14,7 @@ import { IgtDocument, loadProjectVocabularies, rebaseVocabLinks } from '@/domain
 import { buildMatchSpec, hitsQueries, hitsByDocQueries, freqQueries } from './searchQueries.js';
 import { buildItemNumbers, itemLabel } from '@/domain/vocabDictionary';
 import { readVocabulary } from '@/domain/vocabCache';
+import { readLayerIds } from '@/domain/documentReads';
 
 const MAX_DOCS = 12;
 const MAX_FREQ_ROWS = 200;
@@ -189,6 +190,25 @@ export function buildContextRows(doc, domain, hitIds) {
     .sort((a, b) => a.sentenceIndex - b.sentenceIndex);
 }
 
+// The layers a hit's context row reads (SCL2-2): the text, its sentences and
+// words, the morphemes when a hit can be one, every sentence field (a row
+// shows the translation) and the field searched. The other fields are most
+// of a document, and a common term's hits are in the biggest ones. With
+// `keep`, all that igt reads: `keep` may look at any field where a hit sits.
+// Null when the project has no baseline text: the whole document.
+export function contextLayers(project, layerInfo, domain, keep = null) {
+  if (keep) return readLayerIds(project);
+  const spanField = domain.kind === 'span' ? [domain.layerId] : [];
+  const sentenceFields = (layerInfo?.spanLayers?.sentence || []).map((sl) => sl.id);
+  const ids = readLayerIds(project, { spans: [...sentenceFields, ...spanField] });
+  const onMorphemes =
+    domain.kind === 'morpheme' ||
+    domain.kind === 'lexicon' ||
+    (domain.kind === 'span' && domain.scope === 'morpheme');
+  const morphemes = layerInfo?.morphemeTokenLayer?.id;
+  return ids && !onMorphemes && morphemes ? ids.filter((id) => id !== morphemes) : ids;
+}
+
 /**
  * `keep`, when given, narrows the hits to the ones it accepts where they sit
  * (keptHits). A group's `docHits` is then the hits it lists, a document left
@@ -225,10 +245,11 @@ export async function runHitsSearch(
   // A document and its own hit ids together: the ids are asked for per
   // document so one document's hits cannot be crowded out of the answer by
   // another's (see hitsQueries).
+  const layers = contextLayers(project, layerInfo, domain, keep);
   const loaded = await Promise.all(
     toLoad.map(async ([docId]) => {
       const [raw, idResults] = await Promise.all([
-        client.documents.get(docId, true),
+        client.documents.get(docId, true, undefined, layers ?? undefined),
         runAll(client, hitsQueries(domain, spec, docId)),
       ]);
       const found = new Set();

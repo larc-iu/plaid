@@ -1,5 +1,7 @@
 import { describe, it, expect } from 'vitest';
-import { buildContextRows, runHitsSearch } from './searchRunner.js';
+import { buildContextRows, contextLayers, runHitsSearch } from './searchRunner.js';
+import { buildRawDoc } from '@/domain/test-helpers.js';
+import { getIgtLayerInfo } from '@/domain/layerInfo.js';
 import { failsInCell } from '../validate/locateFailing.js';
 import { GLOSS_DOMAIN, MIXED, hitsClient } from '../validate/cellReadingFixture.js';
 
@@ -54,6 +56,67 @@ describe('runHitsSearch', () => {
     expect(kept.remainingDocs).toBe(1);
     expect(kept.remainingHits).toBeNull();
     expect(kept.groups.every((g) => g.docHits === 2)).toBe(true);
+  });
+});
+
+// SCL2-2: a common term's hits are in the biggest documents, and each was
+// read whole, every field of it, for a few context lines.
+describe('contextLayers', () => {
+  const tree = buildRawDoc({ wordFields: ['POS', 'Gloss'], morphFields: ['Gloss'] });
+  const info = getIgtLayerInfo(tree);
+  const domain = (kind, extra = {}) => ({ kind, ...extra });
+  const base = ['tl-1', 'sentL', 'wordL', 'alignL'];
+  const sentenceFields = info.spanLayers.sentence.map((sl) => sl.id);
+
+  it('reads the words and the sentence fields for a word search, not the morphemes', () => {
+    expect(contextLayers(tree, info, domain('token')).sort()).toEqual(
+      [...base, ...sentenceFields].sort(),
+    );
+  });
+
+  it('reads the morphemes for a morpheme or lexicon search', () => {
+    for (const kind of ['morpheme', 'lexicon']) {
+      expect(contextLayers(tree, info, domain(kind)).sort()).toEqual(
+        [...base, 'morphL', ...sentenceFields].sort(),
+      );
+    }
+  });
+
+  it('reads the field searched and no other', () => {
+    const field = info.spanLayers.morpheme[0].id;
+    const got = contextLayers(tree, info, domain('span', { scope: 'morpheme', layerId: field }));
+    expect(got.sort()).toEqual([...base, 'morphL', ...sentenceFields, field].sort());
+    const word = info.spanLayers.word[1].id;
+    expect(contextLayers(tree, info, domain('span', { scope: 'word', layerId: word }))).toContain(
+      word,
+    );
+    expect(
+      contextLayers(tree, info, domain('span', { scope: 'word', layerId: word })),
+    ).not.toContain(info.spanLayers.word[0].id);
+  });
+
+  it('reads every field when a filter may look at any', () => {
+    const all = contextLayers(tree, info, domain('token'), () => true);
+    for (const sl of [...info.spanLayers.word, ...info.spanLayers.morpheme]) {
+      expect(all).toContain(sl.id);
+    }
+  });
+
+  it('is what runHitsSearch asks each document for', async () => {
+    const client = hitsClient();
+    const get = client.documents.get;
+    const asked = [];
+    client.documents.get = (id, body, asOf, layers) => {
+      asked.push(layers);
+      return get(id, body, asOf, layers);
+    };
+    const field = info.spanLayers.morpheme[0].id;
+    const gloss = { ...GLOSS_DOMAIN, layerId: field };
+    await runHitsSearch(client, tree, info, gloss, 'sbj:3.pfv', 'exact');
+    expect(asked.length).toBeGreaterThan(0);
+    for (const layers of asked) {
+      expect(layers.sort()).toEqual(contextLayers(tree, info, gloss).sort());
+    }
   });
 });
 
