@@ -37,14 +37,17 @@
   403, so a non-member learns nothing of either (the core ruling on unknown
   ids). An admin is told plainly: 404 and 400."
   [{:keys [kind id-of request db document]}]
-  (let [admin? (user/admin? (:user/record request))]
-    (case (slc/document-standing db kind (id-of request) document)
-      :unknown (if admin?
-                 {:status 404 :body {:error "Document not found"}}
-                 {:status 403 :body {:error (str "User " (pra/->user-id request)
-                                                 " lacks sufficient privileges to repair document "
-                                                 document)
-                                     :unresolved true}})
+  (let [admin? (user/admin? (:user/record request))
+        standing (slc/document-standing db kind (id-of request) document)]
+    (case standing
+      ;; a layer deleted a moment ago: an admin hears 404, as on the
+      ;; layer's other routes, not that the document is elsewhere (ACL2-2)
+      (:no-layer :unknown) (if admin?
+                             {:status 404 :body {:error (if (= :no-layer standing) "Layer not found" "Document not found")}}
+                             {:status 403 :body {:error (str "User " (pra/->user-id request)
+                                                             " lacks sufficient privileges to repair document "
+                                                             document)
+                                                 :unresolved true}})
       :elsewhere (if admin?
                    {:status 400 :body {:error (str "Document " document " is not in this layer's project.")}}
                    {:status 403 :body {:error (str "User " (pra/->user-id request)

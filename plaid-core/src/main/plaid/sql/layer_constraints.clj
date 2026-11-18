@@ -130,12 +130,13 @@
      :values (vec (take (or limit refused-values-shown) by-value))}))
 
 (defn document-standing
-  "Where `document` stands for a repair of the layer: `:unknown` when no
-  document has that id, `:elsewhere` when it is in another project than the
-  layer's, else nil."
+  "Where `document` stands for a repair of the layer: `:no-layer` when the
+  layer is gone, `:unknown` when no document has that id, `:elsewhere` when
+  it is in another project than the layer's, else nil."
   [db kind id document]
   (let [doc (psc/fetch-by-id db :documents document)]
     (cond
+      (nil? (project-of db kind id)) :no-layer
       (nil? doc) :unknown
       (not= (str (:project_id doc)) (str (project-of db kind id))) :elsewhere
       :else nil)))

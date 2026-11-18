@@ -1073,15 +1073,20 @@
   (when (= table :vocab_layers)
     (op/bump-document-versions! tx (vocab-layer/linked-document-ids tx layer-id))))
 
+(def ^:private config-table-nouns
+  {:projects "Project" :text_layers "Text layer" :token_layers "Token layer"
+   :span_layers "Span layer" :relation_layers "Relation layer" :vocab_layers "Vocab layer"})
+
 (defn- config-row!
   "The row a config write is about to edit, read inside the tx from the one
-  table the route named. An id absent from that table is a 400: the route
-  said which kind it is."
+  table the route named. An id absent from that table is a 404, as every
+  other route on the row answers an admin for one deleted a moment ago
+  (ACL2-2). A member never gets here: the gate refuses an unknown id 403."
   [tx table layer-id]
   (when-not (config-tables table)
     (throw (ex-info (str "Not a table that carries editor config: " table) {:table table :code 500})))
   (or (psc/fetch-by-id tx table layer-id)
-      (throw (ex-info (str "Not a valid layer ID: " layer-id) {:id layer-id :code 400}))))
+      (throw (ex-info (psc/err-msg-not-found (config-table-nouns table) layer-id) {:id layer-id :code 404}))))
 
 (defn- config-cell-keys
   "The two string keys of one config cell. Config keys must round-trip as
