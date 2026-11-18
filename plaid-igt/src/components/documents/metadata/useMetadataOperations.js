@@ -10,18 +10,24 @@ import { readTagsets, changedValuesAllowed } from '@/domain/tagsets';
 // name, the copy and the delete are the shared Details page's. What is typed
 // here and not saved is this hook's, and Save writes only the fields it
 // changed, so a value someone else saved to another field meanwhile stays.
+// A project's document fields, and the tagset each names.
+const fieldsOf = (config) => {
+  // `plaid` and the provenance keys are Plaid's own, never a field's value.
+  const metadataFields = (readDocumentMetadata(config) || []).filter(
+    (field) => !isReservedMetadataKey(field.name),
+  );
+  // A metadata field names its tagset the same way an annotation field does.
+  const tagsets = readTagsets(config);
+  const tagsetFor = (field) => (field?.tagset ? (tagsets[field.tagset] ?? null) : null);
+  return { metadataFields, tagsetFor };
+};
+
 export const useMetadataOperations = (doc) => {
   useDocumentModel(doc);
 
   const stored = doc.document?.metadata || {};
   const project = doc.project;
-  // `plaid` and the provenance keys are Plaid's own, never a field's value.
-  const metadataFields = (readDocumentMetadata(project?.config) || []).filter(
-    (field) => !isReservedMetadataKey(field.name),
-  );
-  // A metadata field names its tagset the same way an annotation field does.
-  const tagsets = readTagsets(project?.config);
-  const tagsetFor = (field) => (field?.tagset ? (tagsets[field.tagset] ?? null) : null);
+  const { metadataFields, tagsetFor } = fieldsOf(project?.config);
 
   // Only the fields typed in. The rest show what is stored, so a value saved
   // from elsewhere shows as soon as it lands.
@@ -38,6 +44,14 @@ export const useMetadataOperations = (doc) => {
 
   const handleSave = async () => {
     setSaving(true);
+    // The fields and their lists as they are now: a list closed since this
+    // page read them refuses a value it let through. Held, the field says so.
+    await doc.refreshProject?.();
+    const now = fieldsOf(doc.project?.config);
+    if (!changedValuesAllowed(now.metadataFields, values, now.tagsetFor, stored)) {
+      setSaving(false);
+      return;
+    }
     // The name is the shared page's, so none is passed. The fields left as
     // they were are not written.
     const ok = await doc.saveNameAndMetadata(null, values);

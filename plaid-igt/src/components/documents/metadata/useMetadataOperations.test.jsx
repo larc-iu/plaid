@@ -76,6 +76,36 @@ describe('the document fields on the Details tab', () => {
     await h.unmount();
   });
 
+  // H2-12-3 (j6b): a page read before Genre took a closed list saved a value
+  // off it. Save reads the project again, and holds a value its list refuses
+  // as it now reads, the field saying so.
+  it('reads the tagsets again on Save and holds a value a list closed since refuses', async () => {
+    const open = { mode: 'suggest', values: [{ value: 'narrative' }] };
+    const project = (genres) => ({
+      config: {
+        igt: {
+          documentMetadata: [{ name: 'Genre', tagset: 'genres' }],
+          tagsets: { genres },
+        },
+      },
+    });
+    const d = doc({ project: project(open), document: { id: 'doc-1', name: 'D', metadata: {} } });
+    d.refreshProject = vi.fn(async () => {
+      d.project = project({ ...open, mode: 'closed' });
+      return true;
+    });
+    const h = await mount(d);
+    await h.step(() => h.api.updateValue('Genre', 'poem'));
+    expect(h.api.metadataValid).toBe(true);
+    await h.step(() => h.api.handleSave());
+    expect(d.refreshProject).toHaveBeenCalled();
+    expect(d.saveNameAndMetadata).not.toHaveBeenCalled();
+    expect(h.api.saving).toBe(false);
+    expect(h.api.values.Genre).toBe('poem');
+    expect(h.api.metadataValid).toBe(false);
+    await h.unmount();
+  });
+
   it('never offers plaid as a field, even when the project declares one', async () => {
     const d = doc({
       project: { config: { igt: { documentMetadata: [{ name: 'plaid' }, { name: 'Date' }] } } },
