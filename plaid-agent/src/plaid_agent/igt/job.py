@@ -3172,6 +3172,11 @@ class IgtRunner:
         row = self.job.rows.get(document_id) or {}
         if row.get('state') in ROW_FINAL:
             return
+        if how == 'written' and not self.wrote_here(document_id):
+            # Said written only once core holds a request of the job's write
+            # there: a lost answer that did not land is core not answering
+            # (REV-SJ2-2).
+            how = UNANSWERED
         if how == UNANSWERED:
             # Nothing of the job's own write there was written: no
             # ``ran_out`` its unfinished piece left before it (JOIN18, REV-JOIN18-3).
@@ -4813,6 +4818,15 @@ class IgtRunner:
             self.landed |= set(self.job.landed(part))
             self.looked |= set(part)
 
+    def wrote_here(self, document_id: str) -> bool:
+        """Whether a request of the job's writes in the document landed,
+        core asked first about those of unknown fate (REV-SJ2-2)."""
+        unknown = self.unknown(document_id)
+        if unknown:
+            self.look_up(unknown)
+        rows, landed = self.view(document_id)
+        return any(r['try'] and landed(r) for r in rows)
+
     def unknown(self, document_id: str) -> List[str]:
         """The tries of a document's writing rows this worker does not know
         the fate of."""
@@ -6077,6 +6091,10 @@ class IgtRunner:
             counts['changes_parts'] = sums['changes_parts']
         row = self.job.rows.get(document_id) or {}
         ran_out = self.ran_out.get(document_id) or (row.get('counts') or {}).get(RAN_OUT)
+        if ran_out == 'written' and not self.wrote_here(document_id):
+            # Never "written" before core holds the write (REV-SJ2-2): a
+            # write still to come, or one whose answer was lost.
+            ran_out = None
         if ran_out:
             counts[RAN_OUT] = ran_out
         if (row.get('counts') or {}).get(UNANSWERED) is True:

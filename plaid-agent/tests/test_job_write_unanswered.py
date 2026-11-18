@@ -39,9 +39,18 @@ def _run(monkeypatch, pieces, fills, where):
     def down(*a, **kw):
         raise PlaidAPIError('HTTP 502', status=502, method='POST')
     if where == 'send':
-        # Once its request went out: the piece is taken again over what is
-        # left (REV-L2B), then the document is put off.
-        monkeypatch.setattr(igt_job, 'execute_plan', down)
+        # Once its request went out, its answer lost (a proxy's 502 on the
+        # batch's POST, which the executor reads as of unknown outcome,
+        # REV-SJ2-2): the piece is taken again over what is left (REV-L2B),
+        # then the document is put off.
+        from plaid_client import testing
+        real = testing._Batch.submit
+
+        def lost(self):
+            if not self.queued:
+                return real(self)
+            down()
+        monkeypatch.setattr(testing._Batch, 'submit', lost)
     else:
         # Before its first request (the gate's reads): made again from the
         # gate, then put off with core's error (D21, REV-JR1-7).
@@ -116,9 +125,14 @@ def test_a_check_whose_unfinished_piece_cannot_be_written_never_says_it_was_writ
         return reply(calls=[call(100 + n, 'no_such_tool', {'n': n})])
     use(monkeypatch, Model(answer))
 
-    def down(*a, **kw):
+    from plaid_client import testing
+    real = testing._Batch.submit
+
+    def lost(self):
+        if not self.queued:
+            return real(self)
         raise PlaidAPIError('HTTP 502', status=502, method='POST')
-    monkeypatch.setattr(igt_job, 'execute_plan', down)
+    monkeypatch.setattr(testing._Batch, 'submit', lost)
     finished = run_job(job, runner(job))
     (d1,) = finished['report']['documents']
     assert d1['state'] == 'not-reached' and (d1.get('counts') or {}).get(UNANSWERED) is True, d1
@@ -126,3 +140,62 @@ def test_a_check_whose_unfinished_piece_cannot_be_written_never_says_it_was_writ
     notice = finished['report']['notice'] or ''
     assert '1 document was not worked: the server did not answer.' in notice, notice
     assert 'was written' not in notice, notice
+
+
+@pytest.mark.parametrize('ran_out', [False, True])
+@pytest.mark.parametrize('landed', [False, True])
+@pytest.mark.parametrize('pieces', ['document', 'selection'])
+def test_a_checks_lost_answer_says_what_landed(monkeypatch, pieces, landed, ran_out):
+    """REV-SJ2-2: a check (fills nothing) whose write's answer is lost, as
+    the real executor raises it (a proxy's 502 on the batch's POST, read by
+    ``applying`` as a PlanError of unknown outcome). The top line says what
+    core holds: written when the write landed, the server did not answer
+    when it did not. A piece that ran out and was not written is never said
+    written (``ran_out`` waits for core to hold the write)."""
+    from plaid_client import testing
+    from plaid_agent.core.prompt import JOB_STEPS_USED_UP
+    clock = {'t': 1_800_000_000.0}
+    client = JobClient({'d1': document('d1', 'Story', [{'words': ['blank']}])})
+    job = start(client, 'Check every gloss.', now=lambda: clock['t'], plan=pieces, fills=())
+
+    def sleep(s):
+        clock['t'] += s
+    job._sleep = sleep
+
+    def answer(asked, n, kwargs):
+        if any(m.get('content') == JOB_STEPS_USED_UP for m in kwargs['messages']):
+            return reply('Ran out.')
+        if n == 1:
+            return reply(calls=[call(1, 'set_analysis', {'document': 'Story', 'ref': 's1.w1',
+                                                         'morphemes': [{'form': 'blankx'}]})])
+        if ran_out:
+            return reply(calls=[call(100 + n, 'no_such_tool', {'n': n})])
+        return reply('Checked.')
+    use(monkeypatch, Model(answer))
+    real = testing._Batch.submit
+
+    def lost(self):
+        if not self.queued:
+            return real(self)
+        if landed:
+            real(self)
+        raise PlaidAPIError('HTTP 502', status=502, method='POST')
+    monkeypatch.setattr(testing._Batch, 'submit', lost)
+    finished = run_job(job, runner(job))
+    (d1,) = finished['report']['documents']
+    notice = finished['report']['notice'] or ''
+    if landed:
+        assert d1['state'] == 'done' and (d1.get('counts') or {}).get('changes') == 1, d1
+        assert 'did not answer' not in notice, notice
+        if ran_out:
+            assert 'what it had staged there was written, and the rest was not done.' in notice, notice
+        elif pieces == 'selection':
+            assert 'The job worked on its one document in one step and changed it.' in notice, notice
+        else:
+            # Its one piece finished and its write landed: done, nothing to say.
+            assert not notice, notice
+    else:
+        assert (d1.get('counts') or {}).get('changes') == 0, d1
+        assert d1['state'] == 'not-reached' and (d1.get('counts') or {}).get(UNANSWERED) is True, d1
+        assert '1 document was not worked: the server did not answer.' in notice, notice
+        assert 'was written' not in notice, notice
