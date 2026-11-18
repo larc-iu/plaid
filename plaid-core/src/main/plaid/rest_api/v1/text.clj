@@ -3,27 +3,38 @@
             [plaid.rest-api.v1.metadata :as metadata]
             [plaid.rest-api.v1.middleware :as prm]
             [reitit.coercion.malli]
+            [plaid.sql.common :as psc]
             [plaid.sql.text-layer :as txtl]
             [plaid.sql.text :as txt]
             [plaid.util.digest :as digest]))
 
 (defn get-project-id
   "The project of the text the path names, or on the create (no text in the
-  path) of the body's text layer. A route that names its text reads only the
-  path: the PATCH body is `any?`, so a body key would otherwise choose the
-  project the gate checks (C1-1)."
+  path) of the body's text layer, when the body's document is in that
+  project too, else none (the gate's 403 `unresolved`, ACL1-1). A route that
+  names its text reads only the path: the PATCH body is `any?`, so a body key
+  would otherwise choose the project the gate checks (C1-1)."
   [{db :db params :parameters}]
   (if-let [text-id (-> params :path :text-id)]
     (txt/project-id db text-id)
-    (some->> (-> params :body :text-layer-id) (txtl/project-id db))))
+    (let [{:keys [text-layer-id document-id]} (:body params)
+          layer-project (some->> text-layer-id (txtl/project-id db))
+          doc-project (when document-id
+                        (:project_id (psc/q1 db {:select [:project_id] :from [:documents]
+                                                 :where [:= :id document-id]})))]
+      (when (= (some-> layer-project str) (some-> doc-project str))
+        layer-project))))
 
 (defn get-document-id
   "The document of the text the path names, or on the create of the body's
-  `document-id`. Path only when the path names the text, as `get-project-id`."
-  [{db :db params :parameters}]
+  `document-id` when `get-project-id` resolves, so a document of another
+  project is never version-checked for the caller. Path only when the path
+  names the text, as `get-project-id`."
+  [{params :parameters :as request}]
   (if-let [text-id (-> params :path :text-id)]
-    (:text/document (txt/get db text-id))
-    (-> params :body :document-id)))
+    (:text/document (txt/get (:db request) text-id))
+    (when (get-project-id request)
+      (-> params :body :document-id))))
 
 (def text-routes
   ["/texts"

@@ -149,10 +149,8 @@
           (throw (ex-info (psc/err-msg-not-found "Text layer" layer)
                           {:id layer :code 400})))
         (when (not= (:project_id doc-row) (:project_id txtl-row))
-          (throw (ex-info (str "Text layer " layer " not linked to project "
-                               (:project_id doc-row))
+          (throw (ex-info (str "Text layer " layer " is not in the document's project.")
                           {:text-layer layer
-                           :project (:project_id doc-row)
                            :document document :code 400})))
         ;; UNIQUE (document_id, text_layer_id) — pre-check for clean 409.
         (when (psc/q1 tx {:select [:id]

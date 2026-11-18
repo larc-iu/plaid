@@ -1052,6 +1052,15 @@
     `project_id` is the new row's project. Without it a create's project is
     its document's.
 
+  A create resolves to no project (the gate's 403 `unresolved` to a member,
+  as for any id they cannot see) unless its parent names a document of its
+  layer's project, and then to no document either. A bulk create does so
+  when any of its entries does. Before, the gate judged the layer's project
+  while the version check and the lock check ran on the parent's document,
+  so a create in one's own project naming another project's text, token or
+  span answered with that document's version, who held its lock and its
+  project's ids (ACL3-1, ACL2-1, ACL10-5).
+
   A bulk create or update entry is a map read as a create body or by its
   `:id`, a bulk delete entry is the row's id."
   [{:keys [table path-key create-document create-layer]}]
@@ -1065,23 +1074,32 @@
                      (let [[k t] create-document]
                        (column-of db t :document_id (body-id body k))))
         create-project (fn [db body]
-                         (if-let [[k t] create-layer]
-                           (column-of db t :project_id (body-id body k))
-                           (project-of-document db (create-doc db body))))
+                         (let [doc-project (project-of-document db (create-doc db body))]
+                           (if-let [[k t] create-layer]
+                             (let [layer-project (column-of db t :project_id (body-id body k))]
+                               (when (= (some-> layer-project str) (some-> doc-project str))
+                                 layer-project))
+                             doc-project)))
+        ;; A create whose parent is not in its layer's project resolves to
+        ;; nothing, so its document is not looked at either.
+        create-doc-checked (fn [db body] (when (create-project db body) (create-doc db body)))
         single (fn [of-row of-body]
                  (fn [{db :db params :parameters}]
                    (if-let [id (get-in params [:path path-key])]
                      (of-row db id)
                      (of-body db (:body params)))))
         bulk (fn [of-row of-body]
-               (bulk-resolver (fn [db entry]
-                                (cond
-                                  (map? entry) (of-body db entry)
-                                  (uuid? entry) (of-row db entry)))))]
+               (let [resolve (bulk-resolver (fn [db entry]
+                                              (cond
+                                                (map? entry) (of-body db entry)
+                                                (uuid? entry) (of-row db entry))))]
+                 (fn [{db :db params :parameters :as request}]
+                   (when-not (some #(and (map? %) (nil? (create-project db %))) (:body params))
+                     (resolve request)))))]
     {:project-id (single row-project create-project)
-     :document-id (single row-document create-doc)
+     :document-id (single row-document create-doc-checked)
      :bulk-project-id (bulk row-project create-project)
-     :bulk-document-id (bulk row-document create-doc)
+     :bulk-document-id (bulk row-document create-doc-checked)
      :bulk-update-project-id (bulk-update-resolver row-project)
      :bulk-update-document-id (bulk-update-resolver row-document)}))
 
