@@ -396,6 +396,21 @@ def core_fault(e: Optional[BaseException]) -> Optional[str]:
     return 'other'
 
 
+def core_unreachable(e: Optional[BaseException]) -> bool:
+    """Whether ``e`` holds core out of reach: a network error (status 0 with
+    the network's own error under it) or a 502, 503 or 504, the answers of a
+    proxy with no core behind it. Only this drops a job for the next claim
+    (S4-1). A 500 core answers, a 423, a 429 and a refusal the client makes
+    itself before sending are passing trouble that is tried again, and past
+    the tries they end the job with their words, as before (REV-SJ1-2)."""
+    err = plaid_error(e)
+    if err is None:
+        return False
+    if not err.status:
+        return getattr(err, 'original_error', None) is not None
+    return err.status in (502, 503, 504)
+
+
 #: The reason a job ends with when the worker meets an error it has no rule
 #: for (added to CONTRACT 6 by J-FIX-B): never a skip, never a loop.
 WORKER_ERROR = 'worker-error'
@@ -825,11 +840,11 @@ def run_job(job: Job, runner) -> Optional[Dict[str, Any]]:
         job.set(phase=REPORTING, current_document=None, message='Writing the report.')
         return _finish(job, 'done', runner, harmonize, entries)
     except Exception as e:  # noqa: BLE001 - a stop, core saying the job is no longer this worker's, or a fault
-        if core_fault(e) == 'passing':
-            # Core busy or out of reach past every try (S4-1): passing
-            # trouble, never the job's end. The job is dropped as it stands,
-            # its lease lapses, and a claim once core answers takes it up
-            # again from what core holds.
+        if core_unreachable(e):
+            # Core out of reach past every try (S4-1, REV-SJ1-2): never the
+            # job's end. The job is dropped as it stands, its lease lapses,
+            # and a claim once core answers takes it up again from what core
+            # holds.
             logger.warning('Job %s: dropped while core does not answer: %s', job.id, e)
             return None
         if core_fault(e) == 'access':
@@ -1477,9 +1492,9 @@ class Worker:
             else:
                 run_job(job, runner)
         except Exception as e:  # noqa: BLE001 - a job the worker cannot finish is failed, never taken again
-            if core_fault(e) == 'passing':
-                # Core out of reach as the job ended (S4-1): dropped, taken up
-                # again once core answers.
+            if core_unreachable(e):
+                # Core out of reach as the job ended (S4-1, REV-SJ1-2):
+                # dropped, taken up again once core answers.
                 logger.warning('Job %s: dropped while core does not answer: %s', job.id, e)
             else:
                 logger.exception('Job %s: ended on an error of the worker\'s own', job.id)
