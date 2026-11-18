@@ -256,10 +256,11 @@ def test_a_planning_that_ends_in_a_model_fault_twice_ends_the_job_failed_saying_
     model = use(monkeypatch, Model(answer))
     finished = run_job(job, runner(job))
     assert finished['state'] == 'failed' and finished['reason'] == 'planning-failed', finished
-    assert finished['report']['plan'] == {**NO_PLAN, 'why': 'output'}
+    # A provider's refusal is said as one, never as an answer too long (S1-2).
+    assert finished['report']['plan'] == {**NO_PLAN, 'why': 'refused'}
     assert [_fresh(c) for c in model.calls] == [True, True], 'planned twice, no piece'
     assert not client.writes
-    assert _plan_rows(client) == [{'by': 'none', 'why': 'output'}]
+    assert _plan_rows(client) == [{'by': 'none', 'why': 'refused'}]
 
 
 @pytest.mark.parametrize('kind,tries,reason', [('output', 2, 'planning-failed'), ('repeating', 2, 'planning-failed'),
