@@ -29,6 +29,8 @@ import { getIgtLayerInfo } from './layerInfo.js';
 import { queueStated, tagsetsChangedError } from './tagsetsSave.js';
 import { CORE_VOCAB_FIELDS } from './vocabFields.js';
 import { dropsReservedStatus, reservedStatusMessage } from './vocabDictionary.js';
+import { refusedMetadataBySave } from './refusedMetadata.js';
+import { refusedValuesText } from '../components/projects/settings/refusedValues.js';
 
 const SETTINGS_KINDS = Object.freeze(['set_tagset', 'assign_tagset']);
 const PROJECT = 'project';
@@ -349,6 +351,35 @@ export const writeTagsetPlan = async (
     }
     const dropped = dropsReservedStatus({ fieldsBefore, fieldsAfter, tagsetsBefore, tagsetsAfter });
     if (dropped) throw new Error(`${reservedStatusMessage(dropped)}. Nothing was written.`);
+  }
+  // A closed list over document values not in it is not written: core holds
+  // no rule on metadata, so it is asked here, of the project's settings as
+  // the plan leaves them (a dry run of its own writes).
+  if (owners.includes(PROJECT)) {
+    const live = lives.get(PROJECT);
+    const igt = { ...igtOf(live.config) };
+    const record = new Proxy(
+      {},
+      {
+        get: (_, method) =>
+          method === 'setConfig'
+            ? (_id, _ns, key, value) => {
+                if (key === 'tagsets' || key === 'documentMetadata') igt[key] = value;
+              }
+            : () => {},
+      },
+    );
+    const own = ops.filter((op) => op.owner === PROJECT);
+    queueOwner(
+      { projects: record, spanLayers: record, vocabLayers: record },
+      projectId,
+      PROJECT,
+      own,
+      live,
+    );
+    const after = { ...live.config, [IGT_NAMESPACE]: igt };
+    const refused = await refusedMetadataBySave(client, projectId, after, live.config);
+    if (refused.length) throw new Error(`${refusedValuesText(refused)} Nothing was written.`);
   }
   // `client` is one of the page's own (plaid-ui `authService.clientApart`),
   // so the operation neither joins one open on the shared client nor is

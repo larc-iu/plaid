@@ -38,6 +38,8 @@ const fakeClient = (project, vocab = null, refuse = null) => {
     calls,
     batches: 0,
     projects: { get: async () => project },
+    // Every document's Kind, as the metadata frequency query answers it.
+    query: async () => ({ results: project.kinds ?? [] }),
     vocabLayers: { get: async () => vocab },
     async batched(fn) {
       this.batches += 1;
@@ -87,6 +89,41 @@ describe('a plan of tagset changes, written with the approver’s session', () =
     ]);
     // No other field's rules change.
     expect(c.calls.filter(([, m]) => m === 'setConstraints')).toHaveLength(1);
+  });
+
+  // REV-G2-5: core holds no rule on document metadata, so the plan asks, as
+  // the tagset settings do (H2-12-3).
+  it('refuses, writing nothing, a close over a document value not in the list', async () => {
+    const p = projectWith();
+    p.kinds = [['dog', 1]];
+    const c = fakeClient(p);
+    await expect(
+      writeTagsetPlan(c, 'proj-1', { ops: [setTagset({ ...LEIPZIG, mode: 'closed' })] }),
+    ).rejects.toThrow(
+      'These values are in use and not in the list: Kind: 1 document, dog (1). Nothing was written.',
+    );
+    expect(c.batches).toBe(0);
+  });
+
+  it('refuses, writing nothing, pointing a document field at a closed list it breaks', async () => {
+    const p = projectWith({
+      Leipzig: LEIPZIG,
+      Kinds: { delimiters: '', mode: 'closed', values: [] },
+    });
+    p.kinds = [['dog', 1]];
+    const c = fakeClient(p);
+    const assign = {
+      kind: 'assign_tagset',
+      owner: 'project',
+      fieldKind: 'metadata',
+      key: 'Kind',
+      before: 'Leipzig',
+      after: 'Kinds',
+    };
+    await expect(writeTagsetPlan(c, 'proj-1', { ops: [assign] })).rejects.toThrow(
+      /Kind: 1 document, dog \(1\)/,
+    );
+    expect(c.batches).toBe(0);
   });
 
   it('writes nothing when the settings already read as planned, so a second approval is safe', async () => {
@@ -507,6 +544,8 @@ describe('the approver’s write of a plan of tagset changes in the audit log', 
         text: async () => JSON.stringify(body),
       });
       if ((opts.method || 'GET') === 'GET') return json(project);
+      // The document metadata a closed list is asked about: none here.
+      if (String(url).endsWith('/query')) return json({ results: [] });
       // Each op of the batch carries the operation it joins on its own path.
       const ops = JSON.parse(opts.body);
       for (const op of ops) {
