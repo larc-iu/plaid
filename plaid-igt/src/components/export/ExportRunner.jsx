@@ -105,6 +105,9 @@ export const ExportRunner = ({
         onProgress: setProgress,
         shouldStop: () => stopRef.current,
       });
+      // Cancel pressed while the file was being written, after the last
+      // check inside the run: nothing is saved (SCL5-2).
+      if (stopRef.current) throw new ExportCancelled();
       saveBlob(result.blob, result.filename);
       if (result.warnings.length) {
         const n = result.warnings.length;
@@ -174,9 +177,11 @@ export const ExportRunner = ({
             />
           </div>
           <span className="text-sm text-muted-foreground">
-            {progress?.total
-              ? `Document ${Math.min(progress.done + 1, progress.total)} of ${progress.total}${progress.name ? `: ${progress.name}` : ''}`
-              : 'Preparing…'}
+            {progress?.writing
+              ? 'Writing the file…'
+              : progress?.total
+                ? `Document ${Math.min(progress.done + 1, progress.total)} of ${progress.total}${progress.name ? `: ${progress.name}` : ''}`
+                : 'Preparing…'}
           </span>
         </div>
       ) : presets.length === 0 ? (

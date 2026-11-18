@@ -185,7 +185,7 @@ describe('runExport', () => {
       ['documents.get', 'd1'],
       ['documents.get', 'd2'],
     ]);
-    expect(progress.at(-1)).toEqual({ done: 2, total: 2, name: null });
+    expect(progress.at(-1)).toEqual({ done: 2, total: 2, name: null, writing: true });
   });
 
   it('exports a single document as a bare file without listing', async () => {
@@ -350,7 +350,7 @@ describe('runExport', () => {
     expect(dom.querySelector('example form text').textContent).toBe('ba do');
     // The example document was fetched, and counted in the progress total.
     expect(client.calls).toContainEqual(['documents.get', 'd2']);
-    expect(progress.at(-1)).toEqual({ done: 2, total: 2, name: null });
+    expect(progress.at(-1)).toEqual({ done: 2, total: 2, name: null, writing: true });
     // Only the scope's document is in the .flextext.
     const xml = new TextDecoder().decode(files['Flex.flextext']);
     expect(xml).not.toContain('ba do');

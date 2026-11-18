@@ -2,10 +2,11 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { MemoryRouter } from 'react-router-dom';
 import { renderComponent, byText } from '@ui/test/renderComponent.jsx';
 
-const run = { result: null };
+const run = { result: null, during: null };
 vi.mock('@/export/runExport', () => ({
   ExportCancelled: class ExportCancelled extends Error {},
-  runExport: async () => {
+  runExport: async (opts) => {
+    if (run.during) await run.during(opts);
     if (run.result instanceof Error) throw run.result;
     return run.result;
   },
@@ -40,6 +41,25 @@ const outcome = (root) => root.querySelector('[data-testid="export-outcome"]');
 describe('ExportRunner', () => {
   beforeEach(() => {
     downloads.length = 0;
+    run.during = null;
+  });
+
+  // SCL5-2, SCL5-3: once every document is read the run writes and zips the
+  // file for seconds. The page says so, and a Cancel pressed then saves nothing.
+  it('says it is writing the file, and saves nothing when Cancel is pressed then', async () => {
+    run.result = { filename: 'D.zip', blob: new Blob([]), warnings: [] };
+    let finish;
+    run.during = ({ onProgress }) => {
+      onProgress({ done: 1, total: 1, name: null, writing: true });
+      return new Promise((resolve) => (finish = resolve));
+    };
+    const view = await mount();
+    await view.step(async () => exportButton(view.container).click());
+    expect(view.container.textContent).toContain('Writing the file…');
+    await view.step(async () => byText(view.container, 'button', 'Cancel').click());
+    await view.step(async () => finish());
+    expect(downloads).toEqual([]);
+    await view.unmount();
   });
 
   it('says on the page, until dismissed, that an export failed and nothing was downloaded', async () => {

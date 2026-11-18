@@ -292,7 +292,8 @@ function harvestExampleSentences(igtDoc, docId, tokenIds, out) {
  * scope: { type: 'project' } | { type: 'documents', ids: [id] } | { type: 'document', id }
  * asOf: ISO timestamp for historical (time-travel) export — only valid with
  * document scope, since the documents-list endpoint rejects `as-of`.
- * onProgress({ done, total, name }) fires before each document fetch.
+ * onProgress({ done, total, name }) fires before each document fetch, and
+ * once more with `writing: true` when every document is read.
  * fetchMedia is injectable for tests.
  * Returns { filename, blob, warnings: [string] }.
  */
@@ -625,7 +626,9 @@ export async function runExport({
       );
     }
   }
-  onProgress({ done: progressTotal, total: progressTotal, name: null });
+  // Every document is read: what is left is writing the file (and zipping it),
+  // which on a large project takes seconds with nothing else to show (SCL5-3).
+  onProgress({ done: progressTotal, total: progressTotal, name: null, writing: true });
   // A single .eaf that came with media becomes a zip, so its RELATIVE_MEDIA_URL
   // resolves to a file that is actually there.
   if (!wantZip && mediaEntries.length) wantZip = true;
