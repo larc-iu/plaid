@@ -20,8 +20,8 @@ const layerInfo = {
 // a variable, so the assignment is not a reassignment during render.
 const hook = {};
 const api = (...args) => hook.lookup(...args);
-const Probe = ({ client, documentId }) => {
-  hook.lookup = usePrecedent({ client, projectId: 'p1', layerInfo, documentId });
+const Probe = ({ client, documentId, dataVersion = 0 }) => {
+  hook.lookup = usePrecedent({ client, projectId: 'p1', layerInfo, documentId, dataVersion });
   return null;
 };
 
@@ -98,6 +98,25 @@ describe('the precedent cache', () => {
     await view.rerender(<Probe client={client} documentId="d2" />);
     await view.step(async () => {
       await api('xpos', 'dog');
+    });
+    expect(client.query.mock.calls.length).toBe(asked * 2);
+    await view.unmount();
+  });
+
+  // A value typed a moment ago in this document is precedent too: an answer
+  // kept from before it left it out until the page was reloaded (H2-9-3).
+  it('forgets what it knows when the document is written to', async () => {
+    const client = { query: vi.fn(() => Promise.resolve({ results: [] })) };
+    const view = await renderComponent(<Probe client={client} documentId="d1" dataVersion={1} />);
+
+    await view.step(async () => {
+      await api('lemma', 'dog');
+    });
+    const asked = client.query.mock.calls.length;
+
+    await view.rerender(<Probe client={client} documentId="d1" dataVersion={2} />);
+    await view.step(async () => {
+      await api('lemma', 'dog');
     });
     expect(client.query.mock.calls.length).toBe(asked * 2);
     await view.unmount();

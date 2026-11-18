@@ -132,6 +132,27 @@ test('a word with a Form span of its own is not asked about by its token text', 
   expect(options.some((t) => /^dog/.test(t))).toBe(false);
 });
 
+test('a lemma typed since the last Alt+Down is in the next one', async ({ page }) => {
+  // The answer for a form was kept for as long as the document was open, so a
+  // lemma typed in the meantime was left out until a reload (H2-9-3).
+  await openAnnotate(page);
+  const third = page.locator(`[id="${S.morphIds[7]}-lemma"]`);
+  await third.click();
+  await third.press('Alt+ArrowDown');
+  await expect(page.getByRole('option', { name: /^dog/ })).toBeVisible({ timeout: 8000 });
+  await third.press('Escape');
+
+  const second = page.locator(`[id="${S.morphIds[4]}-lemma"]`);
+  await second.click();
+  await second.fill('hound');
+  await second.press('Tab');
+  await expect.poll(lemmaValues, { timeout: 8000 }).toContain('hound');
+
+  await third.click();
+  await third.press('Alt+ArrowDown');
+  await expect(page.getByRole('option', { name: /^hound/ })).toBeVisible({ timeout: 8000 });
+});
+
 test('Alt+Down in an XPOS cell asks about the LEMMA, not the form', async ({ page }) => {
   await openAnnotate(page);
   // "dogs" (NNS) and "dog" (NN) are both lemma `dog`. Asking from the second

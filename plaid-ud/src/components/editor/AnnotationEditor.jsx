@@ -270,12 +270,13 @@ export const AnnotationEditor = () => {
   const validators = useMemo(() => makeValidators(layerInfo), [layerInfo]);
 
   // What this project has said before about a word like this one (Alt+Down).
-  // One query per (field, key), cached for as long as the document is open.
+  // One query per (field, key), cached until the document is written to.
   const lookupPrecedent = usePrecedent({
     client: getClient(),
     projectId,
     layerInfo,
     documentId,
+    dataVersion: doc?.dataVersion ?? 0,
   });
   const handlePrecedent = useCallback(
     (field, entry) => {

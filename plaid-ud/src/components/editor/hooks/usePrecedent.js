@@ -1,19 +1,19 @@
 import { useCallback, useEffect, useRef } from 'react';
 import { precedentQueries, mergeCounts } from '../../../domain/precedent.js';
 
-// One lookup of "what has this project said before", cached for as long as the
-// document is open.
+// One lookup of "what has this project said before", cached until the
+// document changes.
 //
-// The cache is per document load, keyed by field and key: a corpus's answer for
-// `dog` does not change while you are typing, and Alt+Down on the same cell
-// twice should not ask twice. It is dropped when the document changes, which is
-// also when the answers might.
-export function usePrecedent({ client, projectId, layerInfo, documentId }) {
+// Keyed by field and key, so Alt+Down on the same cell twice does not ask
+// twice. It is dropped when another document opens and whenever this one is
+// written to (`dataVersion`): a value typed a moment ago in this document is
+// precedent too (H2-9-3).
+export function usePrecedent({ client, projectId, layerInfo, documentId, dataVersion }) {
   const cache = useRef(new Map());
 
   useEffect(() => {
     cache.current = new Map();
-  }, [documentId]);
+  }, [documentId, dataVersion]);
 
   const morpheme = layerInfo?.morphemeTokenLayer?.id;
   const form = layerInfo?.formLayer?.id;
