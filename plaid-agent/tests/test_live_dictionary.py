@@ -22,11 +22,11 @@ FIELDS = {
 }
 
 
-@pytest.fixture(scope='module')
+@pytest.fixture
 def lex(live_client):
     """A real IGT project carrying a second vocabulary with senses:
     kwatha with two senses (one of them with a subsense), and two entries that
-    refer to it."""
+    refer to it. Each test gets its own, so each passes alone and in any order."""
     s = seed(live_client, project_raw(), {'d1': document_raw()}, {VOCAB: lexicon_raw()},
              name='igt-agent dictionary test')
     c = s.client
@@ -69,32 +69,39 @@ def test_the_tree_reads_back_as_the_app_stores_it(lex):
     assert 'variantOf="kwatha"' in out and 'seeAlso="kwatha", "phika"' in out
 
 
-def test_writes_land_in_the_shape_the_app_reads(lex):
-    ids = lex.item_ids
+def _write(lex):
+    """A reference given as a form, a sense renumbered, a sense added, an
+    example: applied, and the lexicon read back. ``lex.item_ids['stew']`` is
+    the added sense."""
     w = ws_of(lex)
-    # A reference given as a form, a sense renumbered, a sense added, an example.
     call_tool(w, 'set_entry_field', {'entry_form': 'nyumba', 'field': 'variantOf', 'value': 'kwatha#1.2'})
     call_tool(w, 'senses', {'action': 'move', 'entry_form': 'kwatha#1.2', 'number': '1'})
     call_tool(w, 'senses', {'action': 'add', 'entry_form': 'kwatha', 'fields': {'gloss': 'stew'}})
     call_tool(w, 'senses', {'action': 'promote_example', 'entry_form': 'phika', 'document': 'Text 1', 'ref': 's1.w2'})
     run(lex, w)
-
     got = items_of(lex)
+    lex.item_ids['stew'] = next(it for it in got.values() if it['metadata'].get('gloss') == 'stew')['id']
+    return got
+
+
+def test_writes_land_in_the_shape_the_app_reads(lex):
+    ids = lex.item_ids
+    got = _write(lex)
     # One reference is one id, never a list and never the form the model typed.
     assert got[ids['nyumba']]['metadata']['variantOf'] == ids['ferment']
     # Renumbering keeps the sibling orders dense, so a later move is a swap.
     assert got[ids['ferment']]['metadata']['senseOrder'] == 1
     assert got[ids['boil']]['metadata']['senseOrder'] == 2
-    stew = next(it for it in got.values() if it['metadata'].get('gloss') == 'stew')
+    stew = got[ids['stew']]
     assert stew['metadata']['parent'] == ids['kwatha'] and stew['metadata']['senseOrder'] == 3
     ex = got[ids['phika']]['metadata']['examples']
     assert len(ex) == 1 and set(ex[0]) == {'document', 'token'}
-    lex.item_ids['stew'] = stew['id']
 
 
 def test_deleting_an_entry_carries_its_senses_and_references(lex):
-    """Runs after the writes above, on the tree they left."""
+    """On the tree the writes above leave (made here, so the test stands alone)."""
     ids = lex.item_ids
+    _write(lex)
     w = ws_of(lex)
     out = call_tool(w, 'delete_entry', {'entry_form': 'kwatha'})
     assert 'freed or cleared' in out
