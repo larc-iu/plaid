@@ -4885,6 +4885,15 @@ class IgtRunner:
         return {s.get('sentence_id') for s in row.get('skipped') or [] if s.get('reason') == 'too-long'} | (
             self.too_long.get(document_id) or set())
 
+    def got_to(self, document_id: str) -> bool:
+        """Whether the job's skips of sentences too long for it stand in a
+        document at the end: the walk ended it done, and a plan limited by a
+        search matched something there. Elsewhere (not reached, in use, put
+        off, gone, or nothing matched) the job never got to them, and their
+        blanks are not reached (S8-2)."""
+        row = self.job.rows.get(document_id) or {}
+        return row.get('state') == 'done' and not no_match(row)
+
     def excluded(self, document_id: str) -> set:
         """The sentences of a document no piece works: skipped, or written
         (:meth:`finished`)."""
@@ -6458,6 +6467,12 @@ class IgtRunner:
                                 for e in listed)
                 counts['left_units'] = [{'unit': u, 'left': units[u]} for u in ('word', 'morpheme', 'sentence')
                                         if units[u]]
+            skips = list(row.get('skipped') or [])
+            if not self.got_to(d):
+                # A sentence too long for a job is skipped only where the job
+                # got to it (S8-2).
+                skips = [x for x in skips if x.get('reason') != 'too-long']
+                counts.pop(TOO_LONG_MORE, None)
             left, more = core_job.cut(listed)
             # What a refusal the job could not follow left (REV-DAY-SURFACE
             # point 2): listed, never counted as left blank.
@@ -6465,7 +6480,7 @@ class IgtRunner:
             out.append({'document_id': d, 'name': self.names.get(d) or row.get('name'),
                         'state': state if state in ('done', 'in-use', 'gone') else 'not-reached',
                         'sentences': row.get('sentences'), 'targets': targets, 'done': done,
-                        'counts': counts, 'skipped': list(row.get('skipped') or []),
+                        'counts': counts, 'skipped': skips,
                         'gloss_group': row.get('gloss_group'), 'harmonize_group': row.get('harmonize_group'),
                         # No list where nothing was counted (a plan that
                         # fills nothing, a document deleted or unread), so
@@ -6847,6 +6862,9 @@ class IgtRunner:
             if planned and d not in planned and not worked:
                 continue
             skipped = self.excluded(d) - worked
+            if not self.got_to(d):
+                # Never skipped where the job did not get to (S8-2).
+                skipped -= self.too_long_ids(d)
             try:
                 doc = core_job.through_core(job, lambda: self.read(project, d))
             except Gone:
