@@ -37,6 +37,10 @@ export function splitConlluByNewdoc(text) {
 }
 
 const hasSpaceAfterNo = (misc) => (misc || '').split('|').includes('SpaceAfter=No');
+// Whether a row's MISC holds anything the import drops: every value but
+// `SpaceAfter=No`, which the body holds (see the word rows below).
+const dropsMisc = (misc) =>
+  (misc || '').split('|').some((item) => item !== '' && item !== '_' && item !== 'SpaceAfter=No');
 
 export function parseCoNLLU(text) {
   const lines = text.split('\n');
@@ -146,6 +150,7 @@ export function parseCoNLLU(text) {
         throw new Error(`Invalid multi-word token range: ${id}`);
       }
 
+      if (dropsMisc(misc)) droppedMiscTokens += 1;
       currentSentence.multiWordTokens.push({
         start: start,
         end: end,
@@ -163,15 +168,11 @@ export function parseCoNLLU(text) {
 
     // The MISC column is deliberately unsupported (it often carries annotations
     // like entity info that tokenization changes would silently corrupt; see
-    // plaid-ud scope decisions). Count word-row MISC drops so the user hears
-    // about it. `SpaceAfter=No` is not counted, on any row: the body holds
-    // the spacing (it is `# text`, or the forms joined as SpaceAfter says),
-    // and the export writes the value again from it. (MWT-row MISC is
-    // dropped silently.)
-    const keptMisc = (misc || '')
-      .split('|')
-      .filter((item) => item !== '' && item !== '_' && item !== 'SpaceAfter=No');
-    if (keptMisc.length > 0) {
+    // plaid-ud scope decisions). Count MISC drops, on word rows and range
+    // rows alike, so the user hears about it. `SpaceAfter=No` is not counted,
+    // on any row: the body holds the spacing (it is `# text`, or the forms
+    // joined as SpaceAfter says), and the export writes the value again from it.
+    if (dropsMisc(misc)) {
       droppedMiscTokens += 1;
     }
 

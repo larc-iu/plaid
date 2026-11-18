@@ -236,3 +236,18 @@ test('a HEAD beside a DEPREL of _ is dropped aloud', async () => {
   assert.deepEqual(warnings, ['3 HEAD values dropped: no DEPREL is given.']);
   assert.deepEqual(basic, []);
 });
+
+// H3-5-6: MISC on a multi-word token's range row went in silence, while a
+// word row's was counted, against the ruling that its non-support is loud.
+test('MISC on a multi-word token row is dropped aloud, as on a word row', async () => {
+  const { warnings } = await importOf([
+    '# text = del gato',
+    '1-2\tdel\t_\t_\t_\t_\t_\t_\t_\tTranslit=del|Gloss=of.the',
+    '1\tde\tde\tADP\t_\t_\t3\tcase\t_\t_',
+    '2\tel\tel\tDET\t_\t_\t3\tdet\t_\t_',
+    '3\tgato\tgato\tNOUN\t_\t_\t0\troot\t_\t_',
+  ]);
+  assert.deepEqual(warnings, [
+    'MISC values on 1 token row dropped: Plaid UD does not store the MISC column.',
+  ]);
+});
