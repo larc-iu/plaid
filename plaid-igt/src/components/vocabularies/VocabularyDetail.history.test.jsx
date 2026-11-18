@@ -128,7 +128,9 @@ describe('the vocabulary History', () => {
 
     await view.step(() => button('History').click());
     await settle(view);
-    const row = all(document.body, 'span').find((s) => s.textContent === 'Edit entry "kai"');
+    const row = all(document.body, 'span').find(
+      (s) => s.textContent === 'Edit entry "\u2068kai\u2069"',
+    );
     expect(row).toBeTruthy();
 
     await view.step(() => row.click());
@@ -177,7 +179,9 @@ describe('the vocabulary History', () => {
     await settle(view);
     await view.step(() => button('History').click());
     await settle(view);
-    const row = all(document.body, 'span').find((s) => s.textContent === 'Edit entry "kai"');
+    const row = all(document.body, 'span').find(
+      (s) => s.textContent === 'Edit entry "\u2068kai\u2069"',
+    );
     await view.step(() => row.click());
     await settle(view);
     await view.step(() => button('Vocabulary').click());
@@ -217,7 +221,9 @@ describe('the vocabulary History', () => {
     await settle(view);
     await view.step(() => button('History').click());
     await settle(view);
-    const row = all(document.body, 'span').find((s) => s.textContent === 'Edit entry "kai"');
+    const row = all(document.body, 'span').find(
+      (s) => s.textContent === 'Edit entry "\u2068kai\u2069"',
+    );
     await view.step(() => row.click());
     await settle(view);
     await view.step(() => button('Vocabulary').click());
