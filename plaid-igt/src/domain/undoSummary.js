@@ -307,9 +307,11 @@ export const notUndoneLines = (summary) => {
 /**
  * The toast after an undo: `{title, message, undid}`. Titled by what the call
  * did, which a write between the dry run and it may have changed: "Undone",
- * or "Nothing undone".
+ * or "Nothing undone". A caller that knows why nothing was undone puts its
+ * sentence in `summary.already` (a job another page undid first, S6-3).
  */
 export const undoneToast = (summary, opts) => {
+  if (summary?.already) return { title: 'Nothing undone', message: summary.already, undid: false };
   const line = undoneLine(summary, opts);
   const { total, unlisted } = leftCounts(summary);
   const left = total ? leftLine(summary?.skipped, opts, unlisted) : '';

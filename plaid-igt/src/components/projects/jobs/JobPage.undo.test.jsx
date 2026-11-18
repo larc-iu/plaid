@@ -377,4 +377,32 @@ describe('Undo job', () => {
     expect(v.container.querySelector('[data-testid="job-undone"]')).toBeNull();
     await v.unmount();
   });
+
+  // S6-3: a page opened before another person's undo.
+  it('says the job was already undone when another page undid it first, and shows it undone', async () => {
+    const undo = vi
+      .fn()
+      .mockResolvedValueOnce(SUMMARY)
+      .mockResolvedValueOnce({ ...SUMMARY, undone: {}, total: 0, dryRun: false });
+    const client = clientOf(jobOf(), undo);
+    client.jobs.get
+      .mockResolvedValueOnce(jobOf())
+      .mockResolvedValue(
+        jobOf({ undone: { operation: 'o9', time: '2026-11-12T11:00:00Z', user: 'w' } }),
+      );
+    const v = await mount(client);
+    await press(v, button(v.container, 'Undo job'));
+    await settle(v);
+    await press(v, button(dialog(), 'Undo'));
+    await settle(v);
+    expect(feedback.notifyInfo).toHaveBeenCalledWith(
+      'This job was already undone.',
+      'Nothing undone',
+    );
+    expect(v.container.querySelector('[data-testid="job-undone"]').textContent).toMatch(
+      /^Undone by Wren, /,
+    );
+    expect(button(v.container, 'Undo job')).toBeNull();
+    await v.unmount();
+  });
 });

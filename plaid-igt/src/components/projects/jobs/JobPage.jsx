@@ -297,16 +297,26 @@ export const JobPage = ({ project, projectId, jobId, client }) => {
     return `${href}${href.includes('?') ? '&' : '?'}filter=${encodeURIComponent(filter)}`;
   };
 
-  // After an undo: the job read again, which says it stands undone.
-  const afterUndo = async (res) => {
+  // After an undo: the job read again, which says it stands undone, also when
+  // the call undid nothing because another page undid it first (S6-3).
+  const afterUndo = async () => {
     dropPrecedent();
-    if (!res?.operation) return;
     try {
       setJob(await client.jobs.get(jobId));
       setReadAt(Date.now());
     } catch (err) {
       notifyError(err, 'Failed to read the job again');
     }
+  };
+
+  // An undo that undid nothing because the job already stands undone (another
+  // page undid it since this one was read) says that, not every row "not
+  // undone" (S6-3).
+  const sendUndo = async ({ dryRun }) => {
+    const res = await client.jobs.undo(jobId, { dryRun });
+    if (dryRun || res?.operation) return res;
+    const now = await client.jobs.get(jobId).catch(() => null);
+    return now?.undone ? { ...res, already: 'This job was already undone.' } : res;
   };
 
   return (
@@ -341,7 +351,7 @@ export const JobPage = ({ project, projectId, jobId, client }) => {
           client={client}
           entry={{ id: jobId, label: jobName(job) }}
           noun="job"
-          send={({ dryRun }) => client.jobs.undo(jobId, { dryRun })}
+          send={sendUndo}
           tokens={job.report ? (jobEditedText(job) ? 'with-text' : 'morphemes') : undefined}
           errorText={jobUndoError}
           place={jobPlacer({
