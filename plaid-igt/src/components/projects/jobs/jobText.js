@@ -220,11 +220,18 @@ export const noticeText = (totals) => {
       `${countOf(ranOut, 'document')} ended before the job had done its work there: what it had staged there was written, and the rest was not done.`,
     );
   }
-  const notReached = t.documentsStepNotReached || 0;
-  if (notReached) {
-    const one = notReached === 1;
+  const unchanged = t.documentsStepUnchanged || 0;
+  if (unchanged) {
+    const one = unchanged === 1;
     out.push(
-      `${countOf(notReached, 'document')} ${one ? 'was' : 'were'} not reached: the job's step over the documents ended before ${one ? 'it' : 'them'}.`,
+      `${countOf(unchanged, 'document')} ${one ? 'was' : 'were'} read in part and not changed: the job's step over the documents ended before it finished ${one ? 'it' : 'them'}.`,
+    );
+  }
+  const notRead = t.documentsStepNotRead || 0;
+  if (notRead) {
+    const one = notRead === 1;
+    out.push(
+      `${countOf(notRead, 'document')} ${one ? 'was' : 'were'} not read: the job's step over the documents ended before ${one ? 'it' : 'them'}.`,
     );
   }
   const failedHere = t.documentsStepFailed || 0;
@@ -251,9 +258,12 @@ export const noticeCounts = (report) => {
     documentsRanOut:
       t.documentsRanOut ??
       (report?.documents || []).filter((d) => d.counts?.ranOut === 'written').length,
-    documentsStepNotReached:
-      t.documentsStepNotReached ??
-      (report?.documents || []).filter((d) => d.counts?.ranOut === 'not-reached').length,
+    documentsStepUnchanged:
+      t.documentsStepUnchanged ??
+      (report?.documents || []).filter((d) => d.counts?.ranOut === 'unchanged').length,
+    documentsStepNotRead:
+      t.documentsStepNotRead ??
+      (report?.documents || []).filter((d) => d.counts?.ranOut === 'not-read').length,
     documentsStepFailed:
       t.documentsStepFailed ??
       (report?.documents || []).filter((d) => d.counts?.ranOut === 'failed').length,

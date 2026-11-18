@@ -1041,8 +1041,8 @@ def notice(totals: Dict[str, Any], nouns: Optional[Tuple[str, str]] = None) -> O
 #: An app's ``counts.ran_out`` values, each with its total (REV-RW-R2-2):
 #: what happened in a document a big piece did not finish and nothing walked
 #: after it there.
-RAN_OUT_TOTALS = (('written', 'documents_ran_out'), ('not-reached', 'documents_step_not_reached'),
-                  ('failed', 'documents_step_failed'))
+RAN_OUT_TOTALS = (('written', 'documents_ran_out'), ('unchanged', 'documents_step_unchanged'),
+                  ('not-read', 'documents_step_not_read'), ('failed', 'documents_step_failed'))
 
 
 def ran_out_line(key: str, n: int) -> str:
@@ -1053,8 +1053,11 @@ def ran_out_line(key: str, n: int) -> str:
     if key == 'documents_ran_out':
         return (f'{count} ended before the job had done its work there: what it had staged there was written, and '
                 'the rest was not done.')
-    if key == 'documents_step_not_reached':
-        return (f'{count} {"was" if one else "were"} not reached: the job\'s step over the documents ended before '
+    if key == 'documents_step_unchanged':
+        return (f'{count} {"was" if one else "were"} read in part and not changed: the job\'s step over the documents '
+                f'ended before it finished {"it" if one else "them"}.')
+    if key == 'documents_step_not_read':
+        return (f'{count} {"was" if one else "were"} not read: the job\'s step over the documents ended before '
                 f'{"it" if one else "them"}.')
     return f'{count} {"was" if one else "were"} not worked: the job\'s step over {"it" if one else "them"} failed.'
 

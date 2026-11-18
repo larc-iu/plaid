@@ -2318,10 +2318,11 @@ class IgtRunner:
         self.whole_taken: set = set()
         #: document id -> what happened there when its whole-document or
         #: selection piece did not finish and nothing is walked after it
-        #: (REV-RW-1, REV-RW-R2-2): ``written`` (what it staged there was
-        #: written, the rest not done), ``not-reached`` (an unfinished step
-        #: never got to it) or ``failed`` (the step failed): the report's
-        #: top line says each
+        #: (REV-RW-1, REV-RW-R2-2, REV-RW-R3-2): ``written`` (what it staged
+        #: there was written, the rest not done), ``unchanged`` (an unfinished
+        #: step read part of it and changed nothing), ``not-read`` (it read
+        #: none of it) or ``failed`` (the step failed): the report's top line
+        #: says each
         self.ran_out: Dict[str, str] = {}
         #: document id -> the first sentence a write must leave the cursor
         #: before (:meth:`go_on`, :meth:`record`)
@@ -2904,11 +2905,13 @@ class IgtRunner:
         if ws.ended is not None:
             # An unfinished step: a document it was not shown all of and
             # sends to no stretch is not walked (RPF3), and the report says
-            # what happened there (REV-RW-R2-2): what it staged there was
-            # written and the rest not done, or it never got to it.
+            # what happened there (REV-RW-R2-2, REV-RW-R3-2): what it staged
+            # there was written and the rest not done, it read part of it and
+            # changed nothing, or it read none of it.
             for d, unread in ending.items():
                 if unread and d not in left_of:
-                    self.ran_out[d] = 'written' if by_doc.get(d) else 'not-reached'
+                    self.ran_out[d] = ('written' if by_doc.get(d) else 'unchanged' if ws.shown.get(d)
+                                       else 'not-read')
         for d, unread in ending.items():
             job.check()
             core_job.through_core(job, lambda: self.one_step(project, d, unread, left_of.get(d, ())))

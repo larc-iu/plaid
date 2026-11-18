@@ -133,8 +133,8 @@ def test_a_closed_big_piece_of_a_plan_that_fills_nothing_walks_nothing_and_says_
     else:
         # The selection staged in Story alone and never got to the others
         # (REV-RW-R2-2: each document said as it was).
-        assert (totals['documents_ran_out'], totals['documents_step_not_reached']) == (1, 2)
-        assert '2 documents were not reached: the job\'s step over the documents ended before them.' in notice
+        assert (totals['documents_ran_out'], totals['documents_step_not_read']) == (1, 2)
+        assert '2 documents were not read: the job\'s step over the documents ended before them.' in notice
 
 
 class _Crash(BaseException):

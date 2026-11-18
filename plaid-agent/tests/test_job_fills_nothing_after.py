@@ -59,7 +59,7 @@ def test_a_plan_that_fills_nothing_walks_nothing_after_its_big_piece_however_it_
     """REV-RW-R2-2, the reviewer's P3B: a check (fills nothing) whose big piece
     runs out with a change staged in Story, fails having staged nothing, or
     answers nothing. No stretch is asked, every document ends, and the top
-    line says what happened in each: written there, not reached, or failed."""
+    line says what happened in each: written there, not read, or failed."""
     client = JobClient(dict(TWO))
     job = start(client, 'Check every gloss and list the odd ones.', id=J, plan=plan, fills=())
 
@@ -82,7 +82,7 @@ def test_a_plan_that_fills_nothing_walks_nothing_after_its_big_piece_however_it_
     if how == 'ran-out' and plan == 'selection':
         assert ('1 document ended before the job had done its work there: what it had staged there was written, and '
                 'the rest was not done.') in notice, notice
-        assert '1 document was not reached: the job\'s step over the documents ended before it.' in notice, notice
+        assert '1 document was not read: the job\'s step over the documents ended before it.' in notice, notice
     elif how == 'ran-out':
         # By documents, Tale's own piece staged nothing and failed.
         assert ('1 document ended before the job had done its work there: what it had staged there was written, and '
@@ -115,4 +115,4 @@ def test_an_unfinished_selection_that_fills_something_counts_the_documents_it_di
     finished = run_job(job, runner(job))
     assert _firsts(model) == ['SELECTION']
     notice = finished['report']['notice']
-    assert '1 document was not reached: the job\'s step over the documents ended before it.' in notice, notice
+    assert '1 document was not read: the job\'s step over the documents ended before it.' in notice, notice
