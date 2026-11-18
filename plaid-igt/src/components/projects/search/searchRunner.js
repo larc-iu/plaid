@@ -8,6 +8,7 @@
 // hits in M more documents" accounting from the grouped-by-doc counts.
 
 import { cpSlice } from '@larc-iu/plaid-client';
+import { isolate } from '@ui/lib/bidi.js';
 import { morphemeGlossReading } from '@/domain/tagsets';
 import { translationFieldOf, translationFieldsOf } from '@/domain/sentenceRole';
 import { IgtDocument, loadProjectVocabularies, rebaseVocabLinks } from '@/domain/IgtDocument';
@@ -75,7 +76,7 @@ export function locateHits(doc, domain, hitIds) {
       const span = s.annotations?.[domain.field];
       if (span?.id && hitIds.has(span.id)) {
         const r = row(s, idx);
-        r.notes.push(`${domain.field}: ${span.value}`);
+        r.notes.push(`${domain.field}: ${isolate(span.value)}`);
       }
       return;
     }
@@ -88,21 +89,21 @@ export function locateHits(doc, domain, hitIds) {
         if (span?.id && hitIds.has(span.id)) {
           const r = row(s, idx);
           mark(r, t);
-          r.notes.push(`${domain.field}: ${span.value}`);
+          r.notes.push(`${domain.field}: ${isolate(span.value)}`);
         }
       }
       for (const m of t.morphemes || []) {
         if ((domain.kind === 'morpheme' || domain.kind === 'lexicon') && hitIds.has(m.id)) {
           const r = row(s, idx);
           mark(r, t, m);
-          if (domain.kind === 'morpheme') r.notes.push(`morpheme: ${morphFormOf(m)}`);
+          if (domain.kind === 'morpheme') r.notes.push(`morpheme: ${isolate(morphFormOf(m))}`);
         }
         if (domain.kind === 'span' && domain.scope === 'morpheme') {
           const span = m.annotations?.[domain.field];
           if (span?.id && hitIds.has(span.id)) {
             const r = row(s, idx);
             mark(r, t);
-            r.notes.push(`${morphFormOf(m)} · ${domain.field}: ${span.value}`);
+            r.notes.push(`${isolate(morphFormOf(m))} · ${domain.field}: ${isolate(span.value)}`);
           }
         }
       }

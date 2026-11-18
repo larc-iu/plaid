@@ -94,6 +94,18 @@ describe('buildContextRows', () => {
     });
   });
 
+  // H2-8-1: a value in a note line reads in its own direction beside the
+  // field's name.
+  it('isolates the value in a hit’s note line', () => {
+    const layers = [layer('Note', 'note')];
+    const row = buildContextRows(
+      doc(layers, { Note: { id: 'n-1', value: 'ذهب Ahmed إلى' } }),
+      domain,
+      new Set(['n-1']),
+    )[0];
+    expect(row.notes).toEqual(['Note: \u2068ذهب Ahmed إلى\u2069']);
+  });
+
   it('takes the first translation field the sentence fills', () => {
     const layers = [layer('En', 'translation'), layer('Es', 'translation')];
     expect(rowOf(doc(layers, { Es: { id: 'e-1', value: 'perros' } })).translation).toBe('perros');

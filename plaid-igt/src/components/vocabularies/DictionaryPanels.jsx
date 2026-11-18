@@ -542,7 +542,9 @@ export const ContextRow = ({ row, to }) => {
         </p>
       )}
       {row.translation && (
-        <p className="mt-0.5 text-xs italic text-muted-foreground">‘{row.translation}’</p>
+        <p dir="auto" className="mt-0.5 text-xs italic text-muted-foreground">
+          ‘{row.translation}’
+        </p>
       )}
     </>
   );
@@ -641,9 +643,9 @@ export const ExamplesPanel = ({ item, client, linkedTokenIds, canEdit, onRemove 
                   {i + 1}
                 </span>
                 <div className="min-w-0 flex-1 px-3 py-1.5 text-sm">
-                  <span>{ex.text}</span>
+                  <span dir="auto">{ex.text}</span>
                   {ex.translation && (
-                    <span className="block text-xs italic text-muted-foreground">
+                    <span dir="auto" className="block text-xs italic text-muted-foreground">
                       ‘{ex.translation}’
                     </span>
                   )}

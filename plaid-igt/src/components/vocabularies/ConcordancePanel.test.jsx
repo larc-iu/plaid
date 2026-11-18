@@ -4,6 +4,7 @@ import { renderComponent } from '@ui/test/renderComponent.jsx';
 import { buildContextRows } from '@/components/projects/search/searchRunner.js';
 import { withMorphemeHits } from './vocabConcordance';
 import { ConcordancePanel } from './ConcordancePanel.jsx';
+import { ExamplesPanel } from './DictionaryPanels.jsx';
 import { MarkedText } from '@ui/components/shared/MarkedText.jsx';
 
 // GH #68: an entry linked at morpheme level is picked out inside its word in
@@ -275,6 +276,45 @@ describe('ConcordancePanel, a morpheme in its word', () => {
     expect(stack.querySelector('mark').textContent).toBe('الكتاب');
     expect(stack.querySelector('[data-segmentation]').textContent).toBe('ال-كتب');
     expect(stack.className).toContain('text-start');
+    await view.unmount();
+  });
+});
+
+// H2-8-1: a translation keeps its own direction, so a right-to-left one with
+// a Latin word in it reads in order.
+describe('a translation in the concordance and the examples', () => {
+  const RTL = 'ذهب Ahmed إلى المدرسة';
+
+  it('takes its own direction in a concordance row', async () => {
+    const [row] = rowsOf();
+    const view = await mount([{ ...row, translation: RTL }]);
+    const line = [...view.container.querySelectorAll('p')].find((p) =>
+      p.textContent.includes('Ahmed'),
+    );
+    expect(line.getAttribute('dir')).toBe('auto');
+    await view.unmount();
+  });
+
+  it('takes its own direction in an example with no document', async () => {
+    const view = await renderComponent(
+      <MemoryRouter>
+        <ExamplesPanel
+          item={{ id: 'e1', metadata: { examples: [{ text: 'ذهب أحمد', translation: RTL }] } }}
+          client={null}
+          canEdit={false}
+          onRemove={() => {}}
+        />
+      </MemoryRouter>,
+    );
+    const line = [...view.container.querySelectorAll('span')].find((el) =>
+      el.textContent.includes('Ahmed'),
+    );
+    expect(line.getAttribute('dir')).toBe('auto');
+    expect(
+      [...view.container.querySelectorAll('span')]
+        .find((el) => el.textContent === 'ذهب أحمد')
+        ?.getAttribute('dir'),
+    ).toBe('auto');
     await view.unmount();
   });
 });
