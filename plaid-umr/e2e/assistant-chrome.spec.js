@@ -1,7 +1,12 @@
 import PlaidClient from '@larc-iu/plaid-client';
 import { randomUUID } from 'node:crypto';
+import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { test, expect, seedAuth, readToken, CORE } from './fixtures.js';
-import { getFixture } from './fixtureProject.js';
+import { createUmrProject } from '../src/domain/umrProjectSetup.js';
+import { importUmrDocument } from '../src/domain/umrImport.js';
+import { getUmrLayerInfo } from '../src/utils/umrLayerUtils.js';
 import { assistantHarness, assistantChromeTests } from '../../plaid-ui/e2e/assistantChrome.js';
 
 // The assistant panel as part of the app's chrome rather than one screen's.
@@ -19,6 +24,24 @@ import { assistantHarness, assistantChromeTests } from '../../plaid-ui/e2e/assis
 
 const SECOND_DOCUMENT = 'Chrome Spec Second Document';
 
+// The English sample's first sentence (the one naming the Philippines), as a
+// document of one sentence: the whole sample takes seconds to open on a busy
+// machine, and these tests open a document again and again.
+const SAMPLE = path.join(
+  path.dirname(fileURLToPath(import.meta.url)),
+  '..',
+  'test',
+  'fixtures',
+  'umr',
+  'english_umr-0001.umr',
+);
+const SEPARATOR = '#'.repeat(80);
+const firstSentence = () => {
+  const blocks = fs.readFileSync(SAMPLE, 'utf8').split(SEPARATOR);
+  return `${SEPARATOR}${blocks[1]}`;
+};
+
+let projectName;
 let projectId;
 let documentId;
 let otherDocumentId;
@@ -47,24 +70,33 @@ const seedConversation = (title, text, updatedAt) => {
 
 const tabSeen = (name) => (page) => expect(page.getByRole('tab', { name })).toBeVisible();
 
-// The shared fixture, plus one empty document to walk to. Both the document and
-// the conversations are taken away again: the fixture project is what every
-// other spec in this suite reads.
+// A project of its own, made for this run, with the one-sentence document and
+// an empty one to walk to. Not the shared "E2E UMR Fixture": another worker
+// running this spec at the same time would share its documents and delete
+// them under it, and the panel in assistant-panel.spec.js would resume the
+// conversations seeded here.
 test.beforeAll(async () => {
   ({ userId } = readToken());
-  ({ projectId, documentId } = await getFixture());
-  // Reused when a run that died left it: names are unique in a project.
-  const left = (await client().projects.listDocuments(projectId)).find(
-    (d) => d.name === SECOND_DOCUMENT,
+  projectName = `Assistant chrome ${process.pid}-${Date.now()}`;
+  const c = client();
+  projectId = (await createUmrProject(c, projectName)).id;
+  const project = await c.projects.get(projectId);
+  const sample = await importUmrDocument(
+    c,
+    projectId,
+    'english_umr-0001 s1',
+    firstSentence(),
+    getUmrLayerInfo(project),
   );
-  otherDocumentId = (left ?? (await client().documents.create(projectId, SECOND_DOCUMENT))).id;
+  documentId = sample.document.id;
+  otherDocumentId = (await c.documents.create(projectId, SECOND_DOCUMENT)).id;
 });
 
 test.afterAll(async () => {
   await dropConversations(seeded, [projectId]);
-  if (otherDocumentId) {
+  if (projectId) {
     await client()
-      .documents.delete(otherDocumentId)
+      .projects.delete(projectId)
       .catch((e) => console.error('cleanup failed:', e.message));
   }
 });
@@ -109,7 +141,7 @@ assistantChromeTests({
     shows: 'Philippines',
     inserts: 'about s1 ',
   },
-  projectName: () => 'E2E UMR Fixture',
+  projectName: () => projectName,
   // No per-sentence gesture in this app, so there is nothing for a narrow
   // viewport to hide.
   ask: { hide: async () => {}, show: async () => {} },
