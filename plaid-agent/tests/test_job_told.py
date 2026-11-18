@@ -465,3 +465,32 @@ def test_a_piece_summary_lists_at_most_a_fixed_number_of_its_sentences():
     p = r.unsummed['k']
     assert p['sentences'] == [f's{s.index}' for s in part[:SENTENCES_LISTED]]
     assert p['sentences_more'] == len(part) - SENTENCES_LISTED
+
+
+# --- REV-JR2-4: as many waits for core in a selection as anywhere ---------------------------------
+
+@pytest.mark.parametrize('pieces', ['sentences', 'selection'])
+def test_a_document_core_never_writes_gets_the_same_waits_whatever_the_plan(monkeypatch, pieces):
+    from plaid_agent.igt import job as igt_job
+    clock = {'t': 1_800_000_000.0}
+    client = JobClient({'d1': document('d1', 'Story', [{'words': ['blank']}])})
+    job = start(client, now=lambda: clock['t'], plan=pieces)
+
+    def sleep(s):
+        clock['t'] += s
+    job._sleep = sleep
+
+    def answer(asked, n, kwargs):
+        if n == 1:
+            return reply(calls=[call(1, 'set_analysis', {'document': 'Story', 'ref': 's1.w1',
+                                                         'morphemes': [{'form': 'blank'}]})])
+        return reply('Done.')
+    use(monkeypatch, Model(answer))
+
+    def down(c, ops, **kw):
+        raise PlaidAPIError('HTTP 502', status=502, method='POST')
+    monkeypatch.setattr(igt_job, 'execute_plan', down)
+    r = runner(job)
+    r.work(job)
+    waits = [m for m in _said(client) if m == 'The server did not answer. Trying again in 10 minutes.']
+    assert len(waits) == JOB_DEFER_ROUNDS, (pieces, _said(client))

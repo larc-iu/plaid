@@ -3333,7 +3333,9 @@ class IgtRunner:
             return self.defer(document_id)
         self.seen_marks.pop(document_id, None)
         self.server_off[document_id] = error
-        self.unanswered[document_id] += 1
+        # Counted as a person's defer is, only once the job has waited for
+        # it: the same waits whatever put it off first (REV-JR2-4).
+        self.unanswered[document_id] += 1 if document_id in self.waited else 0
         self.job.update_row(document_id, state='deferred')
         return 'deferred'
 
@@ -3352,11 +3354,11 @@ class IgtRunner:
         return 'deferred'
 
     def end_if_unanswered(self, document_id: str) -> None:
-        """A document core put off once more than JOB_DEFER_ROUNDS waits
-        allow, as a person's would end ``in-use``, ends ``not-reached``: the
+        """A document core put off after JOB_DEFER_ROUNDS waits, as a
+        person's would end ``in-use``, ends ``not-reached``: the
         job did not finish it, and goes on (REV-JG-4's job that ends done,
         never in use for it, REV D14)."""
-        if document_id in self.server_off and self.unanswered[document_id] > JOB_DEFER_ROUNDS:
+        if document_id in self.server_off and self.unanswered[document_id] >= JOB_DEFER_ROUNDS:
             core_job.through_core(self.job, lambda: self.job.update_row(document_id, state='not-reached'))
 
     @property
