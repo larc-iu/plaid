@@ -120,7 +120,7 @@ test('a person’s edit is undone from History, a second tab follows, and the un
 
     await openHistory(page);
     await page
-      .getByText(/^Gloss of morpheme "kai"/)
+      .getByText(/^Gloss of morpheme "\u2068kai\u2069"/)
       .first()
       .click();
     await expect(changes(page)).toBeVisible({ timeout: 15_000 });
@@ -137,9 +137,12 @@ test('a person’s edit is undone from History, a second tab follows, and the un
     await expect(page.getByText('Historical state')).toHaveCount(0);
     await expect(glossCell(page, 0)).toHaveValue('go', { timeout: 20_000 });
     expect(await glossOn(0)).toBe('go');
-    await expect(railRows(page).first()).toContainText('Undo entry: Gloss of morpheme "kai"', {
-      timeout: 15_000,
-    });
+    await expect(railRows(page).first()).toContainText(
+      'Undo entry: \u2068Gloss of morpheme "\u2068kai\u2069"',
+      {
+        timeout: 15_000,
+      },
+    );
     expect(page.url()).not.toContain('history=');
     await shot(page, '4-history-after');
 
@@ -164,14 +167,14 @@ test('a person’s edit is undone from History, a second tab follows, and the un
     await undoIn(again);
     await expect(glossCell(page, 0)).toHaveValue('walk', { timeout: 20_000 });
     expect(await glossOn(0)).toBe('walk');
-    await expect(railRows(page).first()).toContainText('Undo entry: Undo entry:', {
+    await expect(railRows(page).first()).toContainText('Undo entry: \u2068Undo entry:', {
       timeout: 15_000,
     });
 
     // The person's edit itself now has nothing left to undo: its row was
     // written again since.
     await page
-      .getByText(/^Gloss of morpheme "kai"/)
+      .getByText(/^Gloss of morpheme "\u2068kai\u2069"/)
       .first()
       .click();
     await expect(changes(page)).toBeVisible({ timeout: 15_000 });
@@ -385,7 +388,7 @@ test('a Bulk Edit merge is undone from the vocabulary’s History, and the undo 
   // The undo is the vocabulary History's newest entry, and undoing it merges
   // again.
   const rows = page.getByRole('region', { name: 'History' }).locator('[data-history-item^="u:"]');
-  await expect(rows.first()).toContainText('Undo entry: Merge', { timeout: 15_000 });
+  await expect(rows.first()).toContainText('Undo entry: \u2068Merge', { timeout: 15_000 });
   await shot(page, '5-vocabulary-history-after');
   await rows.first().click();
   await expect(changes(page)).toBeVisible({ timeout: 20_000 });

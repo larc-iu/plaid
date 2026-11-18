@@ -121,7 +121,7 @@ describe('UndoDialog', () => {
       vocabLayerId: undefined,
     });
     expect(byText(dialog(), 'h2', 'Undo this entry?')).not.toBeNull();
-    expect(text()).toContain('Gloss of "kai" in sentence 1: go');
+    expect(text()).toContain('Gloss of "\u2068kai\u2069" in sentence 1: \u2068go\u2069');
     expect(dialog().querySelector('[data-testid="undo-line"]').textContent).toBe(
       '12 values put back as they were, 1 word removed, 1 morpheme removed, 5 links put back as they were and 2 lexicon entries brought back',
     );

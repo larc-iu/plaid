@@ -34,7 +34,7 @@ import {
 } from '../../lib/notify.js';
 import { fullTimestamp } from '../../lib/formatTime.js';
 import { statusOf } from '../../lib/errors.js';
-import { isolateArrowSides } from '../../lib/bidi.js';
+import { isolateLabel } from '../../lib/bidi.js';
 import { useConfirm } from './ConfirmProvider.jsx';
 
 export const RestoreDialog = ({
@@ -209,7 +209,7 @@ export const RestoreDialog = ({
 
         <div className="flex flex-col gap-3">
           {entry?.label && (
-            <p className="text-sm text-muted-foreground">{isolateArrowSides(entry.label)}</p>
+            <p className="text-sm text-muted-foreground">{isolateLabel(entry.label)}</p>
           )}
 
           {error && <p className="text-sm text-destructive">{error}</p>}

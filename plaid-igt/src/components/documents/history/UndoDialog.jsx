@@ -25,7 +25,7 @@ import { Loading } from '@ui/components/shared/Loading.jsx';
 import { historyHref } from '@ui/hooks/useHistoryParam.js';
 import { notifyError, notifyInfo, notifySuccess, notifyWarning } from '@/utils/feedback';
 import { isUnknownOutcome } from '@ui/lib/errors.js';
-import { isolateArrowSides } from '@ui/lib/bidi.js';
+import { isolateLabel } from '@ui/lib/bidi.js';
 import {
   leftCounts,
   leftGroups,
@@ -160,7 +160,7 @@ export const UndoDialog = ({
         <div className="flex flex-col gap-3" inert={busy || undefined}>
           {entry?.label && (
             <p className="text-sm text-muted-foreground" dir="auto">
-              {isolateArrowSides(entry.label)}
+              {isolateLabel(entry.label)}
             </p>
           )}
 

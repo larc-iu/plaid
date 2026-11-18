@@ -275,7 +275,10 @@ describe('a vocabulary operation in a project feed', () => {
       ]),
     );
     const cells = texts(view.container, 'td');
-    expect(cells).toContain('Move vocabulary “Lexicon” to project “Kukama (UMR)”');
+    // Each quoted name keeps its own direction (H2-8-2).
+    expect(cells).toContain(
+      'Move vocabulary “\u2068Lexicon\u2069” to project “\u2068Kukama (UMR)\u2069”',
+    );
     expect(cells).toContain('Merge 3 vocab items');
     const where = [...view.container.querySelectorAll('td a')].map((a) => [
       a.textContent,

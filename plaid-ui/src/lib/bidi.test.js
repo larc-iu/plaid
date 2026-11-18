@@ -3,7 +3,7 @@
 // jsdom, not the suite's default happy-dom: `isRtlBox` asks for a resolved
 // `direction`, which is a question only a real layout engine answers.
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { isRtlBox, caretAtArrowEdge, arrowStep, isolate, isolateArrowSides } from './bidi.js';
+import { isRtlBox, caretAtArrowEdge, arrowStep, isolate, isolateLabel } from './bidi.js';
 
 let host;
 beforeEach(() => {
@@ -98,12 +98,34 @@ describe('isolate', () => {
 // REV-HFT-7: a History label is stored as typed, and its two sides of an
 // arrow are isolated where it is shown, so two right-to-left spellings do not
 // join into one run that reads backwards.
-describe('isolateArrowSides', () => {
-  it('isolates each side of an arrow, and leaves a label with none as it is', () => {
-    expect(isolateArrowSides('Respell \u0643\u062a\u0628 → \u0643\u062a')).toBe(
+describe('isolateLabel', () => {
+  it('isolates each side of an arrow, and leaves a label with no value as it is', () => {
+    expect(isolateLabel('Respell \u0643\u062a\u0628 → \u0643\u062a')).toBe(
       '\u2068Respell \u0643\u062a\u0628\u2069 → \u2068\u0643\u062a\u2069',
     );
-    expect(isolateArrowSides('Confirm word analysis')).toBe('Confirm word analysis');
-    expect(isolateArrowSides(null)).toBe(null);
+    expect(isolateLabel('Confirm word analysis')).toBe('Confirm word analysis');
+    expect(isolateLabel(null)).toBe(null);
+  });
+
+  // H2-8-2: a cell edit's value, after the first colon, and every quoted
+  // subject keep their own direction.
+  it('isolates the value after the last colon and each quoted run', () => {
+    const ar = '\u0630\u0647\u0628 Ahmed \u0625\u0644\u0649';
+    expect(isolateLabel(`Translation of sentence 1: ${ar}`)).toBe(
+      `Translation of sentence 1: \u2068${ar}\u2069`,
+    );
+    expect(isolateLabel('Gloss of morpheme "\u0630\u0647\u0628" in sentence 2: go')).toBe(
+      'Gloss of morpheme "\u2068\u0630\u0647\u0628\u2069" in sentence 2: \u2068go\u2069',
+    );
+    expect(isolateLabel('Create and link the entry “\u0630\u0647\u0628”')).toBe(
+      'Create and link the entry “\u2068\u0630\u0647\u0628\u2069”',
+    );
+    // A colon inside a quoted subject is not the value's.
+    expect(isolateLabel('Gloss of "a: b" cleared')).toBe('Gloss of "\u2068a: b\u2069" cleared');
+    // The first colon: a value may hold one of its own.
+    expect(isolateLabel('Note of sentence 1: a: b')).toBe('Note of sentence 1: \u2068a: b\u2069');
+    expect(isolateLabel('Undo entry: Gloss of "x" in sentence 1: X')).toBe(
+      'Undo entry: \u2068Gloss of "\u2068x\u2069" in sentence 1: X\u2069',
+    );
   });
 });

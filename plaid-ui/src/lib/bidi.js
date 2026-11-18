@@ -58,11 +58,34 @@ export const arrowStep = (visualRight, gridRtl) => (visualRight === !!gridRtl ? 
 // drawn from parts puts each value in a `<bdi>` instead.
 export const isolate = (value) => `\u2068${value ?? ''}\u2069`;
 
-// A stored label shown in a list (History, Activity): each side of its arrows
-// isolated, so `Respell كَتَبَ → كتب` reads old to new. Isolated where it is
-// shown, never in what is stored (REV-HFT-7). A label with no arrow, or no
-// label, is given back as it is.
-export const isolateArrowSides = (label) =>
-  typeof label === 'string' && label.includes(' → ')
-    ? label.split(' → ').map(isolate).join(' → ')
-    : label;
+// A stored label shown in a list (History, Activity), with each value in it
+// isolated, so a right-to-left value reads in its own order. Isolated where
+// it is shown, never in what is stored (REV-HFT-7). A fixed rule:
+// - with an arrow, each side of it (`Respell كَتَبَ → كتب` reads old to new);
+// - else each quoted run ("…" or “…”), and everything after the first ': '
+//   outside quotes, which is a cell edit's value (`Translation of sentence
+//   1: ذهب Ahmed إلى`, H2-8-2). A value may hold a colon of its own.
+// A label with none of these, or no label, is given back as it is.
+const QUOTES = { '"': '"', '\u201c': '\u201d' };
+
+const isolateQuoted = (text) =>
+  text.replace(/"([^"]*)"|\u201c([^\u201d]*)\u201d/g, (m, plain, curly) =>
+    plain != null ? `"${isolate(plain)}"` : `\u201c${isolate(curly)}\u201d`,
+  );
+
+export const isolateLabel = (label) => {
+  if (typeof label !== 'string') return label;
+  if (label.includes(' → ')) return label.split(' → ').map(isolate).join(' → ');
+  let close = null;
+  for (let i = 0; i < label.length; i += 1) {
+    const ch = label[i];
+    if (close) {
+      if (ch === close) close = null;
+    } else if (QUOTES[ch]) {
+      close = QUOTES[ch];
+    } else if (ch === ':' && label[i + 1] === ' ') {
+      return `${isolateQuoted(label.slice(0, i))}: ${isolate(isolateQuoted(label.slice(i + 2)))}`;
+    }
+  }
+  return isolateQuoted(label);
+};

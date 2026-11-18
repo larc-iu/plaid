@@ -103,7 +103,7 @@ test('a person’s edit in the grid reads as the gloss it replaced', async ({ pa
 
   await openHistory(page);
   await page
-    .getByText(/^Gloss of morpheme "kai"/)
+    .getByText(/^Gloss of morpheme "\u2068kai\u2069"/)
     .first()
     .click();
   await expect(changes(page)).toBeVisible({ timeout: 15_000 });
