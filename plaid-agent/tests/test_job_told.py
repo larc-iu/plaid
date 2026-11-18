@@ -163,3 +163,16 @@ def test_a_put_off_by_core_names_its_error_and_a_lock_names_a_person(monkeypatch
     with pytest.raises(Deferred) as e:
         r.off_on_trouble('d1', step)
     assert (e.value.error is None) is person
+
+
+# --- D10: core's own report, read as the page reads it --------------------------------------------
+
+def test_read_job_says_the_words_core_s_own_report_holds_in_its_documents_and_whose_line_it_is():
+    from plaid_agent.igt.jobread import summary
+    job = {'id': 'j1', 'project': 'p1', 'state': 'cancelled', 'documents': ['d1'], 'instructions': 'Respell.',
+           'report': {'totals': {'text_changes': 3, 'peoples_values_changed': 0},
+                      'documents': [{'state': 'done', 'counts': {'words_added': 25, 'tokens_changed': 2,
+                                                                 'text_changes': 3}}]}}
+    top = next(line for line in summary(job) if line.startswith("The report's top line"))
+    assert top == ('The report\'s top line: "Text: 25 words added, 2 existing words or punctuation marks changed or '
+                   'removed."'), top

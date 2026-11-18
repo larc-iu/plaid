@@ -298,6 +298,32 @@ def plan_line(report: Dict[str, Any]) -> Optional[str]:
     return line + (' Text may be edited.' if plan.get('edits_text') is True else '')
 
 
+#: The top line's counts that core's own report may hold only on its
+#: documents' rows (REV D10).
+_NOTICE_KEYS = ('peoples_values_changed', 'words_added', 'tokens_changed', 'text_changes')
+
+
+def notice_counts(report: Dict[str, Any]) -> Dict[str, Any]:
+    """The counts the top line is made of for ``report``, as the page's
+    ``noticeCounts`` takes them (plaid-igt jobText.js, mirrored in
+    test_notice_mirror): each total, or where the totals lack it (core's own
+    report has no words added nor changed) the documents' counts summed, and
+    the whole-selection step's documents from their rows."""
+    from ..core.job import one_step_totals
+    t = report.get('totals') or {}
+    docs = report.get('documents') or []
+    out: Dict[str, Any] = {k: t[k] if t.get(k) is not None else
+                           sum((d.get('counts') or {}).get(k) or 0 for d in docs) for k in _NOTICE_KEYS}
+    out['documents_ran_out'] = t['documents_ran_out'] if t.get('documents_ran_out') is not None else \
+        sum(1 for d in docs if (d.get('counts') or {}).get('ran_out') is True)
+    if t.get('documents_in_one_step') is not None:
+        out.update({k: t.get(k) for k in ('documents_in_one_step', 'documents_in_job',
+                                          'documents_changed_in_one_step', 'documents_not_all_read')})
+    else:
+        out.update(one_step_totals(docs))
+    return out
+
+
 def summary(job: Dict[str, Any], note_chars: Optional[int] = JOB_SUMMARY_NOTE_CHARS) -> List[str]:
     """The job in a few lines: state, who and when, the instructions (cut at
     ``note_chars``, with a note of what was cut), how its work was cut, its
@@ -325,14 +351,14 @@ def summary(job: Dict[str, Any], note_chars: Optional[int] = JOB_SUMMARY_NOTE_CH
                      else 'It has no report.')
         return lines
     top = report.get('notice')
+    whose = ", the worker's own"
     if 'notice' not in report:
         # Core's own report, of a job no worker finished, has none: the same
-        # line from its counts, as the page builds it (REV-RPF-W-3, and the
-        # whole-selection step's documents from their rows).
-        from ..core.job import notice, one_step_totals
+        # line from its counts, as the page builds it (REV-RPF-W-3, REV D10).
+        from ..core.job import notice
         from .job import IgtRunner
-        top = notice({**(report.get('totals') or {}), **one_step_totals(report.get('documents') or [])},
-                     IgtRunner.PEOPLE_NOUNS)
+        top = notice(notice_counts(report), IgtRunner.PEOPLE_NOUNS)
+        whose = ''
     if isinstance(job.get('undone'), dict):
         # Its changes are taken back (REV D9): the page's own notice, in place
         # of the worker's line of what it changed.
@@ -342,7 +368,7 @@ def summary(job: Dict[str, Any], note_chars: Optional[int] = JOB_SUMMARY_NOTE_CH
         # The worker's own top line: what the job changed of people's work
         # and of the text (RPF-A4, the owner's R4), and what its one step over
         # all the documents did.
-        lines.append(f'The report\'s top line, the worker\'s own: "{top}"')
+        lines.append(f'The report\'s top line{whose}: "{top}"')
     planned = plan_line(report)
     if planned:
         lines.append(planned)

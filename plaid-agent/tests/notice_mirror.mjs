@@ -29,17 +29,24 @@ registerHooks({
   },
 });
 
-const { noticeText } = await import(
+const { noticeText, noticeCounts } = await import(
   pathToFileURL(
     resolve(ROOT, "plaid-igt/src/components/projects/jobs/jobText.js"),
   ).href
 );
 const camel = (k) => k.replace(/_([a-z])/g, (_, c) => c.toUpperCase());
+const deep = (v) =>
+  Array.isArray(v)
+    ? v.map(deep)
+    : v && typeof v === "object"
+      ? Object.fromEntries(Object.entries(v).map(([k, x]) => [camel(k), deep(x)]))
+      : v;
 const cases = JSON.parse(readFileSync(process.argv[2], "utf8"));
+// With "reports" as argv[3], each case is a whole report, its line built
+// from `noticeCounts`, as the page builds core's own report's (REV D10).
+const reports = process.argv[3] === "reports";
 process.stdout.write(
   JSON.stringify(
-    cases.map((t) =>
-      noticeText(Object.fromEntries(Object.entries(t).map(([k, v]) => [camel(k), v]))),
-    ),
+    cases.map((t) => (reports ? noticeText(noticeCounts(deep(t))) : noticeText(deep(t)))),
   ),
 );

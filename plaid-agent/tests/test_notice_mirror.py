@@ -125,3 +125,34 @@ def test_the_top_line_says_a_big_piece_of_a_check_ended_before_its_work_was_done
         '2 documents were read in part and not changed: the job\'s step over the documents ended before it '
         'finished them.')
     assert notice({'documents_step_failed': 2}) == '2 documents were not worked: the job\'s step over them failed.'
+
+
+#: Core's own reports (no ``notice``): totals that lack the text's words, the
+#: documents' rows holding them (REV D10).
+REPORTS = [
+    {'totals': {'text_changes': 3, 'peoples_values_changed': 0},
+     'documents': [{'state': 'done', 'counts': {'words_added': 25, 'tokens_changed': 2, 'text_changes': 3}}]},
+    {'totals': {}, 'documents': [{'state': 'done', 'counts': {'words_added': 1, 'peoples_values_changed': 2}},
+                                 {'state': 'done', 'counts': {'tokens_changed': 4, 'ran_out': True}}]},
+    {'totals': {'words_added': 7, 'text_changes': 1},
+     'documents': [{'state': 'done', 'counts': {'words_added': 25, 'one_step': True, 'changes': 1}}]},
+    {'documents': []},
+]
+
+
+@pytest.fixture(scope='module')
+def page_reports(tmp_path_factory):
+    node = node_or_skip('the report notice mirror')
+    path = tmp_path_factory.mktemp('mirror') / 'reports.json'
+    path.write_text(json.dumps(REPORTS))
+    run = subprocess.run([node, RUNNER, str(path), 'reports'], capture_output=True, text=True, timeout=120)
+    assert run.returncode == 0, run.stderr
+    return json.loads(run.stdout)
+
+
+def test_read_job_counts_cores_own_report_as_the_page_does(page_reports):
+    from plaid_agent.igt.jobread import notice_counts
+    assert len(page_reports) == len(REPORTS)
+    for report, line in zip(REPORTS, page_reports):
+        assert notice(notice_counts(report), IgtRunner.PEOPLE_NOUNS) == line, report
+    assert page_reports[0] == 'Text: 25 words added, 2 existing words or punctuation marks changed or removed.'
