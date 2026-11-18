@@ -846,7 +846,20 @@ def _give_up(job: Job, e: BaseException) -> None:
     if job.lost:
         return
     job.set(message=error_line(e))
-    report = build_report(job, 'failed', WORKER_ERROR, [], {}, {})
+    try:
+        # Its documents as core holds their rows, as core's own report of a
+        # job counts them (D16): what landed is counted, and the notice of
+        # people's values changed is kept.
+        def row_report(d: str) -> Dict[str, Any]:
+            row = job.rows.get(d) or {}
+            return {'document_id': d, 'name': row.get('name'),
+                    'state': row.get('state') if row.get('state') in ROW_FINAL else 'not-reached',
+                    'sentences': row.get('sentences'), 'targets': row.get('targets'), 'done': row.get('done'),
+                    'counts': row.get('counts') or empty_counts(), 'skipped': list(row.get('skipped') or [])}
+        report = build_report(job, 'failed', WORKER_ERROR, [row_report(d) for d in job.order], {}, {})
+    except Exception as bad:  # noqa: BLE001 - the smallest report rather than none
+        logger.warning('Job %s: its documents could not be counted for the report: %s', job.id, bad)
+        report = build_report(job, 'failed', WORKER_ERROR, [], {}, {})
     try:
         job.admin.jobs.finish(job.id, job.worker_id, 'failed', report, reason=WORKER_ERROR)
     except Exception as again:  # noqa: BLE001 - nothing more a worker can do

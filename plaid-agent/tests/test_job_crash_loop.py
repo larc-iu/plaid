@@ -72,3 +72,31 @@ def test_skipped_sentences_past_cores_cap_are_counted_and_not_listed(monkeypatch
     assert row['done'] == 6 and row['targets'] == 6
     sent = [c[1] for c in client.jobs.calls if c[0] == 'update_document']
     assert sent and all(len(p.get('skipped') or []) <= 3 for p in sent), 'core is never sent more than its cap'
+
+
+def test_a_job_given_up_after_it_wrote_reports_the_counts_core_holds(monkeypatch):
+    """D16 of the job review 2026-11-18: the report of a job the worker gives
+    up on after it wrote (its report could not be built, twice) counts its
+    documents from the rows core holds, as core's own report does, never
+    "Documents done 0"."""
+    from job_fixtures import call
+    client = _client()
+    client.jobs.create('p1', 'igt', 'Gloss the words.')
+
+    def answer(asked, n, kw):
+        if n == 1:
+            return reply(calls=[call(1, 'set_analysis', {'document': 'Story', 'ref': 's1.w1',
+                                                         'morphemes': [{'form': 'w0'}]})])
+        return reply('Done.')
+    use(monkeypatch, Model(planned(answer)))
+    cfg = ModelConfig(model='fake/m', stream=False, max_steps=1000)
+
+    class Broken(IgtRunner):
+        def document_reports(self, job):
+            raise RuntimeError('the report broke')
+    worker = _worker(client, lambda job: Broken(job, cfg, count=lambda v: 1))
+    claimed = worker.once()
+    row = client.jobs.rows[claimed['job']['id']]
+    assert row['state'] == 'failed' and row['reason'] == 'worker-error'
+    totals = row['report']['totals']
+    assert totals['documents_done'] == 1 and totals['words'] == 1, totals
