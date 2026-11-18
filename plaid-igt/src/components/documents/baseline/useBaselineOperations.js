@@ -4,6 +4,7 @@ import { useDocumentCtx, useUnsavedDraft } from '../contexts/DocumentContext.jsx
 import { useDocumentModel } from '@ui/domain/useDocumentModel.js';
 import { useEditLog } from '@ui/hooks/useEditLog.js';
 import { deletesSentenceOrRow, removedStretches } from '@ui/lib/editLog.js';
+import { rebaseEdits } from '@ui/lib/textMerge.js';
 import { notifyError, notifySuccess } from '@/utils/feedback';
 import { useConfirm } from '@ui/components/shared/ConfirmProvider';
 import { countDeleteLoss, holdsPersonsWork, lossPhrase } from '@ui/domain/annotationLoss.js';
@@ -175,6 +176,28 @@ export const useBaselineOperations = () => {
     }
   };
 
+  // The question a save of the box asks, as the document is stored now, or ''.
+  // A save that removes no text deletes nothing, whatever was added
+  // elsewhere, and reads nothing. Otherwise the document is read, and the
+  // edits are moved onto the text stored when someone saved it meanwhile, as
+  // the save moves them. Edits that cannot be moved are refused by the save
+  // unsent, so they ask nothing.
+  const removedOn = (body, gaps) => {
+    const words = (doc.layerInfo?.primaryTokenLayer?.tokens || []).map((t) => [t.begin, t.end]);
+    return removedStretches(body, gaps, words);
+  };
+  const lossOfSave = async () => {
+    const base = editLog.log.base;
+    const gaps = editLog.gaps();
+    if (removedOn(base, gaps).length === 0) return '';
+    await doc.reload();
+    const stored = doc.body || '';
+    const moved = stored === base ? { gaps } : rebaseEdits(base, gaps, stored);
+    if (moved.conflict) return '';
+    const removed = removedOn(stored, moved.gaps);
+    return removed.length > 0 ? baselineLossSentence(doc, removed) : '';
+  };
+
   const save = async (at) => {
     // Nothing changed (or typed and taken back): nothing to send, and no
     // operation is written for it.
@@ -187,19 +210,23 @@ export const useBaselineOperations = () => {
     // glued to a word or not, keeps every token (Luke, 2026-10-16), and one
     // that touches no word and deletes no sentence or segment with anything
     // on it changes none.
-    const words = (doc.layerInfo?.primaryTokenLayer?.tokens || []).map((t) => [t.begin, t.end]);
-    const removed = removedStretches(editLog.log.base, editLog.gaps(), words);
-    const loses = removed.length > 0 ? baselineLossSentence(doc, removed) : '';
-    if (
-      loses &&
-      !(await confirm({
+    //
+    // What it deletes is counted on the document as stored when Save is
+    // pressed (H2-1-1): the page may have been opened before someone else
+    // annotated the words it deletes. It is read again once the question is
+    // answered, and asks again when what it deletes changed meanwhile.
+    let asked = '';
+    for (;;) {
+      const loses = await lossOfSave();
+      if (!loses || loses === asked) break;
+      const yes = await confirm({
         title: 'Save baseline changes?',
         description: loses,
         confirmLabel: 'Save anyway',
         destructive: true,
-      }))
-    ) {
-      return;
+      });
+      if (!yes) return;
+      asked = loses;
     }
     setSaving(true);
     setChangedElsewhere(false);

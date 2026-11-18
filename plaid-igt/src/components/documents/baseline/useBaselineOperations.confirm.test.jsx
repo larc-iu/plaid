@@ -395,6 +395,110 @@ describe('baselineLossSentence, a line deleted or blanked', () => {
   });
 });
 
+// H2-1-1: the page was opened before someone else annotated the words a
+// save deletes. The question counts what is stored when Save is pressed, and
+// asks again when that grows while it is open.
+describe('useBaselineOperations, a save from a page opened before others annotated', () => {
+  afterEach(() => {
+    document.body.innerHTML = '';
+  });
+  const words = () => ({
+    id: 'w',
+    tokens: [
+      { id: 'w1', begin: 0, end: 3 },
+      { id: 'w2', begin: 4, end: 7 },
+    ],
+    spanLayers: [{ id: 'g', spans: [] }],
+  });
+  const opened = () => {
+    const w = words();
+    const doc = fakeDocument({
+      body: 'The dog ran.',
+      layerInfo: {
+        primaryTextLayer: { id: 'tl-1', text: { id: 't-1', digest: 'd0' }, tokenLayers: [w] },
+        primaryTokenLayer: w,
+      },
+    });
+    // Another person's gloss on "dog", stored after this page read the
+    // document: the page sees it only by reading again.
+    const glosses = doc.layerInfo.primaryTokenLayer.spanLayers[0].spans;
+    const theirs = (id) => () => glosses.push({ id, tokens: ['w2'], value: id });
+    return { doc, theirs };
+  };
+  const question = () => document.body.querySelector('[role="alertdialog"]')?.textContent || '';
+  const answer = (label) =>
+    act(async () => {
+      [...document.body.querySelectorAll('[role="alertdialog"] button')]
+        .find((b) => b.textContent.trim() === label)
+        .click();
+    });
+  const deleteDog = async (doc) => {
+    const h = await mountDocumentHook(useBaselineOperations, { doc });
+    await act(async () => h.api.handleEdit());
+    await change(h, 3, 7, 'The ran.', 3);
+    await act(async () => {
+      h.api.handleSave();
+    });
+    return h;
+  };
+
+  it('counts the annotations stored when Save is pressed', async () => {
+    const { doc, theirs } = opened();
+    doc.reload.mockImplementationOnce(async () => theirs('DOG')());
+    const h = await deleteDog(doc);
+    expect(doc.reload).toHaveBeenCalled();
+    expect(question()).toContain('Deletes 1 word and 1 annotation.');
+    expect(doc.editBaselineText).not.toHaveBeenCalled();
+    await h.unmount();
+  });
+
+  it('asks again when more was annotated while the question was open', async () => {
+    const { doc, theirs } = opened();
+    doc.reload
+      .mockImplementationOnce(async () => theirs('DOG')())
+      .mockImplementationOnce(async () => theirs('dog.w')());
+    const h = await deleteDog(doc);
+    expect(question()).toContain('Deletes 1 word and 1 annotation.');
+    await answer('Save anyway');
+    expect(question()).toContain('Deletes 1 word and 2 annotations.');
+    expect(doc.editBaselineText).not.toHaveBeenCalled();
+    await answer('Save anyway');
+    expect(doc.editBaselineText).toHaveBeenCalledTimes(1);
+    await h.unmount();
+  });
+
+  it('reads nothing for a save that only adds text', async () => {
+    const { doc } = opened();
+    const h = await mountDocumentHook(useBaselineOperations, { doc });
+    await act(async () => h.api.handleEdit());
+    await change(h, 4, 4, 'The big dog ran.', 8);
+    await act(async () => {
+      h.api.handleSave();
+    });
+    expect(doc.reload).not.toHaveBeenCalled();
+    expect(doc.editBaselineText).toHaveBeenCalled();
+    await h.unmount();
+  });
+
+  it('counts on the text stored when someone saved it meanwhile', async () => {
+    const { doc, theirs } = opened();
+    doc.reload.mockImplementationOnce(async () => {
+      // "Oh, " typed in front elsewhere, the words moved with it, and "dog"
+      // glossed.
+      doc.body = 'Oh, The dog ran.';
+      doc.layerInfo.primaryTokenLayer.tokens = [
+        { id: 'w0', begin: 0, end: 3 },
+        { id: 'w1', begin: 4, end: 7 },
+        { id: 'w2', begin: 8, end: 11 },
+      ];
+      theirs('DOG')();
+    });
+    const h = await deleteDog(doc);
+    expect(question()).toContain('Deletes 1 word and 1 annotation.');
+    await h.unmount();
+  });
+});
+
 describe('removesText', () => {
   it('is false for inserts and for what a replace gives back at its ends', () => {
     expect(removesText('ab cd', [{ start: 2, end: 2, value: ' x' }])).toBe(false);
