@@ -1095,16 +1095,14 @@ PARTIAL_LISTED = 20
 # --- size ---------------------------------------------------------------------
 
 def _bytes(value: Any) -> int:
-    """Never less than the bytes the SERVER will count for this value.
-
-    The store counts the UTF-8 bytes of its JSON, written with no space after
-    a comma or a colon. Servers before H20-2 counted it with every non-ASCII
-    character escaped as ``\\uXXXX`` and every ``/`` as ``\\/``, a Cyrillic
-    conversation three times its UTF-8 size. This counts the old way, which is
-    never less than the new, so a record under its budget fits either server.
-    """
-    text = json.dumps(value, ensure_ascii=True, separators=(',', ':'))
-    return len(text.encode('utf-8')) + text.count('/')
+    """The bytes the SERVER counts for this value: the UTF-8 bytes of its
+    JSON, each character written as itself, with no space after a comma or a
+    colon (H20-2). The size meter, the full state and the prune budget all read
+    this figure, so a conversation outside ASCII is weighed at what is stored
+    (H2-4-1). A lone surrogate, which UTF-8 cannot hold, counts as its
+    ``\\uXXXX`` escape."""
+    text = json.dumps(value, ensure_ascii=False, separators=(',', ':'))
+    return len(text.encode('utf-8', 'backslashreplace'))
 
 
 def conversation_bytes(conv: Dict[str, Any]) -> int:
