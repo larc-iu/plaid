@@ -291,8 +291,14 @@
                           (let [user-id (pra/->user-id request)
                                 inv (invite/get db id)]
                             (cond
-                              (nil? inv)
+                              ;; An unknown id is a 404 to an admin, and to anyone
+                              ;; else the 403 another person's invite gets (ACL5-1).
+                              (and (nil? inv) (user/admin? (user/get-internal db user-id)))
                               {:status 404 :body {:error "Invite not found"}}
+
+                              (nil? inv)
+                              {:status 403
+                               :body {:error "You can only revoke invites you created." :unresolved true}}
 
                               (not (or (= user-id (:invite/created-by inv))
                                        (user/admin? (user/get-internal db user-id))

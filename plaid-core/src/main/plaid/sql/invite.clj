@@ -350,6 +350,13 @@
                          (throw (ex-info (str "A password reset link is single-use and grants nothing "
                                               "beyond the reset itself")
                                          {:code 400})))
+                       ;; Authority first: a non-admin naming a project they do
+                       ;; not maintain gets one 403 whether or not it exists
+                       ;; (ACL5-1). An admin passes, and then hears 404.
+                       (check-grant-authority! tx {:actor-id actor-id
+                                                   :grant-admin grant-admin
+                                                   :project-id project-id
+                                                   :target-user-id target-user-id})
                        (when (and project-id (nil? (psc/fetch-by-id tx :projects project-id)))
                          (throw (ex-info (psc/err-msg-not-found "Project" project-id)
                                          {:code 404 :id project-id})))
@@ -362,10 +369,6 @@
                              (throw (ex-info (str "User " target-user-id " is deactivated. Reactivate "
                                                   "them before issuing a password reset link.")
                                              {:code 400 :id target-user-id})))))
-                       (check-grant-authority! tx {:actor-id actor-id
-                                                   :grant-admin grant-admin
-                                                   :project-id project-id
-                                                   :target-user-id target-user-id})
                        (let [id (psc/new-uuid)
                              code (generate-code)
                              row {:id             id
