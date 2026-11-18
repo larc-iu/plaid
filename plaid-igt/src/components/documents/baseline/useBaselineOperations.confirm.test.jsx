@@ -534,6 +534,28 @@ describe('useBaselineOperations, a save from a page opened before others annotat
     await h.unmount();
   });
 
+  // REV-G1-6: a save that deletes, made while the server cannot be reached,
+  // fails at its read. The draft stays in the box, and leaving the page
+  // asks first, as it did while such a save waited in the queue.
+  it('keeps the draft, and leaving still asks, when the read before the question fails', async () => {
+    const { doc } = opened();
+    doc.reload.mockRejectedValueOnce(
+      Object.assign(new Error('Failed to fetch'), { status: 0, method: 'GET' }),
+    );
+    const h = await deleteDog(doc);
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 0));
+    });
+    expect(doc.editBaselineText).not.toHaveBeenCalled();
+    expect(h.api.saving).toBe(false);
+    expect(h.api.isEditing).toBe(true);
+    expect(h.api.editedText).toBe('The ran.');
+    const leave = new Event('beforeunload', { cancelable: true });
+    window.dispatchEvent(leave);
+    expect(leave.defaultPrevented).toBe(true);
+    await h.unmount();
+  });
+
   it('reads nothing for a save that only adds text', async () => {
     const { doc } = opened();
     const h = await mountDocumentHook(useBaselineOperations, { doc });
