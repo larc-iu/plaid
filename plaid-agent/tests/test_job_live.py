@@ -26,8 +26,11 @@ from plaid_agent.jobworker import count_chars
 WORKER = '0193a5c0-0000-7000-8000-000000000002'
 
 
-@pytest.fixture(scope='module')
+@pytest.fixture
 def world():
+    """A writer and a seeded project of the writer's, one per test: a job a
+    failed test leaves waiting would refuse every later job in its project
+    (409), and its project's delete takes it out of the claim queue."""
     try:
         admin = login()
     except Exception as e:  # noqa: BLE001
