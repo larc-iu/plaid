@@ -121,11 +121,25 @@ export function alignSegments(body, begin, end, texts) {
   return spans;
 }
 
+/**
+ * The last path segment of a URL, percent-decoded ("Market%20talk.wav" is
+ * "Market talk.wav", H2-13-1), or as written when an escape in it is
+ * malformed. '' when there is none.
+ */
+const lastSegment = (url) => {
+  const raw =
+    String(url || '')
+      .split(/[\\/]/)
+      .pop() || '';
+  try {
+    return decodeURIComponent(raw);
+  } catch {
+    return raw;
+  }
+};
+
 /** The last path segment of a media descriptor's URL, or '' when there is none. */
-const descriptorName = (d) =>
-  String(d?.relativeUrl || d?.url || '')
-    .split(/[\\/]/)
-    .pop() || '';
+const descriptorName = (d) => lastSegment(d?.relativeUrl || d?.url);
 
 /**
  * The recordings a file names that stand on their own: a descriptor whose
@@ -137,10 +151,7 @@ export const mediaDescriptors = (eaf) => {
   const named = new Set((eaf?.media || []).map((d) => descriptorName(d)).filter(Boolean));
   return (eaf?.media || [])
     .filter((d) => {
-      const from =
-        String(d.extractedFrom || '')
-          .split(/[\\/]/)
-          .pop() || '';
+      const from = lastSegment(d.extractedFrom);
       return !(from && named.has(from));
     })
     .map((d) => ({

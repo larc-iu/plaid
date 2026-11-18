@@ -1355,6 +1355,33 @@ describe('matchMediaFiles', () => {
     expect(missing).toEqual([]);
   });
 
+  it('pairs a file the .eaf names percent-encoded (H2-13-1)', () => {
+    const market = file('Market talk 2024.wav');
+    const sesion = file('Sesión 12 Kofi.wav');
+    const { byFile, unmatched, missing } = matchMediaFiles(
+      [
+        {
+          fileName: 'mt.eaf',
+          media: [
+            {
+              url: 'file:///D:/fieldwork/Market%20talk%202024.wav',
+              relativeUrl: '../Market%20talk%202024.wav',
+              mimeType: 'audio/x-wav',
+            },
+          ],
+        },
+        eaf('s12.eaf', 'Sesi%C3%B3n%2012%20Kofi.wav'),
+        // A malformed escape is the name as written.
+        eaf('pct.eaf', '100%.wav'),
+      ],
+      [market, sesion],
+    );
+    expect(byFile.get('mt.eaf')).toBe(market);
+    expect(byFile.get('s12.eaf')).toBe(sesion);
+    expect(unmatched).toEqual([]);
+    expect(missing).toEqual(['100%.wav']);
+  });
+
   it('falls back to a file whose stem matches the .eaf', () => {
     const audio = file('story.wav');
     const { byFile } = matchMediaFiles([eaf('story.eaf', 'recorded-2019.wav')], [audio]);
