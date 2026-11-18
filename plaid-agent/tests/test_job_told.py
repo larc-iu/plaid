@@ -251,3 +251,18 @@ def test_a_run_of_sentences_keeps_its_range():
     assert sentences_text([3, 4, 5]) == 'sentences 3 to 5'
     assert sentences_text([4]) == 'sentence 4'
     assert sentences_text([3, 11, 19]) == 'sentences 3, 11, 19'
+
+
+# --- D22: documents the plan left out ----------------------------------------------------------
+
+def test_documents_the_plan_left_out_are_counted_and_said_apart_from_those_not_reached():
+    from plaid_agent.igt.job import document_counts, state_text
+    report = {'totals': {'documents_done': 1, 'documents_not_reached': 2},
+              'plan': {'left_out': [{'document_id': 'l1', 'name': 'L1'}]},
+              'documents': [{'document_id': 'd1', 'state': 'done', 'done': 1, 'targets': 1},
+                            {'document_id': 'l1', 'state': 'not-reached', 'done': 0},
+                            {'document_id': 'n1', 'state': 'not-reached', 'done': 0}]}
+    counts = document_counts(report)
+    assert (counts['not_reached'], counts['left_out']) == (1, 1)
+    assert state_text(report['documents'][1], {'l1'}) == 'left out by the plan'
+    assert state_text(report['documents'][2], {'l1'}) == 'not-reached'

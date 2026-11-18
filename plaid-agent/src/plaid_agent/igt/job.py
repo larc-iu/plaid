@@ -1068,13 +1068,26 @@ def document_counts(report: Dict[str, Any]) -> Dict[str, int]:
     skipped = sum(1 for d in docs if d.get('state') == 'done' and (d.get('done') or 0) > 0
                   and len([s for s in d.get('skipped') or [] if s.get('reason') != 'too-long'])
                   + (counts(d).get('skipped_more') or 0) >= (d.get('done') or 0))
-    unfinished = [d for d in docs if d.get('state') == 'not-reached']
+    # The documents the plan left out are no documents not reached (D22),
+    # those cut from its list (``left_out_more``) counted too.
+    plan = report.get('plan') if isinstance(report.get('plan'), dict) else {}
+    left_ids = left_out_ids(report)
+    left_more = plan.get('left_out_more') or 0
+    unfinished = [d for d in docs if d.get('state') == 'not-reached' and d.get('document_id') not in left_ids]
     partway = sum(1 for d in unfinished if (d.get('done') or 0) > 0 or (counts(d).get('changes') or 0) > 0)
+    left = len(plan.get('left_out') or []) + left_more
     return {'done': max(0, (totals.get('documents_done') or 0) - skipped - unmatched),
             'changed': changed, 'with_nothing_found_by_the_search': unmatched,
             'skipped': skipped, 'stopped_partway': partway,
-            'not_reached': len(unfinished) - partway if 'documents' in report
-            else totals.get('documents_not_reached') or 0}
+            'not_reached': max(0, len(unfinished) - partway - left_more) if 'documents' in report
+            else max(0, (totals.get('documents_not_reached') or 0) - left),
+            'left_out': left}
+
+
+def left_out_ids(report: Dict[str, Any]) -> set:
+    """The ids of the documents the report's plan lists as left out."""
+    plan = report.get('plan') if isinstance(report.get('plan'), dict) else {}
+    return {d.get('document_id') for d in plan.get('left_out') or [] if isinstance(d, dict)}
 
 
 def sentences_text(indexes: List[int]) -> str:
@@ -1109,10 +1122,13 @@ def no_match(d: Dict[str, Any]) -> bool:
     return d.get('state') == 'done' and (d.get('counts') or {}).get(MATCHED) == 0
 
 
-def state_text(d: Dict[str, Any]) -> str:
+def state_text(d: Dict[str, Any], left_out: Iterable[str] = ()) -> str:
     """A document's state as the final context reads it: one the job did
     not finish is "stopped partway, 6 of 8 sentences done" once it finished a
-    sentence, else "not reached" (REV-DAY-P-13)."""
+    sentence, else "not reached" (REV-DAY-P-13), and one the plan left out
+    (``left_out``, its ids) says so (D22)."""
+    if d.get('state') == 'not-reached' and d.get('document_id') in set(left_out):
+        return 'left out by the plan'
     if d.get('state') == 'not-reached' and ((d.get('done') or 0) > 0
                                             or ((d.get('counts') or {}).get('changes') or 0) > 0):
         # One that holds the job's changes is never "not reached" (RPF3-D2).
@@ -1223,10 +1239,11 @@ def summary_message(report: Dict[str, Any], setup: Optional[str] = None) -> str:
             # person to settle again (RP-9, RPF-A10).
             lines += ['What the job decided, as every piece was told:', _cut(told, JOB_SUMMARY_PLAN_CHARS), '']
     lines.append('Documents:')
+    left_ids = left_out_ids(report)
     for d in report.get('documents') or []:
         c = d.get('counts') or {}
         lines.append(f'- "{d.get("name")}": '
-                     + ', '.join([state_text(d)] + [f'{k} {v:,}' for k, v in sorted(c.items())
+                     + ', '.join([state_text(d, left_ids)] + [f'{k} {v:,}' for k, v in sorted(c.items())
                                                     if v and isinstance(v, int) and not isinstance(v, bool)]
                                  + ([fields_text(c['fields'])] if c.get('fields') else [])
                                  + ([blank_text(c['blank'])] if c.get('blank') else []))

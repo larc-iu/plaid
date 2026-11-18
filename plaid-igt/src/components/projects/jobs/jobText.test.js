@@ -59,3 +59,18 @@ describe('the sentences a piece worked (D12)', () => {
     );
   });
 });
+
+describe('documents the plan left out (D22)', () => {
+  it('are counted apart from those not reached', () => {
+    const report = {
+      totals: { documentsDone: 1, documentsNotReached: 2 },
+      plan: { leftOut: [{ documentId: 'l1', name: 'L1' }] },
+      documents: [
+        { documentId: 'd1', state: 'done', done: 1, targets: 1 },
+        { documentId: 'l1', state: 'not-reached', done: 0 },
+        { documentId: 'n1', state: 'not-reached', done: 0 },
+      ],
+    };
+    expect(documentCounts(report)).toMatchObject({ notReached: 1, leftOut: 1 });
+  });
+});

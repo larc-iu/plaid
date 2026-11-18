@@ -40,6 +40,13 @@ CASES = [
                     'skipped': [{'sentence': f's{i}', 'sentence_id': f't{i}', 'reason': 'too-long'} for i in range(3)]},
                    {**_doc('done', 2, {'skipped_more': 1, 'too_long_more': 4}),
                     'skipped': [{'sentence': 's9', 'sentence_id': 'x9', 'reason': 'failed'}]}]},
+    # D22: documents the plan left out are no documents not reached.
+    {'totals': {'documents_done': 1, 'documents_not_reached': 3},
+     'plan': {'left_out': [{'document_id': 'l1', 'name': 'L1'}, {'document_id': 'l2', 'name': 'L2'}]},
+     'documents': [_doc('done', 2), {**_doc('not-reached', 0), 'document_id': 'l1'},
+                   {**_doc('not-reached', 0), 'document_id': 'l2'}, {**_doc('not-reached', 0), 'document_id': 'n1'}]},
+    {'totals': {'documents_done': 1, 'documents_not_reached': 3},
+     'plan': {'left_out': [{'document_id': 'l1', 'name': 'L1'}], 'left_out_more': 1}},
     {'totals': {'documents_done': 1, 'documents_not_reached': 4}},
     # A plan limited by a search (SF): two documents it matched nothing in,
     # one it matched and worked, one it matched and was not reached.
@@ -61,7 +68,7 @@ def page(tmp_path_factory):
 
 def test_read_job_counts_the_documents_as_the_page_does(page):
     camel = {'stopped_partway': 'stoppedPartway', 'not_reached': 'notReached',
-             'with_nothing_found_by_the_search': 'withNothingFoundByTheSearch'}
+             'with_nothing_found_by_the_search': 'withNothingFoundByTheSearch', 'left_out': 'leftOut'}
     assert len(page) == len(CASES)
     for report, said in zip(CASES, page):
         mine = document_counts(report)

@@ -504,7 +504,12 @@ export const documentCounts = (report) => {
   const changed = docs.filter((d) => d.state === 'done' && (d.counts?.changes ?? 0) > 0).length;
   const unmatched = docs.filter(nothingFound).length;
   const skipped = docs.filter(allSkipped).length;
-  const unfinished = docs.filter((d) => d.state === 'not-reached');
+  // The documents the plan left out are no documents not reached (D22),
+  // those cut from its list (`leftOutMore`) counted too.
+  const leftIds = new Set((report?.plan?.leftOut || []).map((d) => d.documentId));
+  const leftMore = report?.plan?.leftOutMore ?? 0;
+  const left = (report?.plan?.leftOut?.length ?? 0) + leftMore;
+  const unfinished = docs.filter((d) => d.state === 'not-reached' && !leftIds.has(d.documentId));
   const partway = unfinished.filter(stoppedPartway).length;
   return {
     done: Math.max(0, (t.documentsDone ?? 0) - skipped - unmatched),
@@ -512,7 +517,10 @@ export const documentCounts = (report) => {
     withNothingFoundByTheSearch: unmatched,
     skipped,
     stoppedPartway: partway,
-    notReached: report?.documents ? unfinished.length - partway : (t.documentsNotReached ?? 0),
+    notReached: report?.documents
+      ? Math.max(0, unfinished.length - partway - leftMore)
+      : Math.max(0, (t.documentsNotReached ?? 0) - left),
+    leftOut: left,
   };
 };
 
