@@ -87,6 +87,18 @@
 (defn admin? [user-record]
   (boolean (:user/is-admin user-record)))
 
+;; SQLite's lower() folds ASCII only, so the display-name half of a search is
+;; matched here, in full Unicode and in NFC on both sides (H2-11-1). The roster
+;; is small, and ids are stored already normalized, so the id half stays in SQL.
+(defn- display-name-matches
+  "The ids of every user whose display name, lowercased in the root locale and
+  in NFC like `normalize-id`, contains `q` (already normalized)."
+  [db q]
+  (into []
+        (comp (filter #(clojure.string/includes? (normalize-id (:display_name %)) q))
+              (map :id))
+        (psc/q db {:select [:id :display_name] :from [:users]})))
+
 (defn get-all
   "Get all users formatted for external consumption, ordered by display
   name.
@@ -106,7 +118,8 @@
   project-permissions UI is used to find a colleague by whichever of the
   two the searcher happens to know. Not any part of the email: a one-letter
   search such as \"c\" matched every account by its \".com\". The text is
-  matched as typed, so `_` and `%` in it are not wildcards."
+  matched as typed, so `_` and `%` in it are not wildcards, and in any script
+  and either composition (`display-name-matches`)."
   ([db]
    (->> (psc/q db {:select [:*] :from [:users] :order-by [:display_name :id]})
         (map row->user)
@@ -120,12 +133,13 @@
                                                                (select-keys public-keys)))}
                              (not (clojure.string/blank? q))
                              (assoc :base-where
-                                    (let [q (normalize-id q)]
-                                      [:or
-                                       [:> [:instr [:lower :display_name] q] 0]
-                                       (if (clojure.string/includes? q "@")
-                                         [:> [:instr [:lower :id] q] 0]
-                                         [:= [:instr [:lower :id] q] 1])]))))))
+                                    (let [q (normalize-id q)
+                                          by-name (display-name-matches db q)]
+                                      (cond-> [:or
+                                               (if (clojure.string/includes? q "@")
+                                                 [:> [:instr [:lower :id] q] 0]
+                                                 [:= [:instr [:lower :id] q] 1])]
+                                        (seq by-name) (conj [:in :id by-name]))))))))
 
 (defn get-avatar
   "Fetch `id`'s stored profile picture as

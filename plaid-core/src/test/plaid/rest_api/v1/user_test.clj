@@ -329,6 +329,28 @@
       (is (not (contains? (ids-for "readerx") "reader_1@x.com")) "_ is not a wildcard")
       (is (empty? (ids-for "%25")) "% is not a wildcard")))
 
+  ;; H2-11-1: SQLite's lower() folds ASCII only, so a name whose capital was not
+  ;; ASCII was found by no search that held that capital.
+  (testing "?q= matches a display name in any script and either composition"
+    (doseq [[email name] [["elodie@example.com" "Élodie Ünal"]
+                          ["aleksei@example.com" "Алексей Смирнов"]
+                          ["eleni@example.com" "Ελένη Παπαδοπούλου"]
+                          ;; stored decomposed: o + combining diaeresis
+                          ["ozturk@example.com" (str "O" (char 0x308) "ztu" (char 0x308) "rk Çelik")]]]
+      (rest-handler (-> (admin-request :post "/api/v1/users")
+                        (mock/json-body {:email email :password "password1"
+                                         :is-admin false :display-name name}))))
+    (let [ids-for (fn [q] (->> (rest-handler (admin-request :get (str "/api/v1/users?q="
+                                                                      (java.net.URLEncoder/encode ^String q "UTF-8"))))
+                               parse-response-body :entries (map :user/id) set))]
+      (doseq [[q email] [["Élodie" "elodie@example.com"] ["élodie" "elodie@example.com"]
+                         ["ÉLODIE" "elodie@example.com"] ["Ünal" "elodie@example.com"]
+                         ["Алексей" "aleksei@example.com"] ["смирнов" "aleksei@example.com"]
+                         ["Ελένη" "eleni@example.com"] ["ΕΛΈΝΗ" "eleni@example.com"]
+                         ["Öztürk" "ozturk@example.com"] ["çelik" "ozturk@example.com"]]]
+        (is (contains? (ids-for q) email) q))
+      (is (not (contains? (ids-for "Ünal") "aleksei@example.com")))))
+
   (testing "a non-admin, non-maintainer may NOT list users (403)"
     (let [resp (rest-handler (user1-request :get "/api/v1/users"))]
       (is (= 403 (:status resp)))
