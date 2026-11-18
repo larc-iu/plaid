@@ -248,7 +248,10 @@ export const jobSections = (job, notes = null, vocabs = []) => {
   if (!isJobActive(job) && report) {
     if (notes > 0) out.push({ key: 'notes', label: 'Notes', count: notes });
     const add = (key, label, count) => count > 0 && out.push({ key, label, count });
-    add('blank', 'Left blank', blankDocuments(report).length);
+    // Blank places come in two kinds (left blank in sentences the job
+    // changed, blank in those it did not) and in several units: no one count
+    // is true of them, so the tab has none (REV-RP-3).
+    if (blankDocuments(report).length) out.push({ key: 'blank', label: 'Blank' });
     add(
       'skipped',
       'Skipped',

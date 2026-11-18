@@ -360,7 +360,7 @@ describe('the sections', () => {
       'overview',
       'documents 2',
       'notes 12',
-      'blank 1',
+      'blank',
       'skipped 3',
       'proposed 4',
       'entries 4',

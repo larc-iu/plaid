@@ -231,6 +231,11 @@ const mountAll = async (client, project = PROJECT) => {
   document.body.appendChild(out);
   return { container: out, unmount: async () => out.remove(), step: async (fn) => fn() };
 };
+// The sections the page draws, by their keys, from the strip.
+const sectionKeys = (root) =>
+  all(root, '[role="tab"]').map(
+    (t) => t.getAttribute('href').match(/view=(\w+)/)?.[1] ?? 'overview',
+  );
 // The documents table's rows in the job's order (the table sorts by name):
 // each row's text, by its document's place in `job.documents`.
 const documentRows = (root, job) => {
@@ -1091,10 +1096,11 @@ describe('the job page', () => {
     const job = jobOf({ state: 'done', finishedAt: '2026-11-12T11:00:00Z', report });
     const v = await mountAll(clientOf(job));
     const section = v.container.querySelector('section[aria-label="Report"]');
-    expect(all(section, 'h3').map((h) => h.textContent)).toContain('Left blank');
+    expect(sectionKeys(v.container)).toContain('blank');
     const t = text(section);
     // A sentence field by its name (never "Translation" for any of them), a
     // word by its form and the targets it is blank for.
+    expect(t).toContain('Left blank in sentences the job changed:');
     expect(t).toContain('s3 Note');
     expect(t).toContain('s3.w2 kata segmentation, Morph Gloss');
     expect(t).toContain('And 4 more left blank.');
@@ -1165,14 +1171,14 @@ describe('the job page', () => {
     const job = jobOf({ state: 'cancelled', finishedAt: '2026-11-12T11:00:00Z', report });
     const v = await mountAll(clientOf(job));
     const section = v.container.querySelector('section[aria-label="Report"]');
-    expect(all(section, 'h3').map((h) => h.textContent)).toContain('Left blank');
+    expect(sectionKeys(v.container)).toContain('blank');
     const t = text(section);
     expect(t).toContain('Story ACould not be read.');
     expect(t).toContain('s1.w3 kata segmentation');
-    expect(t).toContain(
-      'Blank in sentences not reached: segmentation 12 words, Translation 1 sentence.',
-    );
-    expect(t).toContain('Story CBlank in sentences not reached: segmentation 1 word.');
+    // Each kind of blank in the totals' own words (REV-RP-3).
+    expect(t).toContain('segmentation blank in sentences not reached: 12 words.');
+    expect(t).toContain('Translation blank in sentences not reached: 1 sentence.');
+    expect(t).toContain('Story Csegmentation blank in sentences not reached: 1 word.');
     expect(t).not.toContain('Story D');
     // The totals sum the documents' rows, per target, a row each even at
     // nothing left, so they add up on screen.
@@ -1257,7 +1263,7 @@ describe('the job page', () => {
     const section = v.container.querySelector('section[aria-label="Report"]');
     expect(totals(section)['Role left blank in sentences the job changed']).toBe('0 words');
     expect(totals(section)['Role blank in skipped sentences']).toBe('4 words');
-    expect(text(section)).toContain('Story ABlank in skipped sentences: Role 4 words.');
+    expect(text(section)).toContain('Story ARole blank in skipped sentences: 4 words.');
     await v.unmount();
   });
 
@@ -1459,7 +1465,7 @@ describe('the job page', () => {
     const job = jobOf({ state: 'done', finishedAt: '2026-11-12T11:00:00Z', report });
     const v = await mountAll(clientOf(job));
     const section = v.container.querySelector('section[aria-label="Report"]');
-    expect(all(section, 'h3').map((h) => h.textContent)).toContain('Left blank');
+    expect(sectionKeys(v.container)).toContain('blank');
     const t = text(section);
     expect(t).toContain('Not done, refused:');
     // A fixed label per kind of refusal, naming the change not made, never
@@ -1858,11 +1864,10 @@ describe('the job page', () => {
     await v.unmount();
   });
 
-  it('draws no Left blank section for a job that left nothing', async () => {
+  it('draws no Blank section for a job that left nothing', async () => {
     const job = jobOf({ state: 'done', finishedAt: '2026-11-12T11:00:00Z', report: REPORT });
     const v = await mountAll(clientOf(job));
-    const section = v.container.querySelector('section[aria-label="Report"]');
-    expect(all(section, 'h3').map((h) => h.textContent)).not.toContain('Left blank');
+    expect(sectionKeys(v.container)).not.toContain('blank');
     await v.unmount();
   });
 
@@ -2384,7 +2389,7 @@ describe('the job page', () => {
     expect(sums['Word class left blank in sentences the job changed']).toBe('2 words');
     expect(sums['Word class blank in sentences the job did not change']).toBe('45 words');
     expect(text(section)).toContain(
-      'Blank in sentences the job did not change: Word class 45 words.',
+      'Word class blank in sentences the job did not change: 45 words.',
     );
     await v.unmount();
   });

@@ -150,7 +150,8 @@ describe('the sections of an ended job', () => {
       'Overview',
       `Documents${N}`,
       'Notes2',
-      `Left blank${N - 1}`,
+      // Blank places come in two kinds and units: no one count (REV-RP-3).
+      'Blank',
       'Skipped1',
       'Setup',
     ]);

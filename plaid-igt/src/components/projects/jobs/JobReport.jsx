@@ -21,7 +21,7 @@ import SECTIONS from './jobSections.json';
 import {
   BLANK_ELSEWHERE,
   NOT_WRITTEN,
-  blankParts,
+  blankLines,
   draftLexiconsOf,
   pausedRows,
   totalRows,
@@ -97,14 +97,13 @@ const DocumentName = ({ projectId, d }) =>
   );
 
 const BlankElsewhere = ({ counts }) =>
-  BLANK_ELSEWHERE.map(([key, label]) => {
-    const parts = blankParts(counts, key);
-    return parts.length ? (
-      <p key={key} className="ml-4 text-muted-foreground">
-        {label}: {parts.join(', ')}.
+  BLANK_ELSEWHERE.flatMap(([key, label]) =>
+    blankLines(counts, key, label).map((line) => (
+      <p key={line} className="ml-4 text-muted-foreground">
+        {line}
       </p>
-    ) : null;
-  });
+    )),
+  );
 
 // What a refusal the job could not follow left in a document's sentences
 // (`refused`): each sentence, linked into the grid, with a fixed label for
@@ -490,7 +489,10 @@ export const BlankDocument = ({ d, projectId }) => (
     <p>
       <DocumentName projectId={projectId} d={d} />
     </p>
-    <ul className="ml-4 list-disc">
+    {(d.left?.length > 0 || d.leftMore > 0) && (
+      <p className="ml-4">Left blank in sentences the job changed:</p>
+    )}
+    <ul className="ml-8 list-disc">
       {(d.left || []).map((l) => (
         <li key={`${l.sentenceId} ${l.ref}`}>
           {d.name && l.sentenceId ? (
@@ -515,7 +517,7 @@ export const BlankDocument = ({ d, projectId }) => (
       ))}
     </ul>
     {d.leftMore > 0 && (
-      <p className="ml-4 text-muted-foreground">
+      <p className="ml-8 text-muted-foreground">
         And {d.leftMore.toLocaleString()} more left blank.
       </p>
     )}

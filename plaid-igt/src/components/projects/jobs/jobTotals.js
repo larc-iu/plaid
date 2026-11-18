@@ -216,11 +216,21 @@ export const blankParts = (counts, key) =>
     .filter((b) => b[key] > 0)
     .map((b) => `${b.target} ${unitCount(b[key], b.unit)}`);
 
+// Each kind of blank a document's Left blank lists counts only, with the
+// words the totals' rows say it in after the target's name ("Translation
+// blank in sentences the job did not change"), REV-RP-3.
 export const BLANK_ELSEWHERE = [
-  ['untouched', 'Blank in sentences the job did not change'],
-  ['notReached', 'Blank in sentences not reached'],
-  ['skipped', 'Blank in skipped sentences'],
+  ['untouched', 'blank in sentences the job did not change'],
+  ['notReached', 'blank in sentences not reached'],
+  ['skipped', 'blank in skipped sentences'],
 ];
+
+// A document's lines of one kind of blank, one per target: "Translation
+// blank in sentences not reached: 3 sentences."
+export const blankLines = (counts, key, label) =>
+  (counts?.blank || [])
+    .filter((b) => b[key] > 0)
+    .map((b) => `${b.target} ${label}: ${unitCount(b[key], b.unit)}.`);
 
 // Each wait named as the running page names it (RPF3-D1, RP2-1): taking
 // turns with people's chats on the model is not waiting for people.
