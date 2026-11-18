@@ -108,9 +108,13 @@ describe('Start without the assistant', () => {
         new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }),
       ),
     );
-    await v.step(async () => {});
-    expect(document.body.querySelector('[role="menu"]')).toBeNull();
-    expect(document.activeElement).toBe(trigger);
+    // The menu leaves and hands focus back a task or two after the key, so
+    // the test waits for the focus itself.
+    await vi.waitFor(async () => {
+      await v.step(async () => {});
+      expect(document.body.querySelector('[role="menu"]')).toBeNull();
+      expect(document.activeElement).toBe(trigger);
+    });
     await v.unmount();
   });
 });
