@@ -89,7 +89,11 @@ async function openBubble(page) {
   const dialog = page.getByRole('dialog', { name: /Auto-analyze/ });
   await expect(dialog).toBeVisible();
   const step = dialog.getByRole('checkbox', { name: /Propose segmentation and glosses/ });
-  if (!(await step.isChecked())) await step.check();
+  // Off and disabled until the dialog has found the probe: the step then turns
+  // on by itself from the stored steps, so it is read only once it is enabled
+  // (FLK3-3). A click on a box that ticked itself would untick it.
+  await expect(step).toBeEnabled({ timeout: 15000 });
+  await step.setChecked(true);
   // Another analysis service may be online too: pick the probe.
   const method = dialog.getByRole('combobox').filter({ hasNotText: 'Variety' });
   if (await method.count()) {
