@@ -143,7 +143,12 @@ test('a refusal names its sentence and what is wrong in CoNLL-U terms', () => {
   // Two sentences with no blank line between them.
   assert.equal(
     refusal(['# sent_id = a', row(1), row(2), row(3), '# sent_id = b', row(1), row(2)]),
-    'Invalid token ordering in sentence 1 (sent_id a): ID 1 follows ID 3 with no blank line before it.',
+    'Invalid token ordering in sentence 1 (sent_id a): a new sentence begins after ID 3 with no blank line before it.',
+  );
+  // An ID 1 said twice, with no comment line between, is a repeat.
+  assert.equal(
+    refusal([row(1), row(1), row(2)]),
+    'Invalid token ordering in sentence 1: expected ID 2, found 1.',
   );
   // A duplicate ID in the second sentence, and a gap.
   assert.equal(

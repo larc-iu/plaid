@@ -78,6 +78,9 @@ export function parseCoNLLU(text) {
   let repeatedComments = 0;
   // The sentence the row being read belongs to.
   const here = () => sentenceName(sentences.length + 1, currentMetadata);
+  // Sentences with a comment line after a row: where an ID 1 follows, a
+  // blank line before a new sentence is missing.
+  const commentAfterRow = new Set();
   const comment = (key, value) => {
     if (Object.hasOwn(currentMetadata, key)) repeatedComments += 1;
     else currentMetadata[key] = value;
@@ -103,6 +106,7 @@ export function parseCoNLLU(text) {
 
     // Handle metadata lines
     if (trimmedLine.startsWith('#')) {
+      if (currentSentence?.tokens.length) commentAfterRow.add(currentSentence);
       // `# newdoc id` is the DOCUMENT's name, not sentence metadata:
       // splitConlluByNewdoc has already lifted it out, so drop it here rather
       // than let it land on the first sentence of the block.
@@ -259,15 +263,15 @@ export function parseCoNLLU(text) {
   // not sorted: the importer reads a relation's target by array position and
   // its head by id, so rows that are complete but out of order would wire the
   // tree to the wrong words. Sorting first hid exactly that.
-  // An ID 1 after other rows is where a blank line between two sentences
-  // is missing, which is said as such.
+  // An ID 1 after other rows and a comment line is a new sentence with no
+  // blank line before it, which is said as such.
   sentences.forEach((sentence, s) => {
     sentence.tokens.forEach((t, i) => {
       if (t.id === i + 1) return;
       const where = sentenceName(s + 1, sentence.metadata);
       throw new Error(
-        t.id === 1
-          ? `Invalid token ordering in ${where}: ID 1 follows ID ${sentence.tokens[i - 1].id} with no blank line before it.`
+        t.id === 1 && commentAfterRow.has(sentence)
+          ? `Invalid token ordering in ${where}: a new sentence begins after ID ${sentence.tokens[i - 1].id} with no blank line before it.`
           : `Invalid token ordering in ${where}: expected ID ${i + 1}, found ${t.id}.`,
       );
     });
