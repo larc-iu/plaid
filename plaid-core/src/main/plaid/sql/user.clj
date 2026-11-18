@@ -376,8 +376,9 @@
                                          (assoc :password_changes (inc (or (:user/password-changes intern) 0))))
                                      attrs)
                              attrs (cond-> attrs
+                                     ;; trimmed as `insert-user-row!` trims it (ACL6-5)
                                      (some? (:user/display-name m))
-                                     (assoc :display_name (:user/display-name m))
+                                     (assoc :display_name (clojure.string/trim (:user/display-name m)))
 
                                      (some? (:user/is-admin m))
                                      (assoc :is_admin (if (:user/is-admin m) 1 0)))]
