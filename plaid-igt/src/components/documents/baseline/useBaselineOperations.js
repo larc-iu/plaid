@@ -194,9 +194,8 @@ export const useBaselineOperations = () => {
     const words = (doc.layerInfo?.primaryTokenLayer?.tokens || []).map((t) => [t.begin, t.end]);
     return removedStretches(body, gaps, words);
   };
-  const lossOfSave = async () => {
+  const lossOfSave = async (gaps) => {
     const base = editLog.log.base;
-    const gaps = editLog.gaps();
     if (removedOn(base, gaps).length === 0) return '';
     await doc.reload();
     const stored = doc.body || '';
@@ -225,9 +224,14 @@ export const useBaselineOperations = () => {
     // answered, and asks again when what it deletes changed meanwhile. The
     // tab shows Saving from here, through the reads (REV-G1-3).
     setSaving(true);
+    // What is typed in the box while a read is on its way is counted before
+    // it is sent: the count goes round again when the edits changed
+    // (REV-G1-4).
     let asked = '';
     for (;;) {
-      const loses = await lossOfSave();
+      const gaps = editLog.gaps();
+      const loses = await lossOfSave(gaps);
+      if (JSON.stringify(gaps) !== JSON.stringify(editLog.gaps())) continue;
       if (!loses || loses === asked) break;
       const yes = await confirm({
         title: 'Save baseline changes?',
@@ -240,6 +244,12 @@ export const useBaselineOperations = () => {
         return;
       }
       asked = loses;
+    }
+    // Typed back to what it was during a read: nothing to send.
+    if (editLog.gaps().length === 0) {
+      setSaving(false);
+      handleCancel();
+      return;
     }
     setChangedElsewhere(false);
     const sent = editLog.send();

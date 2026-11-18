@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import { act } from 'react';
+import { applyTextOps, gapsToOps } from '@larc-iu/plaid-client';
 import { fakeDocument, mountDocumentHook } from '../../../test/mountDocumentHook.jsx';
 import { removedStretches } from '@ui/lib/editLog.js';
 import { baselineLossSentence, useBaselineOperations } from './useBaselineOperations.js';
@@ -501,6 +502,35 @@ describe('useBaselineOperations, a save from a page opened before others annotat
     await answer('Cancel');
     expect(h.api.saving).toBe(false);
     expect(doc.editBaselineText).not.toHaveBeenCalled();
+    await h.unmount();
+  });
+
+  // REV-G1-4: what is typed in the box while a read is on its way is counted
+  // before it is sent.
+  it('asks again for a delete typed while the read after Save anyway was on its way', async () => {
+    const { doc } = opened();
+    doc.layerInfo.primaryTokenLayer.tokens.push({ id: 'w3', begin: 8, end: 11 });
+    let release = null;
+    let n = 0;
+    doc.reload.mockImplementation(() => {
+      n += 1;
+      return n === 2 ? new Promise((r) => (release = r)) : Promise.resolve();
+    });
+    const h = await deleteDog(doc);
+    expect(question()).toContain('Deletes 1 word.');
+    await answer('Save anyway');
+    // "ran" deleted too, while the second read is on its way.
+    await change(h, 4, 7, 'The .', 4);
+    await act(async () => {
+      release();
+      await new Promise((r) => setTimeout(r, 10));
+    });
+    expect(doc.editBaselineText).not.toHaveBeenCalled();
+    expect(question()).toContain('Deletes 2 words.');
+    await answer('Save anyway');
+    expect(doc.editBaselineText).toHaveBeenCalledTimes(1);
+    const sent = doc.editBaselineText.mock.calls[0][0];
+    expect(applyTextOps(sent.base, gapsToOps(sent.gaps))).toBe('The .');
     await h.unmount();
   });
 
