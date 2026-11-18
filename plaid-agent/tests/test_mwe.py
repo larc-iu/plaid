@@ -30,7 +30,9 @@ def test_parse_keeps_the_expression_apart_from_own_links():
     assert '  w2 gam | mwe=gam akuna (w2+w3)\n' in out and '  w3 akuna | mwe=gam akuna (w2+w3)\n' in out
     assert 'mwe=entry (w2+w3): a multi-word expression' in out
     out = call_tool(w, 'analyses_of', {'form': 'gam'})
-    assert 'Word "gam": 1 occurrence.' in out and 'Links: gam akuna (1)' in out
+    # An expression's link is not what the word itself was linked to, as in
+    # the editor's precedent (REV-G4-4, H2-14-2).
+    assert 'Word "gam": 1 occurrence.' in out and 'Links:' not in out
     assert '    s1.w2 gam | mwe=gam akuna (w2+w3)' in out
 
 

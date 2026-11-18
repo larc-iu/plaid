@@ -1058,7 +1058,13 @@ def q_analyses_of(ws: Workspace, form: str, found: List[int], value: Optional[st
                         f'm{prec}: ' + ', '.join(f'{k} ({n2})' for k, n2 in sorted(cnt.items(), key=lambda kv: (-kv[1], kv[0])))
                         for prec, cnt in sorted(fslots[f.name].items())))
         if p.vocabs:
-            line = _tally_line('Links', ((iid, k) for iid, k in c.group(word + [['vocab-link', '?w', '?v']], ['?v'])),
+            # A word's own links only: a link over several words (a multi-word
+            # expression) is not what this word was linked to, as in the
+            # editor's precedent (plaid-igt linkPrecedentQueries, H2-14-2).
+            own_links = [['link-token', '?l', '?w'], ['link-item', '?l', '?v'],
+                   ['not', ['link-token', '?l', '?w2'], ['precedes*', '?w', '?w2']],
+                   ['not', ['link-token', '?l', '?w2'], ['precedes*', '?w2', '?w']]]
+            line = _tally_line('Links', ((iid, k) for iid, k in c.group(word + own_links, ['?v'])),
                                lambda iid: item_form.get(iid, iid))
             if line:
                 lines.append(line)
