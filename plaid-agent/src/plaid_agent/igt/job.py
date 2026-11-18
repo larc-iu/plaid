@@ -1785,6 +1785,20 @@ class ProjectChanged(Exception):
     written."""
 
 
+def refused_for_links(e: BaseException, ops: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """The entry deletions of a try that core refused because the entry has
+    links the job's token cannot read (core's 409 that counts ``links``,
+    another project's), nothing of the try written: those of ``ops``, else
+    none (S9-2)."""
+    err = core_job.plaid_error(e)
+    if err is None or err.status != 409 or not isinstance(err.response_data, dict) \
+            or 'links' not in err.response_data:
+        return []
+    if isinstance(e, PlanError) and (e.applied or e.unknown):
+        return []
+    return [o for o in ops if o.get('kind') == 'delete_entry']
+
+
 def first_request(e: BaseException) -> bool:
     """Whether a write that met core's passing trouble may be made again
     from its gate (D21): the trouble came before its first request went out
@@ -5227,7 +5241,29 @@ class IgtRunner:
                 # is linked, never made again.
                 ops = self.entries_that_fit(project, ops, True)
             try:
-                self.apply(client, project, document_id, group, ops, seed, w)
+                try:
+                    self.apply(client, project, document_id, group, ops, seed, w)
+                except (PlanError, PlanOutOfDate) as e:
+                    dels = refused_for_links(e, ops)
+                    if not dels:
+                        raise
+                    # Core counts links of the entry the job's token cannot
+                    # read (another project's), and nothing of the try was
+                    # written: never deleted by the job. One such delete is
+                    # listed once, not applied, several are tried one by
+                    # one, and the rest of the try is written (S9-2).
+                    self.looked.add(seed)
+                    others = [o for o in ops if not any(o is d for d in dels)]
+                    new = ([{'seed': uuid7(), 'ops': others}] if others else []) + (
+                        [{'seed': uuid7(), 'ops': [d]} for d in dels] if len(dels) > 1 else [])
+                    if len(dels) == 1:
+                        self.record_changes([{**self.describe_loose(dels[0]), 'label': _cut(
+                            f'{dels[0].get("label") or "Delete entry"}: not deleted, the entry is linked where '
+                            'the job cannot read', JOB_CHANGE_VALUE_CHARS)}])
+                    self.keep_rows(w, [r for n in new for r in w.rows(n['seed'], n['ops'], replaces=seed)]
+                                   or [w.marker(seed)])
+                    queue[0:0] = new
+                    continue
             except TooBig:
                 # Nothing of it was sent.
                 self.looked.add(seed)
