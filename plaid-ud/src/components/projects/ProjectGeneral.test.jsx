@@ -11,6 +11,13 @@ vi.mock('@ui/hooks/useManagedProject.js', () => ({ useManagedProject: () => mana
 vi.mock('@ui/contexts/useAuth.js', () => ({
   useAuth: () => ({ getClient: () => client.current }),
 }));
+const notify = vi.hoisted(() => ({ notifySuccess: vi.fn(), notifyError: vi.fn() }));
+vi.mock('@ui/lib/notify.js', async (orig) => ({ ...(await orig()), ...notify }));
+// A text layer for the tokenizer locale's card.
+vi.mock('../../utils/udLayerUtils.js', async (orig) => ({
+  ...(await orig()),
+  getUdLayerInfo: () => ({ textLayer: { id: 't1', config: {} } }),
+}));
 
 const { ProjectGeneral } = await import('./ProjectGeneral.jsx');
 
@@ -31,8 +38,10 @@ const mount = () =>
   );
 
 beforeEach(() => {
+  vi.clearAllMocks();
   client.current = {
     projects: { setConfig: vi.fn(async () => {}), deleteConfig: vi.fn(async () => {}) },
+    textLayers: { setConfig: vi.fn(async () => {}), deleteConfig: vi.fn(async () => {}) },
   };
   managed.current = {
     project: { id: 'p1', name: 'P', config: { ud: { language: 'en' } } },
@@ -78,4 +87,25 @@ describe('UD General, Language', () => {
     expect(client.current.projects.setConfig).not.toHaveBeenCalled();
     await view.unmount();
   });
+});
+
+// H3-7-4: `en_US` was saved without a word, and Tokenize then did nothing.
+// Both fields ask for a BCP-47 tag and refuse one that is not.
+describe('UD General, a tag that is not BCP-47', () => {
+  for (const [label, bundle, title] of [
+    ['Project language', 'projects', null],
+    ['Tokenizer locale', 'textLayers', 'Tokenizer locale not saved'],
+  ]) {
+    it(`is refused by ${label}, and says so`, async () => {
+      const view = await mount();
+      const field = view.container.querySelector(`[aria-label="${label}"]`);
+      await view.step(() => typeInto(field, 'en_US'));
+      await view.step(() => field.closest('form').querySelector('button').click());
+      expect(client.current[bundle].setConfig).not.toHaveBeenCalled();
+      const call = notify.notifyError.mock.calls[0];
+      expect(call[0]).toBe('"en_US" is not a BCP-47 language tag.');
+      if (title) expect(call[1]).toBe(title);
+      await view.unmount();
+    });
+  }
 });

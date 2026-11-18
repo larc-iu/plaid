@@ -25,6 +25,7 @@ import {
   suppressorIdsOver,
 } from './enhancedGraph.js';
 import { notSetUp } from '../../../plaid-ui/src/domain/setupGuard.js';
+import { isLanguageTag } from '../../../plaid-ui/src/lib/languageTag.js';
 import { pendingId, recordSettled, settledId } from '../../../plaid-ui/src/domain/pendingIds.js';
 import {
   makeTextPlan,
@@ -424,6 +425,12 @@ export class ConlluDocument extends DocumentModel {
     }
     const label = 'Failed to create tokens';
     if (!this._canWrite(label)) return false;
+    // The segmenter throws on a tag that is not BCP-47 (`en_US`).
+    const tokenizerLocale = readTokenizerLocale(info.textLayer, this._project);
+    if (!isLanguageTag(tokenizerLocale)) {
+      this.refuse(`The tokenizer locale "${tokenizerLocale}" is not a BCP-47 language tag.`);
+      return false;
+    }
 
     const body = textContent;
 
@@ -441,7 +448,6 @@ export class ConlluDocument extends DocumentModel {
     // hyphenated forms, abbreviations, decimal numbers); edge or standalone
     // punctuation becomes its own one-character token, in the segmenter's
     // locale (readTokenizerLocale).
-    const tokenizerLocale = readTokenizerLocale(info.textLayer, this._project);
     const wordRanges = gapTokenize(
       body,
       sentenceRanges,
@@ -672,6 +678,8 @@ export class ConlluDocument extends DocumentModel {
       ? [...sentences].sort((a, b) => a.begin - b.begin).map((s) => [s.begin, s.end])
       : newlineSentenceRanges(body || '');
     const locale = readTokenizerLocale(textLayer, this._project);
+    // Not known for a locale the segmenter cannot read: Tokenize says why.
+    if (!isLanguageTag(locale)) return null;
     return gapTokenize(
       body || '',
       ranges,
