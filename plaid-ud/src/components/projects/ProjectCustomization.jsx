@@ -198,7 +198,7 @@ export const ProjectCustomization = () => {
     }) !== baseline;
 
   // Leaving the tab, the page or the window with a change made asks first.
-  useUnsavedDraft(dirty ? 'The settings you have changed' : null);
+  useUnsavedDraft(dirty ? 'The change to these settings' : null);
 
   // Seed the editors from the project's current layer config. A project read
   // again (after a Save, or after one refused because of a save elsewhere)

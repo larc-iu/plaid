@@ -81,7 +81,7 @@ describe('UD customization', () => {
     const view = await mount();
     expect(hasUnsavedDraft()).toBe(null);
     await view.step(() => button(view.container, 'Add feature').click());
-    expect(hasUnsavedDraft()).toBe('The settings you have changed');
+    expect(hasUnsavedDraft()).toBe('The change to these settings');
     const bar = button(view.container, 'Save').parentElement;
     expect(bar.className.split(/\s+/)).toContain('sticky');
     expect(bar.textContent).toContain('Not saved');
