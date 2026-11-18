@@ -75,9 +75,12 @@ test('a machine translation is violet, a sweep stop, and Ctrl+Enter accepts it a
   await page.keyboard.press('Control+Enter');
   await expect(tr).toHaveClass(/igt-field--verified/);
   await expect(tr).toHaveValue('a machine draft');
-  await page.waitForLoadState('networkidle');
+  // The page shows it at once and writes it after: wait for the server. A
+  // networkidle reached before the key is no barrier (FLK4-1).
+  await expect
+    .poll(async () => (await client.spans.get(spanId)).metadata?.provConfirmed)
+    .toBe(true);
   const span = await client.spans.get(spanId);
-  expect(span.metadata?.provConfirmed).toBe(true);
   expect(span.metadata?.provSource).toBe('service:llm-translator');
   expect(span.value).toBe('a machine draft');
 });
