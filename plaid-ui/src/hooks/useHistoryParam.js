@@ -55,15 +55,18 @@ export function useHistoryParam({ selectedId, ready, open }) {
 
   const select = useCallback((id) => setParams((p) => write(p, id)), [setParams]);
   const clear = useCallback(() => setParams((p) => write(p, null), { replace: true }), [setParams]);
+  // The view of the entry on screen, named with it. `p` is the address as of
+  // this render, and the address of a pick just made can still be on its way
+  // (the router commits it in a transition): without the entry, a click on
+  // Document then dropped the pick or put back the entry before it.
   const setView = useCallback(
     (next) =>
       setParams((p) => {
-        const out = new URLSearchParams(p);
+        const out = write(p, selected);
         if (next === 'document') out.set(HISTORY_VIEW_PARAM, 'document');
-        else out.delete(HISTORY_VIEW_PARAM);
         return out;
       }),
-    [setParams],
+    [setParams, selected],
   );
   return { wanted, view, select, clear, setView };
 }
