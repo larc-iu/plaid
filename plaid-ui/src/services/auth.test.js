@@ -12,6 +12,9 @@ const clientFor = (userId) => ({
 });
 
 const login = vi.fn();
+// GET /users/:id on a client the module made, as the real client sends it: a
+// 401 tells the client's onAuthError, then rejects.
+const readAccount = vi.hoisted(() => vi.fn());
 const lookupInvite = vi.fn();
 const redeemInvite = vi.fn();
 
@@ -22,6 +25,7 @@ vi.mock('@larc-iu/plaid-client', () => {
       this.token = token;
       this.options = options;
       this.retryListeners = [];
+      this.users = { get: (id) => readAccount(this, id) };
     }
     onRetry(listener) {
       this.retryListeners.push(listener);
@@ -383,5 +387,60 @@ describe('a 401', () => {
     expect(notify.withAction).toHaveBeenCalledTimes(1);
     otherTabSignsIn(`${tokenFor('ada@example.com')}3`);
     expect(c.token).toBe(`${tokenFor('ada@example.com')}3`);
+  });
+});
+
+// The read of the account on load, for the Admin switch (H12-4). The gate
+// found it signed out a stored session whose token was no longer good, and on
+// the sign-in page that reloaded the page again and again.
+describe('reading the account again on load', () => {
+  const refused = (c) => {
+    const err = Object.assign(new Error('HTTP 401'), { status: 401, method: 'GET' });
+    c.options?.onAuthError?.(err);
+    throw err;
+  };
+  beforeEach(() => {
+    localStorage.clear();
+    sessionStorage.clear();
+    vi.clearAllMocks();
+    window.location.hash = '#/projects';
+    vi.spyOn(window.location, 'reload').mockImplementation(() => {});
+  });
+  const stored = () => {
+    localStorage.setItem('token', 'eyJhbGciOiJIUzI1NiJ9.eyJib2d1cyI6dHJ1ZX0.bad');
+    localStorage.setItem('userId', 'a@b.com');
+    localStorage.setItem('displayName', 'a@b.com');
+    localStorage.setItem('isAdmin', 'true');
+  };
+
+  it('answers the account when the read works', async () => {
+    stored();
+    readAccount.mockResolvedValue({ id: 'a@b.com', isAdmin: false });
+    expect(await authService.refreshAccount('a@b.com')).toEqual({ id: 'a@b.com', isAdmin: false });
+    expect(readAccount).toHaveBeenCalledTimes(1);
+  });
+
+  it('on an invalid token reads once and neither signs out nor reloads', async () => {
+    stored();
+    readAccount.mockImplementation(async (c) => refused(c));
+    expect(await authService.refreshAccount('a@b.com')).toBe(null);
+    expect(readAccount).toHaveBeenCalledTimes(1);
+    expect(window.location.reload).not.toHaveBeenCalled();
+    expect(window.location.hash).toBe('#/projects');
+    expect(localStorage.getItem('token')).not.toBe(null);
+    expect(sessionStorage.getItem('plaid:logout-reason')).toBe(null);
+    expect(notify.withAction).not.toHaveBeenCalled();
+  });
+
+  it('does not read on the sign-in or invite pages, or with no token', async () => {
+    stored();
+    for (const hash of ['#/login', '#/invite/abc']) {
+      window.location.hash = hash;
+      expect(await authService.refreshAccount('a@b.com')).toBe(null);
+    }
+    localStorage.clear();
+    window.location.hash = '#/projects';
+    expect(await authService.refreshAccount('a@b.com')).toBe(null);
+    expect(readAccount).not.toHaveBeenCalled();
   });
 });

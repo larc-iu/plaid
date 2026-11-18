@@ -335,6 +335,27 @@ export const authService = {
     return client;
   },
 
+  // The stored account read again, for what sign-in cached that can change
+  // since (the Admin switch). Answers the account, or null when there is no
+  // session to read or the read fails for any reason. It never signs out or
+  // reloads: its client has no onAuthError, so a token no longer good is found
+  // as before, by the next request the person makes. Not on the sign-in or
+  // invite pages, which have no session to refresh.
+  async refreshAccount(userId) {
+    const token = localStorage.getItem('token');
+    const hash = window.location.hash.replace(/^#/, '');
+    const signIn = (loginRoute || '').replace(/^#/, '');
+    if (!token || !userId || (signIn && hash.startsWith(signIn)) || hash.startsWith('/invite/')) {
+      return null;
+    }
+    try {
+      return await new PlaidClient(BASE_URL, token).users.get(userId);
+    } catch (err) {
+      console.warn('Could not read the account again:', err);
+      return null;
+    }
+  },
+
   // A client of its own on the session's token, for a screen that needs one
   // (an editor's strict-mode client). It answers a 401 as every other does.
   // The token is this tab's, never one another tab signed a different user in with.

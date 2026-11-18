@@ -14,6 +14,7 @@ const { CLIENT, authService } = vi.hoisted(() => {
       login: vi.fn(),
       redeemInvite: vi.fn(),
       logout: vi.fn(),
+      refreshAccount: vi.fn(async () => null),
     },
   };
 });
@@ -44,6 +45,7 @@ describe('AuthProvider', () => {
     vi.clearAllMocks();
     authService.getCurrentUser.mockReturnValue(null);
     authService.getClient.mockReturnValue(CLIENT);
+    authService.refreshAccount.mockResolvedValue(null);
   });
 
   it('has no client while signed out, and refuses to invent one', async () => {
@@ -117,17 +119,30 @@ describe('AuthProvider', () => {
       displayName: 'Bea',
       isAdmin: true,
     });
-    const client = {
-      users: { get: vi.fn(async () => ({ id: 'bea@example.com', isAdmin: false })) },
-    };
-    authService.getClient.mockReturnValue(client);
+    authService.refreshAccount.mockResolvedValue({ id: 'bea@example.com', isAdmin: false });
     localStorage.setItem('isAdmin', 'true');
     const { step } = await mount();
     await step(async () => {
       await new Promise((r) => setTimeout(r, 0));
     });
-    expect(client.users.get).toHaveBeenCalledWith('bea@example.com');
+    expect(authService.refreshAccount).toHaveBeenCalledTimes(1);
+    expect(authService.refreshAccount).toHaveBeenCalledWith('bea@example.com');
     expect(seen.user.isAdmin).toBe(false);
     expect(localStorage.getItem('isAdmin')).toBe('false');
+  });
+
+  it('keeps the cached account and signs no one out when the read answers nothing', async () => {
+    authService.getCurrentUser.mockReturnValue({
+      id: 'bea@example.com',
+      displayName: 'Bea',
+      isAdmin: true,
+    });
+    const { step } = await mount();
+    await step(async () => {
+      await new Promise((r) => setTimeout(r, 0));
+    });
+    expect(authService.refreshAccount).toHaveBeenCalledTimes(1);
+    expect(authService.logout).not.toHaveBeenCalled();
+    expect(seen.user.isAdmin).toBe(true);
   });
 });
