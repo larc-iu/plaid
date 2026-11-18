@@ -647,12 +647,10 @@ KIND = ok.registry([
            token_keys=('span_id', 'relation_id', 'token_id'),
            compact_each=('span_id', 'relation_id', 'token_id', 'ref', 'contributed'),
            compact_label=_confirm_label, stamped=False),
-    # The parser writes its own values under its own stamp (R30), so the
-    # approver has no stamp to choose (H2-9-1).
     OpKind('run_parse', ('parsed document', 'parsed documents'), replaces=None,
            stage=PARSE, apply=_apply_run_parse,
            required=('document_ids', 'service_id', 'project_id', 'language'),
-           shape=DOCUMENT_SHAPE, summary=_run_parse_summary, stamped=False),
+           shape=DOCUMENT_SHAPE, summary=_run_parse_summary),
     OpKind('set_words', ('reshaped token', 'reshaped tokens'), replaces=_words_work,
            apply=_apply_set_words, shape=WORD_SHAPE,
            required=('token_id', 'text_id', 'forms', 'word_layer_id', 'form_layer_id', 'lemma_layer_id'),

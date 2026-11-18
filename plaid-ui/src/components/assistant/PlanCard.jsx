@@ -193,7 +193,7 @@ export const PlanCard = ({
         </p>
       )}
       {/* A plan with no stamp to choose was approved with one Approve, so no
-          stamp is named (a parse's values are the parser's, H2-9-1). */}
+          stamp is named (H2-9-1). */}
       {(applied || partial) && plan.stampChoice !== false && (
         <p className="mt-2 text-xs text-muted-foreground" data-testid="plan-approved-as">
           {approvedLine({
@@ -346,7 +346,8 @@ export const PlanCard = ({
               "Record as human-made" wins over both: ticked, one Approve. A plan
               of only changes that write no value of the assistant's
               (confirmations, deletions: the service's `stampChoice: false`)
-              has no stamp to choose, so one Approve too. */}
+              offers one Approve too: a rule made in review on 2026-11-12,
+              pending the owner, not his ruling. */}
           {canWrite && (asHuman || plan.stampChoice === false) ? (
             <Button
               type="button"

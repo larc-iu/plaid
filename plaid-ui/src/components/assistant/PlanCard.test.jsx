@@ -562,9 +562,10 @@ describe('the two approve buttons', () => {
     await view.unmount();
   });
 
-  // The owner's ruling (2026-11-12): a plan of only changes that write no
-  // value of the assistant's (confirmations, deletions) has no stamp to
-  // choose, so it offers one Approve, as the ticked box does.
+  // A rule made in review on 2026-11-12, pending the owner: a plan of only
+  // changes that write no value of the assistant's (confirmations,
+  // deletions) has no stamp to choose, so it offers one Approve, as the
+  // ticked box does.
   const confirmOnly = () => ({ ...one(), stampChoice: false });
 
   it('is one Approve on a plan with no stamp to choose', async () => {
@@ -625,9 +626,9 @@ describe('the two approve buttons', () => {
     }
   });
 
-  // A plan with no stamp to choose (a parse, whose values are the parser's)
-  // was approved with a single Approve, so no stamp is named: "Approved as
-  // verified." over a parse stored as unverified was untrue (H2-9-1).
+  // A plan with no stamp to choose was approved with a single Approve, so no
+  // stamp is named: "Approved as verified." named a choice the person never
+  // had (H2-9-1).
   it.each([[{}], [{ recordedAsHuman: true }]])(
     'a settled plan with no stamp to choose names none (%o)',
     async (recorded) => {
