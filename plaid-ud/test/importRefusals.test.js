@@ -185,3 +185,40 @@ test('an import refused as too large says so in the words of an import', async (
     `${said} The partial document “m” was not deleted. Delete it by hand.`,
   );
 });
+
+// H3-5-1: a sentence's comments are one value per name, and a second
+// `# comment = ...` overwrote the first in silence. The first line of each
+// name is kept and every repeat is counted.
+test('repeated comment lines are dropped aloud, and the first of each is kept', async () => {
+  const input = conllu([
+    '# sent_id = rc-1',
+    '# text = один',
+    '# comment = checked by A',
+    '# comment = checked by B',
+    '# not sure about the lemma',
+    '# not sure about the lemma',
+    '1\tодин\tодин\tNUM\t_\t_\t0\troot\t_\t_',
+  ]);
+  const info = getUdLayerInfo(rawDocFromConllu(input, 'm'));
+  const sentences = [];
+  const client = recordingClient();
+  const batched = client.batched;
+  client.batched = (fn) =>
+    batched((b) =>
+      fn({
+        ...b,
+        tokens: {
+          bulkCreate: (ops) => {
+            sentences.push(...ops.filter((op) => op.tokenLayerId === info.sentenceTokenLayer.id));
+            return b.tokens.bulkCreate(ops);
+          },
+        },
+      }),
+    );
+  const out = await ConlluDocument.importFromConllu(client, 'p1', 'm', input, info);
+  assert.deepEqual(out.importWarnings, [
+    '2 repeated comment lines dropped: Plaid UD stores one comment line of each name per sentence.',
+  ]);
+  assert.equal(sentences[0].metadata.comment, 'checked by A');
+  assert.equal(sentences[0].metadata['not sure about the lemma'], true);
+});

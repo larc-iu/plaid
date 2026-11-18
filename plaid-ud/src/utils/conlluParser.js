@@ -52,6 +52,13 @@ export function parseCoNLLU(text) {
   // and a project with no enhanced relation layer yet never reads it.
   let droppedEmptyNodeDeps = 0;
   let unreadableDeps = 0;
+  // A sentence holds one comment of each name, so a second `# comment = ...`
+  // (or a bare line said twice) is dropped and counted, and the first stays.
+  let repeatedComments = 0;
+  const comment = (key, value) => {
+    if (Object.hasOwn(currentMetadata, key)) repeatedComments += 1;
+    else currentMetadata[key] = value;
+  };
 
   for (const line of lines) {
     const trimmedLine = line.trim();
@@ -90,12 +97,12 @@ export function parseCoNLLU(text) {
       const metadataMatch = trimmedLine.match(/^#\s*([^=]+?)\s*=\s*(.+)$/);
       if (metadataMatch) {
         const [, key, value] = metadataMatch;
-        currentMetadata[key.trim()] = value.trim();
+        comment(key.trim(), value.trim());
       } else {
         // Handle metadata without = sign
         const cleanedLine = trimmedLine.substring(1).trim();
         if (cleanedLine) {
-          currentMetadata[cleanedLine] = true;
+          comment(cleanedLine, true);
         }
       }
       continue;
@@ -244,6 +251,7 @@ export function parseCoNLLU(text) {
       miscTokens: droppedMiscTokens,
       emptyNodeDeps: droppedEmptyNodeDeps,
       unreadableDeps,
+      repeatedComments,
     },
   };
 }

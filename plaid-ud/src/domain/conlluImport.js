@@ -128,6 +128,7 @@ async function importDocument(client, projectId, name, conlluText, precomputedLa
     miscTokens = 0,
     emptyNodeDeps = 0,
     unreadableDeps = 0,
+    repeatedComments = 0,
   } = parsedData.dropped || {};
   if (emptyNodes > 0 || emptyNodeDeps > 0) {
     // One line for both: an enhanced dependency that hangs from an empty node
@@ -145,6 +146,12 @@ async function importDocument(client, projectId, name, conlluText, precomputedLa
   if (unreadableDeps > 0) {
     importWarnings.push(
       `DEPS values on ${countOf(unreadableDeps, 'token row', 'token rows')} could not be read and were dropped.`,
+    );
+  }
+  if (repeatedComments > 0) {
+    importWarnings.push(
+      `${countOf(repeatedComments, 'repeated comment line')} dropped: ` +
+        'Plaid UD stores one comment line of each name per sentence.',
     );
   }
   if (miscTokens > 0) {
