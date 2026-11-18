@@ -585,7 +585,14 @@ export const pieceEndLines = (piece, states = new Map(), active = false) => {
     );
   }
   if (piece.ended) {
-    const what = piece.ended === 'output' ? 'Answer too long' : 'Steps used up';
+    // `repeating`: the same tool call failed or was repeated three times in
+    // a row (REV-JR1-6), in the words a skipped sentence uses for it.
+    const what =
+      piece.ended === 'output'
+        ? 'Answer too long'
+        : piece.ended === 'repeating'
+          ? 'Model repeated itself'
+          : 'Steps used up';
     out.push(
       (piece.counts?.changes ?? 0) > 0
         ? `${what}: written as staged.`

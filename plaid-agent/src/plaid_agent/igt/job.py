@@ -3198,11 +3198,14 @@ class IgtRunner:
                               summary=summary)
         return self.off_on_trouble(document_id, step)
 
-    def off_on_trouble(self, document_id: str, step: Callable[[], Any]) -> Any:
+    def off_on_trouble(self, document_id: str, step: Callable[[], Any],
+                       retry: Optional[Callable[[BaseException], bool]] = None) -> Any:
         """``step`` through core (:func:`core_job.through_core`), the
         document put off (:class:`Deferred`) when core's passing trouble
         outlasts the tries: by a person for a lock (423), else by core not
-        answering, with its error (REV D14)."""
+        answering, with its error (REV D14). ``retry`` goes to
+        :func:`core_job.through_core` (a write's :func:`first_request`,
+        REV-JR1-7)."""
         met: List[BaseException] = []
 
         def tried():
@@ -3214,7 +3217,7 @@ class IgtRunner:
 
         def gave_up():
             raise Deferred(document_id, None if _status(met[0]) == 423 else met[0])
-        return core_job.through_core(self.job, tried, gave_up=gave_up)
+        return core_job.through_core(self.job, tried, gave_up=gave_up, retry=retry)
 
     def entries_that_fit(self, project: IgtProject, ops: List[Dict[str, Any]],
                          selection: bool = False) -> List[Dict[str, Any]]:
@@ -3495,8 +3498,10 @@ class IgtRunner:
         def step():
             try:
                 return self.walk(document_id)
-            except Deferred:
-                return self.defer(document_id)
+            except Deferred as e:
+                # By a person, or by core not answering for a write inside
+                # the walk (REV-JR1-7).
+                return self.put_off(document_id, e.error)
             except Gone:
                 job.update_row(document_id, state='gone')
                 return 'gone'
@@ -3591,13 +3596,16 @@ class IgtRunner:
                     # A row of its own in the work list, saying it failed and
                     # what follows (B5).
                     self.failed_whole(document_id, doc.name, part, e.kind, rest=[document_id])
-                except Deferred:
+                except Deferred as e:
                     # Its write put off: what it would have written remains, so
                     # the fallback row is kept now, in core, and a worker that
                     # restarts during the wait works it in stretches too
                     # (REV-RW-4). Its reason is a put-off's (``in-use``), which
-                    # a plan that fills nothing says so (REV-RW-R3-1).
-                    core_job.through_core(job, lambda: self.fall_back(document_id, 'in-use'))
+                    # a plan that fills nothing says so (REV-RW-R3-1), or
+                    # ``unreachable`` when core did not answer, as a
+                    # selection's is (REV D14, REV-JR2-7).
+                    reason = 'in-use' if e.error is None else 'unreachable'
+                    core_job.through_core(job, lambda: self.fall_back(document_id, reason))
                     raise
                 finally:
                     self.whole_taken.add(document_id)
@@ -3810,19 +3818,17 @@ class IgtRunner:
             # on its own: a passing error never asks the model again
             # (REV-JR1-12).
             core_job.through_core(self.job, lambda: self.unfinished(document_id, staged[0], staged[1]))
-
-            def put_off():
-                raise Deferred(document_id)
             # Tried again from the gate after core's passing trouble met
             # before its first request, and put off when it outlasts the
             # tries: such an error never runs the model context again (D21).
             # Once a request of it went out (``wrote_any`` set, whatever its
             # value), the piece is taken again over what is left, as before
             # (REV-L2B): its own tries that may have landed would read as
-            # changes since the piece read the document.
+            # changes since the piece read the document. Put off by a person
+            # or by core not answering, with its error (REV-JR1-7).
             try:
-                core_job.through_core(self.job, lambda: self.write(project, document_id, *staged, summary=key),
-                                      gave_up=put_off, retry=first_request)
+                self.off_on_trouble(document_id, lambda: self.write(project, document_id, *staged, summary=key),
+                                    retry=first_request)
             finally:
                 self.hold_cursor.pop(document_id, None)
             core_job.through_core(self.job, lambda: self.end_summary(key))
@@ -3924,11 +3930,11 @@ class IgtRunner:
         job.check()
         client = job.client()
 
-        def put_off():
+        def put_off(error: Optional[BaseException] = None):
             if document_id not in self.after_text_put_off:
                 self.after_text_put_off.add(document_id)
                 self.text_edited[document_id] = set(ids)
-            raise Deferred(document_id)
+            raise Deferred(document_id, error)
         if self.in_use(self.newest_change(client, document_id, keep=True), self.own_ref):
             put_off()
         ws = JobWorkspace(client, project)
@@ -3993,17 +3999,17 @@ class IgtRunner:
             core_job.through_core(job, lambda: self.record_piece(project, piece, note, ws.tables, doc, part))
             core_job.through_core(job, lambda: self.record_refusals(ws, document_id))
             if ws.ops:
-                def gave_up():
-                    raise Deferred(document_id)
                 try:
-                    core_job.through_core(job, lambda: self.write(project, document_id, ws, doc, part, prints,
-                                                                  list(ws.ops), note, piece_tag(piece), summary=key),
-                                          gave_up=gave_up, retry=first_request)
-                except Deferred:
+                    self.off_on_trouble(document_id, lambda: self.write(project, document_id, ws, doc, part, prints,
+                                                                        list(ws.ops), note, piece_tag(piece),
+                                                                        summary=key),
+                                        retry=first_request)
+                except Deferred as e:
                     # Its note is never shown beside no changes: the piece is
-                    # taken again, once, at the start of the walk.
+                    # taken again, once, at the start of the walk. Put off by
+                    # a person or by core not answering (REV-JR1-7).
                     self.unsummed.pop(key, None)
-                    put_off()
+                    put_off(e.error)
             core_job.through_core(job, lambda: self.end_summary(key))
         finally:
             self.following = False

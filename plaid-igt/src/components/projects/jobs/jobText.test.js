@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { allSkipped, documentCounts, documentSentencesText } from './jobText.js';
+import { allSkipped, documentCounts, documentSentencesText, pieceEndLines } from './jobText.js';
 
 // What the job page says of a report's documents, by the worker's rows
 // (job review 2026-11-18, lane JR2).
@@ -56,5 +56,19 @@ describe('documents the plan left out (D22)', () => {
       ],
     };
     expect(documentCounts(report)).toMatchObject({ notReached: 1, leftOut: 1 });
+  });
+});
+
+describe('a piece ended by a repeat stop (REV-JR1-6)', () => {
+  it('says the model repeated itself, whether its work was written or not', () => {
+    expect(pieceEndLines({ ended: 'repeating', counts: { changes: 2 } })).toEqual([
+      'Model repeated itself: written as staged.',
+    ]);
+    expect(pieceEndLines({ ended: 'repeating', counts: { changes: 0 } })).toEqual([
+      'Model repeated itself: what it had staged was not written.',
+    ]);
+    expect(pieceEndLines({ ended: 'budget', counts: { changes: 1 } })).toEqual([
+      'Steps used up: written as staged.',
+    ]);
   });
 });
