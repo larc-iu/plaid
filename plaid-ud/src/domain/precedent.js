@@ -26,12 +26,15 @@ const COUNT = { aggregates: [['count']] };
  * Lemmas given to this form. TWO queries, merged: a word's form is the Form
  * span's value when it has one (a multi-word token's components) and the
  * token's own text otherwise, and no single constraint covers both. Asking one
- * way would silently miss every word of the other kind.
+ * way would silently miss every word of the other kind. The first asks only
+ * of words with no Form span, as Grew's compile does: the words of a
+ * multi-word token cover their whole token, so its text is not their form.
  */
 const lemmaByForm = (projectId, layers, form) => [
   {
     where: [
       ['token', '?t', { layer: layers.morpheme, value: form }],
+      ['not', ['span', '?anyForm', { layer: layers.form }], ['covers', '?anyForm', '?t']],
       ['span', '?l', { layer: layers.lemma }],
       ['covers', '?l', '?t'],
       ['span', '?l', { value: { var: '?precedent' } }],
@@ -84,8 +87,8 @@ export function precedentQueries(projectId, layers, field, key) {
 
 /**
  * Merge the results of one or more grouped aggregates into `[{value, count}]`,
- * commonest first. The two lemma queries can name the same value (a word with
- * a Form span matching its own text), so counts are summed rather than
+ * commonest first. The two lemma queries can name the same value (one word
+ * with a Form span, another without), so counts are summed rather than
  * concatenated.
  */
 export function mergeCounts(resultSets) {

@@ -100,6 +100,38 @@ test('picking one commits it, through the swap from input to list', async ({ pag
   await expect.poll(lemmaValues, { timeout: 8000 }).not.toContain('Dog');
 });
 
+test('a word with a Form span of its own is not asked about by its token text', async ({
+  page,
+}) => {
+  // The second "dog" becomes a multi-word token of two words, forms "do" and
+  // "g", the way import and the token panel store one: a second word over the
+  // same token, and a Form span on each. Their forms are not "dog", so asking
+  // about the third "dog" must not offer their lemmas (H2-9-2).
+  const { client, layers, morphIds, documentId } = S;
+  const doc = await client.documents.get(documentId, true);
+  const textId = doc.textLayers[0].text.id;
+  const second = await client.tokens.create(
+    doc.textLayers[0].tokenLayers.find((l) => l.name === 'Words').id,
+    textId,
+    17,
+    20,
+    1,
+  );
+  await client.spans.create(layers.form, [morphIds[4]], 'do');
+  await client.spans.create(layers.form, [second.id], 'g');
+  await client.spans.create(layers.lemma, [second.id], 'gee');
+
+  await openAnnotate(page);
+  const cell = page.locator(`[id="${S.morphIds[7]}-lemma"]`);
+  await cell.click();
+  await cell.press('Alt+ArrowDown');
+  await page.waitForTimeout(1500);
+  const options = (await page.getByRole('option').allInnerTexts()).map((t) => t.trim());
+  // Its own lemma only: the words of the multi-word token have other forms.
+  expect(options.join(' ')).not.toContain('gee');
+  expect(options.some((t) => /^dog/.test(t))).toBe(false);
+});
+
 test('Alt+Down in an XPOS cell asks about the LEMMA, not the form', async ({ page }) => {
   await openAnnotate(page);
   // "dogs" (NNS) and "dog" (NN) are both lemma `dog`. Asking from the second
