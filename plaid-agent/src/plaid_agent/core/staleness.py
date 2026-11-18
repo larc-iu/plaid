@@ -62,7 +62,13 @@ def stale_documents(client, documents: list, reread=None) -> list:
         try:
             now = client.documents.get(d['id'])
         except Exception as e:  # noqa: BLE001 - deleted or unreadable: the plan cannot apply
-            out.append(f'{_named(d.get("name"))} could not be read ({requester_message(e)})')
+            # Core answers 403 for an id it does not know (on purpose), so a
+            # deleted document and one taken out of reach read alike (H2-4-2).
+            if getattr(e, 'status', None) in (403, 404):
+                out.append(f'{_named(d.get("name"))} no longer exists or can no longer be read '
+                           '(deleted, or access removed, since the plan was made)')
+            else:
+                out.append(f'{_named(d.get("name"))} could not be read ({requester_message(e)})')
             continue
         # Reached by rules alone: what they match there is checked by its
         # digest when they are found again (`core.rules.check_matched`), so an
