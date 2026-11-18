@@ -297,7 +297,7 @@ To tokenize by hand:
 * **Alt+click** a word to open it on the Analyze tab.
 * The **↑** button on a sentence merges it with the previous one.
 
-A change that would delete annotations asks first, and counts them.
+A change that would delete annotations asks first, and counts them. So does a sentence split that hides a multi-word expression, or shows it only in part, until the sentences are merged again.
 
 To tokenize the whole document at once, use **Tokenize** in the **Tokens** header.
 The built-in **Rule-based punctuation** splitter finds words and leaves sentence breaks as they are, and a tokenization service can split sentences too (see <<_services>>).
