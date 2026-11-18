@@ -653,9 +653,9 @@ export function segmentServer(raw) {
     // The requests sent that wrote something, by their answer.
     answers: () => sentHere.map((r) => r.answer),
     // Refuse the next write with `status` (a document version that moved,
-    // with the body unchanged).
-    refuseNext: (status = 409, error = VERSION_MISMATCH) =>
-      refusals.push(refused(status, { error })),
+    // with the body unchanged), or with the error `as`, whole.
+    refuseNext: (status = 409, error = VERSION_MISMATCH, as = null) =>
+      refusals.push(as ?? refused(status, { error })),
     // Store the next `count` writes and lose their answers.
     loseNext: (count = 1) => {
       lose += count;

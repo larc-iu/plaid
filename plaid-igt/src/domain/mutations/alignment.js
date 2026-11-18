@@ -50,7 +50,12 @@ import {
   PROVENANCE_KEYS,
 } from '@larc-iu/plaid-client';
 import { pendingId, settledId } from '@ui/domain/pendingIds.js';
-import { isChangedElsewhere, isKeyReused, isUnknownOutcome } from '@ui/lib/errors.js';
+import {
+  isChangedElsewhere,
+  isKeyReused,
+  isUnknownOutcome,
+  isUnreachable,
+} from '@ui/lib/errors.js';
 import { inferEdit, removedStretches } from '@ui/lib/editLog.js';
 import { applyReshape } from '@ui/domain/textReshape.js';
 import { applyGapsLocally, applyTextEditsLocally, removeTokensLocally } from '../textEdits.js';
@@ -1736,6 +1741,7 @@ export const alignmentMutations = {
       state.again = true;
     }
     let reused = false;
+    let refusal = null;
     if (state.base) {
       try {
         return await this._sendSegmentBatch(state);
@@ -1745,9 +1751,19 @@ export const alignmentMutations = {
           if (!readOnRefusal || !landed) throw err;
           return this._landedAfterRefusal(err, landed);
         }
+        refusal = err;
       }
     }
-    const updated = await this._fetch();
+    // A read that fails after a refusal (the document deleted meanwhile,
+    // whose read is refused 403) is said as the refusal, changed or removed
+    // elsewhere, not as the read's own error (H2-1-3).
+    let updated;
+    try {
+      updated = await this._fetch();
+    } catch (err) {
+      if (refusal && !isUnreachable(err) && !isUnknownOutcome(err)) throw refusal;
+      throw err;
+    }
     await this._adoptReload(updated);
     const fresh = getIgtLayerInfo(updated);
     const again = reused && landed?.(fresh) ? { landed: true } : replan(fresh, updated);

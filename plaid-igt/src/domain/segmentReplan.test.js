@@ -407,3 +407,50 @@ describe('a row write that deletes more than its page counted', () => {
     expect(doc.segmentDeleteLoss('a-2').annotations).toBe(1);
   });
 });
+
+// H2-1-3: the document was deleted elsewhere while the Media tab was open. The
+// row write is refused 403 (an id the core cannot place), and so is the read
+// after it. What is said is the write's refusal, changed or removed, not the
+// read's, which reads as a missing permission.
+describe('a row write after the document was deleted elsewhere', () => {
+  const gone = (method) =>
+    Object.assign(new Error('HTTP 403 lacks sufficient privileges to read the project'), {
+      status: 403,
+      method,
+      responseData: { error: 'lacks sufficient privileges to read the project', unresolved: true },
+    });
+  const deleted = (server) => {
+    server.refuseNext(403, null, gone('POST'));
+    server.client.documents.get = async () => {
+      throw gone('GET');
+    };
+  };
+
+  it('is refused as changed or removed elsewhere', async () => {
+    const server = plain();
+    const doc = open(server);
+    const said = [];
+    doc.onError = (message, err, title) => said.push([title, message, err]);
+    deleted(server);
+    const outcome = await edit(doc, 'a-2', { text: 'dos dos', speaker: 'Ana' });
+    await idle(doc);
+    expect(outcome.landed).toBe(false);
+    // The write's refusal, which says changed or removed (isGone).
+    expect(outcome.error.method).toBe('POST');
+    expect(said.some(([, , err]) => err?.method === 'GET')).toBe(false);
+    expect(said.map(([title]) => title)).toContain('Read-only');
+  });
+
+  it('a trash with its text is refused the same way', async () => {
+    const server = plain();
+    const doc = open(server);
+    const said = [];
+    doc.onError = (message, err, title) => said.push([title, message, err]);
+    deleted(server);
+    expect(await doc.deleteAlignment('a-2', { deleteText: true })).toBe(false);
+    await idle(doc);
+    expect(said.some(([, , err]) => err?.method === 'GET')).toBe(false);
+    expect(said.some(([, , err]) => err?.method === 'POST')).toBe(true);
+    expect(said.map(([title]) => title)).toContain('Read-only');
+  });
+});
