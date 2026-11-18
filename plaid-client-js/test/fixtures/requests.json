@@ -505,6 +505,11 @@
     "sends": [{"method": "DELETE", "path": "/api/v1/projects/P1/writers/odd%3F%23%2F%25%20%C3%B1@x.org"}]
   },
   {
+    "name": "projects.addWriter sends a + in a user id as %2B, which core does not read as a space (ACL5-2, REV-CA-7)",
+    "js": ["projects.addWriter", "P1", "a+b@x.org"],
+    "sends": [{"method": "POST", "path": "/api/v1/projects/P1/writers/a%2Bb@x.org"}]
+  },
+  {
     "name": "projects.addWriter puts a user id holding ? # / % a space and a non-ASCII letter in its path as one segment (ACL5-2)",
     "js": ["projects.addWriter", "P1", "odd?#/% ñ@x.org"],
     "sends": [{"method": "POST", "path": "/api/v1/projects/P1/writers/odd%3F%23%2F%25%20%C3%B1@x.org"}]
