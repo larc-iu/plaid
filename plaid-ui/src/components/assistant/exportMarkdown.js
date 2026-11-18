@@ -15,6 +15,7 @@ import {
   ruleTransitions,
   transitionLine,
   staleLine,
+  stagedLine,
 } from './planChanges.js';
 import { formatElapsed } from '../../hooks/useRunProgress.js';
 import {
@@ -231,6 +232,8 @@ export const conversationToMarkdown = (conv, meta, { origin, projectId, projectN
         const cited = namedCitations(d.citations, projectId, projectNamesAt(display, i));
         out.push(plain(replyToMarkdown(d.text, cited, ctx)), '');
       }
+      // What the turn staged, as the line above the card says it.
+      if (d.plan && stagedLine(d.plan)) out.push(`*${stagedLine(d.plan)}*`, '');
       if (d.plan)
         out.push(
           plain(

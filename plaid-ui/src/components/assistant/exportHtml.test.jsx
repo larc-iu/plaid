@@ -112,6 +112,7 @@ const conv = {
         id: 'pl1',
         summary: '2 glosses',
         opCount: 2,
+        proposedCount: 2,
         changes: [
           { where: { doc: 'Text 1', s: 3 }, change: 'Gloss = eat', label: 's3 Gloss = eat' },
           { where: { doc: 'Text 1', s: 4 }, change: 'Gloss = drink', label: 's4 Gloss = drink' },
@@ -284,6 +285,10 @@ describe('the web page export', () => {
     expect(text).toContain('Gloss = drink');
     expect(text).toContain('Waiting for approval');
     expect(text).toContain('s5 Gloss = go');
+    // What the turn staged, above its card, from the plan's own count. A plan
+    // whose record holds none has no line.
+    const staged = [...doc.querySelectorAll('[data-testid="staged-line"]')];
+    expect(staged.map((n) => n.textContent)).toEqual(['Staged: 2 changes']);
     // Files: the chips with their sizes, and the made table shown in full.
     expect(text).toContain('wordlist.csv');
     expect(text).toContain('2 KB');

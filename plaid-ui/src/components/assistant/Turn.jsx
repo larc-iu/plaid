@@ -14,6 +14,7 @@ import { AssistantMarkdown } from './AssistantMarkdown.jsx';
 import { fencedLines, linkifyCitations } from './citations.js';
 import { AttachmentChip } from './AttachmentChip.jsx';
 import { PlanCard } from './PlanCard.jsx';
+import { stagedLine } from './planChanges.js';
 import { homeOnly, namedCitations } from './projectReach.js';
 import { AssistantMark } from './PlaidMarks.jsx';
 import { useExport } from './exportContext.js';
@@ -427,6 +428,13 @@ export const Turn = ({
               (The assistant sent no text.)
             </div>
           )
+        )}
+        {/* What this turn staged, from the plan alone, right above its card.
+            A job card stages nothing and has no line. */}
+        {item.plan && stagedLine(item.plan) && (
+          <div data-testid="staged-line" className="text-xs text-muted-foreground">
+            {stagedLine(item.plan)}
+          </div>
         )}
         {item.plan && (
           <PlanCard

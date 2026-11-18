@@ -133,6 +133,20 @@ export const approvedLine = (recorded) => {
 export const staleLine = (reason) =>
   `${/[.!?]$/.test(reason) ? reason : `${reason}.`} Nothing was written.`;
 
+// The line above a reply's card: how many changes the turn staged. Built only
+// from the plan the record holds, never from the reply's words, which have
+// said 1,807 changes for a card of 801 (survey 2026-11-17). `proposedCount` is
+// the service's count (`proposed_changes` in plaid-agent's
+// core/conversation.py): each change a folded row or a rule stands for, none
+// for a kept value, the count the model's own plan line and the card's
+// "changes" (a rule's count, "and n more changes", a partial tally) use. It is
+// what the turn staged and stays so whatever became of the plan: the card
+// says that. A plan whose record holds no count gets no line.
+export const stagedLine = (plan) => {
+  const n = plan?.proposedCount;
+  return Number.isInteger(n) && n >= 0 ? `Staged: ${count(n, 'change', 'changes')}` : null;
+};
+
 // How many rows a settled plan's record no longer holds (planRecord.js).
 export const rowsOmitted = (plan) => Number(plan?.omitted?.count) || 0;
 
