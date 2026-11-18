@@ -349,7 +349,7 @@
    The whole spans table took 0.3 s to analyse on a database of 600,000
    spans. Sampling more rows only moves the luck: 2,000 gave 2 there,
    and gives 1 wherever the first layer holds unique values. The migration
-   20261118120000-spans-statistics-whole took the statistics of a database
+   20261118153000-spans-statistics-whole took the statistics of a database
    analysed before once, since a refresh takes a table again only when it
    has grown tenfold."
   #{"spans"})
