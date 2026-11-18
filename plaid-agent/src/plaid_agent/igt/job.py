@@ -2995,6 +2995,9 @@ class IgtRunner:
                 if kind is None:
                     raise
                 raise StretchFailed(kind, str(e)) from e
+            finally:
+                # Its code worker goes back to the pool (FLK7-6).
+                ws.close()
 
     def plan_message(self, facts: List[Dict[str, Any]], project: Optional[IgtProject] = None) -> str:
         """What the planning context is handed: the instructions, what a job
@@ -4374,14 +4377,21 @@ class IgtRunner:
         # A budget spent while the piece holds staged work closes it with one
         # call, and what it staged is written (BRIEF RW B2).
         pace = self.pace(decided, piece=True, holds=lambda: bool(ws.ops or ws.tables), closing=closing)
-        result = self.repeat_stopped(ws, self.turn(ws, kit, system, transcript, pace=pace))
-        job.check()
-        if answered_nothing(ws, result.text):
-            again = JOB_FINDINGS_ANSWER_AGAIN if ws.findings else JOB_ANSWER_AGAIN
-            more = transcript + list(result.messages or []) + [{'role': 'user', 'content': again}]
-            result = self.repeat_stopped(ws, self.turn(ws, kit, system, more, pace=pace))
+        try:
+            result = self.repeat_stopped(ws, self.turn(ws, kit, system, transcript, pace=pace))
             job.check()
-            ws.answered_nothing = answered_nothing(ws, result.text)
+            if answered_nothing(ws, result.text):
+                again = JOB_FINDINGS_ANSWER_AGAIN if ws.findings else JOB_ANSWER_AGAIN
+                more = transcript + list(result.messages or []) + [{'role': 'user', 'content': again}]
+                result = self.repeat_stopped(ws, self.turn(ws, kit, system, more, pace=pace))
+                job.check()
+                ws.answered_nothing = answered_nothing(ws, result.text)
+        finally:
+            # The piece's code worker and reads go back when its model context
+            # ends: a workspace a reference cycle holds kept its worker until a
+            # garbage collection, and the piece after the pool's size waited
+            # for one (FLK7-6). What it staged (ops, tables) stays for the write.
+            ws.close()
         # The whole reply, the findings of a job that fills nothing (RPF-A5),
         # whose note then only says where they are (REV-RPF-P-10).
         ws.reply = str(result.text or '')

@@ -132,6 +132,52 @@ def test_a_job_whose_code_kept_tables_at_every_cap_ends_done_with_a_report_that_
     assert len(report['tables']) + report['tables_more'] == len(made), 'every table kept is listed or counted'
 
 
+
+def test_every_piece_gives_back_its_code_worker_when_its_model_context_ends(monkeypatch):
+    """FLK7-6: a piece's workspace was never closed, so its code worker went
+    back only when a garbage collection freed the workspace, and with the
+    pool's two workers held the third piece's run_code waited 60 s and
+    failed. Each worker a piece takes is given back by the time the job ends,
+    with no collection run."""
+    import gc
+    import pytest
+    from job_fixtures import call
+    from plaid_agent.core import sandbox
+    if sandbox.available() is not None:
+        pytest.skip('the code sandbox is not installed')
+    opened, closed = [], []
+    real_get, real_close = sandbox.Session.get, sandbox.Session.close
+
+    def get(self):
+        if self._session is None:
+            opened.append(id(self))
+        return real_get(self)
+
+    def close(self):
+        if self._session is not None:
+            closed.append(id(self))
+        return real_close(self)
+    monkeypatch.setattr(sandbox.Session, 'get', get)
+    monkeypatch.setattr(sandbox.Session, 'close', close)
+    docs = {f'd{i}': document(f'd{i}', f'Story {i}', [{'words': ['ka']}]) for i in range(1, 3)}
+    client = JobClient(docs)
+    job = start(client, 'Count the forms.', plan='document')
+
+    def piece(asked, n, kwargs):
+        if n == 1:
+            return reply(calls=[call(1, 'run_code', {'code': 'print("ok")'})])
+        return reply('Counted.')
+    use(monkeypatch, Model(piece))
+    gc.disable()
+    try:
+        finished = run_job(job, runner(job))
+    finally:
+        gc.enable()
+    assert finished['state'] == 'done', (finished['state'], finished.get('reason'))
+    assert len(opened) == 2
+    assert sorted(closed) == sorted(opened)
+
+
 def _huge_report():
     """A report holding every list at its cap, each row long, in Cyrillic."""
     from plaid_agent.core.job import build_report
