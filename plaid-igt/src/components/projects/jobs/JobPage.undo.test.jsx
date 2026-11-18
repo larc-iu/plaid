@@ -129,9 +129,22 @@ describe('a job that stands undone', () => {
     await v.unmount();
   });
 
-  it('after a redo, says nothing of it and offers Undo job again', async () => {
+  // H2-5-1: a redo from History is not tracked, so the page says where it is done.
+  it('says under its status line that work brought back is undone in History', async () => {
+    const v = await mount(clientOf(jobOf({ undone: UNDONE })));
+    const status = v.container.querySelector('[role="status"]');
+    const note = status.querySelector('[data-testid="job-undone-history"]');
+    expect(note.textContent).toBe(
+      'Work brought back from History is undone there, one document at a time.',
+    );
+    expect(status.querySelector('[data-testid="job-undone"]').nextElementSibling).toBe(note);
+    await v.unmount();
+  });
+
+  it('a job not undone says neither, and offers Undo job', async () => {
     const v = await mount(clientOf(jobOf()));
     expect(v.container.querySelector('[data-testid="job-undone"]')).toBeNull();
+    expect(v.container.querySelector('[data-testid="job-undone-history"]')).toBeNull();
     expect(button(v.container, 'Undo job')).not.toBeNull();
     await v.unmount();
   });

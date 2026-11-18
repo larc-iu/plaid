@@ -282,8 +282,9 @@ export const JobPage = ({ project, projectId, jobId, client }) => {
   const stoppable = jobStoppable(job) && canStopJob(job, project, user);
   const discussable = !active && !!job.report;
   // A maintainer undoes an ended job whole, documents and lexicon together.
-  // Not while it stands undone: a redo, from History, offers it again. Not
-  // for a job that wrote nothing (RP-4).
+  // Not while it stands undone, even once its work is brought back from
+  // History (a job stays undone, H2-5-1). Not for a job that wrote nothing
+  // (RP-4).
   const undoable = !active && canManageProject(project, user) && !job.undone && !wroteNothing(job);
   const plan = job.report?.plan ?? pieces.plan;
   const at = jobPath(projectId, jobId);
@@ -579,6 +580,12 @@ const JobStatus = ({ job, user, names, undoneHref }) => {
               </Link>
             </>
           )}
+        </p>
+      )}
+      {/* Nothing follows a redo from History: the job stays undone (H2-5-1, owner 2026-11-18). */}
+      {job.undone && (
+        <p className="text-muted-foreground" data-testid="job-undone-history">
+          Work brought back from History is undone there, one document at a time.
         </p>
       )}
       {failed ? (
