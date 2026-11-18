@@ -180,8 +180,10 @@ RAN_OUT = 'ran_out'
 #: stretches in (``rest_documents``), within the row's cap.
 REST_LISTED = 50
 #: A row's count, true for a document core never answered for through the
-#: waits a person's document gets: it ends ``not-reached`` (put off for good,
-#: as that state's definition says) and the report says why (REV-JR2-3).
+#: waits a person's document gets, or under a plan that fills nothing after
+#: one wait, as a person's put-off ends there (``UNWORKED_HOW``): it ends
+#: ``not-reached`` (put off for good, as that state's definition says) and the
+#: report says why (REV-JR2-3, REV-JOIN18-7).
 UNANSWERED = 'unanswered'
 #: What happened in a document of a plan that fills nothing that the walk
 #: ends instead of working it in stretches, by its fallback reason
@@ -3513,7 +3515,9 @@ class IgtRunner:
                 return self.walk(document_id)
             except Deferred as e:
                 # By a person, or by core not answering for a write inside
-                # the walk (REV-JR1-7).
+                # the walk (REV-JR1-7). A lock lost whose renewal met core's
+                # trouble still comes with no error and counts as a person's
+                # (REV-JOIN18-8).
                 return self.put_off(document_id, e.error)
             except Gone:
                 job.update_row(document_id, state='gone')
