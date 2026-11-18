@@ -192,8 +192,11 @@ def _apply_set_span(ctx: Context, op) -> int:
         # off lemma spans, so deleting one cascades every arc on that word,
         # including arcs a person drew and vouched for. A cleared lemma keeps
         # its null-valued span, exactly as the editor leaves it (ConlluDocument's
-        # `updateAnnotation`) and as an unlemmatized import writes it.
-        ctx.b.update('spans', span_id, value=None, metadata=metadata_ops(ctx.restamp()))
+        # `updateAnnotation`) and as an unlemmatized import writes it. A
+        # discard keeps the machine's stamp on it (H3-10-1): restamped, it was
+        # a verified empty value that Parse refused to replace.
+        ctx.b.update('spans', span_id, value=None,
+                     metadata=None if op.get('discard') else metadata_ops(ctx.restamp()))
     elif span_id and value == '':
         ctx.b.add(lambda batch, sid=span_id: batch.spans.delete(sid))
     elif span_id:
@@ -523,7 +526,7 @@ def _resolve_discard_scope(res: Resolution, op):
                    'label': f'discard the unconfirmed head of {ref}', rules.AS_FOUND: _head_found(w)}
         else:
             yield {'kind': 'set_span', 'layer_id': span.layer_id, 'token_id': w.id,
-                   'span_id': span.id, 'value': '', 'field': f, 'document_id': did,
+                   'span_id': span.id, 'value': '', 'field': f, 'document_id': did, 'discard': True,
                    'feature': feature_key(f, span.value),
                    'ref': ref, 'label': f'discard the unconfirmed {f} on {ref}',
                    rules.AS_FOUND: f'{f} {qv(span.value)}'}

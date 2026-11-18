@@ -997,6 +997,7 @@ def t_discard_predictions(ws: Workspace, document: str = None, refs=None, field:
             else:
                 staged.append({'kind': 'set_span', 'layer_id': span.layer_id, 'token_id': w.id,
                                'span_id': span.id, 'value': '', 'field': f, 'document_id': doc.id,
+                               'discard': True,
                                'feature': feature_key(f, span.value),
                                'ref': ref, 'label': f'discard the unconfirmed {f} on {ref}'})
         ws.add_ops(staged)

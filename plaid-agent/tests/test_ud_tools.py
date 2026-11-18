@@ -1311,6 +1311,35 @@ def test_a_discard_leaves_a_machine_lemma_that_a_vouched_arc_hangs_on():
     assert ws.ops == []
 
 
+@pytest.mark.parametrize('refs', [['s1.w5'], None])
+@pytest.mark.parametrize('stamp_mode', ['verified', 'unverified'])
+def test_a_discarded_machine_lemma_is_emptied_and_stays_the_machines(refs, stamp_mode):
+    """H3-10-1: a discarded lemma kept its null span, as a cleared lemma does,
+    but took the approval's stamp, so the discard left a VERIFIED empty value
+    and Parse then refused the sentence as a person's work. It keeps the
+    machine's stamp, and a second discard finds nothing left on it."""
+    from ud_fixtures import FakeClient, document_raw, project_raw
+    raw = document_raw()
+    machine = {'prov': 'inferred', 'provSource': 'service:ud:parse'}
+    _span(raw, 'sp-l4')['metadata'] = dict(machine)
+    lemma = raw['text_layers'][0]['token_layers'][2]['span_layers'][1]
+    next(r for r in lemma['relation_layers'][0]['relations'] if r['id'] == 'r-4')['metadata'] = dict(machine)
+    client = FakeClient(project=project_raw(), documents={'ud1': raw})
+    ws = Workspace(client, load_project(client, PID))
+
+    args = {'refs': refs} if refs else {}
+    assert 'Planned' in run(ws, 'discard_predictions', document='Viaje', field='lemma', **args)
+    execute_plan(ws.client, ws.ops, source='s', label='l', stamp_mode=stamp_mode, project=ws.project)
+    assert ('sp-l4', None) in ws.client.updates('spans')
+    assert [p for p in ws.client.patches('spans') if p[0] == 'sp-l4'] == []
+    assert ws.client.payloads('spans.delete') == []
+
+    _span(raw, 'sp-l4')['value'] = None
+    again = Workspace(client, load_project(client, PID))
+    assert run(again, 'discard_predictions', document='Viaje', field='lemma', **args).startswith(
+        'Nothing to discard')
+
+
 def test_a_head_that_is_not_a_number_reads_as_english(ws):
     # `isdigit` is true of "²" and of the digits inside "--1", so int() got
     # them and answered the model with its own error text.

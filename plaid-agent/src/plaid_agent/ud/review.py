@@ -102,6 +102,8 @@ def discard_targets(words: List[Tuple[Sentence, Word]], fields) -> Tuple[List[tu
             for sp, state in reviewable(w, f):
                 if state != 'machine':
                     continue
+                if f == 'lemma' and sp.value is None:
+                    continue  # a lemma already discarded: nothing left to throw away
                 if f == 'lemma' and vouched_arc_hangs_on(sentence, w):
                     spared += 1
                     continue
