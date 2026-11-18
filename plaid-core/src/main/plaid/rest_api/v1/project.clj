@@ -159,7 +159,8 @@
      :delete {:summary (str "Unlink a vocabulary from a project that borrows it, removing its links in that "
                             "project's documents. Requires maintainer rights on that project, or on the "
                             "vocabulary's home project, whose maintainers may end any project's borrowing. Refused "
-                            "(409) for the vocabulary's home, which cannot unlink its own vocabulary. Takes no query "
+                            "(409) for the vocabulary's home, which cannot unlink its own vocabulary, and (400) for a vocabulary "
+                            "the project does not link, whether or not it exists. Takes no query "
                             "parameter but the audit labels (400 otherwise, nothing unlinked). What it would remove "
                             "is GET /projects/{id}/vocabs/{vocab-id}/unlinking.")
               :middleware [[pra/wrap-vocab-unlink-required get-project-id (fn [{p :parameters}] (-> p :path :vocab-id))]
@@ -182,7 +183,7 @@
      :get {:summary (str "What unlinking a vocabulary from a project would remove, without writing: {links}, the "
                          "links in that project's documents to its entries, and nothing else about them. A read, "
                          "never the unlink. The same people may ask as may unlink, and it answers the unlink's "
-                         "refusals: 409 for the vocabulary's home.")
+                         "refusals: 409 for the vocabulary's home, 400 for a vocabulary the project does not link.")
            :middleware [[pra/wrap-vocab-unlink-required get-project-id (fn [{p :parameters}] (-> p :path :vocab-id))]]
            :handler (fn [{{{:keys [id vocab-id]} :path} :parameters db :db}]
                       (try

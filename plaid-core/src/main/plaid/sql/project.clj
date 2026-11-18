@@ -1259,13 +1259,24 @@
   (when (= (str project-id) (str (:project_id (psc/fetch-by-id db :vocab_layers vocab-id))))
     (throw (ex-info own-vocabulary-unlink {:code 409 :id vocab-id}))))
 
+(defn- refuse-unlinked-vocabulary!
+  "Refuse (400) unlinking `vocab-id` from `project-id` when the project does
+  not link it, with one answer whether or not the vocabulary exists, before
+  anything is written or named. Without it the unlink of a vocabulary the
+  project never linked wrote an entry naming it, under the caller's project
+  and the vocabulary's home, and told a real id from an unknown one
+  (ACL4-1, ACL5-3, ACL10-3)."
+  [db project-id vocab-id]
+  (when-not (vocab-layer/links? db project-id vocab-id)
+    (throw (ex-info (str "No vocabulary " vocab-id " is linked to this project.")
+                    {:code 400 :id vocab-id}))))
+
 (defn remove-vocab-preview
   "What unlinking vocab layer `vocab-id` from project `project-id` would
   remove, without writing: `{:links n}`, its links in that project's
   documents, and nothing else about them. Throws the unlink's own refusals."
   [db project-id vocab-id]
-  (when (nil? (psc/fetch-by-id db :vocab_layers vocab-id))
-    (throw (ex-info (psc/err-msg-not-found "Vocab" vocab-id) {:code 400 :id vocab-id})))
+  (refuse-unlinked-vocabulary! db project-id vocab-id)
   (refuse-own-vocabulary! db project-id vocab-id)
   {:links (:n (psc/q1 db {:select [[[:count :*] :n]]
                           :from [[:vocab_links :l]]
@@ -1333,9 +1344,7 @@
                      (when (nil? (psc/fetch-by-id tx :projects project-id))
                        (throw (ex-info (psc/err-msg-not-found "Project" project-id)
                                        {:code 404 :id project-id})))
-                     (when (nil? (psc/fetch-by-id tx :vocab_layers vocab-id))
-                       (throw (ex-info (psc/err-msg-not-found "Vocab" vocab-id)
-                                       {:code 400 :id vocab-id})))
+                     (refuse-unlinked-vocabulary! tx project-id vocab-id)
                      (refuse-own-vocabulary! tx project-id vocab-id)
                      ;; Delete project-scoped vocab_links: any vocab_link
                      ;; whose vocab_item belongs to this vocab AND whose
