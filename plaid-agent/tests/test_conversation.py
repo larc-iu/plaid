@@ -46,20 +46,21 @@ def test_prune_never_counts_an_already_dropped_result_twice():
 
 
 def test_a_record_is_measured_the_way_the_server_measures_it():
-    """Servers before H20-2 counted clojure.data.json's output, which escapes
-    every non-ASCII character as \\uXXXX. Counted as UTF-8 a Cyrillic
-    conversation weighed a third of what such a server saw: it sat under its
-    budget, prune never fired, and the save came back 413. The measure keeps
-    that count, never less than today's UTF-8 one."""
+    """Core counts the UTF-8 bytes of the value's JSON, each character written
+    as itself (H20-2). The record is weighed the same way, so a Cyrillic
+    conversation is not taken for three times its size (H2-4-1): it is pruned
+    when its UTF-8 weight passes the budget, and not before."""
     cyrillic = 'предложение' * 20_000   # 2 bytes per character as UTF-8, 6 escaped
     conv = _conv(messages=[{'role': 'tool', 'tool_call_id': 'c1', 'content': cyrillic}])
     n = conversation_bytes(conv)
-    assert n > len(cyrillic.encode('utf-8')) * 2.5, 'escaped, not UTF-8'
-    assert n > CONVERSATION_BUDGET
+    assert len(cyrillic.encode('utf-8')) < n < len(cyrillic.encode('utf-8')) + 200, 'UTF-8, not escaped'
+    big = cyrillic * (CONVERSATION_BUDGET // len(cyrillic.encode('utf-8')) + 1)
+    conv = _conv(messages=[{'role': 'tool', 'tool_call_id': 'c1', 'content': big}])
+    assert conversation_bytes(conv) > CONVERSATION_BUDGET
     out = prune(conv)
     assert out['messages'][0]['content'] == DROPPED
-    # A slash costs two bytes there and one here, so it is counted as two.
-    assert conversation_bytes(_conv(messages=['a/b'])) == conversation_bytes(_conv(messages=['a\\b']))
+    # A slash is one byte, as core writes it.
+    assert conversation_bytes(_conv(messages=['a/b'])) == conversation_bytes(_conv(messages=['a_b']))
 
 
 def test_the_record_budget_is_the_cap_the_server_publishes():
