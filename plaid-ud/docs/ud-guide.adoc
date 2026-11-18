@@ -104,6 +104,7 @@ Open the project's **Import and export** tab, drop `.conllu` files on it, one or
 Each `# newdoc` boundary inside a file becomes its own document.
 A project's export zip can be dropped as it is.
 A file too large for the server is not imported, and its row says so.
+A file that breaks CoNLL-U's rules, such as IDs out of order, an empty FORM or a multi-word token range past the sentence's last ID or over another range, is not imported either, and its row names the sentence.
 
 [WARNING]
 ====

@@ -190,3 +190,36 @@ test('an ID, HEAD or range bound that is not a whole number is refused', () => {
     'Invalid multi-word token range in sentence 1: 1-2x',
   );
 });
+
+// H3-5-3: a range past the last row was cut short and one overlapping
+// another was left out, both in silence.
+test('a multi-word token range past the last row, or over another, is refused', () => {
+  const refusal = (lines) => {
+    try {
+      parseCoNLLU(conllu(lines));
+    } catch (e) {
+      return e.message;
+    }
+    return null;
+  };
+  assert.equal(
+    refusal([
+      '# text = abc',
+      '1-2\tab\t_\t_\t_\t_\t_\t_\t_\t_',
+      '1\ta\t_\tX\t_\t_\t0\troot\t_\t_',
+      '2-3\tbc\t_\t_\t_\t_\t_\t_\t_\t_',
+      '2\tb\t_\tX\t_\t_\t1\tdep\t_\t_',
+      '3\tc\t_\tX\t_\t_\t1\tdep\t_\t_',
+    ]),
+    'Invalid multi-word token range in sentence 1: 2-3 overlaps 1-2.',
+  );
+  assert.equal(
+    refusal([
+      '# text = onetwo',
+      '1-3\tonetwo\t_\t_\t_\t_\t_\t_\t_\t_',
+      '1\tone\t_\tX\t_\t_\t0\troot\t_\t_',
+      '2\ttwo\t_\tX\t_\t_\t1\tdep\t_\t_',
+    ]),
+    'Invalid multi-word token range in sentence 1: 1-3 runs past the last ID, 2.',
+  );
+});

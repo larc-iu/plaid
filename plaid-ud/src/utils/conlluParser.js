@@ -267,6 +267,28 @@ export function parseCoNLLU(text) {
     });
   });
 
+  // A multi-word token's range covers IDs of its sentence, and two ranges
+  // never share one. A range past the last ID was cut short and one over
+  // another was left out, so both are refused.
+  sentences.forEach((sentence, s) => {
+    const where = sentenceName(s + 1, sentence.metadata);
+    let prev = null;
+    for (const m of [...sentence.multiWordTokens].sort((a, b) => a.start - b.start)) {
+      const range = `${m.start}-${m.end}`;
+      if (m.end > sentence.tokens.length) {
+        throw new Error(
+          `Invalid multi-word token range in ${where}: ${range} runs past the last ID, ${sentence.tokens.length}.`,
+        );
+      }
+      if (prev && m.start <= prev.end) {
+        throw new Error(
+          `Invalid multi-word token range in ${where}: ${range} overlaps ${prev.start}-${prev.end}.`,
+        );
+      }
+      prev = m;
+    }
+  });
+
   return {
     sentences,
     dropped: {
