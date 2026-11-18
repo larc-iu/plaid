@@ -14,8 +14,9 @@ import { runScriptedJobWorker, skipUnlessAgent } from './assistantService.js';
 //   Undo dialog saying their counts in the same nouns,
 // - a job set up to fill only the words it adds: the value it stages on an
 //   existing word is refused as not added,
-// - a job that fills nothing: its findings first on the page, with Copy, and
-//   no Undo job.
+// - a job that fills nothing: its findings first in its report, with Copy,
+//   and no Undo job.
+// The report's lists are sections of the page of their own (`?view=`).
 // A throwaway project, deleted afterwards with its jobs.
 
 test.describe.configure({ mode: 'serial' });
@@ -86,9 +87,11 @@ const totalsOf = async (page) => {
   return Object.fromEntries(labels.map((l, i) => [l, values[i]]));
 };
 
-const openJob = async (page, job) => {
-  await page.goto(`/#/projects/${projectId}/jobs/${job.id}`);
-  await expect(page.getByRole('region', { name: 'Report' })).toBeVisible({ timeout: 30_000 });
+const openJob = async (page, job, view = null) => {
+  await page.goto(`/#/projects/${projectId}/jobs/${job.id}${view ? `?view=${view}` : ''}`);
+  await expect(page.locator(`[role="tabpanel"][data-view="${view ?? 'overview'}"]`)).toBeVisible({
+    timeout: 30_000,
+  });
 };
 
 test.beforeAll(async () => {
@@ -185,21 +188,46 @@ test('a job that edits the text and writes over a person: its line, its counts i
     'Words added': '1',
     'Existing words or punctuation marks changed or removed': '1',
     Gloss: '3 values',
-    'Gloss left blank': '4 morphemes',
+    'Gloss left blank in sentences the job changed': '4 morphemes',
     // Sentence 4, worked and not written in: counted, never listed.
     'Gloss blank in sentences the job did not change': '2 morphemes',
   });
-  // The notice comes before the totals, the assistant's account after them.
+  // The headline and the notice come first, what to check and the totals
+  // after them, the assistant's account last.
   const order = await report.evaluate((el) =>
-    [...el.querySelectorAll('[data-testid="job-notice"], h3, [data-testid="job-summary"]')].map(
-      (n) => n.getAttribute('data-testid') || n.textContent,
-    ),
+    [
+      ...el.querySelectorAll(
+        '[data-testid="job-headline"], [data-testid="job-notice"], h3, [data-testid="job-summary"]',
+      ),
+    ].map((n) => n.getAttribute('data-testid') || n.textContent),
   );
-  expect(order.slice(0, 4)).toEqual(['job-notice', 'Totals', 'Assistant’s summary', 'job-summary']);
+  expect(order.slice(0, 6)).toEqual([
+    'job-headline',
+    'job-notice',
+    'To check',
+    'Totals',
+    'Assistant’s summary',
+    'job-summary',
+  ]);
+  await expect(report.getByTestId('job-headline')).toHaveText(
+    'Changed 3 sentences in 1 of 1 document.',
+  );
+  // What to check: the places left blank, the blanks in the sentence it did
+  // not change, the person's value the job wrote over, the form left
+  // inconsistent.
+  await expect(report.getByTestId('job-to-check').locator('li > span')).toHaveText([
+    '4 morphemes with Gloss left blank in sentences the job changed, in 1 document',
+    '2 morphemes with Gloss blank in sentences the job did not change, in 1 document',
+    '1 value, morpheme or link people wrote, changed or removed, in 1 document',
+    '1 form left inconsistent',
+  ]);
   await expect(report.getByTestId('job-summary')).toHaveText(
     'The job glossed kai twice and retyped sentence 3.',
   );
   await expect(report.getByTestId('job-summary').locator('strong')).toHaveText('kai');
+  // The Left blank section, from its row in the To check list.
+  await report.getByRole('link', { name: /^Show: 4 morphemes with Gloss left blank/ }).click();
+  await expect(page).toHaveURL(/view=blank/);
   await expect(
     report.getByText('Blank in sentences the job did not change: Gloss 2 morphemes.'),
   ).toBeVisible();
@@ -211,9 +239,17 @@ test('a job that edits the text and writes over a person: its line, its counts i
     's3.w3.m1 sa Gloss',
   ]);
   // The form the job glossed two ways, with a reason from the new set.
+  await page
+    .getByRole('tablist', { name: 'Sections' })
+    .getByRole('tab', { name: /^Left inconsistent/ })
+    .click();
   const inconsistent = report.getByRole('row').filter({ hasText: 'kai ‘go’' });
   await expect(inconsistent).toContainText('The job’s analyses differ, none by two thirds');
   // The piece's line says the same parts.
+  await page
+    .getByRole('tablist', { name: 'Sections' })
+    .getByRole('tab', { name: /^Notes/ })
+    .click();
   await expect(page.getByTestId('job-activity')).toContainText(
     'Changes written: 4 (3 values and 1 text edit), People’s values, morphemes and links changed or removed: 1, Changes to the text: 1, Words added: 1, Existing words or punctuation marks changed or removed: 1, Gloss: 3 values.',
   );
@@ -231,6 +267,10 @@ test('a job that edits the text and writes over a person: its line, its counts i
 
   // The document's Changes view: what it changed in the same nouns (the word
   // the retype added is the one word changed), never a bare count of changes.
+  await page
+    .getByRole('tablist', { name: 'Sections' })
+    .getByRole('tab', { name: /^Documents/ })
+    .click();
   await page.getByRole('link', { name: 'Changes', exact: true }).first().click();
   await expect(page.getByTestId('change-count')).toHaveText(
     '3 values and 1 word changed, 1 replaced a person’s value',
@@ -299,6 +339,10 @@ test('an analysis job: the report and the Changes view each say what they count,
   );
   expect(totals.Gloss).toBe('6 values (5 in word analyses)');
   // The Changes view: the marks it draws, each with its noun.
+  await page
+    .getByRole('tablist', { name: 'Sections' })
+    .getByRole('tab', { name: /^Documents/ })
+    .click();
   await page.getByRole('link', { name: 'Changes', exact: true }).first().click();
   await expect(page.getByTestId('change-count')).toHaveText(
     '6 values and 5 morphemes changed, 1 replaced a person’s value',
@@ -361,6 +405,10 @@ test('a retype that removes people’s words counts what people wrote as the Cha
   expect((await totalsOf(page))['People’s values, morphemes and links changed or removed']).toBe(
     '5',
   );
+  await page
+    .getByRole('tablist', { name: 'Sections' })
+    .getByRole('tab', { name: /^Documents/ })
+    .click();
   await page.getByRole('link', { name: 'Changes', exact: true }).first().click();
   await expect(page.getByTestId('change-count')).toHaveText(
     '3 values, 2 morphemes and 3 words changed, 5 replaced a person’s value',
@@ -432,13 +480,18 @@ test('a job set up to fill only the words it adds is refused a value on a word i
     'Words added': '1',
     'Part of Speech': '1 value',
   });
+  await expect(report.getByTestId('job-to-check')).toContainText('1 change not done, refused');
+  await page
+    .getByRole('tablist', { name: 'Sections' })
+    .getByRole('tab', { name: /^Left blank/ })
+    .click();
   await expect(report.getByText('Not done, refused:')).toBeVisible();
   await expect(report.getByRole('listitem').filter({ hasText: /^s2 / })).toHaveText(
     's2 Value on a word or sentence the job did not add',
   );
 });
 
-test('a job that fills nothing shows its findings first, with Copy, and offers no Undo', async ({
+test('a job that fills nothing shows its findings first in its report, with Copy, and offers no Undo', async ({
   page,
   context,
 }) => {
@@ -471,19 +524,20 @@ test('a job that fills nothing shows its findings first, with Copy, and offers n
   const findings = page.getByRole('region', { name: 'Findings' });
   await expect(findings.getByRole('heading', { name: 'Forms seen twice' })).toBeVisible();
   await expect(findings.locator('li strong')).toHaveText('kai');
-  // First on the page: before the instructions and the report.
+  // First in the report: under its headline, before what to check and the
+  // totals.
+  await expect(page.getByTestId('job-headline')).toHaveText('Wrote findings, changed nothing.');
   const first = await page.evaluate(() => {
     const at = (el) => (el ? [...document.querySelectorAll('*')].indexOf(el) : -1);
     return {
       findings: at(document.querySelector('[data-testid="job-findings"]')),
-      instructions: at(
-        [...document.querySelectorAll('dt')].find((d) => d.textContent === 'Instructions'),
-      ),
-      report: at(document.querySelector('section[aria-label="Report"]')),
+      toCheck: at([...document.querySelectorAll('h3')].find((h) => h.textContent === 'To check')),
+      totals: at([...document.querySelectorAll('h3')].find((h) => h.textContent === 'Totals')),
     };
   });
-  expect(first.findings).toBeLessThan(first.instructions);
-  expect(first.findings).toBeLessThan(first.report);
+  expect(first.findings).toBeGreaterThan(-1);
+  expect(first.findings).toBeLessThan(first.toCheck);
+  expect(first.findings).toBeLessThan(first.totals);
   await findings.getByRole('button', { name: 'Copy' }).click();
   expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(FINDINGS);
   await expect(page.getByRole('button', { name: 'Undo job' })).toHaveCount(0);
@@ -532,21 +586,33 @@ test('a plan limited by a search says it on the Plan line, the documents and the
   });
   expect(ran.code, ran.log).toBe(0);
   await seedAuth(page);
-  await openJob(page, job);
+  await openJob(page, job, 'setup');
   await expect(page.getByText(/^Worked in stretches of sentences, only the sentences/)).toHaveText(
     'Worked in stretches of sentences, only the sentences matching \u2068word form "kai"\u2069: ' +
       '2 sentences in 1 document. Fills: Gloss.',
   );
+  await page
+    .getByRole('tablist', { name: 'Sections' })
+    .getByRole('tab', { name: /^Documents/ })
+    .click();
   const rowA = page.getByRole('row', { name: /Story S1/ });
   await expect(rowA).toContainText('Done');
   await expect(rowA).toContainText('2 of 2 matching, 1 not found by the plan’s search');
   const rowB = page.getByRole('row', { name: /Story S2/ });
   await expect(rowB).toContainText('Nothing found');
   await expect(rowB).toContainText('0 of 1, none found by the plan’s search');
+  await page
+    .getByRole('tablist', { name: 'Sections' })
+    .getByRole('tab', { name: 'Overview' })
+    .click();
   const totals = await totalsOf(page);
   expect(totals['Documents done']).toBe('1');
   expect(totals['Documents with nothing found by the plan’s search']).toBe('1');
   await expect(page.getByTestId('job-notice')).toHaveCount(0);
+  await page
+    .getByRole('tablist', { name: 'Sections' })
+    .getByRole('tab', { name: /^Notes/ })
+    .click();
   await expect(
     page.getByRole('link', { name: 'Story S1 s1, s3, matching the plan’s search' }),
   ).toBeVisible();

@@ -6,11 +6,12 @@ import { runScriptedJobWorker, skipUnlessAgent } from './assistantService.js';
 // What a running job has done, on its page (BRIEF LV). plaid-agent's own
 // worker on a scripted model plans the job, glosses kai in its one piece and
 // then writes its report on a model that answers 40 seconds late. While it
-// waits the job is still running, and its page already lists the plan and
-// the piece (its document as a link, what it wrote, its note),
-// "Work so far" counts the piece's steps, and the document's "Changes so far" opens
-// the History entry of what the job has written there. Once it ends the rows
-// stay above the report. A throwaway project, deleted afterwards with its job.
+// waits the job is still running, and its Overview already lists the plan and
+// the piece (its document as a link, what it wrote, its note), "Work so far"
+// counts the piece's steps, and the document's "Changes so far", in the
+// Documents section, opens the History entry of what the job has written
+// there. Once it ends the rows are its Notes section. A throwaway project,
+// deleted afterwards with its job.
 
 const DOC = 'Story A';
 const NOTE = 'Glossed kai as "go". Left pele and tuna: no precedent.';
@@ -71,12 +72,11 @@ test('a running job lists each piece as it finishes, with its note and its Chang
     expect((await client.jobs.get(job.id)).state).toBe('running');
     await expect(page.getByRole('region', { name: 'Report' })).toHaveCount(0);
 
-    // The plan is the page's Plan line while the job runs, above the list,
-    // not a row of it (RPF-P4).
-    const plan = page
-      .locator('dt', { hasText: /^Plan$/ })
-      .locator('xpath=following-sibling::dd[1]');
-    await expect(plan).toHaveText('Worked one document at a time. Fills: Gloss.');
+    // The plan is the Overview's Plan line while the job runs, above the
+    // list, not a row of it (RPF-P4).
+    await expect(page.getByTestId('job-plan')).toHaveText(
+      'Plan Worked one document at a time. Fills: Gloss.',
+    );
     const piece = rows.nth(0);
     await expect(piece).toContainText('Gloss: 1 value.');
     await expect(piece).toContainText('1 step');
@@ -93,6 +93,11 @@ test('a running job lists each piece as it finishes, with its note and its Chang
     });
     expect((await read.json()).entries.map((p) => p.seq)).toEqual(['000001', '000000']);
     const group = (await client.jobs.get(job.id)).documents[0].glossGroup;
+    // In the Documents section.
+    await page
+      .getByRole('tablist', { name: 'Sections' })
+      .getByRole('tab', { name: /^Documents/ })
+      .click();
     const link = page.getByRole('link', { name: 'Changes so far', exact: true });
     await expect(link).toBeVisible({ timeout: 20_000 });
     await link.click();
@@ -105,15 +110,28 @@ test('a running job lists each piece as it finishes, with its note and its Chang
     );
     expect((await client.jobs.get(job.id)).state).toBe('running');
 
-    // Once it ends the rows stay, above the report.
+    // Once it ends the rows are the Notes section, the report the Overview.
     const ran = await worker;
     expect(ran.code, ran.log).toBe(0);
     await page.goto(`/#/projects/${projectId}/jobs/${job.id}`);
     await expect(page.getByRole('region', { name: 'Report' })).toBeVisible({ timeout: 30_000 });
-    const ended = page.getByRole('region', { name: 'Work, in order' });
-    // The page's Plan line says the plan now: the list leaves its own out.
+    await page
+      .getByRole('tablist', { name: 'Sections' })
+      .getByRole('tab', { name: /^Notes/ })
+      .click();
+    await expect(page).toHaveURL(/view=notes/);
+    const ended = page.getByRole('region', { name: 'Notes' });
+    // The Setup section's Plan says the plan now: the list leaves its own out.
     await expect(ended.getByTestId('job-activity').locator(':scope > li')).toHaveCount(1);
+    await page
+      .getByRole('tablist', { name: 'Sections' })
+      .getByRole('tab', { name: 'Setup' })
+      .click();
     await expect(page.getByText('Worked one document at a time. Fills: Gloss.')).toHaveCount(1);
+    await page
+      .getByRole('tablist', { name: 'Sections' })
+      .getByRole('tab', { name: /^Documents/ })
+      .click();
     await expect(page.getByRole('link', { name: 'Changes', exact: true })).toBeVisible();
   } finally {
     await client.jobs.cancel(job.id).catch(() => {});

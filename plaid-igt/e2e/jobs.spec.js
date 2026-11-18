@@ -163,6 +163,12 @@ test('the page, the tab and the banner follow the worker, on its document only',
   await expect(status).toContainText('Running', { timeout: 15000 });
   await expect(status).toContainText('Working');
   await expect(status).toContainText('Sentences 1 to 5 of 10.');
+  // Each document's progress is in the page's Documents section.
+  await page
+    .getByRole('tablist', { name: 'Sections' })
+    .getByRole('tab', { name: /^Documents/ })
+    .click();
+  await expect(page).toHaveURL(/view=documents/);
   await expect(page.getByRole('row', { name: /Story A/ })).toContainText('5 of 10');
 
   await page.goto(`/#/projects/${projectId}?tab=jobs`);
@@ -205,6 +211,10 @@ test('Stop on the banner stops the job, and the page shows the report', async ({
   const report = page.getByRole('region', { name: 'Report' });
   // The document was stopped after 5 of its sentences (REV-DAY-P-13).
   await expect(report).toContainText('Documents stopped partway');
+  await expect(report.getByTestId('job-headline')).toContainText(', then stopped.');
+  // The skipped sentence, in the Skipped section the To check list links.
+  await report.getByRole('link', { name: /^Show: 1 sentence skipped, too long/ }).click();
+  await expect(page).toHaveURL(/view=skipped/);
   await expect(report).toContainText('Too long');
   await expect(report.getByRole('link', { name: 's3' })).toHaveAttribute(
     'href',

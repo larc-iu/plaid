@@ -199,7 +199,7 @@ test('a job in two documents and the lexicon is undone whole from its page', asy
       '3 values removed, 1 value put back as it was, 1 link removed and 1 lexicon entry removed.',
     ),
   ).toBeVisible();
-  await expect(page.getByTestId('job-undone')).toContainText('Job undone');
+  await expect(page.getByTestId('job-undone')).toContainText('Undone by you');
   await expect(page.getByRole('button', { name: 'Undo job' })).toHaveCount(0);
   expect(await Promise.all(docs.map(glossesOf))).toEqual(before);
   expect(await entryForms()).toEqual([]);
@@ -236,7 +236,7 @@ test('a job is undone but for what a person changed since, which is listed', asy
   await shot(page, '6-job-undo-dialog');
   await dialog.getByRole('button', { name: 'Undo', exact: true }).click();
   await expect(dialog).toHaveCount(0, { timeout: 20_000 });
-  await expect(page.getByTestId('job-undone')).toContainText('Job undone');
+  await expect(page.getByTestId('job-undone')).toContainText('Undone by you');
   await shot(page, '7-job-after-undo');
 
   // The person's value stays, the job's others are back as they were.
@@ -247,7 +247,7 @@ test('a job is undone but for what a person changed since, which is listed', asy
   // After a reload the page still knows, from the job's read, and the Jobs
   // tab says it beside the job's state.
   await page.reload();
-  await expect(page.getByTestId('job-undone')).toContainText('Job undone', { timeout: 20_000 });
+  await expect(page.getByTestId('job-undone')).toContainText('Undone by you', { timeout: 20_000 });
   await expect(page.getByRole('button', { name: 'Undo job' })).toHaveCount(0);
   await page.goto(`/#/projects/${projectId}?tab=jobs`);
   await expect(page.locator('tbody tr').first().locator('[data-undone]')).toHaveText('Undone', {
@@ -268,7 +268,7 @@ test('a job is undone but for what a person changed since, which is listed', asy
   await redo.getByRole('button', { name: 'Undo', exact: true }).click();
   await expect(redo).toHaveCount(0, { timeout: 20_000 });
   await page.goto(`/#/projects/${projectId}/jobs/${job.id}`);
-  await expect(page.getByTestId('job-undone')).toContainText('Job undone', { timeout: 20_000 });
+  await expect(page.getByTestId('job-undone')).toContainText('Undone by you', { timeout: 20_000 });
   await expect(page.getByRole('button', { name: 'Undo job' })).toHaveCount(0);
 
   // The whole undo undone: the line goes and Undo job is offered again.

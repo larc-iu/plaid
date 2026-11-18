@@ -292,7 +292,7 @@ test('a job’s entry is undone but for the value a person wrote since, which is
 
   // From the job's page, to its entry in the document.
   await seedAuth(page);
-  await page.goto(`/#/projects/${projectId}/jobs/${job.id}`);
+  await page.goto(`/#/projects/${projectId}/jobs/${job.id}?view=documents`);
   await page.getByRole('link', { name: 'Changes', exact: true }).click();
   await expect(page).toHaveURL(new RegExp(`history=${groupId}`));
   await expect(changes(page)).toBeVisible({ timeout: 20_000 });

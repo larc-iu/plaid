@@ -144,7 +144,7 @@ test('a job is discussed from its page, and a gloss for the word it left blank i
         { timeout: 90_000, message: () => `the assistant never came online:\n${service.log()}` },
       )
       .toBe(true);
-    await page.goto(`/#/projects/${projectId}/jobs/${jobId}`);
+    await page.goto(`/#/projects/${projectId}/jobs/${jobId}?view=blank`);
     const report = page.getByRole('region', { name: 'Report' });
     await expect(report.getByRole('heading', { name: 'Left blank' })).toBeVisible();
 

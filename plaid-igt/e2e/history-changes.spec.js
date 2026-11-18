@@ -261,7 +261,8 @@ test('a job made by hand reads as its work, reached from the job page', async ({
   await worker.finish(job.id, { state: 'done', report });
 
   await seedAuth(page);
-  await page.goto(`/#/projects/${projectId}/jobs/${job.id}`);
+  // The job page's Documents section.
+  await page.goto(`/#/projects/${projectId}/jobs/${job.id}?view=documents`);
   const link = page.getByRole('link', { name: 'Changes', exact: true });
   await expect(link).toBeVisible({ timeout: 20_000 });
   await shot(page, '6-job-page');

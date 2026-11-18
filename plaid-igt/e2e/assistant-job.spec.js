@@ -247,10 +247,15 @@ test('a job scoped in the chat is started from its card, and a second card is di
     await page.getByTestId('job-card').getByRole('link', { name: 'Open job' }).click();
     await expect(page).toHaveURL(new RegExp(`#/projects/${projectId}/jobs/${jobId}$`));
     const report = page.getByRole('region', { name: 'Report' });
-    await expect(report.getByRole('heading', { name: 'Left blank' })).toBeVisible();
     await expect(page.getByTestId('job-setup')).toHaveText(
       'Set up to fill Gloss. Text unchanged. Open conversation',
     );
+    // What it left blank, in the page's Left blank section.
+    await page
+      .getByRole('tablist', { name: 'Sections' })
+      .getByRole('tab', { name: /^Left blank/ })
+      .click();
+    await expect(report.getByRole('heading', { name: 'Left blank' })).toBeVisible();
     await expect(report.getByRole('link', { name: 's1.w2' })).toHaveAttribute(
       'href',
       `#/projects/${projectId}/documents/${documentId}?tab=analyze&focusSentence=${encodeURIComponent(sentenceId)}&focusWord=4`,
