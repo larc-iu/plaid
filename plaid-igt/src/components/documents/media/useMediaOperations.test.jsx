@@ -700,6 +700,62 @@ describe('useMediaOperations: detecting speech', () => {
     expect(h.api.vad.status).toBe('running');
     await h.unmount();
   });
+
+  // A service's proposals from a channel with no speaker carry their channel,
+  // as the built-in's do, so they start with no speaker rather than following
+  // the sticky one (H2-3-2).
+  it("a service's per-channel proposals carry their channel", async () => {
+    const client = fakeClient({
+      messages: {
+        discoverServices: vi.fn(async () => SERVICES),
+        requestService: vi.fn(async (_p, _s, input) => ({
+          segments:
+            input.channel === 0 ? [{ timeBegin: 1, timeEnd: 3 }] : [{ timeBegin: 4, timeEnd: 6 }],
+        })),
+      },
+    });
+    const doc = withMedia('/api/v1/documents/doc-1/media?v=a', {
+      storedMetadata: { channelSpeakers: ['Ana', ''] },
+    });
+    const h = await mountMedia({ doc, client });
+    await h.step(() => h.api.detectSpot.choose('service:det-1'));
+    await h.step(async () => {
+      await h.api.handleDetectSpeech({
+        channels: [
+          { channel: 0, speaker: 'Ana' },
+          { channel: 1, speaker: '' },
+        ],
+      });
+      await settle();
+    });
+    expect(
+      h.api.vad.proposals.map((p) => [p.timeBegin, p.speaker ?? null, p.channel ?? null]),
+    ).toEqual([
+      [1, 'Ana', 0],
+      [4, null, 1],
+    ]);
+    await h.unmount();
+  });
+
+  it("a service's proposals over the whole recording carry no channel", async () => {
+    const client = fakeClient({
+      messages: {
+        discoverServices: vi.fn(async () => SERVICES),
+        requestService: vi.fn(async () => ({
+          segments: [{ timeBegin: 1, timeEnd: 3, channel: 1 }],
+        })),
+      },
+    });
+    const h = await mountMedia({ client });
+    await h.step(() => h.api.detectSpot.choose('service:det-1'));
+    await h.step(async () => {
+      await h.api.handleDetectSpeech();
+      await settle();
+    });
+    expect(h.api.vad.proposals).toHaveLength(1);
+    expect(h.api.vad.proposals[0]).not.toHaveProperty('channel');
+    await h.unmount();
+  });
 });
 
 // The recording is fetched whole and handed to the element after the tab

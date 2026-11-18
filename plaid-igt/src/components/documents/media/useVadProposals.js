@@ -268,6 +268,7 @@ export function useVadProposals({
         timeBegin: Number(s.timeBegin),
         timeEnd: Number(s.timeEnd),
         speaker: s.speaker ?? undefined,
+        ...(Number.isInteger(s.channel) ? { channel: s.channel } : {}),
       }))
       .filter((r) => Number.isFinite(r.timeBegin) && Number.isFinite(r.timeEnd))
       .filter((r) => r.timeEnd > r.timeBegin)

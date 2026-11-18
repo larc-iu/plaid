@@ -1182,9 +1182,15 @@ export const useMediaOperations = () => {
           // A detect-speech service RETURNS its regions and writes nothing: a
           // segment is a stretch of the baseline and cannot exist without text.
           // A channel's regions take the channel's speaker unless the service
-          // named one.
+          // named one, and the channel itself, as the built-in's do: one from
+          // a channel with no speaker then starts with none (H2-3-2).
           for (const s of result.segments ?? []) {
-            regions.push(run?.speaker && !s.speaker ? { ...s, speaker: run.speaker } : s);
+            regions.push({
+              timeBegin: s.timeBegin,
+              timeEnd: s.timeEnd,
+              speaker: s.speaker || run?.speaker || undefined,
+              ...(run ? { channel: run.channel } : {}),
+            });
           }
         }
         vad.acceptServiceRegions(regions);
