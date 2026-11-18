@@ -536,7 +536,8 @@ const byCount = (m) => [...m.entries()].sort((a, b) => b[1] - a[1]).map(([lang])
  *   text.fallbackName  the file's name, for a text with no title
  *   posWs              the writing system the categories are written in
  *   unread             [{label, count}]: what the files hold that is not read
- * A text found in two files (the same guid) is read once, from the first.
+ * A text found in two files (the same guid) is read once, from the first by
+ * name, and the warning names that file and says whether the copies differ.
  */
 export function parseFlextextFiles(files) {
   const census = makeCensus();
@@ -565,11 +566,17 @@ export function parseFlextextFiles(files) {
       const fallbackName =
         parsed.texts.length > 1 ? `${stemOf(file.name)} ${i + 1}` : stemOf(file.name);
       if (t.guid) {
-        if (seen.has(t.guid)) {
-          twice.push({ names: t.names, fallbackName, files: [seen.get(t.guid), file.name] });
+        const first = seen.get(t.guid);
+        if (first) {
+          twice.push({
+            names: t.names,
+            fallbackName,
+            files: [first.file, file.name],
+            differ: JSON.stringify(first.text) !== JSON.stringify(t),
+          });
           return;
         }
-        seen.set(t.guid, file.name);
+        seen.set(t.guid, { file: file.name, text: t });
       }
       let key = t.guid ?? `${file.name}#${i + 1}`;
       for (let n = 2; !t.guid && texts.some((x) => x.guid === key); n += 1) {
@@ -592,9 +599,13 @@ export function parseFlextextFiles(files) {
     ]),
   ];
   // As buildDocuments names the document: the baseline's title, then English.
-  for (const { names, fallbackName, files } of twice) {
+  // The file read is named, and whether the copies differ (H2-13-2).
+  for (const { names, fallbackName, files, differ } of twice) {
     const name = names?.[vernacular[0]] ?? pickEn(names) ?? fallbackName;
-    warnings.push(`“${name}” is in both ${files[0]} and ${files[1]}. Read once.`);
+    warnings.push(
+      `“${name}” is in both ${files[0]} and ${files[1]}${differ ? ', which differ' : ''}. ` +
+        `Read from ${files[0]}.`,
+    );
   }
   // Analysis writing systems, the most used first: the first is the one a
   // project's glosses are taken to be in when there is only one.

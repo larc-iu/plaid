@@ -342,7 +342,21 @@ describe('parseFlextextFiles', () => {
     const names = buildDocuments(many).documents.map((d) => d.name);
     expect(names).toEqual(['c', 'c', 'Kici']);
     // Named as its document is, not by the first title in the file (H8-6).
-    expect(many.warnings).toContain('“Kici” is in both a.flextext and b.flextext. Read once.');
+    expect(many.warnings).toContain(
+      '“Kici” is in both a.flextext and b.flextext. Read from a.flextext.',
+    );
+  });
+
+  it('names the file a text in two files is read from, and says when the copies differ (H2-13-2)', () => {
+    const revised = TEXT.replace('>barked<', '>BARKED<');
+    expect(revised).not.toBe(TEXT);
+    const many = parseFlextextFiles([
+      { name: 'lez.flextext', xml: revised },
+      { name: 'lez-old.flextext', xml: TEXT },
+    ]);
+    expect(many.warnings).toContain(
+      '“Kici” is in both lez-old.flextext and lez.flextext, which differ. Read from lez-old.flextext.',
+    );
   });
 
   it('keeps two untitled texts of one file apart', () => {
