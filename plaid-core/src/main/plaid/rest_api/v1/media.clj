@@ -264,7 +264,11 @@
                          "A WAV whose samples are not PCM, 32-bit float, A-law or mu-law (IMA or MS ADPCM, GSM, "
                          "64-bit float and the rest), which browsers cannot play, is refused 415 with an "
                          "<body>error</body> naming its coding.")
-           :middleware [[pra/wrap-writer-required get-project-id]]
+           ;; An admin naming a document that does not exist gets a 404, not
+           ;; the 500 of a duration row for no document (ACL1-2).
+           :middleware [[pra/wrap-writer-required get-project-id]
+                        [pra/wrap-entity-required {:table :documents :label "Document"
+                                                   :get-id #(-> % :parameters :path :document-id)}]]
            :parameters {:path [:map [:document-id :uuid]]}
            :openapi {:requestBody {:content {"multipart/form-data"
                                              {:schema {:type "object"
