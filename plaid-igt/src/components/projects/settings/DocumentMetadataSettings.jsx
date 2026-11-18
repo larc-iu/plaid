@@ -2,11 +2,13 @@ import { useMemo, useState } from 'react';
 import { AlertTriangle } from 'lucide-react';
 import { DocumentMetadataManager } from './DocumentMetadataManager.jsx';
 import { notifyError } from '@/utils/feedback';
-import { isConfigConflict, storedConfig } from '@ui/domain/configCells.js';
+import { isConfigConflict, storedConfig, withStoredConfig } from '@ui/domain/configCells.js';
 import { useConfigCell } from '@ui/hooks/useConfigCell.js';
 import { PREDEFINED_FIELDS, readDocumentMetadata, IGT_NAMESPACE } from '@/domain/igtConfig';
 import { TYPE } from '@ui/lib/typeScale.js';
 import { queueStated, tagsetsChangedError } from '@/domain/tagsetsSave';
+import { refusedMetadataBySave } from './refusedMetadata.js';
+import { REFUSED_TITLE, refusedValuesText } from './refusedValues.js';
 
 // A save refused because what it read changed elsewhere: the fields, or the
 // tagsets it points them at.
@@ -69,6 +71,20 @@ export const DocumentMetadataSettings = ({
         ...(field.tagset ? { tagset: field.tagset } : {}),
       }));
 
+      // A closed list over values documents hold that are not in it is not
+      // saved: say which.
+      const refused = await refusedMetadataBySave(
+        client,
+        projectId,
+        withStoredConfig(project, IGT_NAMESPACE, 'documentMetadata', apiConfig).config,
+        project?.config,
+      );
+      if (refused.length) {
+        throw Object.assign(new Error('Values in use are not in the list'), {
+          refusedValues: refused,
+        });
+      }
+
       // A save that points a field at a tagset states the tagsets this page
       // read, so one changed elsewhere since refuses it.
       const tagsetsRead = storedConfig(project, IGT_NAMESPACE, 'tagsets');
@@ -105,7 +121,8 @@ export const DocumentMetadataSettings = ({
         Promise.resolve(onProjectUpdate?.()).catch((err) =>
           console.error('Failed to reload the project:', err),
         );
-      } else {
+      } else if (!error?.refusedValues) {
+        // A refused list wrote nothing, and the table puts the field back.
         setHasError(true);
       }
       throw error;
@@ -114,6 +131,10 @@ export const DocumentMetadataSettings = ({
 
   // Handle errors
   const handleError = (error) => {
+    if (error?.refusedValues) {
+      notifyError(refusedValuesText(error.refusedValues), REFUSED_TITLE);
+      return;
+    }
     if (!isStale(error)) setHasError(true);
     notifyError(error, 'Failed to save the metadata fields');
   };

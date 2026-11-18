@@ -17,7 +17,8 @@ export const unlistedParts = (v) => {
   return parts.map((p) => (p === '' ? 'an empty part' : String(p))).join(', ');
 };
 
-export const countWord = (n) => `${n} ${n === 1 ? 'annotation' : 'annotations'}`;
+// A field's count: annotations, or the documents a metadata field's are on.
+export const countWord = (n, noun = 'annotation') => `${n} ${plural(n, noun)}`;
 
 export const moreText = (f) =>
   f.valueCount > f.values.length ? `, and ${f.valueCount - f.values.length} more` : '';
@@ -35,7 +36,7 @@ export const refusedValuesText = (fields) =>
   `${REFUSED_LEAD} ${fields
     .map(
       (f) =>
-        `${f.field}: ${countWord(f.count)}, ${f.values.map(valueText).join(', ')}${moreText(f)}.`,
+        `${f.field}: ${countWord(f.count, f.noun)}, ${f.values.map(valueText).join(', ')}${moreText(f)}.`,
     )
     .join(' ')}`;
 

@@ -5,6 +5,7 @@ import { IGT_NAMESPACE } from '@/domain/igtConfig';
 import { getIgtLayerInfo } from '@/domain/layerInfo';
 import { byTagsetName, governedFields, readTagsets } from '@/domain/tagsets';
 import { refusedBySave, tagsetRefusal } from '@/domain/igtConstraints';
+import { refusedMetadataBySave } from './refusedMetadata.js';
 import { queueTagsetsSave, tagsetsChangedError, tagsetsSaveFields } from '@/domain/tagsetsSave';
 import { loadAttested, mergeAttested } from '../validate/attested.js';
 import { isConfigConflict, storedConfig } from '@ui/domain/configCells.js';
@@ -61,7 +62,10 @@ export const TagsetsSettings = ({ project, projectId, client, onProjectUpdate })
       ({ fields, after } = tagsetsSaveFields(live, next, renamed));
       // A closed list the stored values break would be refused whole: ask
       // first, and the editor says which values are in the way.
-      const refused = await refusedBySave(client, fields, after, live?.config);
+      const refused = [
+        ...(await refusedBySave(client, fields, after, live?.config)),
+        ...(await refusedMetadataBySave(client, projectId, after, live?.config)),
+      ];
       if (refused.length) {
         throw Object.assign(new Error('Values in use are not in the list'), {
           refusedValues: refused,

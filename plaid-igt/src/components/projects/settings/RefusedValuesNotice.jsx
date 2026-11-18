@@ -17,7 +17,7 @@ export const RefusedValuesNotice = ({ fields, className }) => (
     </div>
     {fields.map((f) => (
       <div key={f.layerId}>
-        <span className="font-medium">{f.field}</span>: {countWord(f.count)},{' '}
+        <span className="font-medium">{f.field}</span>: {countWord(f.count, f.noun)},{' '}
         {f.values.map((v, i) => {
           const parts = unlistedParts(v);
           return (
