@@ -770,6 +770,13 @@ def _metadata_off(value: str, t: Optional[dict]) -> bool:
     return False
 
 
+def _same_list(a: Optional[dict], b: Optional[dict]) -> bool:
+    """Whether two tagsets hold the same list, whatever their names."""
+    def strip(t):
+        return None if t is None else {k: v for k, v in t.items() if k != 'name'}
+    return strip(a) == strip(b)
+
+
 def _metadata_refused(ws) -> List[str]:
     """For each document metadata field, the values documents hold that its
     list once the plan is applied refuses and its stored list let stand, as
@@ -784,6 +791,10 @@ def _metadata_refused(ws) -> List[str]:
         new = planned.get(f['tagset'])
         old_name = ws.project.metadata_tagset_names.get(f['key'])
         old = stored.get(old_name) if old_name else None
+        # A list the plan leaves as stored newly refuses nothing: no read
+        # (REV-JOIN18-9, as the app asks only of a changed field).
+        if _same_list(new, old):
+            continue
         bad = [(v, n) for v, n in _attested(ws, f) if _metadata_off(v, new) and not _metadata_off(v, old)]
         if bad:
             docs = sum(n for _, n in bad)

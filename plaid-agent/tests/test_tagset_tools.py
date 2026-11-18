@@ -557,3 +557,21 @@ def test_the_document_values_are_read_from_core(proj):
     call_tool(ws, 'tagsets', {'action': 'edit', 'tagset': 'Years', 'changes': {'add': ['2021'], 'mode': 'closed'}})
     out = call_tool(ws, 'tagsets', {'action': 'assign', 'field': 'Date', 'tagset': 'Years'})
     assert 'newly refuses: document metadata Date (1 document: "2020" (1)).' in out, out
+
+
+def test_a_staging_reads_document_metadata_only_for_a_field_whose_list_the_plan_changes(monkeypatch):
+    """REV-JOIN18-9: a field whose list the plan leaves as stored is not read."""
+    ws = _fake_ws()
+    ws.project.tagsets['Years'] = {'name': 'Years', 'mode': 'closed', 'delimiters': '', 'values': [{'value': '2021'}]}
+    ws.project.metadata_tagset_names['Date'] = 'Years'
+    reads = []
+    real = type(ws.corpus).document_metadata
+
+    def counted(self):
+        reads.append(1)
+        return real(self)
+    monkeypatch.setattr(type(ws.corpus), 'document_metadata', counted)
+    call_tool(ws, 'tagsets', {'action': 'edit', 'tagset': 'Leipzig', 'changes': {'add': ['NOM']}})
+    assert reads == []
+    out = call_tool(ws, 'tagsets', {'action': 'edit', 'tagset': 'Years', 'changes': {'add': ['2022']}})
+    assert len(reads) == 1 and 'newly refuses' not in out, out
