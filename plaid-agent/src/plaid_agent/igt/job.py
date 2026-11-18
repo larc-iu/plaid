@@ -179,15 +179,17 @@ RAN_OUT = 'ran_out'
 #: The most document ids a piece's summary lists of those its rest went to
 #: stretches in (``rest_documents``), within the row's cap.
 REST_LISTED = 50
-#: What happened in a document of a plan that fills nothing that the walk
-#: ends instead of working it in stretches, by its fallback reason
-#: (``counts.ran_out``, REV-RW-R3-1).
-UNWORKED_HOW = {'selection': 'failed', 'failed': 'part-failed', 'ran-out': 'written', 'again': 'written',
-                'in-use': 'put-off'}
 #: A row's count, true for a document core never answered for through the
 #: waits a person's document gets: it ends ``not-reached`` (put off for good,
 #: as that state's definition says) and the report says why (REV-JR2-3).
 UNANSWERED = 'unanswered'
+#: What happened in a document of a plan that fills nothing that the walk
+#: ends instead of working it in stretches, by its fallback reason
+#: (``counts.ran_out``, REV-RW-R3-1). A document whose write core never
+#: answered for (``unreachable``) ends as REV-JR2-3's does: not reached,
+#: ``counts.unanswered`` (:meth:`IgtRunner.end_unworked`).
+UNWORKED_HOW = {'selection': 'failed', 'failed': 'part-failed', 'ran-out': 'written', 'again': 'written',
+                'in-use': 'put-off', 'unreachable': UNANSWERED}
 #: ... and true beside it when that step was not shown every sentence of the
 #: document (it read part of it, or none, or wrote in it by reference).
 NOT_ALL_READ = 'not_all_read'
@@ -3087,9 +3089,16 @@ class IgtRunner:
         """End a document no piece will work, under a plan that fills nothing
         whose big piece failed (REV-RW-R2-2): every sentence not finished yet
         recorded as the big piece's, the row done, and ``counts.ran_out`` saying
-        what happened there (``how``)."""
-        state = (self.job.rows.get(document_id) or {}).get('state')
-        if state in ROW_FINAL:
+        what happened there (``how``). A document core never answered for
+        (``how`` :data:`UNANSWERED`) ends as :meth:`end_if_unanswered` ends
+        one: not reached, its row's ``counts.unanswered`` true (REV-JR2-3,
+        REV-JR2-7)."""
+        row = self.job.rows.get(document_id) or {}
+        if row.get('state') in ROW_FINAL:
+            return
+        if how == UNANSWERED:
+            self.job.update_row(document_id, state='not-reached',
+                                counts={**(row.get('counts') or {}), UNANSWERED: True})
             return
         try:
             doc = self.read(project, document_id)

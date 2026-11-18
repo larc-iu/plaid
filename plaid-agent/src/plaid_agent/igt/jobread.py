@@ -309,13 +309,16 @@ def notice_counts(report: Dict[str, Any]) -> Dict[str, Any]:
     test_notice_mirror): each total, or where the totals lack it (core's own
     report has no words added nor changed) the documents' counts summed, and
     the whole-selection step's documents from their rows."""
-    from ..core.job import one_step_totals
+    from ..core.job import RAN_OUT_TOTALS, one_step_totals
     t = report.get('totals') or {}
     docs = report.get('documents') or []
     out: Dict[str, Any] = {k: t[k] if t.get(k) is not None else
                            sum((d.get('counts') or {}).get(k) or 0 for d in docs) for k in _NOTICE_KEYS}
-    out['documents_ran_out'] = t['documents_ran_out'] if t.get('documents_ran_out') is not None else \
-        sum(1 for d in docs if (d.get('counts') or {}).get('ran_out') is True)
+    # Each of RW's totals by its ``counts.ran_out`` value, as ``build_report``
+    # and the page count them (REV-JR2-7).
+    for value, key in RAN_OUT_TOTALS:
+        out[key] = t[key] if t.get(key) is not None else \
+            sum(1 for d in docs if (d.get('counts') or {}).get('ran_out') == value)
     out['documents_unanswered'] = t['documents_unanswered'] if t.get('documents_unanswered') is not None else \
         sum(1 for d in docs if (d.get('counts') or {}).get('unanswered') is True)
     if t.get('documents_in_one_step') is not None:

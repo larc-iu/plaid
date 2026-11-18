@@ -49,8 +49,19 @@ def _run(monkeypatch, pieces, fills, where):
     return client, job, run_job(job, runner(job))
 
 
-@pytest.mark.parametrize('where', ['gate', 'send'])
-@pytest.mark.parametrize('pieces,fills', [('sentences', None), ('document', None), ('selection', None)])
+_OPEN = pytest.mark.xfail(strict=True, reason=(
+    'JOIN18 open item: a check by documents whose whole piece ran out is marked "written" before its write '
+    '(go_on), and a send that fails after its request went out does not undo the mark'))
+
+
+@pytest.mark.parametrize('pieces,fills,where', [
+    (pieces, fills, where)
+    for pieces, fills in [('sentences', None), ('document', None), ('selection', None),
+                          # A plan that fills nothing ends such a document
+                          # in the walk (UNWORKED_HOW's ``unreachable``).
+                          ('document', ()), ('selection', ())]
+    for where in ('gate', 'send') if (pieces, fills, where) != ('document', (), 'send')
+] + [pytest.param('document', (), 'send', marks=_OPEN)])
 def test_a_write_core_never_answers_for_ends_its_document_unanswered(monkeypatch, pieces, fills, where):
     client, job, finished = _run(monkeypatch, pieces, fills, where)
     said = _said(client)
