@@ -128,3 +128,15 @@ def test_the_link_op_of_a_planned_analysis_replacing_peoples_link_counts():
     op = {'kind': 'link', 'token_id': None, 'analysis_word_id': 'd1-s1w1', 'morpheme_index': 0, 'item_id': 'vi-y',
           'existing_link_id': 'l-d1-s1w1m1'}
     assert _linked_write('human').of_people_and_text([op])['peoples_values_changed'] == 1
+
+
+def test_a_split_or_a_merge_of_words_counts_the_analyses_it_deletes():
+    """STRESS S7-2: split_word and merge_words delete the words' morpheme
+    analyses (their tool descriptions say so). The person's morpheme of
+    "gam" and its gloss count, 2, for a split of it and for a merge that
+    keeps it first. The machine's "ka" adds nothing."""
+    split = {'kind': 'split_word', 'word_id': 'd1-s1w1', 'position': 1, 'morpheme_ids': ['d1-s1w1m1']}
+    merge = {'kind': 'merge_words', 'word_id': 'd1-s1w1', 'other_ids': ['d1-s1w2'],
+             'morpheme_ids': ['d1-s1w1m1', 'd1-s1w2m1']}
+    assert _counted([split]) == (2, 1)
+    assert _counted([merge]) == (2, 1)

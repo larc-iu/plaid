@@ -1025,12 +1025,15 @@ def removes_people(op: Dict[str, Any], doc) -> int:
     and each sentence-level value people wrote on a sentence it removes. A
     word a retype removes is one of the sentence's words that its planned
     words do not keep (typed over whole, or deleted in the retype). A
-    respelled or split word keeps its token and what is on it, and a merge
-    of words keeps the first."""
+    respelled word keeps its token and what is on it. A split word keeps its
+    token and its word values and link, and a merge of words keeps the first
+    word's: each deletes the words' morpheme analyses, counted as
+    :func:`peoples_in_morphemes` counts them (S7-2)."""
     kind = op.get('kind')
     sentences = {s.id: s for s in doc.sentences}
     words = {w.id: w for s in doc.sentences for w in s.words}
     gone_words, gone_sentences = [], []
+    analysed = [op.get('word_id')] if kind in ('split_word', 'merge_words') else []
     if kind == 'delete_word':
         gone_words = [op.get('word_id')]
     elif kind == 'merge_words':
@@ -1050,6 +1053,7 @@ def removes_people(op: Dict[str, Any], doc) -> int:
         if kind == 'delete_sentence':
             gone_words += [w.id for w in s.words]
         n += sum(peoples(sp.metadata, sp.value) for sp in s.fields.values())
+    n += sum(peoples_in_morphemes(words[wid]) for wid in analysed if wid in words)
     return n + sum(peoples_on_word(words[wid]) for wid in gone_words if wid in words)
 
 
