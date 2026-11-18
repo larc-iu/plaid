@@ -212,12 +212,26 @@ export const noticeText = (totals) => {
     }
     out.push(did + (t.documentsNotAllRead ? ' It did not read every sentence.' : ''));
   }
-  // A big piece of a plan that fills nothing ended without finishing, and
-  // nothing was worked after it (the worker's `ran_out`, REV-RW-1).
+  // Documents a big piece did not finish, nothing walked after it there,
+  // by what happened in each (the worker's `ran_out`, REV-RW-R2-2).
   const ranOut = t.documentsRanOut || 0;
   if (ranOut) {
     out.push(
-      `${countOf(ranOut, 'document')} ended before the job had done its work there: what it had staged was written, and the rest was not done.`,
+      `${countOf(ranOut, 'document')} ended before the job had done its work there: what it had staged there was written, and the rest was not done.`,
+    );
+  }
+  const notReached = t.documentsStepNotReached || 0;
+  if (notReached) {
+    const one = notReached === 1;
+    out.push(
+      `${countOf(notReached, 'document')} ${one ? 'was' : 'were'} not reached: the job's step over the documents ended before ${one ? 'it' : 'them'}.`,
+    );
+  }
+  const failedHere = t.documentsStepFailed || 0;
+  if (failedHere) {
+    const one = failedHere === 1;
+    out.push(
+      `${countOf(failedHere, 'document')} ${one ? 'was' : 'were'} not worked: the job's step over ${one ? 'it' : 'them'} failed.`,
     );
   }
   return out.join(' ') || null;
@@ -236,7 +250,13 @@ export const noticeCounts = (report) => {
     textChanges: sum('textChanges'),
     documentsRanOut:
       t.documentsRanOut ??
-      (report?.documents || []).filter((d) => d.counts?.ranOut === true).length,
+      (report?.documents || []).filter((d) => d.counts?.ranOut === 'written').length,
+    documentsStepNotReached:
+      t.documentsStepNotReached ??
+      (report?.documents || []).filter((d) => d.counts?.ranOut === 'not-reached').length,
+    documentsStepFailed:
+      t.documentsStepFailed ??
+      (report?.documents || []).filter((d) => d.counts?.ranOut === 'failed').length,
     // Core's own report: the whole-selection step's documents from their rows.
     ...(t.documentsInOneStep !== undefined
       ? {

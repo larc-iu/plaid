@@ -2313,10 +2313,13 @@ class IgtRunner:
         #: covered in this run: what remains of them is worked in stretches,
         #: never as the whole document again (BRIEF RW B1)
         self.whole_taken: set = set()
-        #: documents whose whole-document or selection piece ended without
-        #: finishing under a plan that fills nothing: nothing is walked after
-        #: it, and the report says the rest was not done (REV-RW-1)
-        self.ran_out: set = set()
+        #: document id -> what happened there when its whole-document or
+        #: selection piece did not finish and nothing is walked after it
+        #: (REV-RW-1, REV-RW-R2-2): ``written`` (what it staged there was
+        #: written, the rest not done), ``not-reached`` (an unfinished step
+        #: never got to it) or ``failed`` (the step failed): the report's
+        #: top line says each
+        self.ran_out: Dict[str, str] = {}
         #: document id -> the first sentence a write must leave the cursor
         #: before (:meth:`go_on`, :meth:`record`)
         self.hold_cursor: Dict[str, str] = {}
@@ -2775,9 +2778,7 @@ class IgtRunner:
                 job.check()
                 raise JobStopped('cancelled')
             except StretchFailed as e:
-                self.fall_back(SELECTION, 'failed')
-                core_job.through_core(job, lambda: self.failed_whole(None, None, [], e.kind))
-                return False
+                return self.selection_failed(project, live, e.kind)
             except Exception as e:  # noqa: BLE001 - sorted as a piece's are
                 if core_job.core_fault(e) is not None:
                     raise
@@ -2787,18 +2788,14 @@ class IgtRunner:
                 kind = failure_kind(e)
                 if kind is None:
                     raise
-                self.fall_back(SELECTION, 'failed')
-                core_job.through_core(job, lambda: self.failed_whole(None, None, [], kind))
-                return False
+                return self.selection_failed(project, live, kind)
         ws, note = staged
         if ws.answered_nothing:
             # Asked twice, it staged nothing and said nothing: a piece that
             # failed, so the documents are worked in stretches, as after
             # any failure of the piece (DF1 item 1). Not a rule of reading.
             # Its row says so (REV-RW-6).
-            core_job.through_core(job, lambda: self.fall_back(SELECTION, 'failed'), gave_up=lambda: None)
-            core_job.through_core(job, lambda: self.failed_whole(None, None, [], NO_ANSWER))
-            return False
+            return self.selection_failed(project, live, NO_ANSWER)
         key = analysis_key(canonical({'document': None, 'first': None, 'whole': True}))
         self.begin_summary(key, None, None, [], True, note, self.refused_of(ws, None), ended=ws.ended)
         # The piece's note and tables, tried again on their own: a passing
@@ -2890,21 +2887,68 @@ class IgtRunner:
                 continue
         # What the walk then takes of them is worked in stretches (BRIEF RW).
         self.whole_taken.update(live)
+        if ws.ended is not None:
+            # An unfinished step: a document it was not shown all of and
+            # sends to no stretch is not walked (RPF3), and the report says
+            # what happened there (REV-RW-R2-2): what it staged there was
+            # written and the rest not done, or it never got to it.
+            for d, unread in ending.items():
+                if unread and d not in left_of:
+                    self.ran_out[d] = 'written' if by_doc.get(d) else 'not-reached'
         for d, unread in ending.items():
             job.check()
             core_job.through_core(job, lambda: self.one_step(project, d, unread, left_of.get(d, ())))
         return True
+
+    def selection_failed(self, project: IgtProject, live: List[str], kind: Optional[str]) -> bool:
+        """The selection's piece failed (``kind``, ``no-answer`` included):
+        its fallback row and its failed row. Under a plan that fills
+        something its documents are then worked in stretches (the row's
+        ``rest``). Under one that fills nothing nothing is walked after it
+        (RPF-A5): each document ends, counted ``failed`` (REV-RW-R2-2).
+        False: the piece did not run."""
+        job = self.job
+        core_job.through_core(job, lambda: self.fall_back(SELECTION, 'failed'), gave_up=lambda: None)
+        nothing = self.fills_nothing()
+        core_job.through_core(job, lambda: self.failed_whole(None, None, [], kind,
+                                                              rest=[] if nothing else list(live)))
+        if nothing:
+            for d in live:
+                job.check()
+                core_job.through_core(job, lambda: self.end_unworked(project, d, 'failed'))
+        return False
+
+    def end_unworked(self, project: IgtProject, document_id: str, how: str) -> None:
+        """End a document no piece will work, under a plan that fills nothing
+        whose big piece failed (REV-RW-R2-2): every sentence not finished yet
+        recorded as the big piece's, the row done, and ``counts.ran_out`` saying
+        what happened there (``how``)."""
+        state = (self.job.rows.get(document_id) or {}).get('state')
+        if state in ROW_FINAL:
+            return
+        try:
+            doc = self.read(project, document_id)
+        except Gone:
+            self.job.update_row(document_id, state='gone')
+            return
+        out = self.excluded(document_id)
+        part = [s for s in doc.sentences if s.id not in out]
+        if part:
+            st = Stretch(doc, project, part, self.job.id, targets=[])
+            self.manifest(Write(document_id, piece_tag({'document': document_id, 'whole': True}), st,
+                                [s.id for s in part], [], Counter(), doc))
+        self.ran_out[document_id] = how
+        self.job.update_row(document_id, state='done',
+                            **self.tally(document_id, (self.job.rows.get(document_id) or {}).get('skipped')))
 
     def selection_unreached(self, project: IgtProject, ws: JobWorkspace, live: List[str],
                             nothing: bool) -> Dict[str, List[Sentence]]:
         """After a selection's piece that ended without finishing: per
         document, what it did not get to (:meth:`unreached`, the whole
         document's rule over every sentence not finished yet). Under a plan
-        that fills nothing, none, and every document is marked ran out: its
-        documents end in the one step and the report says the rest of the
-        work was not done."""
+        that fills nothing, none: its documents end in the one step, and
+        :meth:`selection` says in each what was not done."""
         if nothing:
-            self.ran_out.update(live)
             return {}
         out: Dict[str, List[Sentence]] = {}
         for d in live:
@@ -3301,10 +3345,17 @@ class IgtRunner:
                 try:
                     self.attempt(project, document_id, [s.id for s in part])
                 except StretchFailed as e:
+                    if self.fills_nothing():
+                        # A check walks nothing after its big piece (RPF-A5),
+                        # however it ended: the document ends, counted failed
+                        # (REV-RW-R2-2).
+                        self.failed_whole(document_id, doc.name, part, e.kind)
+                        self.end_unworked(project, document_id, 'failed')
+                        return 'done'
                     core_job.through_core(job, lambda: self.fall_back(document_id, 'failed'))
                     # A row of its own in the work list, saying it failed and
                     # what follows (B5).
-                    self.failed_whole(document_id, doc.name, part, e.kind)
+                    self.failed_whole(document_id, doc.name, part, e.kind, rest=[document_id])
                 except Deferred:
                     # Its write put off: what it would have written remains, so
                     # the fallback row is kept now, in core, and a worker that
@@ -3571,7 +3622,7 @@ class IgtRunner:
         left."""
         if not unreached:
             if self.fills_nothing():
-                self.ran_out.add(document_id)
+                self.ran_out[document_id] = 'written'
             return
         # The fallback row first, then the write holds the cursor before
         # the first of them (``hold_cursor``, read by :meth:`record`), so
@@ -5268,15 +5319,18 @@ class IgtRunner:
         self.end_summary(key)
 
     def failed_whole(self, document_id: Optional[str], name: Optional[str], part: List[Sentence],
-                     kind: Optional[str]) -> None:
+                     kind: Optional[str], rest: List[str] = ()) -> None:
         """A whole-document piece (``document_id``) or the selection's (None)
         whose model failed: summed up as a piece that wrote nothing, with its
-        failure's kind, as its documents go to stretches (BRIEF RW B5)."""
+        failure's kind, and ``rest``, how many documents went to stretches
+        after it (none under a plan that fills nothing, BRIEF RW B5)."""
         piece = ({'document': document_id, 'first': part[0].id if part else None, 'whole': True} if document_id
                  else {'document': None, 'first': None, 'whole': True})
         key = analysis_key(canonical(piece))
         self.begin_summary(key, document_id, name, part if document_id else [], True, '', [],
                            failed=kind or BUDGET)
+        if rest:
+            self.unsummed[key]['rest'] = len(rest)
         self.end_summary(key)
 
     def fallen_back(self) -> Dict[str, str]:
@@ -5459,8 +5513,9 @@ class IgtRunner:
             # Its changes by kind, summing to ``changes`` (RPF-A3).
             counts['changes_parts'] = sums['changes_parts']
         row = self.job.rows.get(document_id) or {}
-        if document_id in self.ran_out or (row.get('counts') or {}).get(RAN_OUT) is True:
-            counts[RAN_OUT] = True
+        ran_out = self.ran_out.get(document_id) or (row.get('counts') or {}).get(RAN_OUT)
+        if ran_out:
+            counts[RAN_OUT] = ran_out
         if document_id in self.one_stepped or (row.get('counts') or {}).get(ONE_STEP) is True:
             # Ended in the whole-selection piece's one step.
             counts[ONE_STEP] = True

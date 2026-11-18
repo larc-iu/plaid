@@ -54,6 +54,10 @@ CASES = [
     {'documents_ran_out': 1},
     {'documents_ran_out': 3, 'documents_in_one_step': 3, 'documents_changed_in_one_step': 1},
     {'documents_ran_out': 1234, 'peoples_values_changed': 2},
+    # REV-RW-R2-2: not reached, failed, each true of its documents.
+    {'documents_step_not_reached': 1}, {'documents_step_not_reached': 7},
+    {'documents_step_failed': 1}, {'documents_step_failed': 2},
+    {'documents_ran_out': 1, 'documents_step_not_reached': 2, 'documents_step_failed': 1},
 ]
 
 
@@ -110,5 +114,8 @@ def test_the_counts_name_the_jobs_documents_beside_those_the_step_ended():
 def test_the_top_line_says_a_big_piece_of_a_check_ended_before_its_work_was_done():
     """REV-RW-1."""
     assert notice({'documents_ran_out': 3}) == (
-        '3 documents ended before the job had done its work there: what it had staged was written, and the rest was '
-        'not done.')
+        '3 documents ended before the job had done its work there: what it had staged there was written, and the '
+        'rest was not done.')
+    assert notice({'documents_step_not_reached': 1}) == (
+        '1 document was not reached: the job\'s step over the documents ended before it.')
+    assert notice({'documents_step_failed': 2}) == '2 documents were not worked: the job\'s step over them failed.'
