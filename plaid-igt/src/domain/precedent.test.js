@@ -115,23 +115,41 @@ describe('link precedent from project rows', () => {
 });
 
 describe('queries', () => {
+  // The two alternatives of a link query: a token with no morpheme form (a
+  // word) and a token with one (a morpheme).
+  const alternatives = (q) => q.where.find((c) => c[0] === 'or').slice(1);
+
   it('link queries: one grouped query per vocab, optionally scoped to one document', () => {
     const qs = linkPrecedentQueries(['v1', 'v2'], { projectId: 'p1' });
     expect(qs).toHaveLength(2);
     expect(qs[0].return.group).toEqual([
       '?v',
-      '?t.value',
-      '?t.metadata.form',
+      '?w.value',
+      '?m.metadata.form',
       '?tl.config.plaid.role',
       '?v.metadata.morphType',
       '?l.metadata.prov',
       '?l.metadata.provConfirmed',
     ]);
     expect(qs[0].where).toContainEqual(['link-item', '?l', '?v']);
-    expect(qs[0].where).toContainEqual(['link-token', '?l', '?t']);
-    expect(qs[0].where).toContainEqual(['token', '?t', { layer: '?tl' }]);
+    const [word, morph] = alternatives(qs[0]);
+    expect(word).toContainEqual(['link-token', '?l', '?w']);
+    expect(word).toContainEqual(['token', '?w', { layer: '?tl' }]);
+    expect(morph).toContainEqual(['link-token', '?l', '?m']);
+    expect(morph).toContainEqual(['token', '?m', { layer: '?tl' }]);
     const [q] = linkPrecedentQueries(['v1'], { projectId: 'p1', docId: 'doc-1' });
-    expect(q.where).toContainEqual(['token', '?t', { layer: '?tl', doc: 'doc-1' }]);
+    const [wordInDoc, morphInDoc] = alternatives(q);
+    expect(wordInDoc).toContainEqual(['token', '?w', { layer: '?tl', doc: 'doc-1' }]);
+    expect(morphInDoc).toContainEqual(['token', '?m', { layer: '?tl', doc: 'doc-1' }]);
+  });
+
+  // SCL3-2: a morpheme grouped by its form alone, never by the word it sits
+  // in, and the two alternatives each other's negation.
+  it('link queries group a morpheme by its form and a word by its value', () => {
+    const [word, morph] = alternatives(linkPrecedentQueries(['v1'], { projectId: 'p1' })[0]);
+    const hasForm = morph.find((c) => c[0] === 'token' && c[2].metadata);
+    expect(hasForm).toEqual(['token', '?m', { metadata: { form: { regex: '[\\s\\S]' } } }]);
+    expect(word).toContainEqual(['not', hasForm.map((x) => (x === '?m' ? '?w' : x))]);
   });
 
   // H2-14-2: a multi-word expression linked to an entry with no phrase type
@@ -141,16 +159,10 @@ describe('queries', () => {
       ...linkPrecedentQueries(['v1'], { projectId: 'p1' }),
       ...linkPrecedentQueries(['v1'], { projectId: 'p1', docId: 'doc-1' }),
     ]) {
-      expect(q.where).toContainEqual([
-        'not',
-        ['link-token', '?l', '?t2'],
-        ['precedes*', '?t', '?t2'],
-      ]);
-      expect(q.where).toContainEqual([
-        'not',
-        ['link-token', '?l', '?t2'],
-        ['precedes*', '?t2', '?t'],
-      ]);
+      for (const [alt, t] of alternatives(q).map((a, i) => [a, i ? '?m' : '?w'])) {
+        expect(alt).toContainEqual(['not', ['link-token', '?l', '?t2'], ['precedes*', t, '?t2']]);
+        expect(alt).toContainEqual(['not', ['link-token', '?l', '?t2'], ['precedes*', '?t2', t]]);
+      }
     }
   });
 

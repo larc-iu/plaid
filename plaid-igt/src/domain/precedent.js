@@ -142,10 +142,16 @@ export function dropCut(tally, ...cuts) {
 // One grouped query per vocab: how often each (form, item) pairing has been
 // linked, split by the kind of token that carries the link and by the link's
 // provenance. Row shape: [itemId, tokenValue, morphForm, role, morphType,
-// prov, provConfirmed, count] — morphForm for morpheme tokens (their value is
-// just the parent word's slice), tokenValue otherwise; morphType is the
-// entry's, so a phrase entry's links can be left out of a single word's
-// precedent; prov and provConfirmed are the link's (null when absent).
+// prov, provConfirmed, count]. A token with a morpheme form (a morpheme) is
+// grouped by that form and its tokenValue is null: its value would be only
+// the word it sits in, and grouping by it too split one form into a group
+// per word (about 140,000 on a large project, past core's 100,000-group cap,
+// SCL3-2). A token without one (a word, or a morpheme whose form is empty)
+// is grouped by its value and its morphForm is null. The two `or`
+// alternatives are each other's negation, so every token is in one.
+// morphType is the entry's, so a phrase entry's links can be left out of a
+// single word's precedent; prov and provConfirmed are the link's (null when
+// absent).
 // A link over several tokens (a multi-word expression, whatever its entry's
 // type) is left out by the query itself: it would join once per member word
 // and give each word the expression's entry (H2-14-2). The two anti-joins
@@ -155,24 +161,34 @@ export function dropCut(tally, ...cuts) {
 // A vocabulary can be linked to several projects, and without a `scope` the
 // query counts the links of every project the login can read. The counts are
 // this project's (ruling, 2026-09-27), so `projectId` is required.
+const HAS_FORM = { metadata: { form: { regex: '[\\s\\S]' } } };
+
 export function linkPrecedentQueries(vocabIds, { projectId, docId = null } = {}) {
   if (!projectId) throw new Error('Link precedent is counted per project: projectId is required');
+  const token = (t, formClause) => [
+    ['link-token', '?l', t],
+    ['token', t, { layer: '?tl', ...(docId ? { doc: docId } : {}) }],
+    formClause,
+    ['not', ['link-token', '?l', '?t2'], ['precedes*', t, '?t2']],
+    ['not', ['link-token', '?l', '?t2'], ['precedes*', '?t2', t]],
+  ];
   return vocabIds.map((vid) => ({
     scope: { projectIds: [projectId] },
     where: [
       ['vocab', '?v', { layer: vid }],
       ['link-item', '?l', '?v'],
-      ['link-token', '?l', '?t'],
-      ['token', '?t', { layer: '?tl', ...(docId ? { doc: docId } : {}) }],
       ['token-layer', '?tl', {}],
-      ['not', ['link-token', '?l', '?t2'], ['precedes*', '?t', '?t2']],
-      ['not', ['link-token', '?l', '?t2'], ['precedes*', '?t2', '?t']],
+      [
+        'or',
+        token('?w', ['not', ['token', '?w', HAS_FORM]]),
+        token('?m', ['token', '?m', HAS_FORM]),
+      ],
     ],
     return: {
       group: [
         '?v',
-        '?t.value',
-        '?t.metadata.form',
+        '?w.value',
+        '?m.metadata.form',
         '?tl.config.plaid.role',
         '?v.metadata.morphType',
         '?l.metadata.prov',
