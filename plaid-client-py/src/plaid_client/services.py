@@ -436,8 +436,10 @@ def serve(client, project_id, service_info, on_service_request, extras=None,
     ``progress(percent, msg)`` / ``complete(data)`` / ``error(err)``. Each
     request runs on a thread of its own, never on the channel's reader thread,
     which must stay free to read the ``service_cancel`` that stops it. So two
-    requests can run at once, as in the JavaScript client: a handler that must
-    take one at a time keeps its own lock (``BaseService`` refuses a second).
+    requests can run at once, as in the JavaScript client, and share the
+    client with each other (its strict mode, operation group and document
+    locks among them): a handler that must take one at a time keeps its own
+    lock (``BaseService`` refuses a second).
 
     If ``extras`` declares ``delegation: True`` the server mints a short-lived
     token for whoever submits each request and the handler's ``data`` carries
