@@ -358,7 +358,8 @@ def test_the_final_context_reads_whole_notes_and_what_left_counts():
     assert '- Story s1 to s3: Fully staged. No translation asked.' in text
     assert ('"left" counts the words and morphemes still blank at the end in sentences the job wrote in (the '
             'report\'s Left blank), "untouched" those in sentences it worked and wrote nothing in, which its '
-            'instructions may have told it to leave, "not_reached" those in sentences the job did not reach, and '
+            'instructions may have told it to leave (in a document the one step did not read all of, also those in '
+            'sentences it never read), "not_reached" those in sentences the job did not reach, and '
             '"left blank" what is still blank of each thing the job fills.') in text, text
 
 
