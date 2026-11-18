@@ -5553,7 +5553,13 @@ class IgtRunner:
                 if self.changed[s.id] < 2:
                     retry.append(s.id)
                     continue
-                skipped.append({'sentence': f's{s.index}', 'sentence_id': s.id, 'reason': 'changed', 'kind': None})
+                if len(skipped) < JOB_SKIPPED_PER_DOCUMENT:
+                    skipped.append({'sentence': f's{s.index}', 'sentence_id': s.id, 'reason': 'changed',
+                                    'kind': None})
+                else:
+                    # Past core's cap of the list: counted, as :meth:`skip`
+                    # counts (complexity-6).
+                    self.unlisted.setdefault(document_id, set()).add(s.id)
                 if not retry:
                     last = s.id
                 continue

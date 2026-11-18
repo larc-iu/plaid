@@ -43,3 +43,31 @@ def test_a_retake_before_the_cursor_is_taken_by_the_walk(monkeypatch):
     finished = run_job(job, runner(job))
     assert finished['state'] == 'done', finished.get('reason')
     assert any('Your piece:' in a for a in asked_after), 's1 taken again by the walk'
+
+
+def test_a_sentence_changed_twice_past_the_lists_cap_is_counted_not_listed(monkeypatch):
+    """complexity-6: record()'s "changed" skip keeps core's cap of the list,
+    as every other skip does: past it the sentence is counted, and core never
+    refuses the row (which ended the job worker-error)."""
+    from plaid_client import testing
+    monkeypatch.setattr(igt_job, 'JOB_SKIPPED_PER_DOCUMENT', 0)
+    monkeypatch.setattr(testing, '_JOB_SKIPPED_PER_DOCUMENT', 0)
+    client = JobClient({'d1': _doc(set())})
+    job = start(client, id=J, plan='selection')
+    _applying(monkeypatch, client)
+
+    def model(asked, n, kwargs):
+        if n > 1:
+            return reply('Done.')
+        return reply(calls=[call(1, 'set_analysis', {'document': 'Story', 'ref': 's1.w1', 'morphemes': [
+            {'form': 'x', 'fields': {'Morph Gloss': 'g'}}]})])
+    use(monkeypatch, Model(model))
+    real = igt_job.IgtRunner.recheck
+
+    def recheck(self, ws, project, fresh, st, prints, ops):
+        # s1 always reads otherwise than the piece read it.
+        return real(self, ws, project, fresh, st, {**prints, fresh.sentences[0].id: 'changed'}, ops)
+    monkeypatch.setattr(igt_job.IgtRunner, 'recheck', recheck)
+    finished = run_job(job, runner(job))
+    assert finished['state'] == 'done', (finished.get('reason'), client.jobs.rows[J].get('message'))
+    assert job.rows['d1']['counts'].get('skipped_more') == 1, job.rows['d1']['counts']
