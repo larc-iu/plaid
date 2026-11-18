@@ -540,21 +540,23 @@
   "Why `i` cannot be undone in the state the applied rows leave, or nil.
   `on?` says whether a row is there in that state."
   [i {:keys [applied? item-of on? deps refs foreign doc-commented moving tokens-on rows-in project-of
-             vocab-of linked? name-holder texts-since slots references]}]
+             vocab-of linked? name-holder texts-since inside-since slots references]}]
   (let [{:keys [table op before k]} i
         stays? (fn [{dk :k inside? :inside?}]
                  (let [d (item-of dk)]
                    (cond
                      (= "comments" (first dk)) true
                      (and d (applied? d)) (and (not inside?) (not= :delete (:op d)) (mentions? (:before d) (:id i)))
-                     ;; a child token the entry did not write, in a document
-                     ;; where nobody else wrote a token or a text since: it
-                     ;; was there before the entry, which only took it inside
-                     ;; the token it made (a sentence split's second half),
-                     ;; and the entry's own rows that go back cover it again
-                     ;; (S7-1). A row left so is caught by the final checks.
-                     (and inside? (nil? d) (not (contains? (get foreign (:doc i)) "tokens"))
-                          (not (contains? (get foreign (:doc i)) "texts"))
+                     ;; a child token the entry did not write and no
+                     ;; operation outside the entry wrote since it began
+                     ;; (`inside-since`), on a text nobody wrote since: it was
+                     ;; there before the entry, which only took it inside the
+                     ;; token it made (a sentence split's second half), and
+                     ;; the entry's own rows that go back cover it again
+                     ;; (S7-1, REV-SJ3-1). A child made or changed since is
+                     ;; built on the token. A row left so is caught by the
+                     ;; final checks.
+                     (and inside? (nil? d) (not (contains? inside-since (second dk)))
                           (not (contains? texts-since (:text_id (:after i)))))
                      false
                      :else true)))]
@@ -1131,6 +1133,17 @@
                             (psc/in-chunks #(psc/q tx {:select-distinct [:target_table :target_id :op_id] :from [:audit_writes]
                                                        :where [:and [:in :target_id (mapv str %)] [:>= :ts start]]})
                                            (distinct (map (comp str second) (mapcat val sib-deps)))))
+            ;; the child tokens inside a token the entry made that an
+            ;; operation outside the entry wrote since it began: since is the
+            ;; audit's order, a write whose `ts` is at or after the entry's
+            ;; first operation's (core's stamps strictly increase)
+            inside-since (into #{}
+                               (keep (fn [r] (when-not (unit? (:op_id r)) (psc/->uuid (str (:target_id r))))))
+                               (psc/in-chunks #(psc/q tx {:select-distinct [:target_id :op_id] :from [:audit_writes]
+                                                          :where [:and [:= :target_table "tokens"]
+                                                                  [:in :target_id (mapv str %)] [:>= :ts start]]})
+                                              (distinct (keep (fn [d] (when (:inside? d) (str (second (:k d)))))
+                                                              (mapcat val deps)))))
             wanted (reduce (fn [m [t id]] (if id (update m t (fnil conj #{}) id) m))
                            {}
                            (concat (for [i items :when (#{:insert :update} (:op i)) p (parents-of (:table i) (:before i))] p)
@@ -1155,6 +1168,7 @@
                  :tokens-on tokens-on :rows-in rows-in :ties ties :sibs sibs :sib-deps sib-deps :sib-since sib-since :project-of project-of :vocab-of item-vocab
                  :linked? (fn [p v] (contains? pv [p v]))
                  :texts-since (texts-written tx docs unit? start)
+                 :inside-since inside-since
                  :slots (slot-holders tx docs)
                  :references references
                  :name-holder (fn [i] (names/held tx (:project_id (:before i)) (:name (:before i)) (:id i)))}

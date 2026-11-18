@@ -659,14 +659,23 @@
   [{:keys [sentences]} text b e]
   (word-at sentences text b e))
 
+(defn- morphemes-under!
+  "A morpheme under each of `forms`, each word's whole extent, by the admin."
+  [{:keys [morphs] :as w} text forms]
+  (doall (for [f forms :let [b (at text f)]]
+           (id (create-token admin-request morphs text b (+ b (cps f)))))))
+
 (deftest a-sentence-split-is-undone-whatever-words-lie-in-its-halves
-  (doseq [[what opts person]
-          [["nobody wrote since" {} nil]
-           ["with morphemes under the words" {:morphs true} nil]
+  (doseq [[what opts before person]
+          [["nobody wrote since" {} nil nil]
+           ["with morphemes under the words" {:morphs true}
+            (fn [w text] (is (= 2 (count (morphemes-under! w text ["kai" "pele"])))))
+            nil]
            ["a person's value on a word of the new half, which is no token on it"
-            {} (fn [{:keys [pos] :as w} text] (create-span user1-request pos [(word-of w text "pele")] "N"))]]]
+            {} nil (fn [{:keys [pos] :as w} text] (create-span user1-request pos [(word-of w text "pele")] "N"))]]]
     (testing what
       (let [{:keys [doc text] :as w} (world! story opts)
+            _ (when before (before w text))
             then (snapshot [doc])
             g (str (random-uuid))
             r (in-group admin-request g)
@@ -696,6 +705,175 @@
     (is (empty? (:skipped real)) (pr-str (:skipped real)))
     (is (= (body text) (str/join " " story)) "the text is back")
     (is (= then (state [doc])) "the document is as it was")))
+
+;; REV-SJ3-1: the rule asks of each child token of the split, not of the
+;; document. "Since" is the audit's order: a write at or after the entry's
+;; first operation, by an operation outside it.
+
+(deftest another-split-later-in-the-document-leaves-the-first-undoable
+  ;; Probe A: E2, the same person in another operation, splits s2.
+  (let [{:keys [doc text] :as w} (world! story {})
+        then (snapshot [doc])
+        g1 (str (random-uuid))
+        s1 (sentence-at w text 0 (cps "kai pele "))
+        _ (assert-done (split-token (in-group admin-request g1) s1 (at text "pele")))
+        made (sentence-at w text (at text "pele") (cps "kai pele "))
+        b2 (cps "kai pele ")
+        s2 (sentence-at w text b2 (+ b2 (cps "\" tuna lo ")))
+        _ (assert-done (split-token admin-request s2 (at text "lo")))
+        lo (sentence-at w text (at text "lo") (+ b2 (cps "\" tuna lo ")))
+        real (undo-checked! [doc] then #(undo-entry admin-request g1 :dry-run %))]
+    (is (empty? (:skipped real)) (pr-str (:skipped real)))
+    (is (nil? (psc/fetch-by-id db :tokens made)) "E1's half is gone")
+    (is (= [0 b2] ((juxt :begin :end_) (psc/fetch-by-id db :tokens s1))))
+    (is (some? (psc/fetch-by-id db :tokens lo)) "the later split stands")))
+
+(deftest a-persons-morpheme-under-an-old-word-of-the-new-half-leaves-the-split-undoable
+  ;; Probe B: the morpheme is the word's, which was there before the split.
+  (let [{:keys [doc text morphs] :as w} (world! story {:morphs true})
+        then (snapshot [doc])
+        g (str (random-uuid))
+        s1 (sentence-at w text 0 (cps "kai pele "))
+        _ (assert-done (split-token (in-group admin-request g) s1 (at text "pele")))
+        made (sentence-at w text (at text "pele") (cps "kai pele "))
+        b (at text "pele")
+        m (id (create-token user1-request morphs text b (+ b 4)))
+        real (undo-checked! [doc] then #(undo-entry admin-request g :dry-run %))]
+    (is (empty? (:skipped real)) (pr-str (:skipped real)))
+    (is (nil? (psc/fetch-by-id db :tokens made)))
+    (is (some? (psc/fetch-by-id db :tokens m)) "the person's morpheme stands")))
+
+(deftest a-persons-translation-on-a-half-after-the-split
+  ;; Probe C: on the old half it rides back onto the whole sentence (a value
+  ;; does not depend on offsets, REV-UT-1, as after a merge's undo, probe G).
+  ;; On the new half it keeps the split, built on by the translation.
+  (doseq [half [:old :new]]
+    (testing (name half)
+      (let [{:keys [doc text sentences] :as w} (world! story {})
+            tr (id (create-span-layer admin-request sentences "Translation"))
+            then (snapshot [doc])
+            g (str (random-uuid))
+            s1 (sentence-at w text 0 (cps "kai pele "))
+            _ (assert-done (split-token (in-group admin-request g) s1 (at text "pele")))
+            made (sentence-at w text (at text "pele") (cps "kai pele "))
+            sp (id (create-span user1-request tr [(if (= half :old) s1 made)] "a half"))
+            real (undo-checked! [doc] then #(undo-entry admin-request g :dry-run %))
+            why (reasons real)]
+        (is (some? (psc/fetch-by-id db :spans sp)) "the person's translation stands")
+        (if (= half :old)
+          (do (is (empty? (:skipped real)) (pr-str (:skipped real)))
+              (is (= [0 (cps "kai pele ")] ((juxt :begin :end_) (psc/fetch-by-id db :tokens s1)))))
+          (do (is (= "built-on" (why made)) (pr-str (:skipped real)))
+              (is (= {:kind "span" :id sp}
+                     (select-keys (:by (first (filter #(= made (:id %)) (:skipped real)))) [:kind :id])))
+              (is (some? (psc/fetch-by-id db :tokens made)))))))))
+
+(deftest two-splits-in-one-entry-are-undone-exactly
+  ;; Probe D.
+  (let [{:keys [doc text] :as w} (world! story {})
+        then (snapshot [doc])
+        g (str (random-uuid))
+        r (in-group admin-request g)
+        b2 (cps "kai pele ")
+        e2 (+ b2 (cps "\" tuna lo "))
+        s2 (sentence-at w text b2 e2)
+        _ (assert-done (split-token r s2 (at text "tuna")))
+        mid (sentence-at w text (at text "tuna") e2)
+        _ (assert-done (split-token r mid (at text "lo")))
+        real (undo-checked! [doc] then #(undo-entry admin-request g :dry-run %))]
+    (is (empty? (:skipped real)) (pr-str (:skipped real)))
+    (is (= then (state [doc])))))
+
+(deftest a-word-split-over-older-morphemes-is-undone-and-a-persons-gloss-after-stands
+  ;; Probe E: a generic shape, two morphemes under pele, the word split at 2.
+  (doseq [person? [false true]]
+    (testing (str "person's gloss " person?)
+      (let [{:keys [doc text morphs gloss] :as w} (world! story {:morphs true})
+            b (at text "pele")
+            _m1 (id (create-token admin-request morphs text b (+ b 2)))
+            m2 (id (create-token admin-request morphs text (+ b 2) (+ b 4)))
+            then (snapshot [doc])
+            g (str (random-uuid))
+            wd (word-of w text "pele")
+            _ (assert-done (split-token (in-group admin-request g) wd (+ b 2)))
+            sp (when person? (id (create-span user1-request gloss [m2] "PL")))
+            real (undo-checked! [doc] then #(undo-entry admin-request g :dry-run %))]
+        (is (empty? (:skipped real)) (pr-str (:skipped real)))
+        (is (= [b (+ b 4)] ((juxt :begin :end_) (psc/fetch-by-id db :tokens wd))) "pele is whole again")
+        (is (some? (psc/fetch-by-id db :tokens m2)))
+        (when sp (is (some? (psc/fetch-by-id db :spans sp))))))))
+
+(deftest a-persons-word-split-in-the-new-half-keeps-the-sentence-split
+  ;; Probe F: the person's new word is a child token written since.
+  (let [{:keys [doc text] :as w} (world! story {})
+        then (snapshot [doc])
+        g (str (random-uuid))
+        s1 (sentence-at w text 0 (cps "kai pele "))
+        _ (assert-done (split-token (in-group admin-request g) s1 (at text "pele")))
+        made (sentence-at w text (at text "pele") (cps "kai pele "))
+        pele (word-of w text "pele")
+        _ (assert-done (split-token user1-request pele (+ 2 (at text "pele"))))
+        le (word-at (:words w) text (+ 2 (at text "pele")) (+ 4 (at text "pele")))
+        real (undo-checked! [doc] then #(undo-entry admin-request g :dry-run %))]
+    (is (= "built-on" ((reasons real) made)) (pr-str (:skipped real)))
+    (is (some? (psc/fetch-by-id db :tokens le)) "the person's word stands")))
+
+(deftest a-merge-then-a-translation-on-the-merged-sentence-is-undone-carrying-it
+  ;; Probe G, a control at the base: the translation stays on the shrunk s1.
+  (let [{:keys [doc text sentences] :as w} (world! story {})
+        tr (id (create-span-layer admin-request sentences "Translation"))
+        then (snapshot [doc])
+        g (str (random-uuid))
+        b2 (cps "kai pele ")
+        s1 (sentence-at w text 0 b2)
+        s2 (sentence-at w text b2 (+ b2 (cps "\" tuna lo ")))
+        _ (assert-done (merge-tokens (in-group admin-request g) s1 s2))
+        sp (id (create-span user1-request tr [s1] "whole merged"))
+        real (undo-checked! [doc] then #(undo-entry admin-request g :dry-run %))]
+    (is (empty? (:skipped real)) (pr-str (:skipped real)))
+    (is (= [0 b2] ((juxt :begin :end_) (psc/fetch-by-id db :tokens s1))))
+    (is (some? (psc/fetch-by-id db :spans sp)))))
+
+(deftest what-a-person-built-on-a-half-keeps-the-split-with-its-true-reason
+  ;; A morpheme under the new word half, a value on the new word half, and a
+  ;; relation between values on the new sentence half: each names the token
+  ;; the entry made, so the split stays, built on by that row.
+  (doseq [[what split person]
+          [["a morpheme under the new word" :word
+            (fn [{:keys [morphs]} text made] {:kind "token"
+                                              :id (id (create-token user1-request morphs text
+                                                                    (:begin (psc/fetch-by-id db :tokens made))
+                                                                    (:end_ (psc/fetch-by-id db :tokens made))))})]
+           ["a value on the new word" :word
+            (fn [{:keys [pos]} _ made] {:kind "span" :id (id (create-span user1-request pos [made] "N"))})]
+           ["a relation between values on the new sentence" :sentence
+            (fn [{:keys [sentences]} _ made]
+              (let [tr (id (create-span-layer admin-request sentences "Note"))
+                    rl (id (create-relation-layer admin-request tr "Link"))
+                    a (id (create-span user1-request tr [made] "a"))
+                    b (id (create-span user1-request tr [made] "b"))]
+                (assert-done (create-relation user1-request rl a b "x"))
+                {:kind "span"}))]]]
+    (testing what
+      (let [{:keys [doc text] :as w} (world! story {:morphs true})
+            then (snapshot [doc])
+            g (str (random-uuid))
+            b (at text "pele")
+            [tok cut whole] (if (= split :word)
+                              [(word-of w text "pele") (+ b 2) [b (+ b 2)]]
+                              [(sentence-at w text 0 (cps "kai pele ")) b [0 b]])
+            _ (assert-done (split-token (in-group admin-request g) tok cut))
+            made (if (= split :word)
+                   (word-at (:words w) text (+ b 2) (+ b 4))
+                   (sentence-at w text b (cps "kai pele ")))
+            by (person w text made)
+            real (undo-checked! [doc] then #(undo-entry admin-request g :dry-run %))
+            row (first (filter #(= made (:id %)) (:skipped real)))]
+        (is (= "built-on" (:reason row)) (pr-str (:skipped real)))
+        (is (= (:kind by) (:kind (:by row))) (pr-str row))
+        (when (:id by) (is (= (:id by) (:id (:by row))) (pr-str row)))
+        (is (some? (psc/fetch-by-id db :tokens made)) "the half stands")
+        (is (= whole ((juxt :begin :end_) (psc/fetch-by-id db :tokens tok))) "the first half stays as split")))))
 
 ;; ============================================================
 ;; REV-UT2-2: token rows of the unit that traded characters go back together
