@@ -59,14 +59,15 @@ const mount = (client) =>
     </MemoryRouter>,
   );
 
+// The list remembers its sort in the browser: every test starts with none.
+beforeEach(() => localStorage.clear());
+
 const rowCells = (container) =>
   all(container, 'tbody tr').map((tr) =>
     [...tr.querySelectorAll('td')].map((td) => td.textContent.replace(/\s+/g, ' ').trim()),
   );
 
 describe('AdminAssistant', () => {
-  beforeEach(() => localStorage.clear());
-
   it('lists every account it was given, newest first', async () => {
     const client = fakeClient();
     const { container, unmount } = await mount(client);
