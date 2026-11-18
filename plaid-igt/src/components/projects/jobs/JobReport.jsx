@@ -20,27 +20,25 @@ import {
 import SECTIONS from './jobSections.json';
 import {
   BLANK_ELSEWHERE,
-  blankDocuments,
+  NOT_WRITTEN,
   blankParts,
   draftLexiconsOf,
-  noticeOf,
   pausedRows,
-  skippedDocuments,
   totalRows,
 } from './jobTotals.js';
 
-// A finished job's report (CONTRACT 5.3, as the client hands it over, keys in
-// camelCase): the totals, the summary the assistant wrote under a heading
-// that says so (or first, the worker's one line for a job that wrote and
-// proposed nothing, `summaryBy` worker), the changes it proposed,
-// each piece's note, the tables its code made, each document's skipped
-// sentences and the targets it left blank (or that its document could not be
-// read for them, `leftUnread`, and how much is blank in the sentences it did
-// not reach, `notReached`, and in those it skipped, `skipped`), what harmonize changed and left,
-// the entries the job made, and those of them nothing links (the job runs no
-// cleanup of its own: a person deletes them).
-// Every list the worker cut says how many it left out. A section's heading is
-// jobSections.json's, which the assistant names sections by (read_job).
+// The blocks of a finished job's report (CONTRACT 5.3, as the client hands it
+// over, keys in camelCase), each drawn by the job page in its Overview or in a
+// section of its own (JobSections.jsx): the totals, the summary the assistant
+// wrote under a heading that says so, the changes it proposed, the tables its
+// code made, each document's skipped sentences and the targets it left blank
+// (or that its document could not be read for them, `leftUnread`, and how much
+// is blank in the sentences it did not reach, `notReached`, and in those it
+// skipped, `skipped`), what harmonize changed and left, the entries the job
+// made, and those of them nothing links (the job runs no cleanup of its own: a
+// person deletes them). Every list the worker cut says how many it left out. A
+// list's heading is jobSections.json's, which the assistant names sections by
+// (read_job).
 
 export const Heading = ({ section, children }) => (
   <h3 className={`${TYPE.card} mb-2 mt-6`}>{section ? SECTIONS[section] : children}</h3>
@@ -278,12 +276,18 @@ export const LeftOut = ({ report, projectId }) => {
 
 // What the assistant wrote, as the chat renders the assistant's text: never
 // raw Markdown marks (RP-1, RP-4). `inline` for a note in a list.
-const Written = ({ text, inline = false, ...rest }) => (
+// The model's Markdown headings sit one level under the page's own (TYPE.card,
+// the headings of the job page's Overview), whatever level it wrote them at.
+const UNDER_THE_PAGE =
+  '[&_h1]:text-sm [&_h2]:text-sm [&_h3]:text-sm [&_h4]:text-sm [&_h5]:text-sm [&_h6]:text-sm';
+const Written = ({ text, inline = false, className = '', ...rest }) => (
   <div
     dir="auto"
-    className={
-      inline ? 'min-w-0 [&_.prose>:first-child]:mt-0 [&_.prose>:last-child]:mb-0' : 'max-w-3xl'
-    }
+    className={`${
+      inline
+        ? 'min-w-0 [&_.prose>:first-child]:mt-0 [&_.prose>:last-child]:mb-0'
+        : `max-w-3xl ${UNDER_THE_PAGE}`
+    } ${className}`}
     {...rest}
   >
     <AssistantMarkdown>{text}</AssistantMarkdown>
@@ -349,9 +353,9 @@ export const JobFindings = ({ findings, pieces = null, cut = null }) => {
     return () => clearTimeout(t);
   }, [copied]);
   return (
-    <section aria-label="Findings" className="mb-8" data-testid="job-findings">
+    <section aria-label="Findings" className="mt-6" data-testid="job-findings">
       <div className="mb-2 flex flex-wrap items-center gap-2">
-        <h2 className={TYPE.section}>Findings</h2>
+        <h3 className={TYPE.card}>Findings</h3>
         <Button
           variant="outline"
           size="sm"
@@ -376,38 +380,77 @@ export const JobFindings = ({ findings, pieces = null, cut = null }) => {
 };
 
 // The report's totals, label and value, under their heading.
-export const TotalsList = ({ report, undone = null }) => (
-  <>
-    <Heading>{undone ? 'What the job had written' : 'Totals'}</Heading>
-    <dl className="grid max-w-xl grid-cols-[1fr_auto] gap-x-6 gap-y-1 text-sm">
-      {[...totalRows(report), ...pausedRows(report)].map(([label, value]) => (
-        <div key={label} className="contents">
-          <dt className="text-muted-foreground">{label}</dt>
-          <dd className="text-right tabular-nums">{value}</dd>
-        </div>
-      ))}
-    </dl>
-  </>
-);
+export const TotalsList = ({ report, undone = null }) => {
+  const rows = [...totalRows(report), ...pausedRows(report)];
+  const groups = [
+    ['Written', rows.filter(([, , g]) => g !== NOT_WRITTEN)],
+    ['Not written', rows.filter(([, , g]) => g === NOT_WRITTEN)],
+  ].filter(([, list]) => list.length);
+  return (
+    <>
+      <Heading>{undone ? 'What the job had written' : 'Totals'}</Heading>
+      <div className="grid max-w-4xl gap-x-12 gap-y-5 lg:grid-cols-2">
+        {groups.map(([name, list]) => (
+          <div key={name} className="min-w-0">
+            <p className="mb-1 text-xs font-medium text-muted-foreground">{name}</p>
+            <dl className="grid grid-cols-[minmax(0,1fr)_auto] gap-x-6 gap-y-1 text-sm">
+              {list.map(([label, value]) => (
+                <div key={label} className="contents">
+                  <dt className="text-muted-foreground">{label}</dt>
+                  <dd className="text-right tabular-nums">{value}</dd>
+                </div>
+              ))}
+            </dl>
+          </div>
+        ))}
+      </div>
+    </>
+  );
+};
 
-// The model's account, after the counts and marked as its own (R4), or that
-// it could not be written.
-export const AssistantSummary = ({ report }) => (
-  <>
-    {((report.summary && report.summaryBy !== 'worker') || report.summaryFailed) && (
-      <Heading>Assistant’s summary</Heading>
-    )}
-    {report.summary && report.summaryBy !== 'worker' && (
-      <>
-        <p className="mb-2 text-sm text-muted-foreground">{byTheAssistant('above')}</p>
-        <Written text={report.summary} data-testid="job-summary" />
-      </>
-    )}
-    {report.summaryFailed && (
-      <p className="text-sm text-muted-foreground">The summary could not be written.</p>
-    )}
-  </>
-);
+// A summary longer than this is folded, with a control to show all of it.
+const SUMMARY_FOLDED_CHARS = 600;
+
+// The model's account, after the counts and marked as its own (R4), folded
+// when long, or that it could not be written.
+export const AssistantSummary = ({ report }) => {
+  const [open, setOpen] = useState(false);
+  const shown = report.summary && report.summaryBy !== 'worker';
+  const long = shown && [...report.summary].length > SUMMARY_FOLDED_CHARS;
+  return (
+    <>
+      {(shown || report.summaryFailed) && <Heading>Assistant’s summary</Heading>}
+      {shown && (
+        <>
+          <p className="mb-2 text-sm text-muted-foreground">{byTheAssistant('above')}</p>
+          <Written
+            text={report.summary}
+            data-testid="job-summary"
+            className={
+              long && !open
+                ? 'max-h-60 overflow-hidden [mask-image:linear-gradient(to_bottom,black_70%,transparent)]'
+                : ''
+            }
+          />
+          {long && (
+            <Button
+              variant="outline"
+              size="sm"
+              className="mt-2"
+              aria-expanded={open}
+              onClick={() => setOpen((o) => !o)}
+            >
+              {open ? 'Show less' : 'Show all'}
+            </Button>
+          )}
+        </>
+      )}
+      {report.summaryFailed && (
+        <p className="text-sm text-muted-foreground">The summary could not be written.</p>
+      )}
+    </>
+  );
+};
 
 // One document's skipped sentences, each linked into the grid.
 export const SkippedDocument = ({ d, projectId }) => (
@@ -603,80 +646,5 @@ export const Entries = ({ report, vocabs = [] }) => {
         </>
       )}
     </>
-  );
-};
-
-export const JobReport = ({ report, projectId, vocabs = [], undone = null, undoneBy = null }) => {
-  const skipped = skippedDocuments(report);
-  const blank = blankDocuments(report);
-  const harmonize = report.harmonize || {};
-  const changed = harmonize.changed || [];
-  const left = harmonize.left || [];
-  const notice = noticeOf(report, undone, undoneBy);
-
-  return (
-    <section aria-label="Report">
-      <h2 className={`${TYPE.section} mt-8`}>Report</h2>
-      {report.stopped === 'without-worker' && (
-        <p className="mt-2 text-sm text-muted-foreground">Stopped with no worker running.</p>
-      )}
-      {/* The worker's own line, from its counts, where the job changed
-          people's work or the text (R4). Core's own report, of a job no
-          worker finished, has none: the same line from its counts
-          (REV-RPF-W-3). */}
-      {notice && (
-        <p className="mt-3 max-w-2xl text-sm font-medium" data-testid="job-notice">
-          {notice}
-        </p>
-      )}
-      {report.summary && report.summaryBy === 'worker' && (
-        <p className="mt-3 max-w-2xl text-sm" data-testid="job-summary">
-          {report.summary}
-        </p>
-      )}
-
-      <TotalsList report={report} undone={undone} />
-      <AssistantSummary report={report} />
-
-      <LeftOut report={report} projectId={projectId} />
-      <ProposedChanges report={report} projectId={projectId} />
-      <Tables tables={report.tables || []} more={report.tablesMore || 0} />
-
-      <Respelled report={report} projectId={projectId} />
-
-      {skipped.length > 0 && (
-        <>
-          <Heading section="skipped" />
-          {skipped.map((d) => (
-            <SkippedDocument key={d.documentId} d={d} projectId={projectId} />
-          ))}
-        </>
-      )}
-
-      {blank.length > 0 && (
-        <>
-          <Heading section="left" />
-          {blank.map((d) => (
-            <BlankDocument key={d.documentId} d={d} projectId={projectId} />
-          ))}
-        </>
-      )}
-
-      {(changed.length > 0 || harmonize.changedMore > 0) && (
-        <>
-          <Heading section="harmonize.changed" />
-          <HarmonizeChanged list={changed} more={harmonize.changedMore} />
-        </>
-      )}
-
-      {(left.length > 0 || harmonize.leftMore > 0) && (
-        <>
-          <Heading section="harmonize.left" />
-          <HarmonizeLeft list={left} more={harmonize.leftMore} />
-        </>
-      )}
-
-      <Entries report={report} vocabs={vocabs} />
-    </section>
   );
 };

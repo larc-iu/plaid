@@ -174,15 +174,73 @@ const REPORT = {
   },
 };
 
-const mount = async (client, project = PROJECT) =>
+// The page at one of its sections (`?view=`), Overview by default.
+const mount = async (client, project = PROJECT, view = null) =>
   renderComponent(
-    <MemoryRouter>
+    <MemoryRouter initialEntries={[`/projects/p1/jobs/j1${view ? `?view=${view}` : ''}`]}>
       <ConfirmProvider>
         <JobPage project={project} projectId="p1" jobId="j1" client={client} />
       </ConfirmProvider>
     </MemoryRouter>,
   );
 
+// Every section the page draws, each read at its own address: the page's
+// title and state line once, then each section's panel, in the strip's order.
+// What a test of the whole report reads, now that the report is in sections.
+const SECTIONS = [
+  'overview',
+  'documents',
+  'notes',
+  'blank',
+  'skipped',
+  'proposed',
+  'entries',
+  'respelled',
+  'leftout',
+  'tables',
+  'consistent',
+  'inconsistent',
+  'setup',
+];
+// The report's parts, in the Overview and in each list's section, are read
+// as one Report region after the other sections, as the page drew them
+// before it had sections.
+const mountAll = async (client, project = PROJECT) => {
+  const out = document.createElement('div');
+  const report = document.createElement('section');
+  report.setAttribute('aria-label', 'Report');
+  for (const view of SECTIONS) {
+    const v = await mount(client, project, view);
+    const panel = v.container.querySelector('[role="tabpanel"]');
+    if (view === 'overview') {
+      const head = v.container.cloneNode(true);
+      head.querySelector('[role="tabpanel"]')?.remove();
+      out.append(...head.childNodes);
+    }
+    if (panel?.getAttribute('data-view') === view) {
+      const copy = panel.cloneNode(true);
+      for (const part of copy.querySelectorAll('section[aria-label="Report"]')) {
+        report.append(...part.childNodes);
+        part.remove();
+      }
+      out.append(copy);
+    }
+    await v.unmount();
+  }
+  out.append(report);
+  document.body.appendChild(out);
+  return { container: out, unmount: async () => out.remove(), step: async (fn) => fn() };
+};
+// The documents table's rows in the job's order (the table sorts by name):
+// each row's text, by its document's place in `job.documents`.
+const documentRows = (root, job) => {
+  const rows = all(root, 'tbody tr').filter((r) =>
+    r.closest('table')?.querySelector('th')?.textContent.startsWith('Document'),
+  );
+  return job.documents.map(
+    (d) => rows.find((r) => text(all(r, 'td')[0]) === (d.name ?? 'Deleted document')) ?? null,
+  );
+};
 const clientOf = (...answers) => {
   let i = 0;
   return {
@@ -234,13 +292,13 @@ describe('the job page', () => {
       ],
     ];
     for (const [job, words] of cases) {
-      const v = await mount(clientOf(job));
+      const v = await mountAll(clientOf(job));
       const status = v.container.querySelector('[role="status"]');
       for (const w of words) expect(text(status)).toContain(w);
       if (job.state !== 'running') expect(text(status)).not.toContain('Working');
       await v.unmount();
     }
-    const first = await mount(clientOf(jobOf({ state: 'waiting', ahead: 0 })));
+    const first = await mountAll(clientOf(jobOf({ state: 'waiting', ahead: 0 })));
     expect(text(first.container)).not.toContain('ahead');
     await first.unmount();
   });
@@ -250,7 +308,7 @@ describe('the job page', () => {
     // one is another project's.
     const waiting = (ahead) =>
       jobOf({ state: 'waiting', phase: null, message: null, startedAt: null, ahead });
-    let v = await mount(clientOf(waiting(2)));
+    let v = await mountAll(clientOf(waiting(2)));
     let facts = totals(v.container);
     expect(facts['Waiting since']).toBeTruthy();
     expect(facts.Started).toBeUndefined();
@@ -259,13 +317,13 @@ describe('the job page', () => {
       'Waiting2 jobs of other projects ahead',
     );
     await v.unmount();
-    v = await mount(clientOf(waiting(1)));
+    v = await mountAll(clientOf(waiting(1)));
     expect(text(v.container.querySelector('[role="status"]'))).toContain(
       '1 job of another project ahead',
     );
     await v.unmount();
     // Once a worker took it: when it started, and how long it waited first.
-    v = await mount(
+    v = await mountAll(
       clientOf(jobOf({ createdAt: '2026-11-12T09:33:00Z', startedAt: '2026-11-12T10:01:00Z' })),
     );
     facts = totals(v.container);
@@ -274,11 +332,11 @@ describe('the job page', () => {
     expect(facts.Waited).toBe('28 min');
     await v.unmount();
     // Taken at once: no wait to speak of.
-    v = await mount(clientOf(jobOf({ startedAt: '2026-11-12T10:00:20Z' })));
+    v = await mountAll(clientOf(jobOf({ startedAt: '2026-11-12T10:00:20Z' })));
     expect(totals(v.container).Waited).toBeUndefined();
     await v.unmount();
     // Stopped before any worker took it: how long it waited.
-    v = await mount(
+    v = await mountAll(
       clientOf(
         jobOf({
           state: 'cancelled',
@@ -321,7 +379,7 @@ describe('the job page', () => {
         ],
       },
     });
-    const v = await mount(clientOf(ended));
+    const v = await mountAll(clientOf(ended));
     expect(all(v.container, 'a').map((a) => a.textContent)).not.toContain('Changes');
     expect(all(v.container, 'a').map((a) => a.textContent)).toContain('Analyses made consistent');
     const report = v.container.querySelector('section[aria-label="Report"]');
@@ -351,8 +409,8 @@ describe('the job page', () => {
         })),
       },
     });
-    const v = await mount(clientOf(ended));
-    const rows = all(v.container, '#job-documents tbody tr, tbody tr');
+    const v = await mountAll(clientOf(ended));
+    const rows = documentRows(v.container, ended);
     expect(all(rows[0], 'a').map((a) => [a.textContent, a.getAttribute('href')])).toEqual([
       ['Story A', '/projects/p1/documents/d1'],
       ['Changes', '/projects/p1/documents/d1?history=g-d1'],
@@ -370,13 +428,13 @@ describe('the job page', () => {
   });
 
   it('lists the job’s facts and a row per document, a deleted one by that word', async () => {
-    const v = await mount(clientOf(jobOf()));
+    const v = await mountAll(clientOf(jobOf()));
     const t = text(v.container);
     expect(t).not.toContain('Tasks');
     expect(t).toContain('Wren');
     expect(t).toContain('glm-5.3-flash');
     expect(t).toContain('Gloss ka as GO.');
-    const rows = all(v.container, 'tbody tr').map((r) => text(r));
+    const rows = documentRows(v.container, jobOf()).map((r) => text(r));
     expect(rows[0]).toContain('Story A');
     expect(rows[0]).toContain('10 of 40');
     expect(rows[0]).toContain('5'); // translations filled and replaced
@@ -396,13 +454,19 @@ describe('the job page', () => {
       leftOut: [],
     });
     const short = jobOf({ state: 'done', report: { ...REPORT, plan: plan('Gloss -da as LOC.') } });
-    let v = await mount(clientOf(short));
+    let v = await mountAll(clientOf(short));
     let facts = totals(v.container);
-    expect(facts.Instructions).toBe('Gloss ka as GO.');
+    expect(text(v.container.querySelector('[data-testid="job-instructions"]'))).toBe(
+      'Instructions Gloss ka as GO.',
+    );
     expect(facts['Assistant’s instructions']).toBe('Gloss -da as LOC.');
     await v.unmount();
     const told = 'Gloss -da as LOC after a noun. '.repeat(12).trim();
-    v = await mount(clientOf(jobOf({ state: 'done', report: { ...REPORT, plan: plan(told) } })));
+    v = await mount(
+      clientOf(jobOf({ state: 'done', report: { ...REPORT, plan: plan(told) } })),
+      PROJECT,
+      'setup',
+    );
     const folded = v.container.querySelector('details');
     expect(folded).not.toBeNull();
     expect(folded.open).toBe(false);
@@ -414,7 +478,7 @@ describe('the job page', () => {
       folded.dispatchEvent(new Event('toggle'));
     });
     expect(folded.querySelector('summary').textContent).toBe('Hide');
-    expect(totals(v.container).Instructions).toBe('Gloss ka as GO.');
+    expect(totals(v.container).Instructions).toBeUndefined();
     await v.unmount();
   });
 
@@ -428,14 +492,14 @@ describe('the job page', () => {
       fallback: [],
       leftOut: [],
     };
-    let v = await mount(clientOf(jobOf({ state: 'done', report: { ...REPORT, plan } })));
+    let v = await mountAll(clientOf(jobOf({ state: 'done', report: { ...REPORT, plan } })));
     const facts = totals(v.container);
     expect(facts['Assistant’s instructions']).toBe(
       `Cut to ${told.length} of 5,210 characters. ${told}`,
     );
     await v.unmount();
     const whole = { ...plan, instructionsCut: undefined };
-    v = await mount(clientOf(jobOf({ state: 'done', report: { ...REPORT, plan: whole } })));
+    v = await mountAll(clientOf(jobOf({ state: 'done', report: { ...REPORT, plan: whole } })));
     expect(totals(v.container)['Assistant’s instructions']).toBe(told);
     await v.unmount();
   });
@@ -448,12 +512,12 @@ describe('the job page', () => {
       fallback: [],
       leftOut: [],
     };
-    let v = await mount(clientOf(jobOf({ state: 'done', report: { ...REPORT, plan } })));
+    let v = await mountAll(clientOf(jobOf({ state: 'done', report: { ...REPORT, plan } })));
     expect(totals(v.container).Plan).toBe(
       'Worked in stretches of sentences, only those with something empty.',
     );
     await v.unmount();
-    v = await mount(
+    v = await mountAll(
       clientOf(
         jobOf({ state: 'done', report: { ...REPORT, plan: { ...plan, onlyEmpty: false } } }),
       ),
@@ -464,19 +528,19 @@ describe('the job page', () => {
 
   it('says the job may edit the text when its plan says so', async () => {
     const plan = { pieces: 'document', by: 'model', fallback: [], leftOut: [] };
-    let v = await mount(
+    let v = await mountAll(
       clientOf(jobOf({ state: 'done', report: { ...REPORT, plan: { ...plan, editsText: true } } })),
     );
     expect(totals(v.container).Plan).toBe('Worked one document at a time. Text may be edited.');
     await v.unmount();
-    v = await mount(clientOf(jobOf({ state: 'done', report: { ...REPORT, plan } })));
+    v = await mountAll(clientOf(jobOf({ state: 'done', report: { ...REPORT, plan } })));
     expect(totals(v.container).Plan).toBe('Worked one document at a time.');
     await v.unmount();
   });
 
   it('names what the plan fills, or says it fills nothing', async () => {
     const plan = { pieces: 'sentences', by: 'model', fallback: [], leftOut: [], editsText: true };
-    let v = await mount(
+    let v = await mountAll(
       clientOf(
         jobOf({
           state: 'done',
@@ -488,7 +552,7 @@ describe('the job page', () => {
       'Worked in stretches of sentences. Fills: segmentation, Morph Gloss. Text may be edited.',
     );
     await v.unmount();
-    v = await mount(
+    v = await mountAll(
       clientOf(jobOf({ state: 'done', report: { ...REPORT, plan: { ...plan, fillsNames: [] } } })),
     );
     expect(totals(v.container).Plan).toBe(
@@ -510,7 +574,7 @@ describe('the job page', () => {
       conversation: 'c9',
     };
     const line = (root) => root.querySelector('[data-testid="job-setup"]');
-    let v = await mount(clientOf(jobOf({ state: 'waiting', phase: null, setup })));
+    let v = await mountAll(clientOf(jobOf({ state: 'waiting', phase: null, setup })));
     expect(line(v.container).textContent).toBe(
       'Set up to fill Case, Word class. Text unchanged. Open conversation',
     );
@@ -519,25 +583,25 @@ describe('the job page', () => {
     await v.unmount();
 
     auth.user = { id: 'w2', isAdmin: false };
-    v = await mount(clientOf(jobOf({ setup: { ...setup, fills: [], text: true } })));
+    v = await mountAll(clientOf(jobOf({ setup: { ...setup, fills: [], text: true } })));
     expect(line(v.container).textContent).toBe('Set up to fill nothing. Text may be edited.');
     expect(byText(v.container, 'a', 'Open conversation')).toBeFalsy();
     await v.unmount();
 
     auth.user = { id: 'w', isAdmin: false };
-    v = await mount(
+    v = await mountAll(
       clientOf(jobOf({ setup: { fills: [{ id: 'L1', name: 'Case' }], text: false } })),
     );
     expect(line(v.container).textContent).toBe('Set up to fill Case. Text unchanged.');
     await v.unmount();
 
-    v = await mount(clientOf(jobOf()));
+    v = await mountAll(clientOf(jobOf()));
     expect(line(v.container)).toBeNull();
     expect(text(v.container)).not.toContain('Set up to');
     await v.unmount();
 
     // R3: only the words the job adds.
-    v = await mount(
+    v = await mountAll(
       clientOf(
         jobOf({ setup: { fills: [{ id: 'L2', name: 'Word class' }], text: true, onlynew: true } }),
       ),
@@ -553,11 +617,11 @@ describe('the job page', () => {
     for (const onlynew of [undefined, false]) {
       const setup = { fills: [{ id: 'L2', name: 'Word class' }], text: true };
       if (onlynew !== undefined) setup.onlynew = onlynew;
-      v = await mount(clientOf(jobOf({ setup })));
+      v = await mountAll(clientOf(jobOf({ setup })));
       expect(line(v.container).textContent).toBe('Set up to fill Word class. Text may be edited.');
       await v.unmount();
     }
-    v = await mount(
+    v = await mountAll(
       clientOf(
         jobOf({ setup: { fills: [{ id: 'L2', name: 'Word class' }], text: true, onlynew: null } }),
       ),
@@ -568,7 +632,7 @@ describe('the job page', () => {
 
   it('says when planning ended with no plan and nothing was written', async () => {
     const plan = { by: 'none', why: 'no-plan', pieceInstructions: '', fallback: [], leftOut: [] };
-    const v = await mount(
+    const v = await mountAll(
       clientOf(
         jobOf({ state: 'failed', reason: 'no-plan', message: null, report: { ...REPORT, plan } }),
       ),
@@ -593,7 +657,7 @@ describe('the job page', () => {
     };
     const line = (root) => root.querySelector('[data-testid="job-setup"]');
     const gone = { by: 'none', why: 'setup-gone', gone: setup.fills, fallback: [], leftOut: [] };
-    let v = await mount(
+    let v = await mountAll(
       clientOf(
         jobOf({
           state: 'failed',
@@ -616,7 +680,7 @@ describe('the job page', () => {
     await v.unmount();
 
     const some = { ...REPORT.plan, gone: [{ id: 'L1', name: 'Part of Speech' }] };
-    v = await mount(clientOf(jobOf({ setup, report: { ...REPORT, plan: some } })));
+    v = await mountAll(clientOf(jobOf({ setup, report: { ...REPORT, plan: some } })));
     expect(line(v.container).textContent).toBe(
       'Set up to fill Part of Speech (deleted), Case. Text unchanged.',
     );
@@ -639,13 +703,13 @@ describe('the job page', () => {
       { fills: [{ id: 'x', name: 'Gloss' }], text: 'yes' },
       { fills: [{ id: 'x', name: 'Gloss' }], text: true, onlynew: 'yes' },
     ]) {
-      const v = await mount(clientOf(jobOf({ setup })));
+      const v = await mountAll(clientOf(jobOf({ setup })));
       expect(text(v.container)).toContain('Instructions');
       expect(line(v.container)).toBeNull();
       await v.unmount();
     }
     const plan = { by: 'none', why: 'setup-unreadable', fallback: [], leftOut: [] };
-    const v = await mount(
+    const v = await mountAll(
       clientOf(
         jobOf({
           state: 'failed',
@@ -668,7 +732,7 @@ describe('the job page', () => {
   it('keeps the setup line of a job that ended with no plan, beside its Plan line', async () => {
     const plan = { by: 'none', why: 'no-plan', pieceInstructions: '', fallback: [], leftOut: [] };
     const setup = { fills: [{ id: 'L1', name: 'Case' }], text: false };
-    const v = await mount(
+    const v = await mountAll(
       clientOf(
         jobOf({
           state: 'failed',
@@ -688,7 +752,7 @@ describe('the job page', () => {
 
   it('says when the model failed during planning, apart from a planning with no plan', async () => {
     const plan = { by: 'none', why: 'output', pieceInstructions: '', fallback: [], leftOut: [] };
-    const v = await mount(
+    const v = await mountAll(
       clientOf(
         jobOf({
           state: 'failed',
@@ -710,11 +774,13 @@ describe('the job page', () => {
   });
 
   it('shows the totals first and the assistant’s summary after them, under its heading', async () => {
-    const v = await mount(clientOf(jobOf({ state: 'done', report: REPORT })));
+    const v = await mountAll(clientOf(jobOf({ state: 'done', report: REPORT })));
     const report = v.container.querySelector('section[aria-label="Report"]');
     const headings = all(report, 'h3').map((h) => h.textContent);
-    expect(headings.indexOf('Totals')).toBe(0);
-    expect(headings.indexOf('Assistant’s summary')).toBe(1);
+    // What to check first, then the totals, then the summary.
+    expect(headings.indexOf('To check')).toBe(0);
+    expect(headings.indexOf('Totals')).toBe(1);
+    expect(headings.indexOf('Assistant’s summary')).toBe(2);
     const summary = report.querySelector('[data-testid="job-summary"]');
     expect(summary.previousElementSibling.previousElementSibling.textContent).toBe(
       'Assistant’s summary',
@@ -733,10 +799,10 @@ describe('the job page', () => {
       proposedMore: 0,
       harmonize: { changed: [], left: [], changedMore: 0, leftMore: 0 },
     };
-    const v = await mount(clientOf(jobOf({ state: 'done', report })));
+    const v = await mountAll(clientOf(jobOf({ state: 'done', report })));
     const section = v.container.querySelector('section[aria-label="Report"]');
     const headings = all(section, 'h3').map((h) => h.textContent);
-    expect(headings.slice(0, 2)).toEqual(['Totals', 'Assistant’s summary']);
+    expect(headings.slice(0, 3)).toEqual(['To check', 'Totals', 'Assistant’s summary']);
     expect(headings).toContain('Tables');
     const summary = section.querySelector('[data-testid="job-summary"]');
     expect(summary.previousElementSibling.previousElementSibling.textContent).toBe(
@@ -749,11 +815,12 @@ describe('the job page', () => {
   it('puts the line of a job that wrote and proposed nothing first, as the report’s own', async () => {
     const line = 'The job wrote no change and proposed none.';
     const report = { ...REPORT, summary: line, summaryBy: 'worker' };
-    const v = await mount(clientOf(jobOf({ state: 'done', report })));
+    const v = await mountAll(clientOf(jobOf({ state: 'done', report })));
     const section = v.container.querySelector('section[aria-label="Report"]');
     const summary = section.querySelector('[data-testid="job-summary"]');
     expect(text(summary)).toBe(line);
-    expect(summary.previousElementSibling.textContent).toBe('Report');
+    // Right under the headline, before what to check and the totals.
+    expect(summary.previousElementSibling.getAttribute('data-testid')).toBe('job-headline');
     expect(all(section, 'h3').map((h) => h.textContent)).not.toContain('Assistant’s summary');
     await v.unmount();
   });
@@ -778,12 +845,12 @@ describe('the job page', () => {
         { ...jobOf().documents[1], state: 'not-reached' },
       ],
     });
-    const v = await mount(clientOf(job));
+    const v = await mountAll(clientOf(job));
     const section = v.container.querySelector('section[aria-label="Report"]');
     expect(all(section, 'h3').map((h) => h.textContent)).toContain('Left out by the plan');
     // A report too large for core lists the first and counts the rest.
     expect(text(section)).toContain('And 3 more documents.');
-    const rows = all(v.container, '#job-documents tbody tr, tbody tr').map((r) => text(r));
+    const rows = documentRows(v.container, job).map((r) => text(r));
     expect(rows[1]).toContain('Left out by the plan');
     await v.unmount();
   });
@@ -798,18 +865,18 @@ describe('the job page', () => {
     ];
     for (const [user, shown] of who) {
       auth.user = user;
-      const v = await mount(clientOf(jobOf()));
+      const v = await mountAll(clientOf(jobOf()));
       expect(!!stopButton(v.container)).toBe(shown);
       await v.unmount();
     }
     // A starter who no longer writes the project cannot stop it.
     auth.user = { id: 'w', isAdmin: false };
-    const demoted = await mount(clientOf(jobOf()), { ...PROJECT, writers: [], readers: ['w'] });
+    const demoted = await mountAll(clientOf(jobOf()), { ...PROJECT, writers: [], readers: ['w'] });
     expect(stopButton(demoted.container)).toBe(null);
     await demoted.unmount();
     // Nor is there anything to stop once it is stopping or has ended.
     for (const state of ['stopping', 'done', 'cancelled', 'failed']) {
-      const v = await mount(clientOf(jobOf({ state })));
+      const v = await mountAll(clientOf(jobOf({ state })));
       expect(stopButton(v.container)).toBe(null);
       await v.unmount();
     }
@@ -848,7 +915,7 @@ describe('the job page', () => {
     expect(text(v.container)).toContain('Sentences 16 to 20 of 40.');
     await v.step(() => vi.advanceTimersByTimeAsync(JOB_POLL_MS));
     expect(client.jobs.get).toHaveBeenCalledTimes(3);
-    expect(text(v.container)).toContain('Report');
+    expect(text(v.container)).toContain('Totals');
     await v.step(() => vi.advanceTimersByTimeAsync(JOB_POLL_MS * 4));
     expect(client.jobs.get).toHaveBeenCalledTimes(3);
     await v.unmount();
@@ -857,7 +924,9 @@ describe('the job page', () => {
   // A worker that went silent (REV-J-C-3): core says so on every read
   // (`lapsed`), and a Stop ends the job at once, a stopping one included.
   it('says when a running job’s worker last reported, and offers Stop', async () => {
-    const v = await mount(clientOf(jobOf({ lapsed: true, heartbeatAt: '2026-11-12T14:05:00Z' })));
+    const v = await mountAll(
+      clientOf(jobOf({ lapsed: true, heartbeatAt: '2026-11-12T14:05:00Z' })),
+    );
     expect(text(v.container.querySelector('[role="status"]'))).toContain(
       'No worker has reported since ',
     );
@@ -907,7 +976,7 @@ describe('the job page', () => {
 
   it('shows the report: totals, skipped sentences, harmonize, entries and their cuts', async () => {
     const job = jobOf({ state: 'done', finishedAt: '2026-11-12T11:00:00Z', report: REPORT });
-    const v = await mount(clientOf(job));
+    const v = await mountAll(clientOf(job));
     const report = v.container.querySelector('section[aria-label="Report"]');
     const t = text(report);
     for (const heading of [
@@ -1020,7 +1089,7 @@ describe('the job page', () => {
       ],
     };
     const job = jobOf({ state: 'done', finishedAt: '2026-11-12T11:00:00Z', report });
-    const v = await mount(clientOf(job));
+    const v = await mountAll(clientOf(job));
     const section = v.container.querySelector('section[aria-label="Report"]');
     expect(all(section, 'h3').map((h) => h.textContent)).toContain('Left blank');
     const t = text(section);
@@ -1094,7 +1163,7 @@ describe('the job page', () => {
       ],
     };
     const job = jobOf({ state: 'cancelled', finishedAt: '2026-11-12T11:00:00Z', report });
-    const v = await mount(clientOf(job));
+    const v = await mountAll(clientOf(job));
     const section = v.container.querySelector('section[aria-label="Report"]');
     expect(all(section, 'h3').map((h) => h.textContent)).toContain('Left blank');
     const t = text(section);
@@ -1145,7 +1214,7 @@ describe('the job page', () => {
         },
       ],
     };
-    const v = await mount(
+    const v = await mountAll(
       clientOf(
         jobOf({
           state: 'done',
@@ -1184,7 +1253,7 @@ describe('the job page', () => {
         },
       ],
     };
-    const v = await mount(clientOf(jobOf({ state: 'done', report })));
+    const v = await mountAll(clientOf(jobOf({ state: 'done', report })));
     const section = v.container.querySelector('section[aria-label="Report"]');
     expect(totals(section)['Role left blank in sentences the job changed']).toBe('0 words');
     expect(totals(section)['Role blank in skipped sentences']).toBe('4 words');
@@ -1220,7 +1289,7 @@ describe('the job page', () => {
       documents: [{ ...jobOf().documents[0], state: 'done', done: 40, targets: 40 }],
       report,
     });
-    const v = await mount(clientOf(job));
+    const v = await mountAll(clientOf(job));
     const section = v.container.querySelector('section[aria-label="Report"]');
     expect(totals(section)['Role left blank in sentences the job changed']).toBe('7 words');
     expect(totals(section)).not.toHaveProperty('Role blank in sentences not reached');
@@ -1295,19 +1364,19 @@ describe('the job page', () => {
       ],
       report,
     });
-    const v = await mount(clientOf(job));
+    const v = await mountAll(clientOf(job));
     const headers = all(v.container, 'th').map((h) => h.textContent);
     const at = headers.indexOf('Left blank');
     expect(at).toBeGreaterThan(-1);
-    const cells = all(v.container, 'tbody tr').map((tr) => all(tr, 'td')[at]?.textContent);
-    expect(cells.slice(0, 4)).toEqual(['2 words', '', '', '0']);
+    const cells = documentRows(v.container, job).map((tr) => all(tr, 'td')[at]?.textContent);
+    expect(cells).toEqual(['2 words', '', '', '0']);
     await v.unmount();
     // A job that fills nothing has no Left blank column at all.
     const none = {
       ...report,
       documents: report.documents.map((d) => ({ ...d, counts: {}, left: undefined })),
     };
-    const w = await mount(clientOf(jobOf({ ...job, report: none })));
+    const w = await mountAll(clientOf(jobOf({ ...job, report: none })));
     expect(all(w.container, 'th').map((h) => h.textContent)).not.toContain('Left blank');
     await w.unmount();
   });
@@ -1330,7 +1399,7 @@ describe('the job page', () => {
       ],
       report,
     });
-    const v = await mount(clientOf(job));
+    const v = await mountAll(clientOf(job));
     const sums = totals(v.container.querySelector('section[aria-label="Report"]'));
     expect(sums['People’s values, morphemes and links changed or removed']).toBe('3');
     expect(sums['Changes to the text']).toBe('1');
@@ -1388,7 +1457,7 @@ describe('the job page', () => {
       ],
     };
     const job = jobOf({ state: 'done', finishedAt: '2026-11-12T11:00:00Z', report });
-    const v = await mount(clientOf(job));
+    const v = await mountAll(clientOf(job));
     const section = v.container.querySelector('section[aria-label="Report"]');
     expect(all(section, 'h3').map((h) => h.textContent)).toContain('Left blank');
     const t = text(section);
@@ -1456,7 +1525,7 @@ describe('the job page', () => {
       ],
       report,
     });
-    const v = await mount(clientOf(job));
+    const v = await mountAll(clientOf(job));
     const section = v.container.querySelector('section[aria-label="Report"]');
     const sums = totals(section);
     expect(sums['Documents stopped partway']).toBe('1');
@@ -1490,7 +1559,7 @@ describe('the job page', () => {
         },
       ],
     });
-    const v = await mount(clientOf(job));
+    const v = await mountAll(clientOf(job));
     const rows = all(v.container, 'tbody tr').map((r) => [...r.querySelectorAll('td')].map(text));
     const a = rows.find((r) => r[0] === 'Story A');
     expect(a.slice(1, 3)).toEqual(['Skipped', '0 of 2, 2 skipped']);
@@ -1507,7 +1576,7 @@ describe('the job page', () => {
         documents: job.documents,
       },
     });
-    const w = await mount(clientOf(ended));
+    const w = await mountAll(clientOf(ended));
     const sums = totals(w.container.querySelector('section[aria-label="Report"]'));
     expect(sums['Documents done']).toBe('1');
     expect(sums['Documents skipped']).toBe('1');
@@ -1544,7 +1613,7 @@ describe('the job page', () => {
       ],
     };
     const job = jobOf({ state: 'done', report: { ...REPORT, plan } });
-    const v = await mount(clientOf(job));
+    const v = await mountAll(clientOf(job));
     expect(totals(v.container).Plan).toBe(
       'Worked on all the documents at once, then in stretches of sentences. Fills: Gloss.',
     );
@@ -1577,7 +1646,7 @@ describe('the job page', () => {
         documents: docs,
       },
     });
-    const v = await mount(clientOf(job));
+    const v = await mountAll(clientOf(job));
     const rows = all(v.container, 'tbody tr').map((r) => [...r.querySelectorAll('td')].map(text));
     expect(rows.find((r) => r[0] === 'Story A').slice(1, 3)).toEqual([
       'Done',
@@ -1623,7 +1692,7 @@ describe('the job page', () => {
       ],
     };
     const job = jobOf({ state: 'done', finishedAt: '2026-11-12T11:00:00Z', report });
-    const v = await mount(clientOf(job));
+    const v = await mountAll(clientOf(job));
     const section = v.container.querySelector('section[aria-label="Report"]');
     const sums = totals(section);
     expect(sums['segmentation left blank in sentences the job changed']).toBe('1 word');
@@ -1647,7 +1716,7 @@ describe('the job page', () => {
       pausedForModelS: 300,
     };
     const job = jobOf({ state: 'done', finishedAt: '2026-11-12T11:00:00Z', report });
-    const v = await mount(clientOf(job));
+    const v = await mountAll(clientOf(job));
     const sums = totals(v.container.querySelector('section[aria-label="Report"]'));
     expect(sums['Taking turns with people using the model']).toBe('24 min');
     expect(sums['Waiting for people to finish editing']).toBe('10 min');
@@ -1684,7 +1753,7 @@ describe('the job page', () => {
       documents: docs,
       report: { ...REPORT, state: 'cancelled', documents: docs },
     });
-    const v = await mount(clientOf(job));
+    const v = await mountAll(clientOf(job));
     expect(text(v.container.querySelector('[data-testid="job-stopped-by"]'))).toMatch(
       /^Stopped by you, /,
     );
@@ -1710,7 +1779,7 @@ describe('the job page', () => {
       },
     };
     const job = jobOf({ state: 'done', finishedAt: '2026-11-12T11:00:00Z', report });
-    const v = await mount(clientOf(job));
+    const v = await mountAll(clientOf(job));
     const section = v.container.querySelector('section[aria-label="Report"]');
     expect(text(section)).toContain('nidr ‘be.3AUGII’, beside an existing entry of this form');
     await v.unmount();
@@ -1728,18 +1797,18 @@ describe('the job page', () => {
     });
     const named = clientOf(job);
     named.users = { list: vi.fn(async () => [{ id: 'u-ada', displayName: 'Ada' }]) };
-    let v = await mount(named);
+    let v = await mountAll(named);
     await v.step(async () => {});
     expect(text(v.container.querySelector('[data-testid="job-stopped-by"]'))).toMatch(
       /^Stopped by Ada, /,
     );
-    expect(text(v.container.querySelector('[data-testid="job-notice"]'))).toMatch(
+    expect(text(v.container.querySelector('[data-testid="job-undone"]'))).toMatch(
       /^Undone by another user, /,
     );
     await v.unmount();
     const refused = clientOf(job);
     refused.users = { list: vi.fn(async () => Promise.reject(new Error('HTTP 403'))) };
-    v = await mount(refused);
+    v = await mountAll(refused);
     await v.step(async () => {});
     expect(text(v.container.querySelector('[data-testid="job-stopped-by"]'))).toMatch(
       /^Stopped by another user, /,
@@ -1762,11 +1831,17 @@ describe('the job page', () => {
       report,
       undone: { operation: 'op9', time: '2026-11-12T12:00:00Z', user: 'w' },
     });
-    const v = await mount(clientOf(job));
+    const v = await mountAll(clientOf(job));
     const section = v.container.querySelector('section[aria-label="Report"]');
-    const notice = text(section.querySelector('[data-testid="job-notice"]'));
-    expect(notice).toMatch(/^Undone by you, .*\. The counts below are what the job had written\.$/);
-    expect(notice).not.toContain('unverified');
+    // The state line says who undid it and when, the headline that it is
+    // undone, and the worker's notice, which says the job's writes stand
+    // unverified, is not drawn.
+    expect(text(v.container.querySelector('[data-testid="job-undone"]'))).toMatch(
+      /^Undone by you, .*\.$/,
+    );
+    expect(text(section.querySelector('[data-testid="job-headline"]'))).toMatch(/, then undone\.$/);
+    expect(section.querySelector('[data-testid="job-notice"]')).toBeNull();
+    expect(text(section)).not.toContain('unverified');
     expect(all(section, 'h3').map((h) => h.textContent)).toContain('What the job had written');
     await v.unmount();
   });
@@ -1774,7 +1849,7 @@ describe('the job page', () => {
   it('counts the tables and notes a report too large for core could not hold', async () => {
     const report = { ...REPORT, tables: [], tablesMore: 3, notes: [], notesMore: 2 };
     const job = jobOf({ state: 'done', finishedAt: '2026-11-12T11:00:00Z', report });
-    const v = await mount(clientOf(job));
+    const v = await mountAll(clientOf(job));
     const section = v.container.querySelector('section[aria-label="Report"]');
     const headings = all(section, 'h3').map((h) => h.textContent);
     expect(headings).toContain('Tables');
@@ -1785,7 +1860,7 @@ describe('the job page', () => {
 
   it('draws no Left blank section for a job that left nothing', async () => {
     const job = jobOf({ state: 'done', finishedAt: '2026-11-12T11:00:00Z', report: REPORT });
-    const v = await mount(clientOf(job));
+    const v = await mountAll(clientOf(job));
     const section = v.container.querySelector('section[aria-label="Report"]');
     expect(all(section, 'h3').map((h) => h.textContent)).not.toContain('Left blank');
     await v.unmount();
@@ -1815,7 +1890,7 @@ describe('the job page', () => {
       analyses: [{ analysis: 'ka ‘go’', count: 1 }],
     }));
     const report = { ...REPORT, harmonize: { ...REPORT.harmonize, left, leftMore: 0 } };
-    const v = await mount(clientOf(jobOf({ state: 'done', report })));
+    const v = await mountAll(clientOf(jobOf({ state: 'done', report })));
     const section = v.container.querySelector('section[aria-label="Report"]');
     const table = byText(section, 'th', 'Reason').closest('table');
     const t = text(table);
@@ -1841,7 +1916,7 @@ describe('the job page', () => {
       },
     };
     const job = jobOf({ state: 'cancelled', report });
-    const v = await mount(clientOf(job));
+    const v = await mountAll(clientOf(job));
     const section = v.container.querySelector('section[aria-label="Report"]');
     expect(all(section, 'h3').map((h) => h.textContent)).not.toContain('Entries');
     expect(all(section, 'h3').map((h) => h.textContent)).not.toContain('Entries with no links');
@@ -1869,7 +1944,7 @@ describe('the job page', () => {
       proposedMore: 0,
     };
     const job = jobOf({ state: 'cancelled', report });
-    const v = await mount(clientOf(job));
+    const v = await mountAll(clientOf(job));
     const section = v.container.querySelector('section[aria-label="Report"]');
     const t = text(section);
     expect(t).toContain('Stopped with no worker running.');
@@ -1898,7 +1973,7 @@ describe('the job page', () => {
         ],
       },
     };
-    const v = await mount(clientOf(jobOf({ state: 'done', report })));
+    const v = await mountAll(clientOf(jobOf({ state: 'done', report })));
     const section = v.container.querySelector('section[aria-label="Report"]');
     const sums = totals(section);
     expect(sums['Thematic role']).toBe('1,107 values');
@@ -1907,7 +1982,7 @@ describe('the job page', () => {
     const labels = all(section, 'dl dt').map((dt) => dt.textContent);
     expect(labels.indexOf('Animacy')).toBe(labels.indexOf('Translations replaced') + 1);
     await v.unmount();
-    const none = await mount(clientOf(jobOf({ state: 'done', report: REPORT })));
+    const none = await mountAll(clientOf(jobOf({ state: 'done', report: REPORT })));
     expect(totals(none.container)).not.toHaveProperty('Thematic role');
     await none.unmount();
   });
@@ -1931,7 +2006,7 @@ describe('the job page', () => {
         ]),
       ],
     };
-    const v = await mount(clientOf(jobOf({ state: 'done', report })));
+    const v = await mountAll(clientOf(jobOf({ state: 'done', report })));
     const sums = totals(v.container.querySelector('section[aria-label="Report"]'));
     expect(sums['Thematic role']).toBe('10 values');
     expect(sums['Animacy']).toBe('2 values');
@@ -1960,7 +2035,7 @@ describe('the job page', () => {
         ]),
       ],
     };
-    const v = await mount(clientOf(jobOf({ state: 'done', report })));
+    const v = await mountAll(clientOf(jobOf({ state: 'done', report })));
     const sums = totals(v.container.querySelector('section[aria-label="Report"]'));
     expect(sums['Role']).toBe('5 values');
     expect(sums).not.toHaveProperty('Thematic role');
@@ -1987,7 +2062,7 @@ describe('the job page', () => {
         ],
       },
     };
-    let v = await mount(clientOf(jobOf({ state: 'done', setup, report })));
+    let v = await mountAll(clientOf(jobOf({ state: 'done', setup, report })));
     let sums = totals(v.container.querySelector('section[aria-label="Report"]'));
     expect(sums['Gloss']).toBe('1 value, not in the setup');
     expect(sums['Thematic role']).toBe('9 values');
@@ -2007,14 +2082,14 @@ describe('the job page', () => {
         doc('b', { fields: [{ field: 'Thematic role', id: 'L1', values: 3 }] }),
       ],
     };
-    v = await mount(clientOf(jobOf({ state: 'done', setup, report: fromRows })));
+    v = await mountAll(clientOf(jobOf({ state: 'done', setup, report: fromRows })));
     sums = totals(v.container.querySelector('section[aria-label="Report"]'));
     expect(sums['Gloss']).toBe('2 values, not in the setup');
     expect(sums['Thematic role']).toBe('3 values');
     expect(sums['Values not in the setup']).toBe('2');
     await v.unmount();
 
-    v = await mount(clientOf(jobOf({ state: 'done', report: REPORT })));
+    v = await mountAll(clientOf(jobOf({ state: 'done', report: REPORT })));
     expect(totals(v.container)).not.toHaveProperty('Values not in the setup');
     await v.unmount();
   });
@@ -2040,7 +2115,7 @@ describe('the job page', () => {
         ],
       },
     };
-    let v = await mount(clientOf(jobOf({ state: 'done', setup, report })));
+    let v = await mountAll(clientOf(jobOf({ state: 'done', setup, report })));
     let sums = totals(v.container.querySelector('section[aria-label="Report"]'));
     expect(sums['Gloss']).toBe('3 values, not in the setup');
     expect(sums['Morph Gloss']).toBe('2 values, not in the setup');
@@ -2063,7 +2138,7 @@ describe('the job page', () => {
         }),
       ],
     };
-    v = await mount(clientOf(jobOf({ state: 'done', setup, report: fromRows })));
+    v = await mountAll(clientOf(jobOf({ state: 'done', setup, report: fromRows })));
     sums = totals(v.container.querySelector('section[aria-label="Report"]'));
     expect(sums['Morph Gloss']).toBe('3 values, not in the setup');
     expect(sums['Thematic role']).toBe('3 values');
@@ -2091,7 +2166,7 @@ describe('the job page', () => {
       proposedMore: 0,
     };
     const job = jobOf({ state: 'done', finishedAt: '2026-11-12T11:00:00Z', report });
-    const v = await mount(clientOf(job));
+    const v = await mountAll(clientOf(job));
     const section = v.container.querySelector('section[aria-label="Report"]');
     const tables = all(section, 'table').filter((t) => text(t).includes('From'));
     expect(tables).toHaveLength(2);
@@ -2114,14 +2189,14 @@ describe('the job page', () => {
       summary: 'Filled **Word class** on `doa`.\n\n- first check s3',
       summaryBy: 'model',
     };
-    const v = await mount(clientOf(jobOf({ state: 'done', report })));
+    const v = await mountAll(clientOf(jobOf({ state: 'done', report })));
     const section = v.container.querySelector('section[aria-label="Report"]');
     const line = section.querySelector('[data-testid="job-notice"]');
     expect(text(line)).toBe(notice);
     const order = [...section.querySelectorAll('[data-testid="job-notice"], h3')].map((el) =>
       el.tagName === 'H3' ? el.textContent : 'notice',
     );
-    expect(order.slice(0, 3)).toEqual(['notice', 'Totals', 'Assistant’s summary']);
+    expect(order.slice(0, 4)).toEqual(['notice', 'To check', 'Totals', 'Assistant’s summary']);
     const summary = section.querySelector('[data-testid="job-summary"]');
     expect(text(summary.previousElementSibling)).toBe(
       'Written by the assistant, not checked against the counts above.',
@@ -2132,7 +2207,7 @@ describe('the job page', () => {
     expect(text(summary)).not.toContain('**');
     await v.unmount();
     // No line when the worker wrote none.
-    const plain = await mount(clientOf(jobOf({ state: 'done', report: REPORT })));
+    const plain = await mountAll(clientOf(jobOf({ state: 'done', report: REPORT })));
     expect(plain.container.querySelector('[data-testid="job-notice"]')).toBeNull();
     await plain.unmount();
   });
@@ -2151,13 +2226,13 @@ describe('the job page', () => {
         { documentId: 'd1', name: 'Story A', counts: { wordsAdded: 1, tokensChanged: 1 } },
       ],
     };
-    const v = await mount(clientOf(jobOf({ state: 'cancelled', report })));
+    const v = await mountAll(clientOf(jobOf({ state: 'cancelled', report })));
     expect(text(v.container.querySelector('[data-testid="job-notice"]'))).toBe(
       "People's work: 2 values, morphemes or links people wrote were changed or removed. What the job wrote in their place is unverified. Text: 1 word added, 1 existing word or punctuation mark changed or removed.",
     );
     await v.unmount();
     // A worker's report that says it has no line keeps none.
-    const none = await mount(
+    const none = await mountAll(
       clientOf(jobOf({ state: 'done', report: { ...report, state: 'done', notice: null } })),
     );
     expect(none.container.querySelector('[data-testid="job-notice"]')).toBeNull();
@@ -2173,7 +2248,7 @@ describe('the job page', () => {
         { document: 'd1', name: 'Story A', sentences: 's1 to s5', note: 'Left **s3** blank.' },
       ],
     };
-    const v = await mount(clientOf(jobOf({ state: 'done', report })));
+    const v = await mountAll(clientOf(jobOf({ state: 'done', report })));
     const section = v.container.querySelector('section[aria-label="Report"]');
     expect(all(section, 'h3').map((h) => h.textContent)).not.toContain('Notes');
     expect(text(section)).not.toContain('Left s3 blank.');
@@ -2193,7 +2268,7 @@ describe('the job page', () => {
         ],
       },
     };
-    let v = await mount(clientOf(jobOf({ state: 'done', report })));
+    let v = await mountAll(clientOf(jobOf({ state: 'done', report })));
     expect(totals(v.container)['Changes written']).toBe('253 (102 word analyses and 151 links)');
     await v.unmount();
     // REV-RPF2-2: values set on their own said so beside analyses, and what
@@ -2210,7 +2285,7 @@ describe('the job page', () => {
         ],
       },
     };
-    v = await mount(clientOf(jobOf({ state: 'done', report: held })));
+    v = await mountAll(clientOf(jobOf({ state: 'done', report: held })));
     expect(totals(v.container)['Changes written']).toBe(
       '6 (3 values on their own and 3 word analyses holding 5 morphemes and 5 values)',
     );
@@ -2231,7 +2306,7 @@ describe('the job page', () => {
         },
       })),
     };
-    v = await mount(clientOf(jobOf({ state: 'done', report: heldCore })));
+    v = await mountAll(clientOf(jobOf({ state: 'done', report: heldCore })));
     expect(totals(v.container)['Changes written']).toBe(
       '6 (3 values on their own and 3 word analyses holding 5 morphemes and 5 values)',
     );
@@ -2261,7 +2336,7 @@ describe('the job page', () => {
         },
       ],
     };
-    v = await mount(clientOf(jobOf({ state: 'done', report: core })));
+    v = await mountAll(clientOf(jobOf({ state: 'done', report: core })));
     expect(totals(v.container)['Changes written']).toBe('193 (178 values and 14 text edits)');
     await v.unmount();
     // Every kind has its words.
@@ -2276,7 +2351,7 @@ describe('the job page', () => {
         })),
       },
     };
-    v = await mount(clientOf(jobOf({ state: 'done', report: every })));
+    v = await mountAll(clientOf(jobOf({ state: 'done', report: every })));
     expect(totals(v.container)['Changes written']).toBe(
       '7 (1 value on its own, 1 word analysis, 1 link, 1 lexicon entry, 1 text edit and 1 other change)',
     );
@@ -2303,7 +2378,7 @@ describe('the job page', () => {
         },
       ],
     };
-    const v = await mount(clientOf(jobOf({ state: 'done', report })));
+    const v = await mountAll(clientOf(jobOf({ state: 'done', report })));
     const section = v.container.querySelector('section[aria-label="Report"]');
     const sums = totals(section);
     expect(sums['Word class left blank in sentences the job changed']).toBe('2 words');
@@ -2329,7 +2404,7 @@ describe('the job page', () => {
         },
       ],
     };
-    const v = await mount(clientOf(jobOf({ state: 'done', report })));
+    const v = await mountAll(clientOf(jobOf({ state: 'done', report })));
     expect(text(v.container)).toContain('s2 Value on a word or sentence the job did not add');
     await v.unmount();
   });
@@ -2350,7 +2425,7 @@ describe('the job page', () => {
         },
       ],
     };
-    const v = await mount(clientOf(jobOf({ state: 'done', report })));
+    const v = await mountAll(clientOf(jobOf({ state: 'done', report })));
     expect(text(v.container)).toContain('s1 Outside the part’s own sentences');
     await v.unmount();
   });
@@ -2371,8 +2446,11 @@ describe('the job page', () => {
     const v = await mount(clientOf(jobOf({ state: 'done', report })));
     const block = v.container.querySelector('[data-testid="job-findings"]');
     expect(block).not.toBeNull();
-    // Before the job's facts and the report.
+    // First in the Overview's report, under its headline: before what to
+    // check and the totals.
     const facts = v.container.querySelector('dl');
+    const toCheck = byText(v.container, 'h3', 'To check');
+    expect(block.compareDocumentPosition(toCheck) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(block.compareDocumentPosition(facts) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(block.querySelector('h2, h3').textContent).toBe('Findings');
     // The model's own text, marked as the summary is (REV-RPF-P-4).
@@ -2397,7 +2475,7 @@ describe('the job page', () => {
       { field: 'Gloss', id: 'g', values: 1 },
     ];
     const report = { ...REPORT, totals: { ...REPORT.totals, fields } };
-    const v = await mount(clientOf(jobOf({ state: 'done', report })));
+    const v = await mountAll(clientOf(jobOf({ state: 'done', report })));
     expect(totals(v.container)['Morph Gloss']).toBe('8 values (7 in word analyses)');
     expect(totals(v.container).Gloss).toBe('1 value');
     await v.unmount();
@@ -2411,7 +2489,7 @@ describe('the job page', () => {
       totals: { ...REPORT.totals, changes: 0, proposed: 0 },
     };
     const line = (c) => c.querySelector('[data-testid="job-findings-pieces"]')?.textContent ?? null;
-    let v = await mount(
+    let v = await mountAll(
       clientOf(
         jobOf({
           state: 'done',
@@ -2423,7 +2501,7 @@ describe('the job page', () => {
       'Findings of 59 of 80 parts are shown here, each under its heading. 21 are left out: each part’s findings are on its row of the work list.',
     );
     await v.unmount();
-    v = await mount(
+    v = await mountAll(
       clientOf(
         jobOf({
           state: 'done',
@@ -2433,7 +2511,7 @@ describe('the job page', () => {
     );
     expect(line(v.container)).toBe('Findings of 2 parts, each under its heading.');
     await v.unmount();
-    v = await mount(
+    v = await mountAll(
       clientOf(jobOf({ state: 'done', report: { ...base, findings: 'One report.' } })),
     );
     expect(line(v.container)).toBeNull();
@@ -2448,12 +2526,14 @@ describe('the job page', () => {
       leftOut: [],
       fillsNames: ['Gloss'],
     });
-    let v = await mount(clientOf(jobOf({ state: 'done', report: { ...REPORT, plan: plan([]) } })));
+    let v = await mountAll(
+      clientOf(jobOf({ state: 'done', report: { ...REPORT, plan: plan([]) } })),
+    );
     expect(totals(v.container).Plan).toBe('Worked on all the documents at once. Fills: Gloss.');
     await v.unmount();
     // Five documents whose write was put off, each worked in stretches after it.
     const fallback = [1, 2, 3, 4, 5].map((n) => ({ documentId: `d${n}`, reason: 'in-use' }));
-    v = await mount(
+    v = await mountAll(
       clientOf(jobOf({ state: 'done', report: { ...REPORT, plan: plan(fallback) } })),
     );
     expect(totals(v.container).Plan).toBe(
@@ -2468,7 +2548,7 @@ describe('the job page', () => {
       ...REPORT,
       totals: { ...REPORT.totals, textChanges: 14, wordsAdded: 25, tokensChanged: 2 },
     };
-    const v = await mount(clientOf(jobOf({ state: 'done', report })));
+    const v = await mountAll(clientOf(jobOf({ state: 'done', report })));
     const sums = totals(v.container.querySelector('section[aria-label="Report"]'));
     expect(sums['Words added']).toBe('25');
     expect(sums['Existing words or punctuation marks changed or removed']).toBe('2');
@@ -2483,7 +2563,7 @@ describe('the job page', () => {
         }),
       },
     };
-    const v = await mount(client);
+    const v = await mountAll(client);
     expect(text(v.container)).toContain('Job not found.');
     expect(byText(v.container, 'a', 'All jobs').getAttribute('href')).toBe('/projects/p1?tab=jobs');
     await v.unmount();
@@ -2533,7 +2613,7 @@ describe('the job page', () => {
         documents: searchDocs,
         report: { ...REPORT, plan: planOf(), documents: searchDocs },
       });
-      const v = await mount(clientOf(job));
+      const v = await mountAll(clientOf(job));
       expect(totals(v.container).Plan).toBe(
         'Worked in stretches of sentences, only the sentences matching \u2068Gloss "be.3ᴀᴜɢII"\u2069: ' +
           '33 sentences in 24 documents. Fills: Gloss.',
@@ -2544,7 +2624,7 @@ describe('the job page', () => {
         documents: searchDocs,
         report: { ...REPORT, plan: planOf({ onlyEmpty: true }), documents: searchDocs },
       });
-      const w = await mount(clientOf(both));
+      const w = await mountAll(clientOf(both));
       expect(totals(w.container).Plan).toBe(
         'Worked in stretches of sentences, only the sentences matching \u2068Gloss "be.3ᴀᴜɢII"\u2069: ' +
           '33 sentences in 24 documents, of them only those with something empty. Fills: Gloss.',
@@ -2564,7 +2644,7 @@ describe('the job page', () => {
           documents: searchDocs,
         },
       });
-      const v = await mount(clientOf(job));
+      const v = await mountAll(clientOf(job));
       expect(totals(v.container).Plan).toContain(
         'matching \u2068word form "שלום"\u2069: 33 sentences',
       );
@@ -2585,7 +2665,7 @@ describe('the job page', () => {
           documents: searchDocs,
         },
       });
-      const v = await mount(clientOf(job));
+      const v = await mountAll(clientOf(job));
       const rows = all(v.container, 'tbody tr').map((r) => [...r.querySelectorAll('td')].map(text));
       expect(rows[0].slice(0, 3)).toEqual([
         'Story A',
@@ -2614,7 +2694,7 @@ describe('the job page', () => {
         entries: [{ seq: '000000', piece: { plan: planOf(), steps: 2 } }],
         nextCursor: null,
       }));
-      const v = await mount(client);
+      const v = await mountAll(client);
       const rows = all(v.container, 'tbody tr').map((r) => [...r.querySelectorAll('td')].map(text));
       expect(rows[0][2]).toBe('0 of 3 matching, 17 not found by the plan’s search');
       await v.unmount();
@@ -2627,7 +2707,7 @@ describe('the job page', () => {
         documents: docs,
         report: { ...REPORT, plan: planOf({ onlyEmpty: true }), documents: docs },
       });
-      const v = await mount(clientOf(job));
+      const v = await mountAll(clientOf(job));
       const rows = all(v.container, 'tbody tr').map((r) => [...r.querySelectorAll('td')].map(text));
       expect(rows[0][2]).toBe(
         '1 of 1 matching, 19 not found by the plan’s search or with nothing to fill',

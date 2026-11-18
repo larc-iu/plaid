@@ -3,12 +3,13 @@ import { MemoryRouter } from 'react-router-dom';
 import { renderComponent, byText, all } from '@ui/test/renderComponent.jsx';
 import { ConfirmProvider } from '@ui/components/shared/ConfirmProvider';
 
-// The job page's list of the job's work (BRIEF LV, "Work so far" while it runs, "Work, in order" once it has ended): a row per piece of the job's work as its
-// worker summed it up, newest first, read again with each read of the job,
-// capped at the tall list's page with Show more, kept above the report once
-// the job has ended. The plan's row is the page's Plan line above the list,
-// from the moment planning ends (RPF-P4). And each document's Changes link
-// while the job runs says it is so far.
+// The job page's list of the job's work (BRIEF LV, "Work so far" on the
+// Overview while it runs, the Notes section once it has ended): a row per
+// piece of the job's work as its worker summed it up, newest first, read again
+// with each read of the job, on the shared pager at the tall list's page. The
+// plan's row is the Overview's Plan line above the list, from the moment
+// planning ends (RPF-P4). And each document's Changes link while the job runs
+// says it is so far.
 const auth = vi.hoisted(() => ({ user: { id: 'w', isAdmin: false } }));
 vi.mock('../../../contexts/AuthContext', () => ({ useAuth: () => auth }));
 vi.mock('@/utils/feedback', () => ({ notifyError: vi.fn() }));
@@ -110,9 +111,9 @@ const clientOf = (jobs, pages) => {
   };
 };
 
-const mount = (client) =>
+const mount = (client, query = '') =>
   renderComponent(
-    <MemoryRouter>
+    <MemoryRouter initialEntries={[`/projects/p1/jobs/j1${query}`]}>
       <ConfirmProvider>
         <JobPage project={PROJECT} projectId="p1" jobId="j1" client={client} />
       </ConfirmProvider>
@@ -120,15 +121,11 @@ const mount = (client) =>
   );
 
 const activity = (root) =>
-  root.querySelector('section[aria-label="Work so far"], section[aria-label="Work, in order"]');
+  root.querySelector('section[aria-label="Work so far"], section[aria-label="Notes"]');
 const rows = (root) => all(activity(root), '[data-testid="job-activity"] > li');
 const text = (el) => el.textContent.replace(/\s+/g, ' ').trim();
-// The job's facts, label to value.
-const facts = (root) =>
-  Object.fromEntries(
-    all(root, 'dl dt').map((dt) => [dt.textContent, dt.nextElementSibling.textContent]),
-  );
-
+// The Overview's Plan line while the job runs.
+const planLine = (root) => root.querySelector('[data-testid="job-plan"]');
 beforeEach(() => {
   auth.user = { id: 'w', isAdmin: false };
   localStorage.clear();
@@ -157,13 +154,15 @@ describe('the job page’s list of its work', () => {
     );
     const v = await mount(client);
     expect(rows(v.container)).toHaveLength(0);
-    expect(facts(v.container).Plan).toBeUndefined();
+    expect(planLine(v.container)).toBeNull();
     await v.step(() => vi.advanceTimersByTimeAsync(JOB_POLL_MS));
     // RP-9: the plan, the one statement of what a job from the form fills,
     // while the job runs, above the list and not in it.
     expect(rows(v.container)).toHaveLength(0);
-    expect(facts(v.container).Plan).toBe('Worked in stretches of sentences. Fills: Gloss.');
-    const plan = byText(v.container, 'dt', 'Plan');
+    expect(text(planLine(v.container))).toBe(
+      'Plan Worked in stretches of sentences. Fills: Gloss.',
+    );
+    const plan = planLine(v.container);
     expect(
       plan.compareDocumentPosition(activity(v.container)) & Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy();
@@ -202,7 +201,7 @@ describe('the job page’s list of its work', () => {
     await v.unmount();
   });
 
-  it('shows the newest page and more on Show more, and reads the plan once past the first page', async () => {
+  it('shows the newest page, reads more on the next page, and reads the plan once past the first page', async () => {
     const client = clientOf(
       [jobOf()],
       [page([SECOND, FIRST], 'c'), page([SECOND, FIRST, PLAN]), page([SECOND, FIRST, PLAN])],
@@ -211,14 +210,21 @@ describe('the job page’s list of its work', () => {
     expect(rows(v.container)).toHaveLength(2);
     // The plan's row is the oldest: read once, at the route's cap.
     expect(client.jobs.piecesPage).toHaveBeenNthCalledWith(2, 'j1', { limit: 1000 });
-    expect(facts(v.container).Plan).toBe('Worked in stretches of sentences. Fills: Gloss.');
-    await v.step(() => byText(activity(v.container), 'button', 'Show more').click());
+    expect(text(planLine(v.container))).toBe(
+      'Plan Worked in stretches of sentences. Fills: Gloss.',
+    );
+    // The pager says there is more than is read, and its next page reads it.
+    expect(text(activity(v.container))).toContain('1–2 of 2+');
+    await v.step(() =>
+      activity(v.container).querySelector('button[aria-label="Next page"]').click(),
+    );
     expect(client.jobs.piecesPage).toHaveBeenLastCalledWith('j1', {
       limit: 2 * TALL_LIST_PAGE_SIZE,
     });
     expect(client.jobs.piecesPage).toHaveBeenCalledTimes(3);
     expect(rows(v.container)).toHaveLength(2);
-    expect(all(activity(v.container), 'button')).toHaveLength(0);
+    // All of it read: one page, and no pager.
+    expect(activity(v.container).querySelector('button[aria-label="Next page"]')).toBeNull();
     await v.unmount();
   });
 
@@ -497,11 +503,15 @@ describe('the job page’s list of its work', () => {
         finishedAt: '2026-11-12T11:00:00Z',
         report: { totals: { documentsDone: 1, sentences: 0 }, documents: [], ...report },
       });
-    let v = await mount(clientOf([ended({ findings: '## Odd\n\n- ka.' })], [page([found])]));
+    let v = await mount(
+      clientOf([ended({ findings: '## Odd\n\n- ka.' })], [page([found])]),
+      '?view=notes',
+    );
     expect(byText(rows(v.container)[0], 'button', 'Show findings')).toBeNull();
     await v.unmount();
     v = await mount(
       clientOf([ended({ findings: 'cut', findingsPieces: 80, findingsCut: 48 })], [page([found])]),
+      '?view=notes',
     );
     expect(byText(rows(v.container)[0], 'button', 'Show findings')).toBeTruthy();
     await v.unmount();
@@ -518,19 +528,21 @@ describe('the job page’s list of its work', () => {
     await v.unmount();
   });
 
-  it('keeps the rows above the report once the job has ended', async () => {
+  it('moves the rows to the Notes section once the job has ended', async () => {
     const ended = jobOf({
       state: 'done',
       finishedAt: '2026-11-12T11:00:00Z',
       report: { totals: { documentsDone: 1, sentences: 2 }, documents: [] },
     });
-    const v = await mount(clientOf([ended], [page([FIRST, PLAN])]));
+    let v = await mount(clientOf([ended], [page([FIRST, PLAN])]));
+    // The Overview has the report, and a Notes section counts the rows.
+    expect(activity(v.container)).toBeNull();
+    expect(v.container.querySelector('section[aria-label="Report"]')).not.toBeNull();
+    expect(text(byText(v.container, '[role="tab"]', 'Notes'))).toBe('Notes1');
+    await v.unmount();
+    v = await mount(clientOf([ended], [page([FIRST, PLAN])]), '?view=notes');
     expect(rows(v.container)).toHaveLength(1);
-    expect(activity(v.container).getAttribute('aria-label')).toBe('Work, in order');
-    const report = v.container.querySelector('section[aria-label="Report"]');
-    expect(
-      activity(v.container).compareDocumentPosition(report) & Node.DOCUMENT_POSITION_FOLLOWING,
-    ).toBeTruthy();
+    expect(activity(v.container).getAttribute('aria-label')).toBe('Notes');
     await v.unmount();
   });
 
@@ -542,12 +554,12 @@ describe('the job page’s list of its work', () => {
   });
 
   it('says a document’s Changes are so far while the job runs', async () => {
-    const v = await mount(clientOf([jobOf()], [page([])]));
+    const v = await mount(clientOf([jobOf()], [page([])]), '?view=documents');
     const link = byText(v.container, 'a', 'Changes so far');
     expect(link.getAttribute('href')).toBe('/projects/p1/documents/d1?history=g-d1');
     await v.unmount();
     const ended = jobOf({ state: 'done', finishedAt: '2026-11-12T11:00:00Z' });
-    const w = await mount(clientOf([ended], [page([])]));
+    const w = await mount(clientOf([ended], [page([])]), '?view=documents');
     expect(byText(w.container, 'a', 'Changes').getAttribute('href')).toBe(
       '/projects/p1/documents/d1?history=g-d1',
     );
@@ -567,7 +579,7 @@ describe('the job page’s list of its work', () => {
       finishedAt: '2026-11-12T11:00:00Z',
       report: { totals: { documentsDone: 1, sentences: 2 }, documents: [] },
     });
-    const short = await mount(clientOf([ended], [page([FIRST, PLAN])]));
+    const short = await mount(clientOf([ended], [page([FIRST, PLAN])]), '?view=notes');
     // The document counts 4 words and 6 changes, the row 4 and 6: nothing short.
     expect(short.container.querySelector('[data-testid="job-activity-short"]')).toBe(null);
     await short.unmount();
@@ -575,9 +587,9 @@ describe('the job page’s list of its work', () => {
       ...ended,
       documents: [{ ...ended.documents[0], counts: { words: 7, changes: 6 } }],
     });
-    const v = await mount(clientOf([more], [page([FIRST, PLAN])]));
+    const v = await mount(clientOf([more], [page([FIRST, PLAN])]), '?view=notes');
     expect(text(v.container.querySelector('[data-testid="job-activity-short"]'))).toBe(
-      'Some finished work is not listed here. The report below counts all of it.',
+      'Some finished work is not listed here. The totals count all of it.',
     );
     await v.unmount();
     // Not while the job runs.
@@ -587,15 +599,22 @@ describe('the job page’s list of its work', () => {
   });
 
   it('stops offering more at the route’s cap of 1,000 and says so', async () => {
+    // Page 40 of the work so far: 40 pages of 25 are the route's cap.
     const client = clientOf([jobOf()], [page([SECOND, FIRST], 'c')]);
-    const v = await mount(client);
-    for (let i = 0; i < 39; i++) {
-      await v.step(() => byText(activity(v.container), 'button', 'Show more').click());
-    }
-    expect(client.jobs.piecesPage).toHaveBeenLastCalledWith('j1', { limit: 1000 });
-    expect(all(activity(v.container), 'button')).toHaveLength(0);
+    const v = await mount(client, '?page=40');
+    expect(client.jobs.piecesPage).toHaveBeenCalledWith('j1', { limit: 1000 });
+    expect(text(activity(v.container))).not.toContain('2+');
     expect(text(activity(v.container))).toContain('Only the newest 1,000 are listed.');
     await v.unmount();
+    // Once it has ended, every row is read at the cap, and a cut says so too.
+    const ended = jobOf({
+      state: 'done',
+      finishedAt: '2026-11-12T11:00:00Z',
+      report: { totals: {}, documents: [] },
+    });
+    const w = await mount(clientOf([ended], [page([SECOND, FIRST], 'c')]), '?view=notes');
+    expect(text(activity(w.container))).toContain('Only the newest 1,000 are listed.');
+    await w.unmount();
   });
 
   it('leaves its plan out once the job has ended and the page says the plan', async () => {
@@ -608,7 +627,7 @@ describe('the job page’s list of its work', () => {
         documents: [],
       },
     });
-    const v = await mount(clientOf([ended], [page([FIRST, PLAN])]));
+    const v = await mount(clientOf([ended], [page([FIRST, PLAN])]), '?view=notes');
     expect(rows(v.container).map((li) => li.dataset.seq)).toEqual(['000001']);
     await v.unmount();
   });

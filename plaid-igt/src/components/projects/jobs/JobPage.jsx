@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { Link, useSearchParams } from 'react-router-dom';
 import { ArrowLeft } from 'lucide-react';
 import { useAuth } from '../../../contexts/AuthContext';
 import { notifyError } from '@/utils/feedback';
@@ -7,14 +7,18 @@ import { Button } from '@ui/components/ui/button';
 import { Badge } from '@ui/components/ui/badge';
 import { useConfirm } from '@ui/components/shared/ConfirmProvider';
 import { DataTable } from '@ui/components/shared/data-table';
+import { SegmentedControl } from '@ui/components/shared/SegmentedControl.jsx';
+import { Tabs, TabsList, TabsTrigger } from '@ui/components/ui/tabs';
 import { LoadError } from '@ui/components/shared/LoadError.jsx';
 import { Loading } from '@ui/components/shared/Loading.jsx';
 import { SectionHeader } from '@ui/components/shared/SectionHeader.jsx';
-import { TYPE } from '@ui/lib/typeScale.js';
 import { fullTimestamp, timeAgo } from '@ui/lib/formatTime.js';
 import { projectNotFound } from '@ui/lib/errors.js';
 import { canEditProject, canManageProject, canStopJob } from '@ui/domain/permissions.js';
 import { historyHref } from '@ui/hooks/useHistoryParam.js';
+import { useTabParam } from '@ui/hooks/useTabParam.js';
+import { TALL_LIST_PAGE_SIZE } from '@ui/hooks/usePagedList.js';
+import { compareNames, textIncludes } from '@ui/domain/collation.js';
 import { UndoDialog } from '../../documents/history/UndoDialog.jsx';
 import { jobPlacer } from '@/domain/undoPlaces.js';
 import { jobUndoError } from '@/domain/undoSummary.js';
@@ -35,16 +39,19 @@ import {
   jobStateText,
   jobStoppable,
 } from '@ui/domain/jobs.js';
-import { JobFindings, JobReport } from './JobReport.jsx';
 import { JobHistoryLinks } from './JobHistoryLinks.jsx';
 import { assistantTabPath } from '../assistant/adapter.js';
 import { JobActivity } from './JobActivity.jsx';
+import { PIECES_MAX, pageOfParam, useJobPieces } from './jobPieces.js';
+import { ReportOverview, ReportSection } from './JobSections.jsx';
+import { documentChecks, jobSections } from './jobOverview.js';
 import { FillsNames } from './jobLines.jsx';
 import {
   aheadText,
   durationText,
   jobEditedText,
   jobName,
+  jobPath,
   jobsTabPath,
   changesGroup,
   leftText,
@@ -59,11 +66,19 @@ import {
 } from './jobText.js';
 
 /**
- * A job's own page, `/projects/:projectId/jobs/:jobId`: its state, each of its
- * documents, what each piece of its work did as it finishes (Work so far, kept
- * above the report once the job has ended), Stop for whoever may, and once it
- * has ended its report. Read
- * again every JOB_POLL_MS while the job is active, and once otherwise.
+ * A job's own page, `/projects/:projectId/jobs/:jobId`: its actions (Undo
+ * job, Discuss with the assistant, Stop for whoever may), a line of its state,
+ * and its sections, in the address (`?view=`, `jobSections`).
+ *
+ * While the job waits or runs: Overview (its instructions, its plan and its
+ * work so far, filling in), Documents (each document's progress) and Setup.
+ * Once it has ended: Overview (what it changed in one sentence, what needs a
+ * person, the totals and the assistant's summary), Documents, Notes (each
+ * piece of its work as it finished), a section for each list its report holds
+ * (Left blank, Skipped, Proposed and the rest), and Setup. A section with
+ * nothing in it is not drawn, and an address naming one the job does not
+ * have opens Overview. Read again every JOB_POLL_MS while the job is active,
+ * and once otherwise.
  *
  * It is a place the assistant reads, as a document is: the panel's turns are
  * asked from the job, and the service gives the model the job's summary. An
@@ -72,6 +87,7 @@ import {
 export const JobPage = ({ project, projectId, jobId, client }) => {
   const { user } = useAuth();
   const confirm = useConfirm();
+  const [params] = useSearchParams();
   const [job, setJob] = useState(null);
   // When the job shown was read, which is as far as its elapsed time runs.
   const [readAt, setReadAt] = useState(null);
@@ -83,15 +99,37 @@ export const JobPage = ({ project, projectId, jobId, client }) => {
   // `undone`): its entry in the first of the job's documents whose History
   // has it, or null until found or where none does.
   const [undoneHref, setUndoneHref] = useState(null);
-  // The plan as its row in the work list gives it, while the report has none
-  // (JobActivity): the job's plan from the moment planning ends (RP-9).
-  const [livePlan, setLivePlan] = useState(null);
-  useEffect(() => setLivePlan(null), [jobId]);
   const undoneOp = job?.undone?.operation ?? null;
   // The names of who stopped or undid the job, where the directory is open
   // to the reader (REV-RPF3-6).
   const names = usePeopleNames(client, [job?.cancelledBy, job?.undone?.user], job, user);
   const documentIds = (job?.documents || []).map((d) => d.documentId).join(',');
+  const active = !!job && isJobActive(job);
+  // The work list's rows: while the job is active as many as the page in the
+  // address reaches, once it has ended all of them (JobActivity). The plan as
+  // its row gives it, while the report has none, from the moment planning
+  // ends (RP-9).
+  const pieces = useJobPieces(
+    client,
+    jobId,
+    readAt,
+    active
+      ? Math.min(PIECES_MAX, (pageOfParam(params.get('page')) + 1) * TALL_LIST_PAGE_SIZE)
+      : PIECES_MAX,
+    !!job,
+  );
+  const sections = useMemo(
+    () => (job ? jobSections(job, pieces.page ? pieces.rows.length : null, project?.vocabs) : []),
+    [job, pieces.page, pieces.rows.length, project?.vocabs],
+  );
+  const keys = useMemo(() => sections.map((s) => s.key), [sections]);
+  // The sections can still grow until the job has ended and its work list
+  // has been read: an address naming one is kept until then.
+  const [view, setView, viewHref] = useTabParam(keys, 'overview', {
+    param: 'view',
+    ready: !!job && !active && !!pieces.page,
+    clears: SECTION_PARAMS,
+  });
   useEffect(() => {
     setUndoneHref(null);
     if (!undoneOp) return undefined;
@@ -206,13 +244,19 @@ export const JobPage = ({ project, projectId, jobId, client }) => {
   if (!job) return <Loading />;
 
   const stoppable = jobStoppable(job) && canStopJob(job, project, user);
-  const discussable = !isJobActive(job) && !!job.report;
+  const discussable = !active && !!job.report;
   // A maintainer undoes an ended job whole, documents and lexicon together.
   // Not while it stands undone: a redo, from History, offers it again. Not
   // for a job that wrote nothing (RP-4).
-  const undoable =
-    !isJobActive(job) && canManageProject(project, user) && !job.undone && !wroteNothing(job);
-  const findings = typeof job.report?.findings === 'string' ? job.report.findings : '';
+  const undoable = !active && canManageProject(project, user) && !job.undone && !wroteNothing(job);
+  const plan = job.report?.plan ?? pieces.plan;
+  const at = jobPath(projectId, jobId);
+  // A section of the page, with a filter of its list where one is given.
+  const sectionHref = (key, filter) => {
+    const href = viewHref(at, key);
+    if (!filter) return href;
+    return `${href}${href.includes('?') ? '&' : '?'}filter=${encodeURIComponent(filter)}`;
+  };
 
   // After an undo: the job read again, which says it stands undone.
   const afterUndo = async (res) => {
@@ -231,6 +275,7 @@ export const JobPage = ({ project, projectId, jobId, client }) => {
       {back}
       <SectionHeader
         title="Job"
+        className="mb-3"
         actions={
           (stoppable || discussable || undoable) && (
             <div className="flex gap-2">
@@ -249,29 +294,7 @@ export const JobPage = ({ project, projectId, jobId, client }) => {
           )
         }
       />
-      <JobStatus job={job} user={user} names={names} />
-      <JobSetup job={job} projectId={projectId} user={user} />
-      {job.undone && (
-        <p className="-mt-4 mb-6 text-sm" data-testid="job-undone">
-          Job undone {fullTimestamp(job.undone.time)}.
-          {undoneHref && (
-            <>
-              {' '}
-              <Link to={undoneHref} className="text-primary hover:underline">
-                Show in History
-              </Link>
-            </>
-          )}
-        </p>
-      )}
-      {/* The one report of a job that fills nothing, first (RP-4). */}
-      {findings && (
-        <JobFindings
-          findings={findings}
-          pieces={job.report.findingsPieces}
-          cut={job.report.findingsCut}
-        />
-      )}
+      <JobStatus job={job} user={user} names={names} readAt={readAt} undoneHref={undoneHref} />
       {undoable && (
         <UndoDialog
           open={undoOpen}
@@ -290,24 +313,87 @@ export const JobPage = ({ project, projectId, jobId, client }) => {
           onUndone={afterUndo}
         />
       )}
-      <JobFacts job={job} readAt={readAt} plan={job.report?.plan ?? livePlan} />
-      <h3 className={`${TYPE.card} mb-2 mt-8`}>Documents</h3>
-      <JobDocuments job={job} projectId={projectId} plan={job.report?.plan ?? livePlan} />
-      <JobActivity
-        client={client}
-        job={job}
-        projectId={projectId}
-        readAt={readAt}
-        onPlan={setLivePlan}
-      />
-      {job.report && (
-        <JobReport
-          report={job.report}
-          projectId={projectId}
-          vocabs={project.vocabs || []}
-          undone={job.undone ?? null}
-          undoneBy={job.undone ? whoText(job.undone.user, job, user, names) : null}
-        />
+      <div className="mb-6 border-b">
+        <Tabs value={view} onValueChange={setView}>
+          <TabsList className="border-b-0">
+            {sections.map((s) => (
+              <TabsTrigger key={s.key} value={s.key} to={viewHref(at, s.key)}>
+                {s.label}
+                {s.count !== undefined && (
+                  <span className="text-xs tabular-nums text-muted-foreground">
+                    {s.count.toLocaleString()}
+                  </span>
+                )}
+              </TabsTrigger>
+            ))}
+          </TabsList>
+        </Tabs>
+      </div>
+      <div role="tabpanel" data-view={view}>
+        {view === 'overview' && (
+          <>
+            <Instructions text={job.instructions} />
+            <JobSetup job={job} projectId={projectId} user={user} />
+            {active ? (
+              <>
+                {plan && (
+                  <p className="mt-3 max-w-3xl text-sm" data-testid="job-plan">
+                    <span className="text-muted-foreground">Plan </span>
+                    {planText(plan)}
+                  </p>
+                )}
+                <JobActivity job={job} projectId={projectId} pieces={pieces} />
+              </>
+            ) : (
+              <ReportOverview job={job} sectionHref={sectionHref} sections={keys} />
+            )}
+          </>
+        )}
+        {view === 'documents' && <JobDocuments job={job} projectId={projectId} plan={plan} />}
+        {view === 'notes' && <JobActivity job={job} projectId={projectId} pieces={pieces} />}
+        {!PAGE_SECTIONS.includes(view) && job.report && (
+          <ReportSection
+            view={view}
+            report={job.report}
+            projectId={projectId}
+            vocabs={project?.vocabs || []}
+          />
+        )}
+        {view === 'setup' && <JobFacts job={job} readAt={readAt} plan={plan} />}
+      </div>
+    </div>
+  );
+};
+
+// The sections the page draws itself: every other is one of the report's
+// lists (ReportSection).
+const PAGE_SECTIONS = ['overview', 'documents', 'notes', 'setup'];
+
+// What belongs to one section's list (its page, its filter, its order), which
+// a move to another section drops.
+const SECTION_PARAMS = ['page', 'filter', 'order'];
+
+// The job's instructions, two lines of them where they are long, with a
+// control to show them all.
+const INSTRUCTIONS_SHOWN_CHARS = 160;
+const Instructions = ({ text = '' }) => {
+  const [open, setOpen] = useState(false);
+  const long = [...text].length > INSTRUCTIONS_SHOWN_CHARS || text.includes('\n');
+  return (
+    <div className="max-w-3xl text-sm" data-testid="job-instructions">
+      <p className={`whitespace-pre-wrap ${long && !open ? 'line-clamp-2' : ''}`}>
+        <span className="text-muted-foreground">Instructions </span>
+        <bdi>{text}</bdi>
+      </p>
+      {long && (
+        <button
+          type="button"
+          className="text-sm text-primary hover:underline"
+          aria-expanded={open}
+          onClick={() => setOpen((o) => !o)}
+        >
+          {open ? 'Show less' : 'Show all'}
+        </button>
       )}
     </div>
   );
@@ -381,7 +467,7 @@ const JobSetup = ({ job, projectId, user }) => {
   const planGone = job.report?.plan?.gone;
   const gone = Array.isArray(planGone) ? planGone.map((g) => g?.id) : [];
   return (
-    <p className="-mt-4 mb-6 text-sm" data-testid="job-setup">
+    <p className="mt-1 max-w-3xl text-sm text-muted-foreground" data-testid="job-setup">
       Set up to fill <FillsNames fills={setup.fills} none="nothing" gone={gone} />
       {setup.onlynew === true && ', only on the words it adds'}.{' '}
       {setup.text === true ? 'Text may be edited.' : 'Text unchanged.'}
@@ -401,13 +487,20 @@ const JobSetup = ({ job, projectId, user }) => {
 };
 
 // The state, what the worker is doing, its last line, and for a waiting job
-// how many are ahead of it (core's `ahead`, every one another project's). A failed job says why.
-const JobStatus = ({ job, user, names }) => {
+// how many are ahead of it (core's `ahead`, every one another project's). An
+// ended job says when it ended, how long it took and who started it, who
+// stopped or undid it and when, and a failed one why.
+const JobStatus = ({ job, user, names, undoneHref }) => {
   const failed = job.state === 'failed';
   const running = job.state === 'running';
+  const active = isJobActive(job);
+  const took =
+    job.startedAt && job.finishedAt
+      ? durationText(new Date(job.finishedAt).getTime() - new Date(job.startedAt).getTime())
+      : null;
   return (
     <div className="mb-6 flex flex-col gap-1 text-sm" role="status">
-      <div className="flex flex-wrap items-center gap-2">
+      <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
         {/* Once undone, what the chat card says (RP4-4 finding 6). */}
         <Badge variant={failed ? 'destructive' : 'secondary'}>
           {job.undone ? 'Undone' : jobStateText(job.state)}
@@ -415,6 +508,18 @@ const JobStatus = ({ job, user, names }) => {
         {running && job.phase && <span>{jobPhaseText(job.phase)}</span>}
         {job.state === 'waiting' && job.ahead > 0 && (
           <span className="text-muted-foreground">{aheadText(job.ahead)}</span>
+        )}
+        {!active && (
+          <span className="text-muted-foreground" data-testid="job-ended">
+            {job.finishedAt && (
+              <>
+                Ended <When at={job.finishedAt} />
+                {' · '}
+              </>
+            )}
+            {took && `took ${took === 'Under a minute' ? 'under a minute' : took} · `}
+            started by {whoText(job.startedBy, job, user, names)}
+          </span>
         )}
       </div>
       {jobSilentText(job) && <p>{jobSilentText(job)}</p>}
@@ -425,10 +530,23 @@ const JobStatus = ({ job, user, names }) => {
           {job.finishedAt ? `, ${fullTimestamp(job.finishedAt)}` : ''}.
         </p>
       )}
+      {job.undone && (
+        <p data-testid="job-undone">
+          Undone by {whoText(job.undone.user, job, user, names)}, {fullTimestamp(job.undone.time)}.
+          {undoneHref && (
+            <>
+              {' '}
+              <Link to={undoneHref} className="text-primary hover:underline">
+                Show in History
+              </Link>
+            </>
+          )}
+        </p>
+      )}
       {failed ? (
         <p>{jobReasonText(job)}</p>
       ) : (
-        isJobActive(job) && job.message && <p className="text-muted-foreground">{job.message}</p>
+        active && job.message && <p className="text-muted-foreground">{job.message}</p>
       )}
     </div>
   );
@@ -479,15 +597,13 @@ const PlannedInstructions = ({ text }) => {
 const cutText = (text, given) =>
   `Cut to ${[...text].length.toLocaleString()} of ${given.toLocaleString()} characters.`;
 
-// `plan`: the report's, or while there is none the plan row's (`livePlan`).
+// The job's Setup: how it was planned and run (its instructions are on its
+// Overview). `plan`: the report's, or while there is none the plan row's.
 const JobFacts = ({ job, readAt, plan }) => {
   const end = job.finishedAt ? new Date(job.finishedAt).getTime() : readAt;
   const waited = waitedMs(job);
   return (
     <dl className="grid max-w-2xl grid-cols-[auto_1fr] gap-x-6 gap-y-1 text-sm">
-      <Fact label="Instructions">
-        <span className="whitespace-pre-wrap">{job.instructions}</span>
-      </Fact>
       {plan && <Fact label="Plan">{planText(plan)}</Fact>}
       {job.report?.plan?.pieceInstructions && (
         <Fact label="Assistant’s instructions">
@@ -532,17 +648,41 @@ const JobFacts = ({ job, readAt, plan }) => {
 
 const count = (row, key) => (row.counts?.[key] ?? 0).toLocaleString();
 
-// A row per document of the job, in the job's order. Once the job has a
-// report, how many places each document's Left blank lists stands beside its
-// sentences, so "8 of 8" never reads as nothing left (REV-DAY-P-4).
-// `plan`: the report's, or while there is none the plan row's (`livePlan`).
+// A row per document of the job, searchable by name and sortable. Once the job
+// has a report, how many places each document's Left blank lists stands
+// beside its sentences, so "8 of 8" never reads as nothing left
+// (REV-DAY-P-4), why it needs a person (To check), and a filter to those
+// that do, in the address (`?filter=check`).
+// `plan`: the report's, or while there is none the plan row's.
 const JobDocuments = ({ job, projectId, plan }) => {
+  const [params, setParams] = useSearchParams();
+  const ended = !isJobActive(job) && !!job.report;
   const leftOut = new Set((job.report?.plan?.leftOut || []).map((d) => d.documentId));
   const reported = new Map((job.report?.documents || []).map((d) => [d.documentId, d]));
+  const checks = new Map(
+    (job.documents || []).map((d) => [
+      d.documentId,
+      ended ? documentChecks(d, reported.get(d.documentId)) : [],
+    ]),
+  );
+  const toCheck = (job.documents || []).filter((d) => checks.get(d.documentId).length > 0);
+  const filter = ended && params.get('filter') === 'check' ? 'check' : 'all';
+  const stateOf = (d) =>
+    leftOut.has(d.documentId)
+      ? 'Left out by the plan'
+      : stoppedPartway(d)
+        ? 'Stopped partway'
+        : nothingFound(d)
+          ? 'Nothing found'
+          : allSkipped(d)
+            ? 'Skipped'
+            : (jobDocumentStateText(d.state) ?? d.state);
   const columns = [
     {
       key: 'name',
       label: 'Document',
+      sort: (d) => d.name ?? '',
+      compare: compareNames,
       render: (d) =>
         d.name === null || d.name === undefined ? (
           <span className="text-muted-foreground">Deleted document</span>
@@ -552,24 +692,12 @@ const JobDocuments = ({ job, projectId, plan }) => {
           </Link>
         ),
     },
-    {
-      key: 'state',
-      label: 'State',
-      render: (d) =>
-        leftOut.has(d.documentId)
-          ? 'Left out by the plan'
-          : stoppedPartway(d)
-            ? 'Stopped partway'
-            : nothingFound(d)
-              ? 'Nothing found'
-              : allSkipped(d)
-                ? 'Skipped'
-                : (jobDocumentStateText(d.state) ?? d.state),
-    },
+    { key: 'state', label: 'State', sort: stateOf, render: stateOf },
     {
       key: 'done',
       label: 'Sentences',
       align: 'right',
+      sort: (d) => d.done ?? -1,
       render: (d) => documentSentencesText(d, plan),
     },
   ];
@@ -590,6 +718,7 @@ const JobDocuments = ({ job, projectId, plan }) => {
       key: 'translations',
       label: 'Translations',
       align: 'right',
+      sort: (d) => (d.counts?.translations ?? 0) + (d.counts?.refreshed ?? 0),
       render: (d) => ((d.counts?.translations ?? 0) + (d.counts?.refreshed ?? 0)).toLocaleString(),
     });
   }
@@ -615,16 +744,59 @@ const JobDocuments = ({ job, projectId, plan }) => {
     ['textChanges', 'Changes to the text'],
     ['proposed', 'Proposed'],
   ]) {
-    if (some(key)) columns.push({ key, label, align: 'right', render: (d) => count(d, key) });
+    if (some(key)) {
+      columns.push({
+        key,
+        label,
+        align: 'right',
+        sort: (d) => d.counts?.[key] ?? 0,
+        render: (d) => count(d, key),
+      });
+    }
   }
+  if (toCheck.length) {
+    columns.push({
+      key: 'check',
+      label: 'To check',
+      render: (d) => checks.get(d.documentId).join('; '),
+    });
+  }
+  const setFilter = (value) =>
+    setParams((prev) => {
+      const out = new URLSearchParams(prev);
+      if (value === 'check') out.set('filter', value);
+      else out.delete('filter');
+      out.delete('page');
+      return out;
+    });
   return (
     <DataTable
       id="job-documents"
-      rows={job.documents || []}
+      scope={projectId}
+      rows={filter === 'check' ? toCheck : rows}
       rowKey={(d) => d.documentId}
       columns={columns}
+      defaultSort={{ key: 'name', dir: 'asc' }}
+      pageParam="page"
+      search={{
+        placeholder: 'Search documents…',
+        match: (d, q) => textIncludes(d.name ?? '', q),
+      }}
       noun="document"
-      showCount={false}
+      empty="Nothing."
+      actions={
+        ended && (
+          <SegmentedControl
+            label="Show"
+            value={filter}
+            onChange={setFilter}
+            options={[
+              { value: 'all', label: 'All', count: rows.length.toLocaleString() },
+              { value: 'check', label: 'To check', count: toCheck.length.toLocaleString() },
+            ]}
+          />
+        )
+      }
     />
   );
 };

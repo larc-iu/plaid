@@ -119,7 +119,7 @@ describe('a job that stands undone', () => {
     const client = clientOf(jobOf({ undone: UNDONE }));
     const v = await mount(client);
     const line = v.container.querySelector('[data-testid="job-undone"]');
-    expect(line.textContent).toMatch(/^Job undone .+\. Show in History$/);
+    expect(line.textContent).toMatch(/^Undone by .+, .+\. Show in History$/);
     expect(line.querySelector('a').getAttribute('href')).toBe(
       '/projects/p1/documents/d2?history=b1',
     );
@@ -214,7 +214,7 @@ describe('Undo job', () => {
       'Undone',
     );
     const line = v.container.querySelector('[data-testid="job-undone"]');
-    expect(line.textContent).toMatch(/^Job undone .+\. Show in History$/);
+    expect(line.textContent).toMatch(/^Undone by .+, .+\. Show in History$/);
     expect(client.documents.auditPage).toHaveBeenCalledWith('d1', { entryId: 'o1', opsLimit: 1 });
     expect(line.querySelector('a').getAttribute('href')).toBe(
       '/projects/p1/documents/d2?history=b1',

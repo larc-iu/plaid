@@ -1,13 +1,15 @@
-import { useEffect, useRef, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { useMemo, useState } from 'react';
+import { Link, useSearchParams } from 'react-router-dom';
 import { Button } from '@ui/components/ui/button';
-import { ListHint } from '@ui/components/shared/list-search.jsx';
+import { ListHint, ListPager } from '@ui/components/shared/list-search.jsx';
+import { SegmentedControl } from '@ui/components/shared/SegmentedControl.jsx';
 import { TYPE } from '@ui/lib/typeScale.js';
 import { fullTimestamp, timeAgo } from '@ui/lib/formatTime.js';
-import { TALL_LIST_PAGE_SIZE } from '@ui/hooks/usePagedList.js';
+import { TALL_LIST_PAGE_SIZE, usePagedList } from '@ui/hooks/usePagedList.js';
 import { isJobActive } from '@ui/domain/jobs.js';
 import { APP_ROUTES } from '@/appRoutes.js';
 import { JobWritten } from './JobReport.jsx';
+import { PIECES_MAX } from './jobPieces.js';
 import {
   pieceEndLines,
   pieceWrittenText,
@@ -19,86 +21,99 @@ import {
 /**
  * What a job has done so far (`jobs.piecesPage`, CONTRACT, added by LV): a row
  * per piece of its work as its worker summed it up once what the piece wrote
- * was known, newest first. Read again with each read of the job (`readAt`), so
- * it fills in while the job runs. The newest TALL_LIST_PAGE_SIZE rows, and as
- * many more as Show more asks for. A job whose worker kept none, and has
- * ended, shows nothing.
+ * was known. Read again with each read of the job (`readAt`), so it fills in
+ * while the job runs.
  *
- * The plan's row (the oldest) is not listed: it goes to the page (`onPlan`),
- * whose Plan line, above the list, says it while the job runs (RP-9). Where
- * the first page does not reach it, it is read once, at the route's cap.
+ * While the job is active the list is newest first, on the shared pager at
+ * TALL_LIST_PAGE_SIZE, read as far as the page in the address reaches (the
+ * pager's next page on the last read one reads the next). Once it has ended,
+ * every row is read at once (up to the route's cap), and the order is the
+ * reader's, in the address (`?order=document`): newest first, or by document
+ * in the job's order. A job whose worker kept none, and has ended, shows
+ * nothing.
+ *
+ * The plan's row (the oldest) is not listed: the page says it (Plan). Where
+ * the rows read do not reach it, it is read once, at the route's cap.
  */
-// The most rows one read of the route answers (core's page cap).
-const PIECES_MAX = 1000;
+const ORDERS = [
+  { value: 'time', label: 'By time' },
+  { value: 'document', label: 'By document' },
+];
 
-export const JobActivity = ({ client, job, projectId, readAt, onPlan = () => {} }) => {
-  const [shown, setShown] = useState(TALL_LIST_PAGE_SIZE);
-  const [page, setPage] = useState(null);
-  // The job whose plan row was found, or looked for past the first page.
-  const planFor = useRef(null);
-  const onPlanRef = useRef(onPlan);
-  onPlanRef.current = onPlan;
-  useEffect(() => {
-    let live = true;
-    const planOf = (entries) => (entries || []).find((r) => r.piece?.plan)?.piece.plan ?? null;
-    client.jobs
-      .piecesPage(job.id, { limit: shown })
-      .then(async (next) => {
-        if (!live) return;
-        setPage(next);
-        if (planFor.current === job.id) return;
-        let plan = planOf(next?.entries);
-        if (!plan && next?.nextCursor) {
-          planFor.current = job.id;
-          plan = planOf((await client.jobs.piecesPage(job.id, { limit: PIECES_MAX }))?.entries);
-        }
-        if (plan && live) {
-          planFor.current = job.id;
-          onPlanRef.current(plan);
-        }
-      })
-      // A read that fails keeps what the list shows: the next read of the job
-      // asks again.
-      .catch(() => {});
-    return () => {
-      live = false;
-    };
-  }, [client, job.id, shown, readAt]);
+// The rows by document, in the job's order (a piece of all the documents
+// first), each document's in the order they were done.
+const byDocument = (rows, job) => {
+  const at = new Map((job.documents || []).map((d, i) => [d.documentId, i]));
+  const place = (r) => (r.piece.document ? (at.get(r.piece.document) ?? at.size) : -1);
+  return [...rows].sort((a, b) => place(a) - place(b) || (a.seq < b.seq ? -1 : 1));
+};
 
+export const JobActivity = ({ job, projectId, pieces }) => {
+  const [params, setParams] = useSearchParams();
   const active = isJobActive(job);
-  const rows = (page?.entries || []).filter((r) => !r.piece.plan);
+  const order = !active && params.get('order') === 'document' ? 'document' : 'time';
+  const { page, rows } = pieces;
+  const ordered = useMemo(
+    () => (order === 'document' ? byDocument(rows, job) : rows),
+    [order, rows, job],
+  );
+  const paged = usePagedList(ordered, { pageSize: TALL_LIST_PAGE_SIZE, urlParam: 'page' });
   if (!rows.length && !active) return null;
   // Not "Activity": the project's tab of that name is on the same screen.
-  const heading = active ? 'Work so far' : 'Work, in order';
+  const heading = active ? 'Work so far' : 'Notes';
   const names = new Map((job.documents || []).map((d) => [d.documentId, d.name]));
   const states = new Map((job.documents || []).map((d) => [d.documentId, d.state]));
+  // While the job runs, the next page past the rows read reads more, up to
+  // the route's cap.
+  const capped = !!page?.nextCursor && pieces.limit >= PIECES_MAX;
+  const more =
+    active && page?.nextCursor && !capped ? { load: async () => true, loading: false } : undefined;
+  const setOrder = (value) =>
+    setParams((prev) => {
+      const out = new URLSearchParams(prev);
+      if (value === 'document') out.set('order', value);
+      else out.delete('order');
+      out.delete('page');
+      return out;
+    });
   return (
     <section aria-label={heading}>
-      <h3 className={`${TYPE.card} mb-2 mt-8`}>{heading}</h3>
+      {active && <h3 className={`${TYPE.card} mb-2 mt-8`}>{heading}</h3>}
       {page && !rows.length && (
         <p className="text-sm text-muted-foreground">Nothing finished yet.</p>
       )}
       {/* Each piece's note is the model's own text, as the summary is
           (RP4-4 finding 3): said once above the list. */}
       {rows.some((r) => r.piece.note) && (
-        <p className="mb-1 text-sm text-muted-foreground">
+        <p className="mb-2 text-sm text-muted-foreground">
           Notes written by the assistant, not checked against the counts.
         </p>
       )}
-      <ul className="max-w-3xl divide-y text-sm" data-testid="job-activity">
-        {rows.map(({ seq, piece }) => (
-          <li key={seq} className="py-2" data-seq={seq}>
-            <PieceRow
-              piece={piece}
-              projectId={projectId}
-              names={names}
-              states={states}
-              active={active}
-              findingsShown={reportHoldsFindings(job?.report)}
-            />
-          </li>
-        ))}
-      </ul>
+      {rows.length > 0 && (
+        <div className="max-w-3xl rounded-md border bg-card">
+          {!active && (
+            <div className="flex flex-wrap items-center gap-2 border-b px-3 py-2">
+              <SegmentedControl label="Order" value={order} onChange={setOrder} options={ORDERS} />
+            </div>
+          )}
+          <ListPager {...paged} onPage={paged.setPage} more={more} position="top" />
+          <ul className="divide-y text-sm" data-testid="job-activity">
+            {paged.pageItems.map(({ seq, piece }) => (
+              <li key={seq} className="px-3 py-2" data-seq={seq}>
+                <PieceRow
+                  piece={piece}
+                  projectId={projectId}
+                  names={names}
+                  states={states}
+                  active={active}
+                  findingsShown={reportHoldsFindings(job?.report)}
+                />
+              </li>
+            ))}
+          </ul>
+          <ListPager {...paged} onPage={paged.setPage} more={more} position="bottom" />
+        </div>
+      )}
       {!active &&
         job.report &&
         page &&
@@ -108,23 +123,13 @@ export const JobActivity = ({ client, job, projectId, readAt, onPlan = () => {} 
           job.documents,
         ) && (
           <p className="mt-2 text-sm" data-testid="job-activity-short">
-            Some finished work is not listed here. The report below counts all of it.
+            Some finished work is not listed here. The totals count all of it.
           </p>
         )}
-      {page?.nextCursor && shown >= PIECES_MAX && (
+      {capped && (
         <ListHint className="mt-2">
           Only the newest {PIECES_MAX.toLocaleString()} are listed.
         </ListHint>
-      )}
-      {page?.nextCursor && shown < PIECES_MAX && (
-        <Button
-          variant="outline"
-          size="sm"
-          className="mt-2"
-          onClick={() => setShown((n) => Math.min(n + TALL_LIST_PAGE_SIZE, PIECES_MAX))}
-        >
-          Show more
-        </Button>
       )}
     </section>
   );
