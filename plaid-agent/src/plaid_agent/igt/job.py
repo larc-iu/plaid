@@ -3605,11 +3605,18 @@ class IgtRunner:
             # settled BEFORE its write, so a worker that dies between the two
             # passes no sentence uncounted (REV-SP-10, REV-RW-2).
             self.unfinished(document_id, staged[0], staged[1])
+
+            def put_off():
+                raise Deferred(document_id)
+            # Tried again from the gate after core's passing trouble, and put
+            # off when it outlasts the tries, as a selection's write is: a
+            # passing error never runs the model context again (D21).
             try:
-                self.write(project, document_id, *staged, summary=key)
+                core_job.through_core(self.job, lambda: self.write(project, document_id, *staged, summary=key),
+                                      gave_up=put_off)
             finally:
                 self.hold_cursor.pop(document_id, None)
-            self.end_summary(key)
+            core_job.through_core(self.job, lambda: self.end_summary(key))
             self.after_text(project, document_id)
 
     def unreached(self, ws: JobWorkspace, doc, part: List[Sentence], st: Stretch, whole: bool,
@@ -3766,18 +3773,23 @@ class IgtRunner:
             self.begin_summary(key, document_id, doc.name, part, False, note, self.refused_of(ws, document_id),
                                ended=ws.ended,
                                after_text='added' if self.only_new() is not None else 'edited')
-            self.record_piece(project, piece, note, ws.tables, doc, part)
-            self.record_refusals(ws, document_id)
+            # Each step after the model tried again on its own: a passing
+            # error never runs the model context again (D21).
+            core_job.through_core(job, lambda: self.record_piece(project, piece, note, ws.tables, doc, part))
+            core_job.through_core(job, lambda: self.record_refusals(ws, document_id))
             if ws.ops:
+                def gave_up():
+                    raise Deferred(document_id)
                 try:
-                    self.write(project, document_id, ws, doc, part, prints, list(ws.ops), note, piece_tag(piece),
-                               summary=key)
+                    core_job.through_core(job, lambda: self.write(project, document_id, ws, doc, part, prints,
+                                                                  list(ws.ops), note, piece_tag(piece), summary=key),
+                                          gave_up=gave_up)
                 except Deferred:
                     # Its note is never shown beside no changes: the piece is
                     # taken again, once, at the start of the walk.
                     self.unsummed.pop(key, None)
                     put_off()
-            self.end_summary(key)
+            core_job.through_core(job, lambda: self.end_summary(key))
         finally:
             self.following = False
 
@@ -3849,9 +3861,11 @@ class IgtRunner:
                 self.skip(document_id, doc, s.id, NO_ANSWER, None)
             self.end_summary(key)
             return None
-        self.record_piece(project, piece, note, ws.tables, doc, part,
-                          findings=ws.reply if self.fills_nothing() else None)
-        self.record_refusals(ws, document_id)
+        # The piece's note and refusals, tried again on their own: a passing
+        # error on their row never runs the model context again (D21).
+        core_job.through_core(job, lambda: self.record_piece(project, piece, note, ws.tables, doc, part,
+                                                             findings=ws.reply if self.fills_nothing() else None))
+        core_job.through_core(job, lambda: self.record_refusals(ws, document_id))
         if ws.ended is not None:
             # A piece that ended without finishing writes what it staged; what
             # it did not get to is left out of its write, for the piece's
@@ -3963,7 +3977,8 @@ class IgtRunner:
                 # the line's own words (the planning's, RPF3-E).
                 self.counted = (said, f'{said}{read(w) if read else ""} {plural(self.steps_now, "step")}{where}.')
                 job.say(self.counted[1])
-            return call_tool(w, name, args)
+            # Core's passing trouble is tried again at the call (D21).
+            return core_job.tool_through_core(job, w, lambda: call_tool(w, name, args))
         return call
 
     def turn(self, ws, kit, system: str, transcript, decided=lambda: None, pace: Optional[Pace] = None):

@@ -807,6 +807,27 @@ def through_core(job: Job, step: Callable[[], Any], gave_up: Optional[Callable[[
             (wait or job.sleep)(JOB_CORE_WAIT_S * n)
 
 
+def tool_through_core(job: Job, ws, call: Callable[[], Any]):
+    """A model's tool call in a job's piece, made again while core is busy
+    or out of reach (:func:`core_fault` ``passing``), as every call to core
+    is, when it staged nothing before it failed: the workspace's ops and
+    tables as they were (D21). So a read that meets core's passing trouble
+    never runs the piece's model context again. A call that staged
+    something, or trouble that outlasts :data:`JOB_CORE_TRIES`, goes up
+    for the piece's caller to sort."""
+    def staged():
+        return [id(o) for o in ws.ops], len(getattr(ws, 'tables', None) or ())
+    for n in range(1, JOB_CORE_TRIES + 1):
+        before = staged()
+        try:
+            return call()
+        except Exception as e:  # noqa: BLE001 - core's passing trouble is tried again, the rest goes up
+            if core_fault(e) != 'passing' or n == JOB_CORE_TRIES or staged() != before:
+                raise
+            logger.warning('Job %s: core did not take a tool\'s call (%s of %s): %s', job.id, n, JOB_CORE_TRIES, e)
+            job.sleep(JOB_CORE_WAIT_S * n)
+
+
 def _stopped_parts(job: Job, runner, harmonize, entries):
     """What a job that stopped early reports of harmonize and of its
     entries: what harmonize wrote before the stop (``runner.harmonize_done``),
