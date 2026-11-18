@@ -1038,10 +1038,10 @@ A job that runs is **Running**, with what it is doing beside it: **Checking**, *
 A line under it says where it is, such as **Story B: sentences 1 to 5 of 17. 3 steps in this part.**
 When the worker has not reported for two minutes, the page says **No worker has reported since** and the time, and the job goes on once a worker runs again.
 
-While the job runs, **Overview** gives its instructions, what it was set up to fill, its plan once planning has ended, and **Work so far** (see below).
+While the job runs, **Overview** gives its instructions, what it was set up to fill, **Documents done** of how many, when it started (or **Waiting since**) and how long it has run, its plan once planning has ended, and **Work so far** (see below).
 **Setup** gives the plan, the assistant's instructions to each part of the work, the number of documents, who started the job, when it was queued or started (**Waiting since**, **Started**), how long it waited, when it ended, how long it has run and the AI model.
 
-**Documents** is a table of the job's documents with each one's state and how many of its sentences are done, which can be searched by name and sorted.
+**Documents** is a table of the job's documents in the job's order (**#**), with each one's state and how many of its sentences are done, which can be searched by name and sorted by its other columns.
 Columns of counts, such as **Changes written**, appear as the job writes.
 Besides **Waiting**, **Working** and **Done**, a document can read:
 
@@ -1053,6 +1053,7 @@ Besides **Waiting**, **Working** and **Done**, a document can read:
 * **Deleted**: the document was deleted.
 
 **Work so far** on the Overview, and the **Notes** section once the job has ended, list each part of the work as it finishes, newest first, 25 to a page.
+When the job ends while its page is open, a page of **Work so far** past the first opens the same page of **Notes**.
 Once the job has ended, **By document** lists them by document instead, in the job's order.
 A row gives its document and sentences, linked into the editor, or **All documents**, when it ended and how many steps it took, what it wrote, the sentences it skipped (**Skipped:**) and the changes refused (**Not done, refused:**), and the assistant's note on it.
 The notes are the assistant's own words, not checked against the counts.
@@ -1082,7 +1083,8 @@ Then comes the job's own line where the job changed what people wrote or the tex
 * **Text: 25 words added, 2 existing words or punctuation marks changed or removed.**
 * **The job worked on all 45 documents in one step and changed 24 of them.**
 
-**To check** lists what needs a person, a row for each kind with how many there are, and **Show** opens the section that lists them: documents in use and not worked, not reached or stopped partway, sentences skipped by why, places left blank, values people wrote that the job changed or removed, changes refused, words respelled, changes proposed or not written, forms left inconsistent and entries with no links.
+**To check** lists what needs a person, a row for each kind with how many there are, and **Show** opens exactly what the row counts: documents in use and not worked, not reached, stopped partway or left out by the plan, sentences skipped by why and those skipped and not listed, places left blank, values people wrote that the job changed or removed, documents whose text the job changed, changes refused, words respelled, changes proposed or not written, forms left inconsistent and entries with no links.
+A job that core ended before its report was written lists only the documents in use, not reached or stopped partway.
 It reads **Nothing.** when nothing does.
 
 **Totals** follow in two groups, **Written** and **Not written**, each row shown when it counts something:
@@ -1100,10 +1102,11 @@ Last comes the **Assistant's summary**, the assistant's account of the job, mark
 A job that wrote and proposed nothing says so in one line under the opening sentence instead.
 
 **Documents** also has a **To check** column with why each document needs a person, and **To check** above the table shows only those documents.
+A row of **To check** on the Overview opens the table on that one reason, such as **In use** or **Stopped partway**.
 
 Each list of the report has a section of its own, shown only when it holds something, its count beside its name:
 
-* **Left blank**: in each document, every word, morpheme or sentence still empty of what the job fills in the sentences it wrote in, linked into the editor with what it is blank for, then how much is blank in the document's other sentences, 25 documents to a page.
+* **Blank**: in each document, under **Left blank in sentences the job changed:**, every word, morpheme or sentence still empty of what the job fills in the sentences it wrote in, linked into the editor with what it is blank for, then, in the totals' words, how much is blank in the sentences the job did not change, did not reach, and skipped, 25 documents to a page.
 * **Skipped**, under **Skipped sentences**: each sentence with why it was skipped: **Too long**, **Changed during the job**, **Write interrupted**, **No answer from the assistant**, or **Failed** with what failed, such as **Failed: answer too long**.
 * **Proposed**, under **Proposed changes**: what the job did not write, each with **Where**, **Change**, **From** and **To**.
 * **Entries**: the entries the job created, a link to the machine drafts in each lexicon, and **Entries with no links**.
@@ -1112,7 +1115,7 @@ Each list of the report has a section of its own, shown only when it holds somet
 * **Tables**: tables the job counted.
 * **Made consistent** and **Left inconsistent**, under **Analyses made consistent** and **Forms left inconsistent**, with why each form was left.
 
-Under a document in **Left blank**, **Not done, refused:** lists the changes the job could not make, which wrote nothing:
+Under a document in **Blank**, **Not done, refused:** lists the changes the job could not make, which wrote nothing:
 
 * **Change to words the job retyped, split, merged or deleted** and **Retype, split, merge or delete of words the job also changed**: one part both reshaped words and changed them.
 * **Change that uses an entry the job made** and **Change that uses an entry the job deleted or merged**: the change needed an entry that the same part created, deleted or merged.
@@ -1127,7 +1130,7 @@ A job that is undone says so in its state line and its opening sentence, has no 
 == A job's changes
 
 Each document's History has one entry for the job's work in it, named **Assistant job:** with the first words of its instructions, and one named **Assistant job: analyses made consistent** where it made analyses consistent, both marked **Job**.
-On the job's page, a document's **Changes** and **Analyses made consistent** links in **Documents** open those entries on what the job changed there (see <<_changes_in_an_entry>>), and so does a document's name in **Left blank** and **Skipped**.
+On the job's page, a document's **Changes** and **Analyses made consistent** links in **Documents** open those entries on what the job changed there (see <<_changes_in_an_entry>>), and so does a document's name in **Blank** and **Skipped**.
 
 == Undoing a job
 
