@@ -1584,10 +1584,21 @@ def _run_turn(cfg, kit, ws, system, transcript, on_progress, cancelled, on_text,
                 kwargs['messages'] = [{'role': 'system', 'content': system}] + history + sent(new)
                 kwargs['tools'] = kit.tools_for(ws)
             if not kwargs['tools']:
-                # A job's context with no tools (the report's prose) asks for
-                # text alone: no empty tool list goes to the provider.
+                # A job's context with no tools (the report's prose, a piece's
+                # closing call) asks for text alone: no empty tool list goes
+                # to the provider.
                 del kwargs['tools'], kwargs['tool_choice']
-            pace.sending(kwargs)
+            closing = pace.sending(kwargs)
+            if closing:
+                # A budget spent while the piece holds staged work: this call
+                # becomes its closing call, with that line and no tool
+                # (BRIEF RW B2).
+                told_now = closing if told_now is None else f'{told_now}\n\n{closing}'
+                new.append({'role': 'user', 'content': closing})
+                kwargs['messages'] = [{'role': 'system', 'content': system}] + history + sent(new)
+                kwargs.pop('tools', None)
+                kwargs.pop('tool_choice', None)
+                pace.sending(kwargs)
         live['n'] = rounds + 1
         try:
             resp = ask(kwargs, lambda: [{'role': 'system', 'content': system}] + history + sent(new))

@@ -114,3 +114,56 @@ def test_a_stretch_plan_with_every_stretch_failing_ends(monkeypatch):
     finished = run_job(job, runner(job))
     assert finished['state'] == 'done'
     assert finished['report']['totals']['skipped_failed'] == 6
+
+
+@pytest.mark.parametrize('pieces', ['document', 'selection'])
+def test_what_a_whole_piece_that_ran_leaves_is_worked_in_stretches_never_whole_again(monkeypatch, pieces):
+    """The coordinator's case (PLANEXP: Natugu texts 2 and 4 under a plan by
+    documents, the whole document taken 3 times): what remains after a whole
+    piece that ran, here s1, which a person edited while the model worked,
+    is taken again as a stretch, and the plan line counts the document."""
+    from test_job_gate import BLANK, _gloss, _job, _staged
+    client, job, clock, _ = _job(monkeypatch, pieces, after=BLANK)
+    edited = [{'words': ['ka', 'ta'], 'translation': ('One, edited.', 'human')},
+              {'words': ['sa'], 'translation': ('Two.', 'human')}]
+    once = {'n': 0}
+    gloss = _gloss()
+
+    def answer(asked, n, kwargs):
+        if n > 1 and not once['n'] and (WHOLE in asked or SELECTION in asked):
+            once['n'] = 1
+            client._holder('d1')['documents']['d1'] = document('d1', 'Story', edited, version=5)
+            client.after_write['d1'] = document('d1', 'Story', edited, version=5)
+        return gloss(asked, n, kwargs)
+    model = use(monkeypatch, Model(answer))
+    staged = _staged(monkeypatch)
+    r = runner(job)
+    r.work(job)
+    written = [o.get('word_id') for o in staged if o.get('kind') == 'set_analysis']
+    assert 'd1-s1w1' in written, 's1 is taken again'
+    firsts = [c['asked'] for c in model.calls if c['n'] == 1]
+    assert sum(1 for a in firsts if WHOLE in a or SELECTION in a) == 1, 'one whole piece'
+    assert firsts[-1].splitlines()[-1].startswith('Your piece: s1.'), firsts[-1].splitlines()[-1]
+    assert r.fallen_back() == {'d1': 'again'}
+
+
+def _summaries(client):
+    import json
+    from plaid_agent.igt.job import PIECE_FORM
+    return [json.loads(r['analysis']) for (f, _k), r in client.jobs.decision_rows.get(J, {}).items()
+            if f == PIECE_FORM]
+
+
+@pytest.mark.parametrize('plan', ['document', 'selection'])
+def test_a_failed_big_piece_has_a_row_saying_it_failed(monkeypatch, plan):
+    """B5: the work list shows the failed whole piece, with its failure's
+    kind, before the stretches that follow it."""
+    client = JobClient({'d1': document('d1', 'Story', blank(3))})
+    job = start(client, id=J, plan=plan)
+    use(monkeypatch, _model())
+    run_job(job, runner(job))
+    rows = _summaries(client)
+    assert rows[0]['whole'] is True and rows[0]['failed'] == 'budget', rows[0]
+    assert rows[0]['document'] == ('d1' if plan == 'document' else None)
+    assert not any(r.get('failed') for r in rows[1:])
+    assert 'Nothing' not in str(rows[0].get('note'))

@@ -38,7 +38,7 @@ from .limits import (HARMONIZE_MAJORITY, JOB_CALL_DECIDE_AT_TOKENS, JOB_CORE_TRI
                      JOB_STRETCH_DECIDE_AT_ROUNDS,
                      JOB_STRETCH_MAX_ROUNDS, JOB_STRETCH_MAX_SENT_TOKENS, JOB_YIELD_POLL_S, JOB_YIELD_QUIET_S,
                      JOB_YIELD_STEADY_S)
-from .prompt import JOB_DECIDE_NOW, job_cut_at_limit
+from .prompt import JOB_DECIDE_NOW, JOB_STEPS_USED_UP, job_cut_at_limit
 
 logger = logging.getLogger(__name__)
 
@@ -133,15 +133,26 @@ class Pace:
     model's own cap (an operator's ``--piece-output-tokens``), None for
     none. ``asks_again`` (a piece's): the first call that reaches its
     output limit, whichever it is, is dropped and the context asked again
-    once (:meth:`cut`), the second ends the turn as before."""
+    once (:meth:`cut`), the second ends the turn as before.
+
+    ``holds`` (a piece's): whether the context holds staged work. A budget
+    that runs out while it does fails nothing: the context is sent ONE
+    closing call, :data:`JOB_STEPS_USED_UP`, past the budgets, and
+    ``closing`` is called first so the call offers no tool (BRIEF RW B2).
+    No call follows it (``closed`` is then True, and a next call raises).
+    The planning and the report's prose stage nothing and close nothing."""
 
     def __init__(self, model: str, before_call: Callable[[], None] = lambda: None,
                  count: Optional[Callable[[Any], int]] = None, decided: Callable[[], None] = lambda: None,
-                 line: str = JOB_DECIDE_NOW, output_tokens: Optional[int] = None, asks_again: bool = False):
+                 line: str = JOB_DECIDE_NOW, output_tokens: Optional[int] = None, asks_again: bool = False,
+                 holds: Callable[[], bool] = lambda: False, closing: Callable[[], None] = lambda: None):
         self.count = count or token_counter(model)
         self.line = line
         self.output_tokens = output_tokens or None
         self.asks_again = asks_again
+        self.holds = holds
+        self.closing = closing
+        self.closed = False
         self.cuts = 0
         self.before_call = before_call
         self.decided = decided
@@ -154,11 +165,16 @@ class Pace:
         return self.count(kwargs.get('messages') or []) + (self.count(kwargs['tools']) if kwargs.get('tools') else 0)
 
     def note(self, rounds: int, kwargs: Dict[str, Any]) -> Optional[str]:
+        """Before a call: the line it is sent with, if any. The calls'
+        budget closes the piece (:meth:`close`), else the decide-now line
+        comes once."""
+        if self.closed:
+            raise StretchFailed(BUDGET, 'a call after the closing call')
         # The calls of every turn of the stretch: a piece asked again (it
         # answered nothing) goes on from the calls its first answer used.
         rounds = max(rounds, self.calls)
         if rounds >= JOB_STRETCH_MAX_ROUNDS:
-            raise StretchFailed(BUDGET, f'more than {JOB_STRETCH_MAX_ROUNDS} model calls')
+            return self.close(f'more than {JOB_STRETCH_MAX_ROUNDS} model calls')
         if self.told:
             return None
         if rounds + 1 >= JOB_STRETCH_DECIDE_AT_ROUNDS or self._prompt(kwargs) >= JOB_CALL_DECIDE_AT_TOKENS:
@@ -167,24 +183,39 @@ class Pace:
             return self.line
         return None
 
-    def sending(self, kwargs: Dict[str, Any]) -> None:
+    def close(self, spent: str) -> str:
+        """A budget is spent (``spent``, in words): the closing call's line
+        when the context holds staged work, else the stretch fails."""
+        if not self.holds():
+            raise StretchFailed(BUDGET, spent)
+        self.closed = True
+        self.closing()
+        return JOB_STEPS_USED_UP
+
+    def sending(self, kwargs: Dict[str, Any]) -> Optional[str]:
+        """The call as it will go out: its prompt's budgets, then the wait
+        for people, then counted. A spent budget closes the piece: the
+        closing call's line is answered, for the caller to send that call
+        instead, never counted against the budgets."""
         if self.output_tokens:
             kwargs['max_tokens'] = min(kwargs.get('max_tokens') or self.output_tokens, self.output_tokens)
         n = self._prompt(kwargs)
-        if n > JOB_CALL_MAX_PROMPT_TOKENS:
-            raise StretchFailed(BUDGET, f'a prompt of {n} tokens')
-        if self.sent + n > JOB_STRETCH_MAX_SENT_TOKENS:
-            raise StretchFailed(BUDGET, f'{self.sent + n} tokens sent')
+        if not self.closed:
+            if n > JOB_CALL_MAX_PROMPT_TOKENS:
+                return self.close(f'a prompt of {n} tokens')
+            if self.sent + n > JOB_STRETCH_MAX_SENT_TOKENS:
+                return self.close(f'{self.sent + n} tokens sent')
         self.before_call()
         self.sent += n
         self.calls += 1
         self.largest = max(self.largest, n)
+        return None
 
     def cut(self, limit: Optional[int]) -> Optional[str]:
         """After a call that reached its output limit (``limit`` tokens, the
         model's own cap or the ceiling): the line the context is asked again
         with, once, where the pace asks again, else None (the turn ends)."""
-        if not self.asks_again or self.cuts:
+        if not self.asks_again or self.cuts or self.closed:
             return None
         self.cuts += 1
         return job_cut_at_limit(limit or self.output_tokens)

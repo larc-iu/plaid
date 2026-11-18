@@ -1,7 +1,10 @@
 """A stretch that cannot finish is halved, and one sentence that cannot is
 skipped (SPEC 3.6). Nothing a failed stretch staged is written. The
 decide-now line comes at the 15th call and at 48,000 prompt tokens, and the
-calls after it are offered the plan tools alone."""
+calls after it are offered the plan tools alone. A stretch whose budget runs
+out while it holds staged work does not fail: it is closed and written
+(BRIEF RW B2, test_job_closing.py), so the stretches here that run out stage
+nothing."""
 
 import pytest
 
@@ -25,10 +28,16 @@ def analyse(asked, i=1):
 
 
 def looping(asked, n, kwargs):
-    """A model that reads for ever, staging first."""
+    """A model that reads for ever, staging nothing."""
+    return reply(calls=[call(100 + n, 'analyses_of', {'form': f'x{n}'})])
+
+
+def cut_twice(asked, n, kwargs):
+    """A model that stages, then is cut at its output limit twice: the
+    stretch fails ``output`` with work staged."""
     if n == 1:
         return reply(calls=analyse(asked))
-    return reply(calls=[call(100 + n, 'analyses_of', {'form': f'x{n}'})])
+    return reply('...', finish='length')
 
 
 def test_a_stretch_over_the_round_cap_is_halved_into_three_and_two(monkeypatch):
@@ -72,7 +81,7 @@ def test_nothing_a_failed_stretch_staged_is_written(monkeypatch):
 
     def answer(asked, n, kwargs):
         if 2 in targets_named(asked):
-            return looping(asked, n, kwargs)
+            return cut_twice(asked, n, kwargs)
         return reply(calls=analyse(asked)) if n == 1 else reply('Done.')
     use(monkeypatch, Model(answer))
     runner(job).document('d1')

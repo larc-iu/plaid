@@ -441,6 +441,13 @@ JOB_DECIDE_NOW = ('(system) Decide now with what you have: reading is over for t
                   'stage changes are left. Stage your work and end with your note.')
 #: A piece's refusal of a tool it was offered until the decide-now line.
 JOB_READING_OVER = 'Reading is over for this piece: stage what you have and end.'
+#: The line of a piece's closing call (BRIEF RW B2): a budget ran out while
+#: it held staged work. The call offers no tool, and what it staged is then
+#: written by the ordinary write, whatever it answers.
+JOB_STEPS_USED_UP = ('(system) The steps of this piece are used up: no tool can be called now. What you staged is '
+                     'written as it stands. End now with your note, saying what is unfinished.')
+#: A piece's refusal of a tool called in its closing call.
+JOB_STEPS_USED_UP_REFUSED = 'The steps of this piece are used up: end now with your note.'
 
 #: What a piece's model is told in place of a refusal's chat advice (a later
 #: turn, an approval, discard_plan), which a job cannot follow
