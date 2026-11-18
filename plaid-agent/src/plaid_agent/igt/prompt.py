@@ -133,6 +133,10 @@ lexicon entries in them. Stage the words to segment with analyze_sentence first,
 up only what its answer lists as several or none.'''
 _JOB_FIELDS_READ_FIRST = '''- The message says what is empty in your piece, and the values those fields hold on \
 other words or morphemes of the same forms. Fill what is empty with set_field.'''
+#: The bullet of a job that fills sentence fields only, whose message holds
+#: no evidence: a sentence field has no form (D29).
+JOB_SENTENCE_FIELDS_READ_FIRST = '''- The message says which sentences of your piece are empty in each field. Fill \
+them with set_field.'''
 _JOB_NOTHING_READ_FIRST = '''- Use the tools rather than guessing, and follow the conventions already in the data.'''
 #: The bullet of a job that fills orthographies only, whose message holds no
 #: evidence (REV-DF3-8).
@@ -337,6 +341,12 @@ _JOB_FIELDS_EXAMPLE_DID = (
     'twelve words. You set the field on s6.w1 and s6.w3 with set_field, "leo" as people have it, and on s7.w1. You '
     'left s7.w2, a name you could not place.')
 _JOB_FIELDS_EXAMPLE_NOTE = 'Filled the field in s6 and s7. Left s7.w2, a name nobody has a value for.'
+#: The worked piece of a piece in sentences of a job that fills sentence fields only.
+_JOB_SENTENCE_FIELDS_EXAMPLE_DID = (
+    'The message showed s4 and s5 as context and s6 and s7 as your piece, and the instructions said to translate '
+    'every sentence with no translation. It named s6 and s7 empty in Translation. You set the translation of s6 '
+    'and s7 with set_field.')
+_JOB_SENTENCE_FIELDS_EXAMPLE_NOTE = 'Translated s6 and s7.'
 #: The worked piece of a piece in sentences of a job that fills orthographies only.
 _JOB_ORTHOGRAPHY_EXAMPLE_DID = (
     'The message showed s4 and s5 as context and s6 and s7 as your piece, and the instructions said to write each '
@@ -400,6 +410,8 @@ def _sentences_system(read_first: str, did: str, note: str, one_value: str = _ON
 JOB_SENTENCES_SYSTEM = _sentences_system(_JOB_SENTENCES_READ_FIRST, _JOB_SENTENCES_EXAMPLE_DID, _JOB_EXAMPLE_NOTE)
 JOB_FIELDS_SYSTEM = _sentences_system(_JOB_FIELDS_READ_FIRST, _JOB_FIELDS_EXAMPLE_DID, _JOB_FIELDS_EXAMPLE_NOTE,
                                       _ONE_VALUE_FIELDS)
+JOB_SENTENCE_FIELDS_SYSTEM = _sentences_system(JOB_SENTENCE_FIELDS_READ_FIRST, _JOB_SENTENCE_FIELDS_EXAMPLE_DID,
+                                               _JOB_SENTENCE_FIELDS_EXAMPLE_NOTE, _ONE_VALUE_FIELDS, evidence=False)
 JOB_ORTHOGRAPHY_SYSTEM = _sentences_system(_JOB_ORTHOGRAPHY_READ_FIRST, _JOB_ORTHOGRAPHY_EXAMPLE_DID,
                                           _JOB_ORTHOGRAPHY_EXAMPLE_NOTE, _ONE_VALUE_FIELDS, evidence=False)
 JOB_NOTHING_SYSTEM = _sentences_system(_JOB_NOTHING_READ_FIRST, _JOB_NOTHING_EXAMPLE_DID, _JOB_NOTHING_EXAMPLE_NOTE,
@@ -482,7 +494,7 @@ NO_TEXT_EDITS = (('deletions and text edits included', 'deletions included'),
 
 
 def build_job_prompt(project: IgtProject, sentences: bool = False, edits_text: bool = False, targets=None,
-                     findings: bool = False) -> str:
+                     findings: bool = False, evidence: bool = True) -> str:
     """The system prompt of every piece of a job on ``project``: the chat's
     prompt with the job's paragraphs, the project's shape and its guidelines
     whole, and the code section where the sandbox is. A piece of a plan in
@@ -492,7 +504,10 @@ def build_job_prompt(project: IgtProject, sentences: bool = False, edits_text: b
     piece of a plan that does not edit the text (``edits_text`` False) is
     told nothing of the tools it is not offered (:data:`NO_TEXT_EDITS`). A
     piece of a plan that fills nothing (``findings``) ends with its findings,
-    the job's report, in place of a short note (RPF-A5)."""
+    the job's report, in place of a short note (RPF-A5). A piece whose
+    message holds no evidence (``evidence`` False: a selection's, one of a
+    plan that fills nothing, sentence fields only) is not told it does
+    (D29)."""
     targets = list(targets or ())
     if not sentences:
         template = JOB_SYSTEM
@@ -500,12 +515,16 @@ def build_job_prompt(project: IgtProject, sentences: bool = False, edits_text: b
         template = job_segments_system(project, targets)
     elif targets and all(t.orthography is not None for t in targets):
         template = JOB_ORTHOGRAPHY_SYSTEM
+    elif targets and all(t.scope == 'Sentence' for t in targets):
+        template = JOB_SENTENCE_FIELDS_SYSTEM
     else:
         template = JOB_FIELDS_SYSTEM if targets else JOB_NOTHING_SYSTEM
     out = _filled(template, project)
     if template is not JOB_ORTHOGRAPHY_SYSTEM and sentences and any(t.orthography is not None for t in targets):
         # The tool such a piece fills an orthography with (REV-DF-D-6).
         out = out.replace(ORTHOGRAPHY_SAID, ORTHOGRAPHY_INSTEAD)
+    if not evidence:
+        out = out.replace(shared.JOB_STAGE_EVIDENCE, '')
     if findings:
         assert shared.JOB_NOTE in out
         out = out.replace(shared.JOB_NOTE, shared.JOB_FINDINGS_NOTE)

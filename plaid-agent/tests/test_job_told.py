@@ -373,3 +373,44 @@ def test_a_fills_nothing_sentences_plan_names_the_tools_its_pieces_are_offered(e
     assert line.startswith(head) and line.endswith('.'), line
     named = line[len(head):-1].replace(' and ', ', ').split(', ')
     assert set(named) == offered and len(named) == len(offered), (line, offered)
+
+
+# --- D29: a piece is told of evidence only when its message holds some ---------------------------
+
+def test_a_piece_whose_message_holds_no_evidence_is_not_told_it_does():
+    from plaid_agent.core.prompt import JOB_STAGE_EVIDENCE
+    from plaid_agent.igt.prompt import build_job_prompt
+    project = _job_ws().project
+    assert JOB_STAGE_EVIDENCE in build_job_prompt(project)
+    assert JOB_STAGE_EVIDENCE not in build_job_prompt(project, evidence=False)
+
+
+def test_a_piece_filling_sentence_fields_only_is_told_of_sentences_not_other_words():
+    from plaid_agent.igt import targets as tg
+    from plaid_agent.igt.prompt import JOB_SENTENCE_FIELDS_READ_FIRST, build_job_prompt
+    project = _job_ws().project
+    translation = [t for t in tg.fillable(project) if t.scope == 'Sentence']
+    told = build_job_prompt(project, sentences=True, targets=translation, evidence=False)
+    assert JOB_SENTENCE_FIELDS_READ_FIRST in told
+    assert 'other words or morphemes' not in told and '"leo" the value N' not in told
+
+
+def test_the_selection_piece_and_a_fills_nothing_piece_are_built_without_the_evidence_line(monkeypatch):
+    """By what the message held: a selection's lists the documents only."""
+    from plaid_agent.core.prompt import JOB_STAGE_EVIDENCE
+    client = JobClient({'d1': document('d1', 'Story', [{'words': ['blank']}])})
+    job = start(client, plan='selection')
+    systems = []
+
+    def answer(said, n, kwargs):
+        systems.append(kwargs['messages'][0]['content'])
+        return reply('Done.')
+    use(monkeypatch, Model(answer))
+    r = runner(job)
+    r.work(job)
+    assert systems and JOB_STAGE_EVIDENCE not in systems[0]
+
+
+def test_plan_work_promises_what_is_empty_only_to_pieces_shown_it():
+    said = toolkit.PLAN_WORK['function']['description']
+    assert 'Pieces in sentences and of one document are shown what of it is empty.' in said, said

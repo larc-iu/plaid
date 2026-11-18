@@ -1452,6 +1452,8 @@ class JobWorkspace(Workspace):
         self.closing = False
         #: a piece of a job that fills nothing, which ends with its findings (D26)
         self.findings = False
+        #: the piece's message holds evidence (:meth:`IgtRunner.message`, D29)
+        self.handed_evidence = False
         #: the piece ended without finishing, with work staged: the kind of
         #: what ended it (``budget``: its closing call, BRIEF RW B2), None
         #: when it ended by itself
@@ -4088,7 +4090,7 @@ class IgtRunner:
         ws.only_new = self.only_new(project)
         # A plan that fills nothing ends each piece with its findings (RPF-A5).
         system = build_job_prompt(project, sentences=sentences, edits_text=ws.edits_text, targets=ws.fills,
-                                  findings=self.fills_nothing())
+                                  findings=self.fills_nothing(), evidence=ws.handed_evidence)
         transcript = [{'role': 'user', 'content': message}]
         seed(ws.seen, system, transcript, lambda tool, args: True)
         ws.findings = self.fills_nothing()
@@ -4267,6 +4269,8 @@ class IgtRunner:
             precedent = self.precedent(ws, project, st)
         if precedent:
             lines += ['', precedent]
+        # The prompt says the message holds evidence only when it does (D29).
+        ws.handed_evidence = bool(precedent)
         lines += self.instructions_lines()
         if whole:
             lines += ['', f'Your piece: the whole document "{doc.name}", {_n(len(doc.sentences), "sentence")}.']
