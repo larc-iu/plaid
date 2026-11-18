@@ -565,6 +565,8 @@ const FAILURE_TEXT = {
   context: 'prompt too long',
   output: 'answer too long',
   repeating: 'model repeated itself',
+  // The model's provider refused the call (S1-2).
+  refused: 'refused by the model',
 };
 
 // What follows a piece of the whole document or of all the documents in

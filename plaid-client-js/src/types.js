@@ -210,12 +210,13 @@
  * A sentence a job passed over: `sentence` as the job read it (`s12`), its
  * id, why (`too-long`, `failed`, `changed`, `interrupted`: the job's write
  * there was cut off and nothing of it is there now) and, for `failed`, how
- * (`budget`, `context`, `output`, `repeating`).
+ * (`budget`, `context`, `output`, `repeating`, `refused`: the model's provider
+ * refused the call).
  * @typedef {object} JobSkipped
  * @property {string} sentence
  * @property {string} sentenceId
  * @property {"too-long" | "failed" | "changed" | "interrupted"} reason
- * @property {"budget" | "context" | "output" | "repeating" | null} kind
+ * @property {"budget" | "context" | "output" | "repeating" | "refused" | null} kind
  */
 
 /**

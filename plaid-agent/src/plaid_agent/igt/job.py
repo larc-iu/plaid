@@ -47,7 +47,7 @@ from ..core import garble
 from ..core.garble import seed
 from ..core.trace import plural
 from ..core.guidelines import manual_chars
-from ..core.job import (BUDGET, OUTPUT, REPEATING, ROW_FINAL, SKIPPED_MORE, TOO_LONG_MORE, JobStopped, Pace, StretchFailed, canonical, analysis_key,
+from ..core.job import (BUDGET, OUTPUT, REFUSED, REPEATING, ROW_FINAL, SKIPPED_MORE, TOO_LONG_MORE, JobStopped, Pace, StretchFailed, canonical, analysis_key,
                         field_counts, fields_text,
                         BLANK_WHERE, blank_text, empty_counts, failure_kind, halve, harmonized, not_answering)
 from ..core.limits import (JOB_ANALYSIS_MAX_CHARS, JOB_CHANGE_VALUE_CHARS, JOB_CHANGES_MAX, JOB_CONTEXT_SENTENCES,
@@ -432,11 +432,11 @@ SETUP_GONE_REASON = 'setup-gone'
 #: card's shape: it ends before planning (REV-SU-B-6).
 SETUP_UNREAD_REASON = 'setup-unreadable'
 #: The StretchFailed kinds that are the model's fault: a call that reached
-#: the output cap or that the provider refused (a provider error is
-#: ``output`` by :func:`failure_kind`), and a model repeating itself. A
+#: the output cap or that the provider refused (``refused``, S1-2), and a
+#: model repeating itself. A
 #: budget spent or a context too long is the planning's own size, and a
 #: model that does not answer is waited for, never a kind (REV-DF5-1).
-MODEL_FAULTS = (OUTPUT, REPEATING)
+MODEL_FAULTS = (OUTPUT, REPEATING, REFUSED)
 
 #: Why a piece's sentences are skipped when its model answered nothing twice
 #: (:func:`answered_nothing`).

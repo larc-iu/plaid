@@ -83,6 +83,8 @@ const REASON_WORDS = {
   'planning-failed': 'The assistant’s model failed during planning.',
   'setup-gone': 'The fields this job was set up to fill are gone.',
   'setup-unreadable': 'This job’s setup could not be read.',
+  // The model's provider refused the job's key or model (S1-2).
+  'model-refused': 'The model refused the job’s calls.',
 };
 
 /**

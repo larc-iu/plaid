@@ -43,8 +43,14 @@ from .prompt import JOB_DECIDE_NOW, JOB_STEPS_USED_UP, job_cut_at_limit
 
 logger = logging.getLogger(__name__)
 
-#: How a stretch fails (CONTRACT 5.2 ``kind``).
-BUDGET, CONTEXT, OUTPUT, REPEATING = 'budget', 'context', 'output', 'repeating'
+#: How a stretch fails (CONTRACT 5.2 ``kind``). ``refused``: the model's
+#: provider refused the call (S1-2), other than its key or model
+#: (:func:`model_refused`).
+BUDGET, CONTEXT, OUTPUT, REPEATING, REFUSED = 'budget', 'context', 'output', 'repeating', 'refused'
+
+#: The reason a job ends with when the model's provider refuses its key or
+#: its model (:func:`model_refused`, S1-2).
+MODEL_REFUSED = 'model-refused'
 
 #: What the job's line ends with while it takes turns with people on the
 #: model (RPF-A6): from its first pause for them until JOB_YIELD_STEADY_S
@@ -91,24 +97,39 @@ def not_answering(e: BaseException) -> bool:
                 or isinstance(e, transient_errors(litellm)))
 
 
+def model_refused(e: BaseException) -> bool:
+    """Whether ``e`` is the model's provider refusing the job's key or its
+    model (401, 403, 404): every call would be refused the same, so the job
+    ends (:data:`MODEL_REFUSED`), never a stretch halved (S1-2)."""
+    return type(e).__module__.split('.')[0] in ('litellm', 'openai') \
+        and getattr(e, 'status_code', None) in (401, 403, 404)
+
+
+def model_refused_line(e: BaseException) -> str:
+    """The job's message when :func:`model_refused`: the provider's own
+    words, cut to what core keeps."""
+    return fit_line(f'The model refused the job’s calls: {e}')
+
+
 def failure_kind(e: BaseException) -> Optional[str]:
     """The kind of a stretch's failure ``e``, or None when ``e`` is not one
     (SPEC 3.6): a budget spent, a context the endpoint refused, a call that
-    reached the output cap or that the model's provider refused, a model
-    repeating itself. A stop, a model that does not answer, and anything
+    reached the output cap, a model repeating itself, a call the model's
+    provider refused (``refused``). A stop, a model that does not answer, a
+    refusal of the key or the model (:func:`model_refused`), and anything
     that did not come from the model call (a refusal of core, a network
     error to core, a fault of the worker's own) are not, and are never
     halved: the caller sorts them (:func:`core_fault`)."""
     if isinstance(e, StretchFailed):
         return e.kind
-    if isinstance(e, TurnCancelled) or not_answering(e):
+    if isinstance(e, TurnCancelled) or not_answering(e) or model_refused(e):
         return None
     if too_long(e):
         return CONTEXT
     if isinstance(e, TurnFailed):
         return REPEATING if str(e) == REPEATING_LINE else OUTPUT
     if type(e).__module__.split('.')[0] in ('litellm', 'openai'):
-        return OUTPUT
+        return REFUSED
     return None
 
 
@@ -786,6 +807,11 @@ def run_job(job: Job, runner) -> Optional[Dict[str, Any]]:
             return None
         if core_fault(e) == 'access':
             e = job.access_lost()
+        if model_refused(e):
+            # The model's provider refused the key or the model (S1-2).
+            logger.warning('Job %s: the model refused its calls: %s', job.id, e)
+            job.set(message=model_refused_line(e))
+            return _finish(job, 'failed', runner, harmonize, entries, reason=MODEL_REFUSED, said=True)
         if not isinstance(e, JobStopped) and not no_longer_mine(e):
             # No rule covers it: the job fails with what happened, rather
             # than being skipped past or taken again to fail the same way.

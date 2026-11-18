@@ -5,6 +5,7 @@ import {
   documentSentencesText,
   pieceEndLines,
   planParts,
+  skippedText,
 } from './jobText.js';
 
 // What the job page says of a report's documents, by the worker's rows
@@ -76,6 +77,14 @@ describe('a piece ended by a repeat stop (REV-JR1-6)', () => {
     expect(pieceEndLines({ ended: 'budget', counts: { changes: 1 } })).toEqual([
       'Steps used up: written as staged.',
     ]);
+  });
+});
+
+// S1-2: a call the model's provider refused is never an answer too long.
+describe('a sentence failed by a refusal of the model', () => {
+  it('says the model refused it', () => {
+    expect(skippedText({ reason: 'failed', kind: 'refused' })).toBe('Failed: refused by the model');
+    expect(pieceEndLines({ failed: 'refused' })).toEqual(['Failed: refused by the model.']);
   });
 });
 
