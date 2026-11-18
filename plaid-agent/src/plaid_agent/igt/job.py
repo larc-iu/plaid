@@ -1235,9 +1235,13 @@ CHANGE_NOUNS = {'values': ('value set or cleared', 'values set or cleared'),
 #: The totals' keys the final context reads by another name: what each counts.
 TOTAL_WORDS = {'changes': 'changes written', 'sentences': 'sentences written in', 'text_changes': 'text edits',
                'peoples_values_changed': 'values, morphemes and links people wrote, changed or removed', 'words': 'words segmented',
-               'peoples_outside': 'of those, links outside the job\'s documents',
+               'peoples_outside': 'links people made outside the job\'s documents that a deleted or merged entry '
+                                  'took or moved',
                'words_added': 'words added by text edits',
                'tokens_changed': 'existing words or punctuation marks changed or removed by text edits'}
+#: The document lines' keys the final context reads by another name, each
+#: standing on its own wherever it sorts (REV-SJ3-3).
+DOCUMENT_WORDS = {'peoples_outside': TOTAL_WORDS['peoples_outside']}
 #: How much of the plan's instructions for every piece the final context is handed.
 JOB_SUMMARY_PLAN_CHARS = 2000
 
@@ -1313,7 +1317,8 @@ def summary_message(report: Dict[str, Any], setup: Optional[str] = None) -> str:
     for d in report.get('documents') or []:
         c = d.get('counts') or {}
         lines.append(f'- "{d.get("name")}": '
-                     + ', '.join([state_text(d, left_ids)] + [f'{k} {v:,}' for k, v in sorted(c.items())
+                     + ', '.join([state_text(d, left_ids)] + [f'{DOCUMENT_WORDS.get(k, k)} {v:,}'
+                                                              for k, v in sorted(c.items())
                                                     if v and isinstance(v, int) and not isinstance(v, bool)]
                                  + ([fields_text(c['fields'])] if c.get('fields') else [])
                                  + ([blank_text(c['blank'])] if c.get('blank') else []))

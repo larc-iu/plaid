@@ -470,3 +470,17 @@ def test_a_note_is_kept_as_plain_text(text, note):
     them, by its marks alone."""
     from plaid_agent.igt.job import piece_note
     assert piece_note(text) == note
+
+
+def test_the_final_context_says_peoples_links_outside_the_job_in_words_of_their_own():
+    """REV-SJ3-3: sorted beside other totals, the count names itself, and the
+    document line shows no raw key."""
+    from plaid_agent.igt.job import summary_message
+    label = "links people made outside the job's documents that a deleted or merged entry took or moved"
+    report = {'state': 'done', 'instructions': 'Clean the lexicon.',
+              'totals': {'links': 3, 'peoples_values_changed': 2, 'peoples_outside': 1, 'changes': 1},
+              'documents': [{'name': 'Long story', 'state': 'done',
+                             'counts': {'changes': 1, 'peoples_values_changed': 1, 'peoples_outside': 1}}]}
+    text = summary_message(report)
+    assert f'{label} 1' in text, text
+    assert 'of those' not in text and 'peoples_outside' not in text, text
