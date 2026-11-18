@@ -113,7 +113,7 @@ and the approver chooses: **Approve as verified** records every change as made
 by the assistant and confirmed by the approver, **Approve as unverified**
 records every value the assistant writes as its proposal, unconfirmed, as a
 service's proposal is. A confirmation in the plan is made under either button,
-and a plan of only confirmations and deletions offers one Approve. Ticking **Record as human-made** records it as the approver's
+and a plan in which nothing can be marked verified or unverified (only confirmations, deletions, renames or settings changes, for example) offers one Approve. Ticking **Record as human-made** records it as the approver's
 own work instead.
 
 Replies cite evidence with a tag, `<cite doc="Text 1" ref="s3"/>` (`ref` may

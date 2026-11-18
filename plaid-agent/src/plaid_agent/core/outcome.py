@@ -15,7 +15,8 @@ def approval_mode(as_human: bool, as_unverified: bool, contributor: Optional[str
     """The stamp mode (core.plan.STAMP_MODES) an approval writes by: the
     button the approver pressed (``as_unverified``: "Approve as unverified",
     else "Approve as verified") and the "Record as human-made" box
-    (``as_human``), which wins over both (the owner's ruling, 2026-11-12).
+    (``as_human``), which wins over both (decided in review on 2026-11-12,
+    not by the owner, whose ruling is the two buttons).
     ``contributor`` is the approver when the project reviews their work: their
     verified approval, or one recorded as human-made, is their contribution.
     Nothing else decides it."""
