@@ -41,7 +41,11 @@ const capital = (s) => s.charAt(0).toUpperCase() + s.slice(1);
 // step says so, a stopped, failed or undone one says how it ended after what
 // it changed, and one that changed nothing says that.
 export const headlineText = (f) => {
-  const where = `${f.changedDocuments.toLocaleString()} of ${countOf(f.documents, 'document')}`;
+  // A job of one document says it so, never "1 of 1 document".
+  const where =
+    f.documents === 1
+      ? 'its one document'
+      : `${f.changedDocuments.toLocaleString()} of ${countOf(f.documents, 'document')}`;
   let what = null;
   if (f.sentences > 0) what = `changed ${countOf(f.sentences, 'sentence')} in ${where}`;
   else if (f.changes > 0) {
@@ -71,6 +75,14 @@ const SKIPPED_KINDS = [
 ];
 
 const VALUES_PEOPLE_WROTE = ['value, morpheme or link', 'values, morphemes or links'];
+
+// A count of blanks of one kind, the sentence said once where the blank is a
+// sentence's: "6 words with Gloss left blank in sentences the job changed",
+// "192 sentences the job did not change with Translation blank".
+const blankSaid = (n, unit, target, blank, changed) =>
+  unit === 'sentence'
+    ? `${countOf(n, 'sentence')} the job ${changed} with ${target} ${blank}`
+    : `${countOf(n, unit)} with ${target} ${blank} in sentences the job ${changed}`;
 
 // What of an ended job needs a person, a row per kind with a count above
 // zero, in a fixed order (the documents' states from the job's own rows where
@@ -127,7 +139,7 @@ export const toCheckRows = (job) => {
     add(
       `left-${b.target}`,
       left,
-      `${countOf(left, b.unit)} with ${b.target} left blank in sentences the job changed, ` +
+      `${blankSaid(left, b.unit, b.target, 'left blank', 'changed')}, ` +
         `in ${countOf(inDocuments(b.target, 'left'), 'document')}`,
       'blank',
     );
@@ -140,8 +152,8 @@ export const toCheckRows = (job) => {
     add(
       `untouched-${b.target}`,
       b.untouched ?? 0,
-      `${countOf(b.untouched ?? 0, b.unit)} with ${b.target} blank in sentences the job did not ` +
-        `change, in ${countOf(inDocuments(b.target, 'untouched'), 'document')}`,
+      `${blankSaid(b.untouched ?? 0, b.unit, b.target, 'blank', 'did not change')}, ` +
+        `in ${countOf(inDocuments(b.target, 'untouched'), 'document')}`,
       'blank',
     );
   });
@@ -156,7 +168,7 @@ export const toCheckRows = (job) => {
   check(
     'people',
     people,
-    `${countOf(people, ...VALUES_PEOPLE_WROTE)} people wrote, changed or removed, in ` +
+    `${countOf(people, ...VALUES_PEOPLE_WROTE)} people wrote that the job changed or removed, in ` +
       `${countOf(touched, 'document')}`,
   );
 
@@ -243,7 +255,9 @@ export const documentChecks = (d, reported = null) => {
       ),
     );
   const people = r.counts?.peoplesValuesChanged ?? d.counts?.peoplesValuesChanged ?? 0;
-  if (people > 0) add('people', `${countOf(people, ...VALUES_PEOPLE_WROTE)} people wrote, changed`);
+  if (people > 0) {
+    add('people', `${countOf(people, ...VALUES_PEOPLE_WROTE)} people wrote that the job changed`);
+  }
   const refused = (r.refused?.length ?? 0) + (r.refusedMore ?? 0);
   if (refused > 0) add('refused', `${countOf(refused, 'change')} refused`);
   if (r.leftUnread) add('unread', 'Could not be read');

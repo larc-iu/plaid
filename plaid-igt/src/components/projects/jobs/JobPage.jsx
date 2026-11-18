@@ -498,7 +498,7 @@ const JobStatus = ({ job, user, names, undoneHref }) => {
   const active = isJobActive(job);
   const took =
     job.startedAt && job.finishedAt
-      ? durationText(new Date(job.finishedAt).getTime() - new Date(job.startedAt).getTime())
+      ? new Date(job.finishedAt).getTime() - new Date(job.startedAt).getTime()
       : null;
   return (
     <div className="mb-6 flex flex-col gap-1 text-sm" role="status">
@@ -519,7 +519,7 @@ const JobStatus = ({ job, user, names, undoneHref }) => {
                 {' · '}
               </>
             )}
-            {took && `took ${took === 'Under a minute' ? 'under a minute' : took} · `}
+            {took !== null && `took ${took < 60000 ? 'under a minute' : durationText(took)} · `}
             started by {whoText(job.startedBy, job, user, names)}
           </span>
         )}

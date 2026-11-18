@@ -27,7 +27,7 @@ describe('the headline', () => {
     [
       'one sentence in one document',
       { ...WROTE, sentences: 1, changes: 1, changedDocuments: 1, documents: 1 },
-      'Changed 1 sentence in 1 of 1 document.',
+      'Changed 1 sentence in its one document.',
     ],
     [
       'a job worked in one step',
@@ -121,7 +121,7 @@ describe('the headline', () => {
       documents: [{ documentId: 'd1' }],
       report: { totals: {}, documents: [{ documentId: 'd1', counts: { changes: 2 } }] },
     };
-    expect(jobHeadline(job)).toBe('Made 2 changes in 1 of 1 document, then stopped.');
+    expect(jobHeadline(job)).toBe('Made 2 changes in its one document, then stopped.');
   });
 });
 
@@ -191,7 +191,7 @@ describe('what to check', () => {
       ['5 sentences skipped, too long', 'skipped', null],
       ['1 sentence skipped, no answer from the assistant', 'skipped', null],
       [
-        '192 sentences with Translation blank in sentences the job did not change, in 2 documents',
+        '192 sentences the job did not change with Translation blank, in 2 documents',
         'blank',
         null,
       ],
@@ -204,7 +204,7 @@ describe('what to check', () => {
       ['1 document could not be read', 'blank', null],
       ['2 changes not done, refused', 'blank', null],
       [
-        '33 values, morphemes or links people wrote, changed or removed, in 1 document',
+        '33 values, morphemes or links people wrote that the job changed or removed, in 1 document',
         'documents',
         'people',
       ],
@@ -236,6 +236,30 @@ describe('what to check', () => {
     expect(rows.map((r) => [r.text, r.view, r.filter ?? null])).toEqual([
       ['2 documents left out by the plan', 'leftout', null],
       ['1 document with text the job changed', 'documents', 'text'],
+    ]);
+  });
+
+  // REV-RP-9: a sentence's blank is said once: "sentences the job changed
+  // with Translation left blank", never "sentences ... in sentences".
+  it('says a blank whose unit is the sentence without saying sentences twice', () => {
+    const rows = toCheckRows({
+      state: 'done',
+      report: {
+        totals: {
+          blank: [{ target: 'Translation', unit: 'sentence', left: 2, untouched: 1 }],
+        },
+        documents: [
+          {
+            documentId: 'd1',
+            state: 'done',
+            counts: { blank: [{ target: 'Translation', unit: 'sentence', left: 2, untouched: 1 }] },
+          },
+        ],
+      },
+    });
+    expect(rows.map((r) => r.text)).toEqual([
+      '2 sentences the job changed with Translation left blank, in 1 document',
+      '1 sentence the job did not change with Translation blank, in 1 document',
     ]);
   });
 
@@ -347,7 +371,7 @@ describe('a document’s reasons to check it', () => {
     expect(said(report.documents[0])).toEqual([
       '6 morphemes left blank',
       'Translation blank in 150 sentences the job did not change',
-      '33 values, morphemes or links people wrote, changed',
+      '33 values, morphemes or links people wrote that the job changed',
       '2 changes refused',
     ]);
     expect(kinds(report.documents[0])).toEqual(['left', 'untouched', 'people', 'refused']);

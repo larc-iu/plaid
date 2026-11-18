@@ -210,6 +210,12 @@ describe('the Overview of an ended job', () => {
       /^Ended .+ · took 2 min · started by you$/,
     );
     await v.unmount();
+    const quick = { ...ENDED, finishedAt: '2026-11-12T10:01:40Z' };
+    const w = await mount(clientOf(quick));
+    expect(text(w.container.querySelector('[data-testid="job-ended"]'))).toMatch(
+      /^Ended .+ · took under a minute · started by you$/,
+    );
+    await w.unmount();
   });
 
   it('says what the job changed in one sentence, then what to check, each a link to its section', async () => {
@@ -226,7 +232,7 @@ describe('the Overview of an ended job', () => {
       ['1 document in use, not worked', '/projects/p1/jobs/j1?view=documents&filter=in-use'],
       ['1 sentence skipped, too long', '/projects/p1/jobs/j1?view=skipped'],
       [
-        `${N - 1} sentences with Translation blank in sentences the job did not change, in ${N - 1} documents`,
+        `${N - 1} sentences the job did not change with Translation blank, in ${N - 1} documents`,
         '/projects/p1/jobs/j1?view=blank',
       ],
     ]);
