@@ -211,7 +211,7 @@
   Throws ex-info with :code 400. Callers must already be inside
   `submit-operation!`, which is what projects that into a 400 response."
   [email]
-  (psc/assert-valid-name! email)
+  (psc/assert-valid-length! email)
   (when-not (re-matches email-pattern email)
     (throw (ex-info "User ID must be an email address"
                     {:code 400 :email email})))

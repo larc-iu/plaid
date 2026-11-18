@@ -9,7 +9,8 @@
                                     api-call assert-created assert-ok
                                     with-admin with-test-users with-clean-db]]
             [plaid.test-helpers :refer :all]
-            [plaid.sql.common :as psc]))
+            [plaid.sql.common :as psc]
+            [plaid.sql.user]))
 
 (use-fixtures :once with-db with-mount-states with-rest-handler with-admin with-test-users)
 (use-fixtures :each with-clean-db)
@@ -64,6 +65,12 @@
     (testing (format "U+%04X" cp) (is (psc/visible? (s cp)))))
   (testing "beside spaces too"
     (is (psc/visible? (s 0x20 0x06DD 0x20)))))
+
+(deftest an-email-is-not-a-name
+  ;; The first admin's console prompt passes what was typed as it is.
+  (is (= "User ID must be an email address"
+         (try (plaid.sql.user/assert-valid-email! zwsp) nil
+              (catch clojure.lang.ExceptionInfo e (ex-message e))))))
 
 (defn- call [method path body]
   (api-call admin-request {:method method :path path :body body}))
