@@ -62,11 +62,12 @@ const changedAgainBy = (rule) => {
 
 // "1,240 changes in 12 documents", and how many replace accepted work. A
 // rule whose values a later rule changes again says so, so that "0 changes"
-// never stands without its reason.
-export const ruleCountLine = (rule, replacesWork = 0) => {
+// never stands without its reason. The row's own `count`, when it has one, is
+// the number, the one the staged line adds up (REV-RL1-R2-3).
+export const ruleCountLine = (rule, replacesWork = 0, rowCount = null) => {
   const { named, moreDocs } = ruleDocuments(rule);
   const docs = named.length + moreDocs;
-  const total = Number(rule?.total) || 0;
+  const total = Number.isInteger(rowCount) ? rowCount : Number(rule?.total) || 0;
   const again = changedAgainBy(rule);
   if (total === 0 && again) {
     return `0 changes: its ${count(again.n, 'value is', 'values are')} changed again by ${again.by}`;

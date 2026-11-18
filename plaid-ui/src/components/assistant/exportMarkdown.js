@@ -139,7 +139,7 @@ const planToMarkdown = (plan, status, outcome, inProject, reason, recorded) => {
     // A rule: its count, every document it reaches by name up to the
     // card's cut, and its sample, as the card shows them unfolded.
     const { named, moreDocs, moreChanges } = ruleDocuments(r.rule);
-    lines.push(`   - ${ruleCountLine(r.rule, r.replacesWork)}`);
+    lines.push(`   - ${ruleCountLine(r.rule, r.replacesWork, r.count)}`);
     if (r.rule.partial) lines.push(`   - ${markdownText(r.rule.partial)}`);
     if (r.rule.mode) lines.push(`   - Matches ${r.rule.mode}`);
     const changes = ruleTransitions(r.rule);

@@ -474,7 +474,7 @@ const RuleRow = ({ row, projectId, adapter, open: openFirst = false, written }) 
           )}
           <span className="font-medium text-foreground">{row.change ?? row.label}</span>
           <span className="ml-1.5 text-muted-foreground">
-            {ruleCountLine(row.rule, row.replacesWork)}
+            {ruleCountLine(row.rule, row.replacesWork, row.count)}
           </span>
           {row.rule.mode && (
             <span className="ml-1.5 text-muted-foreground" data-rule-mode="true">

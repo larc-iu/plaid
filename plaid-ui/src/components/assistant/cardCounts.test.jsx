@@ -126,6 +126,16 @@ describe('the card counts changes, as the line does', () => {
     await view.unmount();
   });
 
+  it('counts a rule by its row, as the line does', async () => {
+    const p = planOf([{ ...rule(400), rule: { ...rule(400).rule, total: 399 } }]);
+    const view = await draw(p);
+    expect(staged(view.container)).toBe(400);
+    expect(view.container.querySelector('tr[data-rule]').textContent).toContain(
+      '400 changes in 1 document',
+    );
+    await view.unmount();
+  });
+
   it('says how many changes "Show all" opens', async () => {
     const view = await draw(folded());
     expect(showButton(view.container).textContent.trim()).toBe('Show all 797');
