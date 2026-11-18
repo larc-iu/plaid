@@ -967,6 +967,24 @@ describe('buildCldfDocuments — per-example media', () => {
     }
   });
 
+  it('finds no file where a .. climbs past the archive root (REV-G3-5)', () => {
+    for (const url of ['../Examples/a.mp3', 'Examples/../../Examples/a.mp3']) {
+      const [doc] = buildCldfDocuments(
+        dataset(
+          'ID,Primary_Text,Analyzed_Word,Gloss,Audio\r\nex1,hola,hola,hi,m1\r\n',
+          [...BASIC_COLUMNS, col('Audio', 'mediaReference')],
+          [mediaTable],
+          {
+            'media.csv': `ID,Media_Type,Download_URL\r\nm1,audio/mpeg,${url}\r\n`,
+            'Examples/a.mp3': 'ID3fake',
+          },
+        ),
+      ).documents;
+      expect(doc.mediaBytes).toBeNull();
+      expect(doc.warnings.join(' ')).toContain(`"${url}" is not in the archive`);
+    }
+  });
+
   it("takes a contribution's audio row over a PDF or transcript listed before it (H2-13-3)", () => {
     const ds = (rows) =>
       dataset(
