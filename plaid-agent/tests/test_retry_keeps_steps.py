@@ -336,3 +336,26 @@ def test_the_rewind_keeps_a_failed_turns_marked_messages_and_a_note_written_afte
          'display': [user_item(ASKED), {'kind': 'error', 'text': 'x'}]}
     out, asked = rewind_for_retry(c)
     assert out['messages'] == c['messages'] and asked['text'] == ASKED
+
+
+def test_a_retry_refused_for_room_says_the_conversation_is_full_never_to_shorten_it(monkeypatch):
+    """REV-RL1-5: a Retry sends no text the person can edit, so its refusal
+    for room is the full conversation's, which says to start a new one. Here
+    the record is far from full, but the question asked again does not fit
+    (the base, which took the question and the kept steps off first,
+    accepted this Retry)."""
+    from plaid_agent.core.ops import CONVERSATION_FULL
+    monkeypatch.setattr(record_ops, 'value_cap', lambda c: 66_667)
+    monkeypatch.setattr(conversation_mod, 'value_cap', lambda c: 66_667)
+    client = FakeClient()
+    asked = 'q' * 15_000
+    marked = [{**m, 'failed_turn': True} for m in KEPT + [{'role': 'user', 'content': NOTE_DOWN}]]
+    _save(client, [{'role': 'user', 'content': asked}] + marked,
+          [user_item(asked), {'kind': 'error', 'text': 'x'}])
+    seen = []
+    monkeypatch.setattr(turn_mod, 'run_turn', _answering(seen))
+    helper = Helper(request_id='r2')
+    _service().process_request(_req(client, 'retry'), helper)
+    assert helper.done[0]['kind'] == 'refused' and helper.done[0]['why'] == 'full'
+    assert helper.done[0]['message'] == CONVERSATION_FULL
+    assert not seen

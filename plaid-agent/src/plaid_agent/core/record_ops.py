@@ -410,7 +410,9 @@ class RecordOps:
         first = appended(base)
         if cap is not None and conversation_bytes(first) > budget:
             before = conversation_bytes(base)
-            message = CONVERSATION_FULL if before + MESSAGE_ROOM >= budget else MESSAGE_TOO_LONG
+            # A Retry sends no text the person can shorten: only the full line
+            # is true of it (REV-RL1-5).
+            message = CONVERSATION_FULL if retry or before + MESSAGE_ROOM >= budget else MESSAGE_TOO_LONG
             self._refuse(ctx, 'full', message, meta=meta)
             return None
         marker = {'kind': 'turn', 'request_id': ctx.request_id, 'service_id': self.service_id,
