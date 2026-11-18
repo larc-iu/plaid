@@ -86,14 +86,6 @@ export const TokenVisualizer = ({
   );
   const wordById = useMemo(() => new Map(wordTokens.map((w) => [w.id, w])), [wordTokens]);
   const idByKey = useMemo(() => new Map(wordTokens.map((w) => [String(w.id), w.id])), [wordTokens]);
-  const sentenceBegins = useMemo(
-    () => new Set(sentenceTokens.map((s) => s.begin)),
-    [sentenceTokens],
-  );
-  const sentenceInitialWordIds = useMemo(
-    () => new Set(wordTokens.filter((w) => sentenceBegins.has(w.begin)).map((w) => w.id)),
-    [wordTokens, sentenceBegins],
-  );
 
   // Which sentence a character offset falls in. The hand-off to Annotate needs
   // the sentence TOKEN's id, and a badge only knows its own range. Sentences
@@ -104,6 +96,20 @@ export const TokenVisualizer = ({
     () => [...sentenceTokens].sort((a, b) => a.begin - b.begin || a.end - b.end),
     [sentenceTokens],
   );
+  // The first token of each sentence, wherever in it the token begins: a
+  // sentence can begin on text no token covers (a line's leading spaces, a
+  // deleted `«`). A click on it joins the sentence to the one before
+  // (ConlluDocument._boundaryAt).
+  const sentenceInitialWordIds = useMemo(() => {
+    const words = [...wordTokens].sort((a, b) => a.begin - b.begin);
+    const ids = new Set();
+    let i = 0;
+    for (const s of sentencesByBegin) {
+      while (i < words.length && words[i].begin < s.begin) i += 1;
+      if (i < words.length && words[i].begin < s.end) ids.add(words[i].id);
+    }
+    return ids;
+  }, [wordTokens, sentencesByBegin]);
   const sentenceTokenAt = useCallback(
     (offset) => {
       let lo = 0;

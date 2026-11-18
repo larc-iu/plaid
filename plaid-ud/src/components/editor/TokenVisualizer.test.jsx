@@ -30,6 +30,34 @@ const mount = (props) =>
   );
 
 describe('the Token Visualization', () => {
+  // H3-3-1: a sentence that begins on text no token covers (a line's leading
+  // spaces, a deleted `«`) showed no start and ran into the block before.
+  it("marks each sentence's first token as its start, wherever in the sentence it begins", async () => {
+    const text = '  Hello there.\n« Second line.';
+    const view = await mount({
+      text,
+      originalText: text,
+      textDirection: 'ltr',
+      sentenceTokens: [
+        { id: 's1', begin: 0, end: 15 },
+        { id: 's2', begin: 15, end: 29 },
+      ],
+      wordTokens: [
+        { id: 'w1', begin: 2, end: 7 },
+        { id: 'w2', begin: 8, end: 13 },
+        { id: 'w3', begin: 13, end: 14 },
+        { id: 'w4', begin: 17, end: 23 },
+        { id: 'w5', begin: 24, end: 28 },
+        { id: 'w6', begin: 28, end: 29 },
+      ],
+    });
+    const starts = all(view.container, '[data-sent-start="true"]').map((b) => b.textContent);
+    expect(starts).toEqual(['Hello', 'Second']);
+    const blocks = all(view.container, '[data-sentence-block]');
+    expect(blocks.map((b) => b.dataset.sentenceBlock)).toEqual(['s1', 's2']);
+    await view.unmount();
+  });
+
   it('lays the badges out in the document direction, each badge on its own', async () => {
     const view = await mount({ textDirection: 'rtl' });
     const box = view.container.querySelector('[dir="rtl"]');

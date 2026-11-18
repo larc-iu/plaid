@@ -581,7 +581,8 @@ export class ConlluDocument extends DocumentModel {
   // sentence with no words between has no row (`sentenceHoldsWords`), so the
   // sentence before on screen is the nearest one with words, and the
   // word-less ones between join it too.
-  _sentenceJoin(charPos) {
+  _sentenceJoin(at) {
+    const charPos = this._boundaryAt(at);
     const sentenceTokens = this.layerInfo.sentenceTokenLayer?.tokens || [];
     const startsHere = sentenceTokens.find((s) => s.begin === charPos);
     if (!startsHere) return null;
@@ -606,6 +607,19 @@ export class ConlluDocument extends DocumentModel {
     return { prevSent, between, startsHere };
   }
 
+  // Where a click at `charPos` (a token's begin) puts a sentence boundary:
+  // the start of its sentence when no token of the sentence begins before
+  // it. A sentence can begin on text no token covers (a line's leading
+  // spaces, a deleted `«`), and its first token is its first all the same:
+  // a click there joins, and never splits off a sentence of no words.
+  _boundaryAt(charPos) {
+    const sentences = this.layerInfo.sentenceTokenLayer?.tokens || [];
+    const s = sentences.find((t) => t.begin < charPos && charPos < t.end);
+    if (!s) return charPos;
+    const words = this.layerInfo.wordTokenLayer?.tokens || [];
+    return words.some((w) => w.begin >= s.begin && w.begin < charPos) ? charPos : s.begin;
+  }
+
   // The sentence fields a join at `charPos` deletes: the field names of
   // every sentence that joins the one before, in order, one per field (R54).
   // The sentence before keeps its own.
@@ -618,7 +632,8 @@ export class ConlluDocument extends DocumentModel {
   // What splitting the sentence at `charPos` takes on the text's other layers:
   // the relations a layer keeps inside one sentence that would cross the new
   // boundary. This editor's own dependencies go without a question.
-  otherLossForSentenceSplit(charPos) {
+  otherLossForSentenceSplit(at) {
+    const charPos = this._boundaryAt(at);
     const sentences = this.layerInfo.sentenceTokenLayer?.tokens || [];
     const containing = sentences.find((s) => s.begin < charPos && charPos < s.end);
     if (!containing) return { annotations: 0, links: 0 };
@@ -731,7 +746,8 @@ export class ConlluDocument extends DocumentModel {
   // Toggle a sentence boundary at a character position (a word's begin
   // offset). The sentence layer is partitioning, so this is a split (add)
   // or merge (remove).
-  async toggleSentenceBoundary(charPos) {
+  async toggleSentenceBoundary(at) {
+    const charPos = this._boundaryAt(at);
     const label = 'Failed to update sentence boundary';
     const { sentenceTokenLayer } = this.layerInfo;
     const sentenceTokens = sentenceTokenLayer?.tokens || [];
