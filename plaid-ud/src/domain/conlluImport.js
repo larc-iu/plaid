@@ -25,6 +25,7 @@ const composed = (v) => {
 const HEADLESS = 'the head is not a row of the sentence.';
 const SELF_HEAD = 'the head is the word itself.';
 const NO_HEAD = 'no head is given.';
+const NO_DEPREL = 'no DEPREL is given.';
 // Over the server's cap on a request's body. The person imported a file, so
 // it is said in those words rather than the general wording for a 413.
 const TOO_LARGE_TO_IMPORT = 'This file is too large to import. Split it into shorter documents.';
@@ -370,10 +371,12 @@ async function importDocument(client, projectId, name, conlluText, precomputedLa
     const relationOps = [];
     const enhancedOps = [];
     // Heads that cannot be written, dropped with a warning: a HEAD of `_`
-    // beside a DEPREL, one that is no row of the sentence, and one that is
+    // beside a DEPREL, a HEAD beside a DEPREL of `_` (a relation is stored
+    // with its label), one that is no row of the sentence, and one that is
     // the row itself (which would read as a root, the way a root is stored).
     const dropped = {
       basicNoHead: 0,
+      basicNoDeprel: 0,
       basicHeadless: 0,
       basicSelf: 0,
       enhancedHeadless: 0,
@@ -384,7 +387,11 @@ async function importDocument(client, projectId, name, conlluText, precomputedLa
         const ids = lemmaSpanIds[sentIdx];
         sentence.tokens.forEach((token, tokIdx) => {
           const targetId = ids[tokIdx];
-          if (!token.deprel || !targetId) return;
+          if (!token.deprel) {
+            if (token.head !== null) dropped.basicNoDeprel += 1;
+            return;
+          }
+          if (!targetId) return;
           if (token.head === null) {
             dropped.basicNoHead += 1;
             return;
@@ -450,6 +457,7 @@ async function importDocument(client, projectId, name, conlluText, precomputedLa
     }
     const headWarnings = [
       [dropped.basicNoHead, 'dependency relation', 'dependency relations', NO_HEAD],
+      [dropped.basicNoDeprel, 'HEAD value', 'HEAD values', NO_DEPREL],
       [dropped.basicHeadless, 'dependency relation', 'dependency relations', HEADLESS],
       [dropped.basicSelf, 'dependency relation', 'dependency relations', SELF_HEAD],
       [dropped.enhancedHeadless, 'enhanced dependency', 'enhanced dependencies', HEADLESS],

@@ -222,3 +222,17 @@ test('repeated comment lines are dropped aloud, and the first of each is kept', 
   assert.equal(sentences[0].metadata.comment, 'checked by A');
   assert.equal(sentences[0].metadata['not sure about the lemma'], true);
 });
+
+// H3-5-2: an unlabelled tree (HEADs with DEPREL `_`) was dropped whole in
+// silence, while a DEPREL with no HEAD was counted.
+test('a HEAD beside a DEPREL of _ is dropped aloud', async () => {
+  const { warnings, basic } = await importOf([
+    '# sent_id = u-1',
+    '# text = the dog barked',
+    '1\tthe\t_\tDET\t_\t_\t2\t_\t_\t_',
+    '2\tdog\t_\tNOUN\t_\t_\t3\t_\t_\t_',
+    '3\tbarked\t_\tVERB\t_\t_\t0\t_\t_\t_',
+  ]);
+  assert.deepEqual(warnings, ['3 HEAD values dropped: no DEPREL is given.']);
+  assert.deepEqual(basic, []);
+});
