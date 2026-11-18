@@ -1909,7 +1909,18 @@ class Write:
             halves = [[o for o in rest if sid[id(o)] in first or sid[id(o)] is None],
                       [o for o in rest if sid[id(o)] is not None and sid[id(o)] not in first]]
         else:
-            halves = [rest[:len(rest) // 2], rest[len(rest) // 2:]]
+            # In the middle, a word's analysis and the ops that name its
+            # planned morphemes (a link, ``analysis_word_id``) kept as one
+            # unit: alone, the executor drops such a link (D15).
+            analysed = {o.get('word_id') for o in rest if o.get('kind') == 'set_analysis'}
+            units: Dict[Any, List[Dict[str, Any]]] = {}
+            for o in rest:
+                key = (o.get('word_id') if o.get('kind') == 'set_analysis'
+                       else o.get('analysis_word_id') if o.get('analysis_word_id') in analysed else id(o))
+                units.setdefault(key, []).append(o)
+            groups = list(units.values())
+            halves = [[o for g in groups[:len(groups) // 2] for o in g],
+                      [o for g in groups[len(groups) // 2:] for o in g]]
         out = self.split([[o for o in ops if o.get('kind') == 'create_entry'] + halves[0], halves[1]])
         return out if len(out) > 1 else None
 
