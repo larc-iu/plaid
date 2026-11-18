@@ -103,3 +103,34 @@
   (let [resp (raw-admin-post "/api/v1/projects" "{\"name\":\"ok-é-😀\"}")]
     (is (not= 400 (:status resp)) "valid body is not rejected as malformed")
     (is (contains? #{200 201} (:status resp)) "it creates normally")))
+
+;; ============================================================
+;; FLK7-3: a busy thrown by a route outside the operation path is a 503
+;; ============================================================
+
+(deftest wrap-sqlite-busy-503-maps-busy-and-passes-the-rest
+  (let [busy (mw/wrap-sqlite-busy-503
+              (fn [_] (throw (SQLException. "[SQLITE_BUSY] The database file is locked (database is locked)"))))]
+    (is (= {:status 503 :body {:error "Database busy, please retry"}} (busy {}))))
+  (let [boom (SQLException. "UNIQUE constraint failed: projects.id")
+        other (mw/wrap-sqlite-busy-503 (fn [_] (throw boom)))]
+    (is (thrown? SQLException (other {})) "any other failure is thrown on"))
+  (is (= 200 (:status ((mw/wrap-sqlite-busy-503 (constantly {:status 200})) {})))))
+
+(deftest a-user-data-put-behind-a-held-write-lock-answers-503
+  ;; The finder's repro: another connection holds the write lock past
+  ;; busy_timeout while the account writes a private data entry, a plain
+  ;; statement outside submit-operation. It answered 500 [SQLITE_BUSY], which
+  ;; no client retries.
+  (with-open [holder (java.sql.DriverManager/getConnection
+                      (.getJdbcUrl ^com.zaxxer.hikari.HikariDataSource fix/db))]
+    (with-open [st (.createStatement holder)]
+      (.execute st "BEGIN IMMEDIATE"))
+    (try
+      (let [resp (fix/rest-handler (-> (fix/admin-request :put "/api/v1/users/admin@example.com/data/busy-probe")
+                                       (mock/json-body {:v 1})))]
+        (is (= 503 (:status resp)))
+        (is (= {:error "Database busy, please retry"} (fix/parse-response-body resp))))
+      (finally
+        (with-open [st (.createStatement holder)]
+          (.execute st "ROLLBACK"))))))

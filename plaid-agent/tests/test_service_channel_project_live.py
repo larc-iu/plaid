@@ -9,6 +9,7 @@ runner@ maintains projects A and B and serves A, writer@ writes A and holds
 no role in B, and writer@ asks for B's document on A's channel.
 """
 
+import time
 import uuid
 
 import pytest
@@ -58,7 +59,17 @@ def _serving(runner, project_id, service_id, seen):
         except Exception as e:  # noqa: BLE001
             helper.error(e)
 
-    return serve(runner, project_id, {'service_id': service_id, 'service_name': 'Writer'}, handle)
+    reg = serve(runner, project_id, {'service_id': service_id, 'service_name': 'Writer'}, handle)
+    # serve() answers before the channel is open when core is busy (a 503 is
+    # retried by the registration), so wait until discovery shows it online.
+    end = time.monotonic() + 30
+    while not any(x.get('service_id') == service_id and x.get('online')
+                  for x in runner.messages.discover_services(project_id) or []):
+        if time.monotonic() > end:
+            reg.stop()
+            raise AssertionError(f'{service_id} never came online')
+        time.sleep(0.1)
+    return reg
 
 
 def _texts(admin, doc_id):

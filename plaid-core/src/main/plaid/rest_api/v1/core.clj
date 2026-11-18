@@ -229,6 +229,9 @@
                                        ;; 400 that the outer response middleware
                                        ;; still JSON-encodes. See its docstring.
                                        prm/wrap-malformed-json-400
+                                       ;; Same place: a busy thrown by any
+                                       ;; route is the retryable 503.
+                                       prm/wrap-sqlite-busy-503
                                        muuntaja/format-request-middleware
                                        ;; After the body is decoded, before
                                        ;; coercion reads it: text is stored

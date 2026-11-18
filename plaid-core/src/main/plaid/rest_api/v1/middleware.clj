@@ -3,6 +3,7 @@
             [reitit.coercion :as reitit-coercion]
             [plaid.sql.audit-write :as psaw]
             [plaid.sql.common :as psc]
+            [plaid.sql.datasource :as psd]
             [plaid.sql.operation :as op]
             [plaid.sql.operation-group :as og]
             [plaid.util.canonical :as canonical]
@@ -106,6 +107,29 @@
       (catch Exception e
         (if (= :muuntaja/decode (:type (ex-data e)))
           {:status 400 :body {:error (or (ex-message e) "Malformed request body.")}}
+          (throw e))))))
+
+(defn wrap-sqlite-busy-503
+  "Answer any route whose write found SQLite's write lock held past
+  busy_timeout with the retryable 503 that `submit-operation*` and the batch
+  route already give, instead of the default handler's 500.
+
+  Writes outside the operation path (user data, the service registry's claim
+  and seen rows, job decisions) run a plain statement, so a busy throws
+  straight out of the route. Every client retries a 503 and none retries a
+  500. A busy comes from the statement or the BEGIN that never got the lock,
+  so nothing it was part of was written and a retry is safe.
+
+  Placement: inside `format-response-middleware`, so the map is encoded, and
+  outside the route, so it catches what any handler throws."
+  [handler]
+  (fn [request]
+    (try
+      (handler request)
+      (catch Exception e
+        (if (psd/sqlite-busy? e)
+          (do (log/warn e "Database busy after busy_timeout:" (:request-method request) (:uri request))
+              {:status 503 :body {:error "Database busy, please retry"}})
           (throw e))))))
 
 (defn error-body
