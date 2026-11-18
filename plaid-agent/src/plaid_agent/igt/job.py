@@ -3639,6 +3639,9 @@ class IgtRunner:
         while True:
             job.check()
             client = job.client()
+            # The project as it is now, as each write reads it: a word the
+            # ignored-token rule hides since is not offered again (S5-4).
+            project = load_project(client, job.project_id)
             doc = self.read(project, document_id, client)
             if self.in_use(self.newest_change(client, document_id), self.own_ref):
                 return self.defer(document_id)
@@ -5168,7 +5171,10 @@ class IgtRunner:
         browser could write besides). Any other write since, and none is
         vouched for: harmonize leaves them."""
         job = self.job
-        fresh = self.read(project, document_id, client)
+        # Read by the ignored-token rule as the project holds it now: a word
+        # it hides since the piece read the document is not in this read, so
+        # its sentence reads as changed and nothing is written there (S5-4).
+        fresh = self.read(load_project(client, job.project_id), document_id, client)
         kept, counts, changed, proposed = self.recheck(ws, project, fresh, st, prints, ops)
         counts['repeated'] += repeated
         counts['changed'] += undone
