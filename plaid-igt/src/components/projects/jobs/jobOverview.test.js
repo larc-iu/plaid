@@ -109,11 +109,38 @@ describe('the headline', () => {
       documents: 3,
       harmonized: 3,
       oneStep: true,
+      stepUnfinished: false,
+      notGotTo: 0,
       findings: false,
     });
     expect(jobHeadline(job)).toBe(
       'Changed 4 sentences in 1 of 3 documents in one step, then undone.',
     );
+  });
+
+  // The owner's "Say both" (2026-11-18): a job worked in one step that ended
+  // unfinished says so, and how many documents the step did not get to.
+  it('says a one-step job ended unfinished and the documents it did not get to', () => {
+    const job = (marks, over = {}) => ({
+      state: 'done',
+      documents: marks.map((_, i) => ({ documentId: `d${i + 1}` })),
+      report: {
+        totals: { sentences: 0, changes: 0 },
+        documents: marks.map((ranOut, i) => ({
+          documentId: `d${i + 1}`,
+          state: 'done',
+          counts: { oneStep: true, changes: 0, ...(ranOut ? { ranOut } : {}) },
+        })),
+        ...over,
+      },
+    });
+    expect(jobHeadline(job(['written', 'not-read', 'not-read'], { findings: 'Odd.' }))).toBe(
+      'Wrote findings, changed nothing. Its one step ended unfinished and did not get to 2 documents.',
+    );
+    expect(jobHeadline(job(['unchanged', null]))).toBe(
+      'Changed nothing. Its one step ended unfinished.',
+    );
+    expect(jobHeadline(job([null, null]))).toBe('Changed nothing.');
   });
 
   it('counts the changes from the documents where the totals hold none', () => {

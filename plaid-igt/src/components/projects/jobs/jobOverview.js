@@ -28,6 +28,11 @@ export const headlineFacts = (job) => {
     documents: (job?.documents ?? docs).length,
     harmonized: (harmonize.changed || []).length + (harmonize.changedMore ?? 0),
     oneStep: docs.some(oneStep),
+    // The one step ended before its work was done: its documents carry what
+    // happened there (the worker's `ran_out`, REV-RW-R2-2), those it never
+    // read 'not-read' (the owner's "Say both", 2026-11-18).
+    stepUnfinished: docs.some(oneStep) && docs.some((d) => d.counts?.ranOut),
+    notGotTo: docs.filter((d) => d.counts?.ranOut === 'not-read').length,
     findings: typeof report.findings === 'string' && report.findings !== '',
   };
 };
@@ -41,6 +46,15 @@ const capital = (s) => s.charAt(0).toUpperCase() + s.slice(1);
 // step says so, a stopped, failed or undone one says how it ended after what
 // it changed, and one that changed nothing says that.
 export const headlineText = (f) => {
+  const said = headlineWhat(f);
+  // A job worked in one step that ended unfinished says so after what it
+  // changed, and how many documents the step did not get to.
+  if (!f.stepUnfinished) return said;
+  const notGot = f.notGotTo > 0 ? ` and did not get to ${countOf(f.notGotTo, 'document')}` : '';
+  return `${said} Its one step ended unfinished${notGot}.`;
+};
+
+const headlineWhat = (f) => {
   // A job of one document says it so, never "1 of 1 document".
   const where =
     f.documents === 1

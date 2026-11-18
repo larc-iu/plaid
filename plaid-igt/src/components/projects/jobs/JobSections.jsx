@@ -147,7 +147,10 @@ export const ReportOverview = ({ job, sectionHref, sections }) => {
   const notice = report && !job.undone ? noticeOf(report) : null;
   const findings = typeof report?.findings === 'string' ? report.findings : '';
   // With no report, only the rows the job's documents give, and no Nothing.
-  const rows = toCheckRows(job);
+  // An undone job's writes are taken back: of what to check only its
+  // proposed changes stay, which were never applied (the owner's "Say both",
+  // 2026-11-18).
+  const rows = job.undone ? toCheckRows(job).filter((r) => r.key === 'proposed') : toCheckRows(job);
   return (
     <section aria-label="Report" className="mt-6">
       <p className="max-w-3xl text-base font-medium" data-testid="job-headline">
@@ -172,8 +175,9 @@ export const ReportOverview = ({ job, sectionHref, sections }) => {
       {findings && (
         <JobFindings findings={findings} pieces={report.findingsPieces} cut={report.findingsCut} />
       )}
-      {/* An undone job's writes are taken back: nothing of them is to check. */}
-      {!job.undone && (report || rows.length > 0) && (
+      {/* An undone job's writes are taken back: nothing of them is to check,
+          only the changes it proposed and never applied. */}
+      {(job.undone ? rows.length > 0 : report || rows.length > 0) && (
         <ToCheck rows={rows} sectionHref={sectionHref} sections={sections} />
       )}
       {report && <TotalsList report={report} undone={job.undone ?? null} />}

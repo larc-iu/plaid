@@ -259,6 +259,28 @@ describe('the Overview of an ended job', () => {
     await v.unmount();
   });
 
+  // The owner's "Say both" (2026-11-18): an undone job's proposed changes
+  // were never applied, so its To check keeps their row, and only it.
+  it('keeps the proposed changes in an undone job’s To check', async () => {
+    const undone = {
+      ...ENDED,
+      undone: { operation: 'op1', time: '2026-11-12T12:00:00Z', user: 'w' },
+      report: {
+        ...ENDED.report,
+        proposed: [{ kind: 'set_tagset', label: 'Tagset "Leipzig"' }],
+        proposedMore: 2,
+      },
+    };
+    const client = clientOf(undone);
+    client.documents = { auditPage: vi.fn(async () => ({ entries: [] })) };
+    const v = await mount(client);
+    expect(byText(v.container, 'h3', 'To check')).not.toBeNull();
+    expect(all(v.container, '[data-testid="job-to-check"] li > span').map(text)).toEqual([
+      '3 changes proposed, not applied',
+    ]);
+    await v.unmount();
+  });
+
   // REV-RP-4: what the page knows of an ended job with no report is its
   // documents' rows: it says what they hold and claims nothing else.
   it('draws the documents to check of an ended job with no report, and no Nothing.', async () => {

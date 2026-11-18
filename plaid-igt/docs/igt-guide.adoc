@@ -1080,6 +1080,7 @@ When no worker is running, a stop ends the job at once, and the report says **St
 Once a job has ended, its state line says when it ended, how long it took and who started it, and its **Overview** gives its instructions (the first two lines, with **Show all** for the rest) and what it was set up to fill, then its report.
 The report opens with one sentence on what the job changed, such as **Changed 1,354 sentences in 129 of 130 documents.**
 It also says when the job worked in one step, was stopped, failed or was undone, or changed nothing.
+When a job's one step ended before its work was done, it says so after that sentence, with how many documents the step did not get to, such as **Its one step ended unfinished and did not get to 2 documents.**
 Then comes the job's own line where the job changed what people wrote or the text, or worked all its documents in one step:
 
 * **People's work: 33 values, morphemes or links people wrote were changed or removed. What the job wrote in their place is unverified.**
@@ -1128,7 +1129,7 @@ Under a document in **Blank**, **Not done, refused:** lists the changes the job 
 * **Outside the part's own sentences**: the change was in a sentence the part was not given.
 
 A job that fills nothing, such as a check, shows its **Findings** first in its report, in full, with **Copy** and **Written by the assistant, not checked against the counts below.**
-A job that is undone says so in its state line and its opening sentence, has no **To check** list, and its totals read **What the job had written**.
+A job that is undone says so in its state line and its opening sentence, its **To check** list keeps only the changes it proposed and never applied, and its totals read **What the job had written**.
 
 == A job's changes
 
