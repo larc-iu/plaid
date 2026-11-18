@@ -149,10 +149,18 @@ def login():
 
 
 def stop() -> None:
-    """Stop the core this session booted. A core PLAID_TEST_URL named is left running."""
+    """Stop the core this session booted. A core PLAID_TEST_URL named is left
+    running, without the copies :func:`mirror` seeded into it."""
     if _Session.core is not None:
         _Session.core.stop()
         _Session.core = None
+    else:
+        for s in _mirrors.values():
+            try:
+                s.delete()
+            except Exception:  # noqa: BLE001 - a copy that will not go is left, as before
+                pass
+    _mirrors.clear()
     _Session.admin = None
 
 

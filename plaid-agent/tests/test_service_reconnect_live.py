@@ -22,9 +22,26 @@ HERE = Path(__file__).resolve().parent
 POOL = 'reconnect-test'
 
 
+_MADE: list = []
+
+
 def _project(client, name):
     made = client.projects.create(f'{name}-{time.time_ns()}')
-    return made['id'] if isinstance(made, dict) else made
+    pid = made['id'] if isinstance(made, dict) else made
+    _MADE.append(pid)
+    return pid
+
+
+@pytest.fixture(scope='module', autouse=True)
+def _delete_projects():
+    """The projects the tests made go with the module, so a core the run
+    reuses (PLAID_TEST_URL) keeps none of them."""
+    yield
+    while _MADE:
+        try:
+            live.core_client().projects.delete(_MADE.pop())
+        except Exception:  # noqa: BLE001
+            pass
 
 
 class Service:

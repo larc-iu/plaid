@@ -250,10 +250,11 @@ def world(tmp_path_factory):
     writes = {}
     for w in rows('writes.jsonl'):
         writes.setdefault(w['target_id'], w)
-    return {'out': out, 'root': root, 'manifest': manifest, 'rows': rows, 'ids': ids, 'writes': writes,
-            'plan_id': plan_id, 'legacy_id': legacy_id, 'emails': [me, other_email], 'pid': pid,
-            'gone_plan': gone_plan, 'comment_plan': comment_plan, 'old_comment_plan': old_comment_plan,
-            'script_token': script_token}
+    yield {'out': out, 'root': root, 'manifest': manifest, 'rows': rows, 'ids': ids, 'writes': writes,
+           'plan_id': plan_id, 'legacy_id': legacy_id, 'emails': [me, other_email], 'pid': pid,
+           'gone_plan': gone_plan, 'comment_plan': comment_plan, 'old_comment_plan': old_comment_plan,
+           'script_token': script_token}
+    admin.projects.delete(pid)
 
 
 def test_plans_and_their_statuses(world):
