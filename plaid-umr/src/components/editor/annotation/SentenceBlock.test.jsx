@@ -2122,6 +2122,36 @@ describe('SentenceBlock text mode, closed by the Text toggle', () => {
     await r.unmount();
   });
 
+  // H3-8-2: Leave put focus on the Text toggle while the node still looked
+  // focused, so its keys did nothing.
+  it('gives focus back to the node focused before, on Leave', async () => {
+    const { sentence, nodesById } = fixture();
+    const doc = { ...stub(), node: (id) => nodesById.get(id) || null };
+    const r = await renderComponent(
+      <ConfirmProvider>
+        <SentenceBlock
+          doc={doc}
+          readOnly={false}
+          dataVersion={1}
+          sentence={sentence}
+          nodesById={nodesById}
+        />
+      </ConfirmProvider>,
+    );
+    const node = r.container.querySelector('[data-node-id="n3"]');
+    await r.step(() => node.focus());
+    await r.step(() => button(r.container, 'Text').click());
+    await r.step(() => type(r.container.querySelector('textarea'), '(s1p / person)'));
+    await r.step(() => button(r.container, 'Text').focus());
+    await r.step(() => button(r.container, 'Text').click());
+    await r.step(() => wait(50));
+    await r.step(() => button(dialog(), 'Leave').click());
+    await r.step(() => wait(100));
+    expect(r.container.querySelector('textarea')).toBeNull();
+    expect(document.activeElement?.dataset?.nodeId).toBe('n3');
+    await r.unmount();
+  });
+
   it('closes at once when nothing was typed', async () => {
     const r = await mount();
     await r.step(() => button(r.container, 'Text').click());

@@ -26,6 +26,9 @@ import { CONFIRM_DELETE_CLASS } from '../../lib/destructive.js';
 // adds an opt-in under the description. Confirm then resolves `{ checked }`
 // instead of `true` (still `false` on cancel), and `checkbox.confirmLabel`
 // names the button while the box is ticked.
+//
+// `returnFocus: false` leaves focus where the caller puts it once the dialog
+// closes, rather than sending it back to what had it before.
 
 const ConfirmContext = createContext(null);
 
@@ -36,6 +39,7 @@ const EMPTY = {
   cancelLabel: 'Cancel',
   destructive: false,
   checkbox: null,
+  returnFocus: true,
 };
 
 export function ConfirmProvider({ children }) {
@@ -72,7 +76,10 @@ export function ConfirmProvider({ children }) {
           if (!o) settle(false);
         }}
       >
-        <AlertDialogContent className="max-w-md">
+        <AlertDialogContent
+          className="max-w-md"
+          onCloseAutoFocus={opts.returnFocus === false ? (e) => e.preventDefault() : undefined}
+        >
           <AlertDialogHeader>
             <AlertDialogTitle>
               {opts.destructive && (

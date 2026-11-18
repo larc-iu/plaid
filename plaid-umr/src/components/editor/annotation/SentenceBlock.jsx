@@ -212,6 +212,9 @@ export const SentenceBlock = React.memo(function SentenceBlock({
         description: 'What was typed is not stored.',
         confirmLabel: 'Leave',
         destructive: true,
+        // Focus goes to the graph on Leave and to the text on Cancel, below,
+        // not back to the Text toggle (H3-8-2).
+        returnFocus: false,
       });
       if (!ok) {
         requestAnimationFrame(() => sectionRef.current?.querySelector('.umr-penman-text')?.focus());
