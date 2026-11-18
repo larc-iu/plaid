@@ -1427,6 +1427,8 @@ export const VocabularyDetail = () => {
         error={history.error}
         onSelectEntry={selectPast}
         selectedEntry={history.selected}
+        onLoadMoreOps={history.loadMoreOps}
+        loadingMoreOps={history.loadingMore}
       />
       <div className="flex flex-col gap-6">
         <Breadcrumb items={[{ label: 'Vocabularies', to: '/vocabularies', fixed: true }]} />

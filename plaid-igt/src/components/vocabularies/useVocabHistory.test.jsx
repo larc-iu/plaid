@@ -20,15 +20,19 @@ const fakeClient = () => {
     reads,
     pages,
     vocabLayers: {
-      audit: async () => [
-        {
-          id: 'g1',
-          time: '2026-10-29T02:48:00Z',
-          endTime: MADE,
-          ops: [{ id: 'op7', time: MADE, endTime: MADE, description: 'Create vocab items' }],
-        },
-      ],
       auditPage: async (id, opts) => {
+        if (!opts.entryId) {
+          return {
+            entries: [
+              {
+                id: 'g1',
+                time: '2026-10-29T02:48:00Z',
+                endTime: MADE,
+                ops: [{ id: 'op7', time: MADE, endTime: MADE, description: 'Create vocab items' }],
+              },
+            ],
+          };
+        }
         pages.push([id, opts]);
         return { entries: [{ id: 'g1', time: '2026-10-29T02:48:00Z', endTime: DONE }] };
       },
@@ -49,6 +53,34 @@ const mount = async (client) => {
   const view = await renderComponent(<Probe />);
   return { view, api: () => api };
 };
+
+// SCL4-5: the rail read every action of every change, so one Bulk Edit of
+// 5,000 entries made every open of the rail ship all 5,000.
+describe('the rail', () => {
+  it('reads each change with its first 100 actions, and the next 100 when asked', async () => {
+    const ops = (from, n) =>
+      Array.from({ length: n }, (_, i) => ({ id: `op${from + i}`, time: `t${from + i}` }));
+    const asked = [];
+    const client = {
+      vocabLayers: {
+        auditPage: async (id, opts) => {
+          asked.push(opts);
+          if (opts.entryId) return { entries: [{ id: 'big', ops: ops(99, 101) }] };
+          return { entries: [{ id: 'big', opCount: 5000, ops: ops(0, opts.opsLimit ?? 5000) }] };
+        },
+      },
+    };
+    const { view, api } = await mount(client);
+    await act(async () => api().openHistory());
+    await act(async () => {});
+    expect(asked[0]).toMatchObject({ opsLimit: 100 });
+    expect(api().entries[0].ops).toHaveLength(100);
+    await act(async () => api().loadMoreOps('big'));
+    expect(asked[1]).toMatchObject({ entryId: 'big', startTime: 't99', opsLimit: 101 });
+    expect(api().entries[0].ops).toHaveLength(200);
+    await view.unmount();
+  });
+});
 
 describe("an entry's History", () => {
   it('shows the vocabulary after the whole change, not where the entry was written', async () => {

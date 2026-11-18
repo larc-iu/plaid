@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { humanizeError, statusOf } from '@ui/lib/errors.js';
 import { notifyError } from '@/utils/feedback';
+import { OPS_SHOWN } from '@ui/hooks/useDocumentHistory.js';
 
 // A vocabulary's history rail and the past state it shows: the entries of the
 // vocabulary as they were after the history entry the reader picked, read-only.
@@ -16,6 +17,26 @@ import { notifyError } from '@/utils/feedback';
 // `selected` flips the moment an entry is picked, so the screen goes read-only
 // at once. `past` (`{ time, vocabulary }`) is what is on screen, and lands when
 // its read does. A read overtaken by a later pick is dropped.
+// The rail's entries, every page of them, each with at most its oldest
+// OPS_SHOWN actions and `opCount`, as a document's rail reads them: one Bulk
+// Edit of 5,000 entries made every open of the rail ship all 5,000 (SCL4-5).
+// `itemId` keeps the changes that wrote that one entry.
+const readEntries = async (client, vocabularyId, itemId) => {
+  const entries = [];
+  let cursor;
+  do {
+    const page = await client.vocabLayers.auditPage(vocabularyId, {
+      limit: 1000,
+      opsLimit: OPS_SHOWN,
+      itemId: itemId ?? undefined,
+      cursor,
+    });
+    entries.push(...(page?.entries || []));
+    cursor = page?.nextCursor;
+  } while (cursor);
+  return entries;
+};
+
 export function useVocabHistory({ client, vocabularyId, onExpired }) {
   const [open, setOpen] = useState(false);
   // The entry whose changes the rail lists, or null for the whole vocabulary.
@@ -64,13 +85,7 @@ export function useVocabHistory({ client, vocabularyId, onExpired }) {
     const mine = ++readRef.current;
     if (!loadedRef.current) setLoading(true);
     try {
-      const list = await client.vocabLayers.audit(
-        vocabularyId,
-        undefined,
-        undefined,
-        undefined,
-        scopeRef.current ?? undefined,
-      );
+      const list = await readEntries(client, vocabularyId, scopeRef.current);
       if (mine !== readRef.current) return;
       loadedRef.current = true;
       setEntries(list || []);
@@ -83,6 +98,39 @@ export function useVocabHistory({ client, vocabularyId, onExpired }) {
       if (mine === readRef.current) setLoading(false);
     }
   }, [client, vocabularyId]);
+
+  // The next OPS_SHOWN actions of an entry the read cut: the same entry read
+  // again from its last action held, which comes back first and is dropped.
+  const [loadingMore, setLoadingMore] = useState(null);
+  const loadMoreOps = async (entryId) => {
+    const entry = entries.find((e) => e.id === entryId);
+    const last = entry?.ops?.[entry.ops.length - 1];
+    if (!entry || !last || !client) return;
+    const mine = readRef.current;
+    setLoadingMore(entryId);
+    try {
+      const page = await client.vocabLayers.auditPage(vocabularyId, {
+        entryId,
+        startTime: last.time,
+        opsLimit: OPS_SHOWN + 1,
+        itemId: scopeRef.current ?? undefined,
+      });
+      if (mine !== readRef.current) return;
+      const more = page?.entries?.[0]?.ops || [];
+      setEntries((prev) =>
+        prev.map((e) => {
+          if (e.id !== entryId) return e;
+          const held = new Set((e.ops || []).map((op) => op.id));
+          return { ...e, ops: [...(e.ops || []), ...more.filter((op) => !held.has(op.id))] };
+        }),
+      );
+    } catch (err) {
+      if (expired(err)) return;
+      notifyError(err, 'Failed to load more actions');
+    } finally {
+      setLoadingMore(null);
+    }
+  };
 
   // `id` is an entry's, or anything else (a click event) for the whole
   // vocabulary. A new scope starts from an empty list.
@@ -164,6 +212,8 @@ export function useVocabHistory({ client, vocabularyId, onExpired }) {
     loading,
     error,
     readLog,
+    loadMoreOps,
+    loadingMore,
     selected,
     select,
     past,

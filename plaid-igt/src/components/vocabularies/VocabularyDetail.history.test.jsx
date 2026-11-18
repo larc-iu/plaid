@@ -59,14 +59,12 @@ const client = {
         ...(asOf ? { items: [{ id: 'a', form: 'kai' }] } : {}),
       };
     },
-    audit: async (...args) => {
-      audits.push(args);
-      return log;
+    // The rail's read: every page, each entry with its first actions only.
+    auditPage: async (id, { entryId, itemId, opsLimit }) => {
+      if (entryId) return { entries: log.filter((e) => e.id === entryId), nextCursor: null };
+      audits.push([id, itemId, opsLimit]);
+      return { entries: log, nextCursor: null };
     },
-    auditPage: async (id, { entryId }) => ({
-      entries: log.filter((e) => e.id === entryId),
-      nextCursor: null,
-    }),
   },
   // What the entry changed: one entry's gloss, and kay merged into kai, its
   // links moved in two documents.
@@ -243,12 +241,12 @@ describe('the vocabulary History', () => {
     await settle(view);
     await view.step(() => shown.props.onOpenHistory('a'));
     await settle(view);
-    expect(audits.at(-1)).toEqual(['A', undefined, undefined, undefined, 'a']);
+    expect(audits.at(-1)).toEqual(['A', 'a', 100]);
     expect(shown.props.historyItemId).toBe('a');
     // The vocabulary's own button widens the rail to every change.
     await view.step(() => button('History').click());
     await settle(view);
-    expect(audits.at(-1)).toEqual(['A', undefined, undefined, undefined, undefined]);
+    expect(audits.at(-1)).toEqual(['A', undefined, 100]);
     expect(shown.props.historyItemId).toBeNull();
     await view.unmount();
   });
