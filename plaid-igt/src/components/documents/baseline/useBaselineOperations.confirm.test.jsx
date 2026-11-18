@@ -467,6 +467,43 @@ describe('useBaselineOperations, a save from a page opened before others annotat
     await h.unmount();
   });
 
+  // REV-G1-3: the save is Saving from the first press, through the reads,
+  // so a second press starts no second save.
+  it('shows Saving from the first press, and a second press sends nothing more', async () => {
+    const { doc } = opened();
+    const held = [];
+    doc.reload.mockImplementation(() => new Promise((r) => held.push(r)));
+    const h = await mountDocumentHook(useBaselineOperations, { doc });
+    await act(async () => h.api.handleEdit());
+    // The space between dog and ran: removes text, deletes no word.
+    await change(h, 7, 8, 'The dogran.', 7);
+    await act(async () => {
+      h.api.handleSave();
+    });
+    expect(h.api.saving).toBe(true);
+    await act(async () => {
+      h.api.handleSave();
+    });
+    await act(async () => {
+      held.forEach((r) => r());
+      await new Promise((r) => setTimeout(r, 10));
+    });
+    expect(doc.editBaselineText).toHaveBeenCalledTimes(1);
+    expect(h.api.saving).toBe(false);
+    await h.unmount();
+  });
+
+  it('is no longer Saving once the question is cancelled', async () => {
+    const { doc, theirs } = opened();
+    doc.reload.mockImplementationOnce(async () => theirs('DOG')());
+    const h = await deleteDog(doc);
+    expect(h.api.saving).toBe(true);
+    await answer('Cancel');
+    expect(h.api.saving).toBe(false);
+    expect(doc.editBaselineText).not.toHaveBeenCalled();
+    await h.unmount();
+  });
+
   it('reads nothing for a save that only adds text', async () => {
     const { doc } = opened();
     const h = await mountDocumentHook(useBaselineOperations, { doc });

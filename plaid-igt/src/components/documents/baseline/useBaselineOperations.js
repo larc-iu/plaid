@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { applyTextOps, gapsToOps } from '@larc-iu/plaid-client';
 import { useDocumentCtx, useUnsavedDraft } from '../contexts/DocumentContext.jsx';
 import { useDocumentModel } from '@ui/domain/useDocumentModel.js';
@@ -162,7 +162,13 @@ export const useBaselineOperations = () => {
 
   // A throw anywhere in a save is reported and leaves the draft as it was,
   // so Save works again (rather than a button that does nothing).
+  //
+  // One save at a time: a press while one is reading, asking or sending
+  // does nothing (Save is disabled then too, REV-G1-3).
+  const busy = useRef(false);
   const handleSave = async () => {
+    if (busy.current) return;
+    busy.current = true;
     const at = { sent: null, settled: false };
     try {
       await save(at);
@@ -173,6 +179,8 @@ export const useBaselineOperations = () => {
       }
       setSaving(false);
       notifyError(err, 'Failed to save baseline text');
+    } finally {
+      busy.current = false;
     }
   };
 
@@ -214,7 +222,9 @@ export const useBaselineOperations = () => {
     // What it deletes is counted on the document as stored when Save is
     // pressed (H2-1-1): the page may have been opened before someone else
     // annotated the words it deletes. It is read again once the question is
-    // answered, and asks again when what it deletes changed meanwhile.
+    // answered, and asks again when what it deletes changed meanwhile. The
+    // tab shows Saving from here, through the reads (REV-G1-3).
+    setSaving(true);
     let asked = '';
     for (;;) {
       const loses = await lossOfSave();
@@ -225,10 +235,12 @@ export const useBaselineOperations = () => {
         confirmLabel: 'Save anyway',
         destructive: true,
       });
-      if (!yes) return;
+      if (!yes) {
+        setSaving(false);
+        return;
+      }
       asked = loses;
     }
-    setSaving(true);
     setChangedElsewhere(false);
     const sent = editLog.send();
     at.sent = sent;
