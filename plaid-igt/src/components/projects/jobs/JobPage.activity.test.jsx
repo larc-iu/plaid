@@ -602,7 +602,7 @@ describe('the job page’s list of its work', () => {
     // Page 40 of the work so far: 40 pages of 25 are the route's cap.
     const client = clientOf([jobOf()], [page([SECOND, FIRST], 'c')]);
     const v = await mount(client, '?page=40');
-    expect(client.jobs.piecesPage).toHaveBeenCalledWith('j1', { limit: 1000 });
+    expect(client.jobs.piecesPage).toHaveBeenLastCalledWith('j1', { limit: 1000 });
     expect(text(activity(v.container))).not.toContain('2+');
     expect(text(activity(v.container))).toContain('Only the newest 1,000 are listed.');
     await v.unmount();

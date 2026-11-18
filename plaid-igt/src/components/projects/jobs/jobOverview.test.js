@@ -474,3 +474,56 @@ describe('the sections', () => {
     expect(keys(jobSections(job, 4))).toEqual(['overview', 'documents 1', 'setup']);
   });
 });
+
+// REV-RP-13: each To check row's count is the count of what its link opens,
+// for every kind: the documents of its reason, the rows of its section, the
+// totals row of its blank.
+describe('what to check adds up with what it opens', () => {
+  it('counts each row as its section or filter counts it', () => {
+    const report = {
+      ...reportOf(),
+      totals: { ...reportOf().totals, skippedMore: 2 },
+      plan: { leftOut: [{ documentId: 'd9' }], leftOutMore: 2 },
+    };
+    report.documents = report.documents.map((d) =>
+      d.documentId === 'd2'
+        ? {
+            ...d,
+            skipped: [{ sentence: 's1', reason: 'too-long' }],
+            counts: { ...d.counts, skippedMore: 2, textChanges: 1 },
+          }
+        : d,
+    );
+    report.totals.skippedTooLong = 1;
+    report.totals.skippedNoAnswer = 0;
+    const job = { state: 'done', documents: report.documents, report };
+    const rows = toCheckRows(job);
+    const n = (r) => Number(r.text.split(' ')[0].replace(/,/g, ''));
+    const tabs = Object.fromEntries(jobSections(job, null).map((s) => [s.key, s.count]));
+    const byView = (view) => rows.filter((r) => r.view === view);
+    const total = (view) => byView(view).reduce((k, r) => k + n(r), 0);
+    // Documents: each row counts the documents its filter shows, but the
+    // values people wrote, which counts values and says its documents last.
+    for (const r of byView('documents')) {
+      const shown = report.documents.filter((d) =>
+        documentChecks(d).some((c) => c.kind === r.filter),
+      ).length;
+      const counted =
+        r.filter === 'people' ? Number(r.text.match(/in (\d+) documents?$/)[1]) : n(r);
+      expect([r.filter, counted]).toEqual([r.filter, shown]);
+    }
+    // Lists: a row's count is its tab's.
+    expect(total('skipped')).toBe(tabs.skipped);
+    expect(total('leftout')).toBe(tabs.leftout);
+    expect(total('respelled')).toBe(tabs.respelled);
+    expect(total('proposed')).toBe(tabs.proposed);
+    expect(total('inconsistent')).toBe(tabs.inconsistent);
+    expect(total('entries')).toBe(
+      (report.entries.unlinked?.length ?? 0) + (report.entries.unlinkedMore ?? 0),
+    );
+    // Blanks: no tab count; each row is its totals row, summed over the
+    // documents the section lists.
+    const untouched = rows.find((r) => r.key === 'untouched-Translation');
+    expect(n(untouched)).toBe(report.totals.blank[0].untouched);
+  });
+});
