@@ -2,9 +2,7 @@ import { describe, it, expect, vi } from 'vitest';
 import { renderComponent } from '@ui/test/renderComponent.jsx';
 import { IsolatedLabel } from '@ui/components/shared/IsolatedLabel.jsx';
 import { labelText } from '@ui/lib/bidi.js';
-import { respellLabel } from './RespellPanel.jsx';
-import { fieldApplyLabel } from './FieldPanel.jsx';
-import { replaceLabel } from '@/components/vocabularies/ReplaceDialog.jsx';
+import { respellLabel, fieldApplyLabel, replaceLabel } from '@/domain/editLabels.js';
 
 vi.mock('@/utils/feedback', () => ({
   notifyError: vi.fn(),

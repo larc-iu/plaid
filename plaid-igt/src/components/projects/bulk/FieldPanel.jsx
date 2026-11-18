@@ -33,6 +33,7 @@ import {
   SubstitutionFields,
 } from './parts.jsx';
 import { usePreviewFocus } from './usePreviewFocus.js';
+import { fieldApplyLabel } from '@/domain/editLabels.js';
 
 // Field replace: find and replace inside one annotation field.
 // The tagset governing a replace target, or null. Only annotation fields have
@@ -93,12 +94,6 @@ const FieldChange = ({ row, target }) => {
     </>
   );
 };
-
-// Saved plain: History draws each value in a <bdi> where it shows it
-// (plaid-ui IsolatedLabel), and nothing invisible is stored (REV-G4-R2-2).
-// An empty `repl` clears.
-export const fieldApplyLabel = (find, repl, target) =>
-  repl === '' ? `Clear “${find}” in ${target}` : `Replace “${find}” → “${repl}” in ${target}`;
 
 export const FieldPanel = ({ project, projectId, client, layerInfo }) => {
   const writer = useWriter(project);

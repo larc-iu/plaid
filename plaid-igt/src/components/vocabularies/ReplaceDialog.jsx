@@ -36,6 +36,7 @@ import { followIds, settledId } from '@ui/domain/pendingIds.js';
 import { readVocabulary } from '@/domain/vocabCache';
 import { Loading } from '@ui/components/shared/Loading.jsx';
 import { skippedNote } from '../projects/bulk/bulkShared.js';
+import { replaceLabel } from '@/domain/editLabels.js';
 
 // The search tab's kinds, plus filling a blank. That last one is Replace's
 // alone: the search tab queries the server, which has no way to ask for the
@@ -67,13 +68,6 @@ const Change = ({ from, to }) => (
     </span>
   </span>
 );
-
-// Saved plain: History draws each value in a <bdi> where it shows it
-// (plaid-ui IsolatedLabel), and nothing invisible is stored (REV-G4-R2-2).
-export const replaceLabel = ({ filling, find, repl, field, vocabularyName }) =>
-  filling
-    ? `Set ${field} to “${repl}” where empty in ${vocabularyName || 'vocabulary'}`
-    : `Replace “${find}” → “${repl}” in ${field} of ${vocabularyName || 'vocabulary'}`;
 
 export const ReplaceDialog = ({
   open,

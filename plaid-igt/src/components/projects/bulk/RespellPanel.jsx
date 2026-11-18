@@ -20,6 +20,7 @@ import {
   SubstitutionFields,
 } from './parts.jsx';
 import { usePreviewFocus } from './usePreviewFocus.js';
+import { respellLabel } from '@/domain/editLabels.js';
 
 // Respell: change a word's spelling wherever it occurs, morphemes included.
 const RespellChange = ({ row, includeMorphemes }) => {
@@ -53,10 +54,6 @@ const RespellChange = ({ row, includeMorphemes }) => {
     </>
   );
 };
-
-// Saved plain: History draws each value in a <bdi> where it shows it
-// (plaid-ui IsolatedLabel), and nothing invisible is stored (REV-G4-R2-2).
-export const respellLabel = (find, repl) => `Respell “${find}” → “${repl}”`;
 
 export const RespellPanel = ({ project, projectId, client, layerInfo }) => {
   const [find, setFind] = useState('');
