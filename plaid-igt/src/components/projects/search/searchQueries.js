@@ -397,12 +397,10 @@ const metadataFreqQuery = (projectId, field) => ({
   return: { group: [`?d.metadata.${field}`], aggregates: [['count']] },
 });
 
-/** The documents whose `field` holds exactly `value`: [{id, name}]. */
+/** The documents whose `field` holds exactly `value`: rows of [id, name, 1].
+ * Core binds no variable to a document's name, so the name is a group key. */
 export const metadataHitsQuery = (projectId, field, value) => ({
   scope: { projectIds: [projectId] },
-  find: ['?d', '?name'],
-  where: [
-    ['document', '?d', { metadata: { [field]: metadataSpec(value) } }],
-    ['document', '?d', { name: { var: '?name' } }],
-  ],
+  where: [['document', '?d', { metadata: { [field]: metadataSpec(value) } }]],
+  return: { group: ['?d', '?d.name'], aggregates: [['count']] },
 });
