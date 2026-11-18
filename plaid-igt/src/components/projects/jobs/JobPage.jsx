@@ -747,6 +747,20 @@ const JobDocuments = ({ job, projectId, plan }) => {
         : 'all';
   const shown =
     filter === 'all' ? job.documents || [] : filter === 'check' ? toCheck : ofKind(filter);
+  // A filter the table does not show (unknown, or a reason no document has)
+  // leaves the address, as an unknown section does (REV-RP-R2-2).
+  const dropped = asked !== null && filter === 'all';
+  useEffect(() => {
+    if (!dropped) return;
+    setParams(
+      (prev) => {
+        const out = new URLSearchParams(prev);
+        out.delete('filter');
+        return out;
+      },
+      { replace: true },
+    );
+  }, [dropped, setParams]);
   const stateOf = (d) =>
     leftOut.has(d.documentId)
       ? 'Left out by the plan'

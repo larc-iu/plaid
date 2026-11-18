@@ -408,10 +408,15 @@ describe('the lists of an ended job', () => {
     expect(at).toBe('/projects/p1/jobs/j1?view=documents&filter=check');
     expect(all(w.container, 'tbody tr')).toHaveLength(N);
     await w.unmount();
-    // A reason no document has opens All.
+    // A reason no document has opens All, and the address stops naming it
+    // (REV-RP-R2-2), as it does a filter it does not know.
     const x = await mount(clientOf(ENDED), '?view=documents&filter=refused');
     expect(all(x.container, 'tbody tr')).toHaveLength(N);
+    expect(at).toBe('/projects/p1/jobs/j1?view=documents');
     await x.unmount();
+    const y = await mount(clientOf(ENDED), '?view=documents&filter=bogus');
+    expect(at).toBe('/projects/p1/jobs/j1?view=documents');
+    await y.unmount();
   });
 
   // REV-RP-10: the forms past the report's cut are said once, under the list.
