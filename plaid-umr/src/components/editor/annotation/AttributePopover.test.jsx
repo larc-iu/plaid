@@ -222,3 +222,49 @@ describe('AttributePopover, the deprecated attribute', () => {
     await r.unmount();
   });
 });
+
+// H3-8-3: an attribute with a row typed in the line was added beside the
+// row's value, so the node held two, the rows showed only the new one as
+// picked, and leaving the picker wrote the line once more.
+describe('AttributePopover, a row attribute typed in the line', () => {
+  it('replaces the row value, once, and leaves the line to what has no row', async () => {
+    const { useState } = await import('react');
+    const writes = [];
+    let stored = null;
+    const Harness = () => {
+      const [attrs, setAttrs] = useState([
+        { rel: ':polarity', value: '-' },
+        { rel: ':aspect', value: 'performance' },
+      ]);
+      stored = attrs;
+      return (
+        <AttributePopover
+          attrs={attrs}
+          relationProblem={unknownRelationProblem}
+          onChange={(next) => {
+            writes.push(next);
+            setAttrs(next);
+          }}
+          onClose={() => {}}
+        />
+      );
+    };
+    const r = await renderComponent(<Harness />);
+    const other = document.body.querySelector('.umr-attr-other');
+    await r.step(() => other.focus());
+    await typeLine(r, other, ':aspect state :polarity + :quant 2');
+    await r.step(() =>
+      other.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })),
+    );
+    expect(stored).toEqual([
+      { rel: ':aspect', value: 'state' },
+      { rel: ':polarity', value: '+' },
+      { rel: ':quant', value: '2' },
+    ]);
+    expect(pressed()).toEqual(['state', '+']);
+    expect(document.body.querySelector('.umr-attr-other').value).toBe(':quant 2');
+    await r.step(() => document.body.dispatchEvent(new Event('pointerdown', { bubbles: true })));
+    expect(writes).toHaveLength(1);
+    await r.unmount();
+  });
+});

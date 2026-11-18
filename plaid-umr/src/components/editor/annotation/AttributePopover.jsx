@@ -130,8 +130,20 @@ export function AttributePopover({
     if (why) return false;
     dirtyRef.current = false;
     if (attrsToLine(next) === storedLine || line === writtenRef.current) return true;
-    writtenRef.current = line;
-    onChange([...attrs.filter((a) => PICKED.includes(a.rel)), ...next]);
+    // A row's attribute typed here replaces the row's value, as a pick on the
+    // row does, and the line keeps only what has no row (H3-8-3).
+    const typed = new Set(next.filter((a) => PICKED.includes(a.rel)).map((a) => a.rel));
+    const rowValues = [...typed].map((rel) => next.findLast((a) => a.rel === rel));
+    const lineOnly = next.filter((a) => !PICKED.includes(a.rel));
+    const rest = attrsToLine(lineOnly);
+    writtenRef.current = rest;
+    setOtherLine(rest);
+    lineRef.current = rest;
+    onChange([
+      ...attrs.filter((a) => PICKED.includes(a.rel) && !typed.has(a.rel)),
+      ...rowValues,
+      ...lineOnly,
+    ]);
     return true;
   };
   // Leaving by a click outside or by focus going elsewhere: the line is
