@@ -1,8 +1,9 @@
 // What the tree's mouse gestures write, and what they must not, over two
-// sentences (bug hunt three, H3-1-1, H3-1-4):
+// sentences (bug hunt three, H3-1-1, H3-1-2, H3-1-4):
 //   - An arc let go on a word of ANOTHER sentence ends the drag and writes
 //     nothing, then or on any later click.
 //   - Escape drops an arc in the hand, and the release writes nothing.
+//   - A plain click on a word, then on another, writes nothing.
 // Seeds 'She came and left .' (came root, She nsubj, left conj, and cc of left,
 // . punct) and 'The dog barked loudly .' (barked root, dog nsubj, The det of
 // dog, loudly advmod, . punct). Relations store source=head, target=dependent.
@@ -145,5 +146,21 @@ test('Escape drops the arc in the hand, and letting go writes nothing', async ({
   await page.keyboard.press('Escape');
   await expect.poll(() => dragArcs(page)).toBe(0);
   await page.mouse.up();
+  await nothingWritten(page);
+});
+test('a click on one word and then on another writes nothing', async ({ page }) => {
+  await open(page);
+  await word(page, 0, 0).click(); // She
+  await word(page, 0, 3).click(); // left
+  await nothingWritten(page);
+  // Nor a click on a word and then on the ROOT bar above the words.
+  await word(page, 0, 3).click();
+  const bar = await page
+    .locator('.tree-svg')
+    .nth(0)
+    .locator('rect[class*="tree-root-rect"]')
+    .first()
+    .boundingBox();
+  await page.mouse.click(bar.x + 5, bar.y + bar.height / 2);
   await nothingWritten(page);
 });

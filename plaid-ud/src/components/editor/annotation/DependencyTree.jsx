@@ -93,7 +93,6 @@ export const DependencyTree = forwardRef(
       () => suppressedBasicIds(relations, enhancedRelations),
       [relations, enhancedRelations],
     );
-    const [selectedSource, setSelectedSource] = useFollowedState(null);
     const [hoveredToken, setHoveredToken] = useFollowedState(null);
     const [editingRelation, setEditingRelation] = useFollowedState(null);
     const [hoveredRelation, setHoveredRelation] = useFollowedState(null);
@@ -409,8 +408,10 @@ export const DependencyTree = forwardRef(
       };
     }, [dragging]);
 
-    // Handle token click for relation creation (fallback to click-click)
-    const handleTokenClick = (event, position) => {
+    // A click on a word draws nothing: an arc is drawn by dragging. A click
+    // that armed the word as a head, shown by nothing on screen, once let the
+    // next click on any other word re-point that word under it.
+    const handleTokenClick = (event) => {
       // Alt+click hands over to the Text Editor at this sentence, the mirror of
       // Alt+click on a token there. It lives on the tree's grab area rather
       // than on the word's form below it, because this transparent rect is
@@ -423,78 +424,7 @@ export const DependencyTree = forwardRef(
         return;
       }
       if (isReadOnly) return;
-      if (editingRelation) {
-        closeEditor();
-        return;
-      }
-
-      const spanId = getEffectiveSpanId(position);
-
-      if (!selectedSource) {
-        setSelectedSource({
-          ...position,
-          spanId,
-          enhanced: canEnhance && isEnhancedGesture(event),
-        });
-      } else if (
-        selectedSource.spanId === spanId ||
-        selectedSource.token?.id === position.token?.id
-      ) {
-        setSelectedSource(null);
-      } else {
-        const sourceId = selectedSource.spanId;
-        const targetId = spanId;
-        const sourcePosition = adjustedTokenPositions.find((p) =>
-          positionMatchesSpanId(p, sourceId),
-        );
-        const targetPosition =
-          adjustedTokenPositions.find((p) => positionMatchesSpanId(p, targetId)) || position;
-
-        const existingRelation = relations.find(
-          (rel) =>
-            positionMatchesSpanId(sourcePosition, rel.source) &&
-            positionMatchesSpanId(targetPosition, rel.target),
-        );
-
-        if (selectedSource.enhanced && sourceId && targetId) {
-          drawEnhanced(sourcePosition, targetPosition, sourceId, targetId);
-        } else if (existingRelation) {
-          openEditor(existingRelation);
-        } else {
-          if (sourceId && targetId) {
-            onRelationCreate(sourceId, targetId, incomingDeprel(targetPosition));
-          }
-        }
-
-        setSelectedSource(null);
-      }
-    };
-
-    // Handle ROOT click
-    const handleRootClick = () => {
-      if (isReadOnly) return;
-      if (selectedSource && selectedSource.spanId !== 'ROOT') {
-        const sourceId = selectedSource.spanId;
-        const sourcePosition =
-          adjustedTokenPositions.find((p) => positionMatchesSpanId(p, sourceId)) || selectedSource;
-
-        // Look for existing ROOT relation (self-pointing relation)
-        const existingRelation = relations.find(
-          (rel) =>
-            positionMatchesSpanId(sourcePosition, rel.source) &&
-            positionMatchesSpanId(sourcePosition, rel.target),
-        );
-
-        if (selectedSource.enhanced) {
-          drawEnhanced(sourcePosition, sourcePosition, sourceId, sourceId);
-        } else if (existingRelation) {
-          openEditor(existingRelation);
-        } else {
-          onRelationCreate(sourceId, sourceId, 'root'); // Self-pointing relation
-        }
-
-        setSelectedSource(null);
-      }
+      if (editingRelation) closeEditor();
     };
 
     // The labels in the order the keyboard walks them: left to right across
@@ -539,7 +469,6 @@ export const DependencyTree = forwardRef(
         return;
       }
       if (e.key === 'Escape') {
-        setSelectedSource(null);
         closeEditor();
         setFocusedRelation(null);
         endDrag();
@@ -924,8 +853,7 @@ export const DependencyTree = forwardRef(
             y={ROOT_Y}
             width="100%"
             height={ROOT_BAR_HEIGHT}
-            className={`${selectedSource || dragOrigin ? 'tree-root-rect' : 'tree-root-rect--default'}${hoveredToken?.lemmaSpanId === 'ROOT' ? ' tree-root-rect--hovered' : ''}`}
-            onClick={() => handleRootClick()}
+            className={`${dragOrigin ? 'tree-root-rect' : 'tree-root-rect--default'}${hoveredToken?.lemmaSpanId === 'ROOT' ? ' tree-root-rect--hovered' : ''}`}
             onMouseDown={handleRootMouseDown}
             onMouseUp={handleRootMouseUp}
             onMouseEnter={() => setHoveredToken({ lemmaSpanId: 'ROOT' })}
@@ -970,7 +898,7 @@ export const DependencyTree = forwardRef(
                 height={box.height}
                 fill="transparent"
                 className={`tree-token-area ${dragOrigin ? 'tree-token-area--drag' : 'tree-token-area--grab'}`}
-                onClick={(e) => handleTokenClick(e, position)}
+                onClick={(e) => handleTokenClick(e)}
                 onMouseDown={(e) => handleTokenMouseDown(e, position)}
                 onMouseUp={(e) => handleTokenMouseUp(e, position)}
                 onMouseEnter={() => setHoveredToken(position)}
