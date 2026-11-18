@@ -7,7 +7,7 @@ import { useConfigCell } from '@ui/hooks/useConfigCell.js';
 import { PREDEFINED_FIELDS, readDocumentMetadata, IGT_NAMESPACE } from '@/domain/igtConfig';
 import { TYPE } from '@ui/lib/typeScale.js';
 import { queueStated, tagsetsChangedError } from '@/domain/tagsetsSave';
-import { refusedMetadataBySave } from './refusedMetadata.js';
+import { refusedMetadataBySave } from '@/domain/refusedMetadata.js';
 import { REFUSED_TITLE, refusedValuesText } from './refusedValues.js';
 
 // A save refused because what it read changed elsewhere: the fields, or the

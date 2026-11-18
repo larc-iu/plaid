@@ -5,7 +5,7 @@ import { IGT_NAMESPACE } from '@/domain/igtConfig';
 import { getIgtLayerInfo } from '@/domain/layerInfo';
 import { byTagsetName, governedFields, readTagsets } from '@/domain/tagsets';
 import { refusedBySave, tagsetRefusal } from '@/domain/igtConstraints';
-import { refusedMetadataBySave } from './refusedMetadata.js';
+import { refusedMetadataBySave } from '@/domain/refusedMetadata.js';
 import { queueTagsetsSave, tagsetsChangedError, tagsetsSaveFields } from '@/domain/tagsetsSave';
 import { loadAttested, mergeAttested } from '../validate/attested.js';
 import { isConfigConflict, storedConfig } from '@ui/domain/configCells.js';

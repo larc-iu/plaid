@@ -20,6 +20,7 @@
 
 import { PatternError, translatePattern } from '@ui/domain/javaRegex.js';
 import { readIgnoredTokens, wordValueSpec } from '@/domain/igtConfig.js';
+import { metadataFreqQuery } from '@/domain/refusedMetadata.js';
 
 // The case behaviour differs between these and it changes what comes back, so
 // the label says it rather than leaving it to be discovered: `contains` folds
@@ -382,21 +383,6 @@ export const headwordTypesQuery = (projectId) => ({
 // query would reach documents in projects the caller never asked about.
 
 /** `.` = has at least one character (the REGEXP UDF matches on contains). */
-const ANY_TEXT = { regex: '.' };
-
-/**
- * [value, count] rows for one document-metadata field, project-wide.
- *
- * `field` is interpolated into a dot-path, and the query parser splits field
- * references on ".", so a name containing one would silently group by nothing.
- * DocumentMetadataManager rejects periods in field names for this reason.
- */
-const metadataFreqQuery = (projectId, field) => ({
-  scope: { projectIds: [projectId] },
-  where: [['document', '?d', { metadata: { [field]: ANY_TEXT } }]],
-  return: { group: [`?d.metadata.${field}`], aggregates: [['count']] },
-});
-
 /** The documents whose `field` holds exactly `value`: rows of [id, name, 1].
  * Core binds no variable to a document's name, so the name is a group key. */
 export const metadataHitsQuery = (projectId, field, value) => ({
