@@ -1434,7 +1434,13 @@ class Worker:
         try:
             runner = self.runners[job.job['app']](job)
             if job.state == 'stopping':
-                # Cancelled while a worker that crashed held it: what was written stands.
+                # Cancelled while a worker that crashed held it: what was
+                # written stands. Each document's row is written as the report
+                # counts it (what landed, core's audit log), so the Documents
+                # table and the totals agree (S3-2).
+                for d in runner.document_reports(job):
+                    through_core(job, lambda d=d: job.update_row(d['document_id'], done=d.get('done'),
+                                                                 targets=d.get('targets'), counts=d.get('counts')))
                 _finish(job, 'cancelled', runner, {}, {}, reason='cancelled')
             else:
                 run_job(job, runner)
