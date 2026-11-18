@@ -211,7 +211,7 @@ export const totalRows = (report) => {
 
 // How much of each thing the job fills is blank in the sentences of a
 // document the job did not reach, or skipped (`key`): counted, never listed.
-export const blankParts = (counts, key) =>
+const blankParts = (counts, key) =>
   (counts?.blank || [])
     .filter((b) => b[key] > 0)
     .map((b) => `${b.target} ${unitCount(b[key], b.unit)}`);
