@@ -119,9 +119,15 @@ async function caretAt(page, at) {
   }, at);
 }
 
+// A save that removes text reads the document before it asks (H2-1-1), so
+// the question comes after that read: wait for it, or for the save's end.
 async function save(page) {
   await page.getByRole('button', { name: 'Save changes' }).click();
   const confirm = page.getByRole('alertdialog');
+  const ended = page
+    .getByRole('button', { name: 'Edit text' })
+    .or(page.getByText('The same passage was changed elsewhere.', { exact: false }));
+  await expect(confirm.or(ended).first()).toBeVisible({ timeout: 10_000 });
   if (await confirm.isVisible().catch(() => false)) {
     await confirm.getByRole('button', { name: 'Save anyway' }).click();
   }
