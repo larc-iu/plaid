@@ -4789,8 +4789,13 @@ class IgtRunner:
             # document to be settled again from what core holds.
             self.record(project, document_id, after, part, st, changed, vouched,
                         self.made_entries(ws, after, st, w.ops))
-        except BaseException:
+        except BaseException as e:
             self.settled.discard(document_id)
+            # The write landed: never made again from its gate with the
+            # piece's old prints, which would read the job's own landed
+            # sentences as changed (REV-JR1-3, ``first_request``).
+            if not hasattr(e, 'wrote_any'):
+                e.wrote_any = True
             raise
         return True
 
@@ -4847,7 +4852,13 @@ class IgtRunner:
         put_off = None
         try:
             self.send(client, project, document_id, group, w)
-        except (Deferred, PlanError) as e:
+        except BaseException as e:
+            # Raised in send's own handlers too (a try too big, one out of
+            # date): whether a try of it landed (REV-JR1-3).
+            if not hasattr(e, 'wrote_any'):
+                e.wrote_any = bool(w.done)
+            if not isinstance(e, (Deferred, PlanError)):
+                raise
             # Tries of it landed before it was put off (a later try out of
             # date, or refused as :meth:`write` puts a write off): what they
             # did to the text is recorded before it goes (D4).

@@ -24,7 +24,7 @@ def _setup():
             'text': True, 'conversation': 'c1', 'onlynew': True}
 
 
-@pytest.mark.parametrize('where', ['added-row', 'read-after', 'later-try-put-off'])
+@pytest.mark.parametrize('where', ['added-row', 'read-after', 'later-try-put-off', 'record-blip', 'update-blip'])
 def test_the_word_a_landed_text_edit_added_is_filled_whatever_core_does_after_the_send(monkeypatch, where):
     text_edits(monkeypatch)
     client = JobClient({'d1': document('d1', 'Story', [{'words': ['sc', 'tqmc']}, {'words': ['pa', 'ro']}])})
@@ -71,6 +71,29 @@ def test_the_word_a_landed_text_edit_added_is_filled_whatever_core_does_after_th
             return real_get(document_id, **kw)
         client.documents.get = get
 
+    seen = []
+    if where in ('record-blip', 'update-blip'):
+        # REV-JR1-3: one 502 in record() after the write landed, or in its
+        # row's update. The write is never made again from its gate with the
+        # piece's old prints, so the job's own sentence never reads as changed.
+        real_record = igt_job.IgtRunner.record
+
+        def record(self, project, document_id, doc, part, st, changed=frozenset(), vouched=frozenset(),
+                   made=frozenset()):
+            seen.append(sorted(changed))
+            if not state['failed'] and state['edited']:
+                state['failed'] = True
+                if where == 'record-blip':
+                    raise PlaidAPIError('HTTP 502', status=502)
+                real_up = self.job.update_row
+
+                def up(*a, **kw):
+                    self.job.update_row = real_up
+                    raise PlaidAPIError('HTTP 502', status=502)
+                self.job.update_row = up
+            return real_record(self, project, document_id, doc, part, st, changed, vouched, made)
+        monkeypatch.setattr(igt_job.IgtRunner, 'record', record)
+
     def answer(asked, n, kwargs):
         if 'Instructions from' not in asked or n > 1:
             return reply('Done.')
@@ -87,3 +110,4 @@ def test_the_word_a_landed_text_edit_added_is_filled_whatever_core_does_after_th
     assert finished['state'] == 'done', finished.get('reason')
     analysed = [o for ops in sent for o in ops if o['kind'] == 'set_analysis']
     assert [o['word_id'] for o in analysed] == ['d1-zz'], sent
+    assert all(not ch for ch in seen), seen
