@@ -210,23 +210,28 @@
                           [:= :document_id doc-id]]})
        (mapv token-row->light)))
 
-(defn- containing-parent-in-memory
-  "In-memory equivalent of containing-parent over a pre-fetched parent
-  token seq. Same deterministic preference as the SQL ORDER BY:
-  tightest extent (largest begin, then smallest end), then precedence
-  (ASC, NULLS LAST), then id.
-
-  NULLS LAST is encoded by mapping nil precedence to Long/MAX_VALUE so
-  it sorts after every real precedence value under Clojure's < ordering."
-  [parents begin end]
-  (->> parents
-       (filter (fn [p] (and (<= (:token/begin p) begin)
-                            (>= (:token/end p) end))))
-       (sort-by (juxt (comp - :token/begin)
-                      :token/end
-                      #(or (:token/precedence %) Long/MAX_VALUE)
-                      (comp str :token/id)))
-       first))
+(defn- parent-cover
+  "A test of whether some token of `parents` contains [begin, end), the
+  question `containing-parent` answers for one child, for a batch of children
+  over one read of the parent layer. The parents are sorted by begin once, and
+  each position keeps the largest end among the parents up to it, so a child
+  is covered when the last parent beginning at or before its begin has a
+  running end at or past its end: a binary search, not a scan of every parent
+  for every child (SCL5-1: 20,000 parents with 42,000 children took 21 s)."
+  [parents]
+  (let [sorted (sort-by :token/begin parents)
+        begins (long-array (map :token/begin sorted))
+        max-ends (long-array (reductions max Long/MIN_VALUE (map :token/end sorted)))
+        n (alength begins)]
+    (fn [begin end]
+      ;; lo ends as the count of parents beginning at or before `begin`
+      (let [begin (long begin)
+            lo (loop [lo 0 hi n]
+                 (if (< lo hi)
+                   (let [mid (quot (+ lo hi) 2)]
+                     (if (<= (aget begins mid) begin) (recur (inc mid) hi) (recur lo mid)))
+                   lo))]
+        (>= (aget max-ends lo) (long end))))))
 
 ;; ---------------------------------------------------------------------------
 ;; Partition validation (used by bulk-create on :partitioning layers, and
@@ -611,18 +616,15 @@
         (let [doc-id (:doc-id ctx)
               child-records (filter #(= layer (:token/layer %)) records)
               ;; Batch the parent lookup when checking >1 child.
-              parents (when (> (count child-records) 1)
-                        (parent-tokens-for-doc tx parent-layer doc-id))
-              resolve-parent (fn [b e]
-                               (if parents
-                                 (containing-parent-in-memory parents b e)
-                                 (containing-parent tx parent-layer doc-id b e)))]
+              covered? (if (> (count child-records) 1)
+                         (parent-cover (parent-tokens-for-doc tx parent-layer doc-id))
+                         (fn [b e] (some? (containing-parent tx parent-layer doc-id b e))))]
           (doseq [rec child-records]
             (let [b (:token/begin rec) e (:token/end rec)]
               (when (= b e)
                 (throw (ex-info "Zero-width tokens are not allowed on nested token layers"
                                 {:code 400 :begin b :end e :layer layer})))
-              (when (nil? (resolve-parent b e))
+              (when-not (covered? b e)
                 (throw (ex-info "Token is not contained within any parent-layer token"
                                 {:code 400 :begin b :end e :parent-layer parent-layer}))))))))))
 
