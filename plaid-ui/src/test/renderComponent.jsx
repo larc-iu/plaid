@@ -38,8 +38,8 @@ async function unmountView(view) {
 // As @testing-library/react does: after each test of any file that mounts
 // through here, let a step still running finish, then unmount what the test
 // left. `afterEach` is a global (the apps' vitest configs set `globals: true`).
-if (typeof afterEach === 'function') {
-  afterEach(async () => {
+if (typeof globalThis.afterEach === 'function') {
+  globalThis.afterEach(async () => {
     while (running.size) await Promise.allSettled([...running]);
     for (const view of [...mounted]) await unmountView(view);
   });
