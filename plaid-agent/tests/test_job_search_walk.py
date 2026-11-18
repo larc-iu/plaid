@@ -93,7 +93,7 @@ def test_the_rename_shape_makes_pieces_only_for_the_matching_sentences(monkeypat
         assert igt_job.ONE_STEP not in d['counts']
     assert report['totals']['changes'] == 33
     assert igt_job.document_counts(report) == {'done': 24, 'changed': 24, 'with_nothing_found_by_the_search': 21,
-                                              'skipped': 0, 'stopped_partway': 0, 'not_reached': 0}
+                                              'skipped': 0, 'stopped_partway': 0, 'not_reached': 0, 'left_out': 0}
     # Read only for planning and where a match is: the 21 others never after.
     plan = report['plan']
     assert plan['search'] == {**SEARCH, 'said': f'Morph Gloss "{OLD}"', 'sentences': 33, 'documents': 24}
