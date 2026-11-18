@@ -162,7 +162,7 @@ export function useVadProposals({
   }, [mediaBlob]);
   const media = print.blob === mediaBlob ? print.media : null;
 
-  // Read only when the recording or the method changes. As a dependency it
+  // Read only when the recording changes. As a dependency it
   // would fire on our own write and undo whatever happened since.
   const savedRef = useRef(saved);
   savedRef.current = saved;
