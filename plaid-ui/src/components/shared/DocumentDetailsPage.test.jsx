@@ -25,7 +25,11 @@ vi.mock('../../hooks/useDocumentEditor.js', async () => {
     },
   };
 });
-vi.mock('../../lib/notify.js', () => ({ notifySuccess: vi.fn(), notifyError: vi.fn() }));
+vi.mock('../../lib/notify.js', () => ({
+  notifySuccess: vi.fn(),
+  notifyError: vi.fn(),
+  notifyWarning: vi.fn(),
+}));
 
 const { DocumentDetailsPage } = await import('./DocumentDetailsPage.jsx');
 const { hasUnsavedDraft } = await import('../../hooks/useUnsavedDraft.js');
@@ -45,6 +49,8 @@ const ROUTES = {
 const RESTORE = { appPrefix: 'plaid_igt', configNamespace: 'igt', appName: 'Plaid IGT' };
 
 let copied = [];
+// What the server said of the recording, as a copy's answer carries it.
+let mediaError = null;
 // Names another document holds, which a copy is refused.
 let takenNames = [];
 // The project's names the dialog reads when it opens.
@@ -63,7 +69,7 @@ class Doc extends DocumentModel {
       onNameTaken?.(`A document named “${name}” already exists in this project.`);
       return null;
     }
-    return { id: 'd2', name };
+    return { id: 'd2', name, ...(mediaError ? { mediaError } : {}) };
   }
   async rename() {
     return true;
@@ -130,6 +136,7 @@ const idx = () => window.history.state?.idx;
 
 beforeEach(() => {
   copied = [];
+  mediaError = null;
   takenNames = [];
   projectNames = ['One'];
   path = null;
@@ -254,6 +261,23 @@ describe('the document details screen', () => {
     await tick();
     expect(idx()).toBe(0);
     expect(hasUnsavedDraft()).toBe(null);
+  });
+
+  it('says the recording was not copied when the server could not copy it (H2-6-1)', async () => {
+    const { notifySuccess, notifyWarning } = await import('../../lib/notify.js');
+    notifySuccess.mockClear();
+    notifyWarning.mockClear();
+    mediaError = 'Could not copy the media file.';
+    const view = await mount();
+    await view.step(() => click(button(view.container, 'Copy document')));
+    await view.step(async () => click(button(document.body, 'Copy')));
+    await flush();
+    expect(notifyWarning).toHaveBeenCalledWith(
+      'The recording was not copied.',
+      'Copied to “One (2)”',
+    );
+    expect(notifySuccess).not.toHaveBeenCalled();
+    expect(path).toBe('/projects/p1/documents/d2/annotate');
   });
 
   it('offers the first free name after the document’s', async () => {

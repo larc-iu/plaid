@@ -115,7 +115,7 @@ Each document is built up on its tabs, which the rest of this chapter walks thro
 The **Details** tab holds the document's name and its document-level fields, such as speaker, date, and notes.
 Which fields appear is configured per project (see <<_annotation>>), and a field can be held to a tagset, so that a genre is always one of a fixed set (see <<_tagsets>>).
 This is also where a document is renamed, copied, and deleted.
-**Copy** makes a second document in the same project, with the same text, annotations, vocabulary links, and recording, but no comments.
+**Copy** makes a second document in the same project, with the same text, annotations, vocabulary links, and recording, but no comments. A recording the server cannot copy is left out, and the message after the copy says so.
 
 **Text direction** says which way the document's words are laid out.
 On **Automatic**, a document written in Arabic, Hebrew, or any other right-to-left script lays its words out right to left in the Analyze grid, with the row labels on the right.

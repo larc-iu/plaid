@@ -317,6 +317,15 @@
   runs it once the outer tx commits, or drops it on rollback."
   nil)
 
+(def ^:dynamic *after-commit-response*
+  "Bound (to an atom holding a map, or nil) by a single write sent with an
+  Idempotency-Key, which runs in a transaction of its own and so holds its
+  `after-commit!` work for the commit. That work may add keys here, and they
+  are merged into the write's response body once it has run, as they would
+  have been had it run at once. Unbound inside `/batch`, whose answer has no
+  place for them."
+  nil)
+
 (defn after-commit!
   "Run `f` once the write it belongs to is durable: at once outside an atomic
   batch, where each write commits on its own, and after the outer tx commits

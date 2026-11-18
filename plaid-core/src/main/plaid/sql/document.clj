@@ -519,7 +519,11 @@
   commits, so the response is already out and a failure to copy the file
   is logged and nothing more: the batch's other writes stand and the new
   document simply has no media. Outside a batch the copy runs inline, as
-  it always did, and `:media-error` still reports it.
+  it always did, and `:media-error` still reports it. A single copy sent
+  with an Idempotency-Key runs in a transaction of its own, so its media
+  copy waits for that commit too, and the error reaches its response
+  through `op/*after-commit-response*`. The answer kept for a resend of
+  that key is the one made before the media copy, without the error.
 
   `:id` in the options names the copy's id (a client's UUIDv7), else the
   server mints one. The rows inside the copy always get server ids.
@@ -644,16 +648,18 @@
      (if (and (:success result) include-media? (media/media-exists? src-id))
        ;; `after-commit!` runs this inline outside an atomic batch (where
        ;; the operation above has already committed), and holds it until
-       ;; the outer commit inside one. The atom therefore carries the
-       ;; error back only on the inline path — a deferred copy has no
-       ;; response left to put it in, and says so in the log.
+       ;; the outer commit inside one. The atom carries the error back on
+       ;; the inline path. A keyed single write holds it too, and gets the
+       ;; error through `op/*after-commit-response*` (H2-6-1). Inside
+       ;; `/batch` it is logged and nothing more.
        (let [media-error (atom nil)]
          (op/after-commit!
           (fn []
             (let [{:keys [success error]} (media/copy-media-file! src-id new-id)]
               (when-not success
                 (log/warn "Failed to copy media file for" src-id "to" new-id ":" error)
-                (reset! media-error error)))))
+                (reset! media-error error)
+                (some-> op/*after-commit-response* (swap! assoc :media-error error))))))
          (if-let [error @media-error]
            (assoc-in result [:extra :media-error] error)
            result))

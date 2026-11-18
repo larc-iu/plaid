@@ -10,6 +10,7 @@
             [clojure.set :as set]
             [clojure.test :refer :all]
             [plaid.fixtures :refer [db with-db with-mount-states with-rest-handler
+                                    rest-handler parse-response-body
                                     admin-request with-admin api-call
                                     with-test-users user1-request
                                     assert-created assert-ok assert-no-content
@@ -19,7 +20,8 @@
             [plaid.sql.common :as psc]
             [plaid.sql.document :as doc]
             [plaid.sql.document-rows :as drows]
-            [plaid.test-helpers :refer :all])
+            [plaid.test-helpers :refer :all]
+            [ring.mock.request :as mock])
   (:import [java.nio.file Files]
            [java.nio.file.attribute FileAttribute]))
 
@@ -408,3 +410,33 @@
         (is (nil? (-> res :body :media-error)))
         (is (= #{(str doc-id ".mp3") (str new-id ".mp3")} (media-files))
             "the copy has its own file")))))
+
+(deftest a-copy-says-its-media-was-not-copied-with-or-without-an-idempotency-key
+  ;; H2-6-1: a single write sent with a key runs in a transaction of its
+  ;; own, which holds the media copy for the commit, and the media-error
+  ;; was read before the copy ran. Both clients send a key with every write.
+  (with-temp-media-dir
+    (fn []
+      (let [proj (create-test-project admin-request "CopyMedia")
+            doc-id (create-test-document admin-request proj "Recorded")
+            _ (spit (io/file (media/ensure-media-dir!) (str doc-id ".mp3")) "audio bytes")
+            keyed (fn [name key]
+                    (let [resp (rest-handler
+                                (-> (admin-request :post (str "/api/v1/documents/" doc-id "/copy"))
+                                    (mock/json-body {:name name})
+                                    (mock/header "Idempotency-Key" key)))]
+                      {:status (:status resp) :body (parse-response-body resp)}))]
+        (with-redefs [media/copy-media-file! (fn [_ _] {:success false
+                                                        :error "Could not copy the media file."})]
+          (let [plain (copy! admin-request doc-id {:name "Plain"})
+                with-key (keyed "Keyed" "copy-key-0001")]
+            (assert-created plain)
+            (assert-created with-key)
+            (is (= "Could not copy the media file." (-> plain :body :media-error)))
+            (is (= "Could not copy the media file." (-> with-key :body :media-error)))
+            (is (some? (-> with-key :body :id)))))
+        (testing "a copy that takes its media says nothing, with a key too"
+          (let [ok (keyed "Keyed fine" "copy-key-0002")]
+            (assert-created ok)
+            (is (nil? (-> ok :body :media-error)))
+            (is (contains? (media-files) (str (-> ok :body :id) ".mp3")))))))))

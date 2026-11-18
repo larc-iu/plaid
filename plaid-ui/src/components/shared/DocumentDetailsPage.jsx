@@ -14,7 +14,7 @@ import { canEditProject } from '../../domain/permissions.js';
 import { appRoutes } from '../../lib/uiConfig.js';
 import { humanizeError } from '../../lib/errors.js';
 import { freeDocumentName } from '../../lib/documentNames.js';
-import { notifySuccess, notifyError } from '../../lib/notify.js';
+import { notifySuccess, notifyError, notifyWarning } from '../../lib/notify.js';
 import { fullTimestamp, timeAgo } from '../../lib/formatTime.js';
 import { useConfirm } from './ConfirmProvider.jsx';
 import { Button } from '../ui/button';
@@ -146,7 +146,13 @@ export const DocumentDetailsPage = ({
         : await doc.copyTo(copyName, { onNameTaken });
       if (!created?.id) return;
       setCopyOpen(false);
-      if (!created.notified) notifySuccess(`Copied to “${created.name}”`);
+      // The copy stands without its recording when the server could not
+      // copy the file (H2-6-1).
+      if (!created.notified) {
+        if (created.mediaError) {
+          notifyWarning('The recording was not copied.', `Copied to “${created.name}”`);
+        } else notifySuccess(`Copied to “${created.name}”`);
+      }
       if (created.stay) return;
       // The copy is made either way; what is asked about is LEAVING this
       // screen for it, because the name typed above goes with the screen. The
