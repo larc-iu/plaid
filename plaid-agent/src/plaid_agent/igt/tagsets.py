@@ -172,7 +172,9 @@ def _attested(ws, f: dict) -> List[Tuple[str, int]]:
                 if isinstance(r[0], str) and trim(r[0])]
     counts: Dict[str, int] = {}
     if f['kind'] == METADATA:
-        values = [(d.get('metadata') or {}).get(f['key']) for d in ws.documents()]
+        # From one query of the documents: the project's list of documents
+        # carries no metadata.
+        values = [m.get(f['key']) for m in ws.corpus.document_metadata().values()]
     else:
         values = [(it.get('metadata') or {}).get(f['key']) for it in ws.lexicon(f['vocab'])]
     for v in values:
@@ -739,6 +741,54 @@ def _planned(ws, owner: str, notes: List[str]) -> str:
         out += (next_step(ws, ' Approval writes it. ', ' ') + '. '.join(stays)
                 + '. The list takes force there once they are listed or changed (a plan of their own), and igt '
                 'names them under Validation.')
+    metadata = _metadata_refused(ws)
+    if metadata:
+        # Core holds no rule on document metadata: the app refuses the
+        # approval itself (plaid-igt tagsetPlan.js, refusedMetadataBySave),
+        # said here at staging (G2, H2-12-3).
+        out += ws.warned(next_step(ws, ' The app will refuse this approval, writing nothing,',
+                                   ' The app would refuse this change, writing nothing,')
+                         + ' while documents hold values the list newly refuses: ' + '; '.join(metadata) + '.'
+                         + next_step(ws, ' Tell the user. Add them to the list, or plan changes to those documents '
+                                     'first (a plan of their own).', ''))
+    return out
+
+
+def _metadata_off(value: str, t: Optional[dict]) -> bool:
+    """Whether list ``t`` refuses document metadata ``value``, as plaid-igt
+    ``validateValue`` reads it: a list that is not suggest-only refuses an
+    empty part and a part it does not list, but under mixed a lexical one."""
+    if not t or t.get('mode') not in (CLOSED, MIXED):
+        return False
+    listed = {v['value'] for v in t.get('values') or []}
+    for p in value_parts(value, t.get('delimiters') or ''):
+        q = trim(p)
+        if not q:
+            return True
+        if q not in listed and not (t['mode'] == MIXED and is_lexical_part(q)):
+            return True
+    return False
+
+
+def _metadata_refused(ws) -> List[str]:
+    """For each document metadata field, the values documents hold that its
+    list once the plan is applied refuses and its stored list let stand, as
+    plaid-igt ``refusedMetadataBySave`` counts them:
+    'document metadata Kind (1 document: "dog" (1))'. None for a field with none."""
+    planned = planned_tagsets(ws, PROJECT)
+    stored = _stored_tagsets(ws, PROJECT)
+    out = []
+    for f in _fields(ws, PROJECT):
+        if f['kind'] != METADATA or not f['tagset']:
+            continue
+        new = planned.get(f['tagset'])
+        old_name = ws.project.metadata_tagset_names.get(f['key'])
+        old = stored.get(old_name) if old_name else None
+        bad = [(v, n) for v, n in _attested(ws, f) if _metadata_off(v, new) and not _metadata_off(v, old)]
+        if bad:
+            docs = sum(n for _, n in bad)
+            out.append(f'{f["name"]} ({docs} document{"s" if docs != 1 else ""}: '
+                       + _listing(bad, lambda r: f'{qv(r[0])} ({r[1]})') + ')')
     return out
 
 

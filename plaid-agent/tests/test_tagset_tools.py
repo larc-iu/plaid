@@ -532,3 +532,28 @@ def test_a_status_list_from_before_machine_is_edited_in_place():
     out = call_tool(ws, 'tagsets', {'action': 'edit', 'tagset': 'Workflow', 'lexicon': lex['name'],
                                     'changes': {'remove': ['draft']}})
     assert out.startswith('Planned'), out
+
+
+# --- JOIN18 (G2, H2-12-3): document metadata values a plan's list newly refuses -------------
+
+def test_a_list_put_over_document_metadata_names_the_values_it_newly_refuses_at_staging():
+    ws = _fake_ws()
+    call_tool(ws, 'tagsets', {'action': 'edit', 'tagset': 'Years', 'changes': {'add': ['2021'], 'mode': 'closed'}})
+    out = call_tool(ws, 'tagsets', {'action': 'assign', 'field': 'Date', 'tagset': 'Years'})
+    assert ('The app will refuse this approval, writing nothing, while documents hold values the list newly '
+            'refuses: document metadata Date (1 document: "2020" (1)).') in out, out
+
+
+@pytest.mark.parametrize('values,mode', [(['2020', '2021'], 'closed'), (['2021'], 'suggest')])
+def test_a_list_that_lets_the_documents_values_stand_warns_of_nothing(values, mode):
+    ws = _fake_ws()
+    call_tool(ws, 'tagsets', {'action': 'edit', 'tagset': 'Years', 'changes': {'add': values, 'mode': mode}})
+    out = call_tool(ws, 'tagsets', {'action': 'assign', 'field': 'Date', 'tagset': 'Years'})
+    assert 'newly refuses' not in out, out
+
+
+def test_the_document_values_are_read_from_core(proj):
+    ws = ws_of(proj)
+    call_tool(ws, 'tagsets', {'action': 'edit', 'tagset': 'Years', 'changes': {'add': ['2021'], 'mode': 'closed'}})
+    out = call_tool(ws, 'tagsets', {'action': 'assign', 'field': 'Date', 'tagset': 'Years'})
+    assert 'newly refuses: document metadata Date (1 document: "2020" (1)).' in out, out
