@@ -681,11 +681,11 @@
         ancestor (when (uuid? tl-id) (psc/fetch-by-id tx :token_layers tl-id))
         own-tl (when-let [sl (psc/fetch-by-id tx :span_layers (:span_layer_id layer-row))]
                  (psc/fetch-by-id tx :token_layers (:token_layer_id sl)))]
-    (when-not ancestor
-      (bad (str where " (same-ancestor) needs token-layer, the id of a token layer.")))
-    (when-not (= (str (:text_layer_id ancestor)) (str (:text_layer_id own-tl)))
-      (bad (str where " (same-ancestor): token layer " tl-id
-                " is not on the text layer this relation layer's spans are on.")))
+    ;; One answer for an id that names no token layer and one on another
+    ;; text layer, which may be another project's (ACL9-2).
+    (when-not (and ancestor (= (str (:text_layer_id ancestor)) (str (:text_layer_id own-tl))))
+      (bad (str where " (same-ancestor) needs token-layer, the id of a token layer on the text layer "
+                "this relation layer's spans are on.")))
     (when-not (#{"partitioning" "non-overlapping"} (:overlap_mode ancestor))
       (bad (str where " (same-ancestor): token layer " tl-id
                 " must be partitioning or non-overlapping.")))

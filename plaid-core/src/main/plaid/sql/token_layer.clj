@@ -98,12 +98,10 @@
                        :code 400})))
     (let [parent (psc/fetch-by-id tx :token_layers parent-tl-id)]
       (cond
-        (nil? parent)
-        (throw (ex-info (psc/err-msg-not-found "Parent token layer" parent-tl-id)
-                        {:id parent-tl-id :code 400}))
-
-        (not= (:text_layer_id parent) text-layer-id)
-        (throw (ex-info "Parent token layer must belong to the same text layer as this layer."
+        ;; One answer for an unknown id and a layer of another text layer,
+        ;; which may be another project's (ACL2-1).
+        (or (nil? parent) (not= (:text_layer_id parent) text-layer-id))
+        (throw (ex-info (str "Parent token layer " parent-tl-id " is not a token layer of this text layer.")
                         {:parent-token-layer parent-tl-id :code 400}))
 
         (not (#{"non-overlapping" "partitioning"} (:overlap_mode parent)))
