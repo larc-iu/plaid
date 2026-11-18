@@ -5329,9 +5329,12 @@ class IgtRunner:
             self.record_refusals(ws, fresh.id, refused)
         # Asked of core once in this write, when an op needs it (S9-1).
         maintains: Dict[str, bool] = {}
-        rule = jobapply.Rule(fresh, project,
-                             maintainer=lambda: maintains.setdefault('v', self.starter_maintains(ws, project)),
-                             edits_text=self.edits_text())
+
+        def maintainer() -> bool:
+            if 'v' not in maintains:
+                maintains['v'] = self.starter_maintains(ws, project)
+            return maintains['v']
+        rule = jobapply.Rule(fresh, project, maintainer=maintainer, edits_text=self.edits_text())
 
         def sentence_of(token):
             s = st.sentence_of(token)

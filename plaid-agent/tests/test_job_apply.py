@@ -489,3 +489,15 @@ def _machine(md):
             and ('provConfirmed',) in dels
     return md.get('prov') == 'inferred' and (md.get('provDetail') or {}).get('job') == J \
         and not md.get('provConfirmed')
+
+
+def test_whether_the_starter_maintains_is_asked_once_in_a_write():
+    """S9-1: read from core at each write that needs it, once in that write
+    however many of its changes need it."""
+    s = _Setup()
+    asked = []
+    s.runner.starter_maintains = lambda ws, project: asked.append(1) or False
+    s.stage('delete_entry', {'entry_id': 'vi-gam'}, document=None)
+    s.stage('rename_entry', {'entry_id': 'vi-gam2', 'new_form': 'gaam'}, document=None)
+    kept, proposed = s.decide()
+    assert len(proposed) == 2 and asked == [1], (proposed, asked)
