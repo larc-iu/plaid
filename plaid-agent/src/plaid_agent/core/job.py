@@ -806,7 +806,9 @@ def through_core(job: Job, step: Callable[[], Any], gave_up: Optional[Callable[[
         try:
             return step()
         except Exception as e:  # noqa: BLE001 - core's passing trouble is tried again, the rest goes up
-            if core_fault(e) == 'access' and n < JOB_CORE_TRIES and job.renewed(e):
+            # Renewed only where the step may be made again (REV-JR1-2).
+            if core_fault(e) == 'access' and (retry is None or retry(e)) and n < JOB_CORE_TRIES \
+                    and job.renewed(e):
                 logger.warning('Job %s: its token was refused and a heartbeat renewed it: %s', job.id, e)
                 continue
             if core_fault(e) != 'passing' or (retry is not None and not retry(e)):
