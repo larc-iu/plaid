@@ -160,7 +160,10 @@ function run(seed, { steps = 400, storeFail = 0 } = {}) {
       // over p1's Gloss layer.
       query: (q) => {
         const links = q.where[0][0] === 'vocab';
-        const docId = (links ? q.where.find((c) => c[0] === 'token') : q.where[0])[2].doc;
+        // A link query names its tokens inside an `or` of a word and a
+        // morpheme alternative, each scoped to the same document.
+        const linkToken = () => q.where.find((c) => c[0] === 'or')[1].find((c) => c[0] === 'token');
+        const docId = (links ? linkToken() : q.where[0])[2].doc;
         return request(
           tab,
           () => {
