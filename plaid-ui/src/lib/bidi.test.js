@@ -3,7 +3,7 @@
 // jsdom, not the suite's default happy-dom: `isRtlBox` asks for a resolved
 // `direction`, which is a question only a real layout engine answers.
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { isRtlBox, caretAtArrowEdge, arrowStep, isolate, isolateLabel } from './bidi.js';
+import { isRtlBox, caretAtArrowEdge, arrowStep, isolate, labelParts, labelText } from './bidi.js';
 
 let host;
 beforeEach(() => {
@@ -95,37 +95,74 @@ describe('isolate', () => {
   });
 });
 
-// REV-HFT-7: a History label is stored as typed, and its two sides of an
-// arrow are isolated where it is shown, so two right-to-left spellings do not
-// join into one run that reads backwards.
-describe('isolateLabel', () => {
-  it('isolates each side of an arrow, and leaves a label with no value as it is', () => {
-    expect(isolateLabel('Respell \u0643\u062a\u0628 → \u0643\u062a')).toBe(
-      '\u2068Respell \u0643\u062a\u0628\u2069 → \u2068\u0643\u062a\u2069',
-    );
-    expect(isolateLabel('Confirm word analysis')).toBe('Confirm word analysis');
-    expect(isolateLabel(null)).toBe(null);
+// REV-HFT-7, H2-8-2, REV-G4-1: a History label is stored as typed, and
+// where it is shown each value is drawn in a <bdi>: the label comes back in
+// parts, a string drawn as it is and { isolate } in a <bdi>. Joined, the parts
+// are the label itself, with no isolate character added.
+describe('labelParts', () => {
+  const ar = '\u0630\u0647\u0628 Ahmed \u0625\u0644\u0649';
+  const same = (label) => {
+    expect(labelText(labelParts(label))).toBe(label);
+    expect(JSON.stringify(labelParts(label))).not.toMatch(/[\u2066-\u2069]/);
+  };
+
+  it('isolates each side of an arrow, and leaves a label with no value whole', () => {
+    expect(labelParts('Respell \u0643\u062a\u0628 → \u0643\u062a')).toEqual([
+      { isolate: ['Respell \u0643\u062a\u0628'] },
+      ' → ',
+      { isolate: ['\u0643\u062a'] },
+    ]);
+    expect(labelParts('Confirm word analysis')).toEqual(['Confirm word analysis']);
+    expect(labelParts(null)).toEqual([]);
   });
 
-  // H2-8-2: a cell edit's value, after the first colon, and every quoted
-  // subject keep their own direction.
-  it('isolates the value after the last colon and each quoted run', () => {
-    const ar = '\u0630\u0647\u0628 Ahmed \u0625\u0644\u0649';
-    expect(isolateLabel(`Translation of sentence 1: ${ar}`)).toBe(
-      `Translation of sentence 1: \u2068${ar}\u2069`,
-    );
-    expect(isolateLabel('Gloss of morpheme "\u0630\u0647\u0628" in sentence 2: go')).toBe(
-      'Gloss of morpheme "\u2068\u0630\u0647\u0628\u2069" in sentence 2: \u2068go\u2069',
-    );
-    expect(isolateLabel('Create and link the entry “\u0630\u0647\u0628”')).toBe(
-      'Create and link the entry “\u2068\u0630\u0647\u0628\u2069”',
-    );
-    // A colon inside a quoted subject is not the value's.
-    expect(isolateLabel('Gloss of "a: b" cleared')).toBe('Gloss of "\u2068a: b\u2069" cleared');
-    // The first colon: a value may hold one of its own.
-    expect(isolateLabel('Note of sentence 1: a: b')).toBe('Note of sentence 1: \u2068a: b\u2069');
-    expect(isolateLabel('Undo entry: Gloss of "x" in sentence 1: X')).toBe(
-      'Undo entry: \u2068Gloss of "\u2068x\u2069" in sentence 1: X\u2069',
-    );
+  it('isolates the value after the first colon and each quoted run', () => {
+    expect(labelParts(`Translation of sentence 1: ${ar}`)).toEqual([
+      'Translation of sentence 1',
+      ': ',
+      { isolate: [ar] },
+    ]);
+    expect(labelParts('Gloss of morpheme "\u0630\u0647\u0628" in sentence 2: go')).toEqual([
+      'Gloss of morpheme "',
+      { isolate: ['\u0630\u0647\u0628'] },
+      '" in sentence 2',
+      ': ',
+      { isolate: ['go'] },
+    ]);
+    expect(labelParts('Create and link the entry “\u0630\u0647\u0628”')).toEqual([
+      'Create and link the entry “',
+      { isolate: ['\u0630\u0647\u0628'] },
+      '”',
+    ]);
+    // A colon inside a quoted subject is not the value's, and the value may
+    // hold one of its own.
+    expect(labelParts('Gloss of "a: b" cleared')).toEqual([
+      'Gloss of "',
+      { isolate: ['a: b'] },
+      '" cleared',
+    ]);
+    expect(labelParts('Note of sentence 1: a: b')).toEqual([
+      'Note of sentence 1',
+      ': ',
+      { isolate: ['a: b'] },
+    ]);
+    expect(labelParts('Undo entry: Gloss of "x" in sentence 1: X')).toEqual([
+      'Undo entry',
+      ': ',
+      { isolate: ['Gloss of "', { isolate: ['x'] }, '" in sentence 1: X'] },
+    ]);
+  });
+
+  it('joins back to the stored label, with no isolate character', () => {
+    for (const label of [
+      'Respell kat → cat',
+      `Translation of sentence 1: ${ar}`,
+      'Delete entry "kaia"',
+      'Gloss of "" in sentence 1: ',
+      'Undo entry: Gloss of "x" in sentence 1: X',
+      'Move vocabulary “Lexicon” to project “Kukama (UMR)”',
+      'unbalanced "quote: here',
+    ])
+      same(label);
   });
 });

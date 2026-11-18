@@ -236,7 +236,7 @@ export const tokenMutations = {
       });
     };
     // Stored as written. History and Activity isolate each side of the arrow
-    // where they show it (plaid-ui isolateLabel), so a right-to-left
+    // in a <bdi> where they show it (plaid-ui IsolatedLabel), so a right-to-left
     // respell reads old to new (H16-1, REV-HFT-7).
     return this._queueWrite(label, write, `Respell ${old} → ${value}`);
   },

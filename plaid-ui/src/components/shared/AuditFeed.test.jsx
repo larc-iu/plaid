@@ -275,10 +275,7 @@ describe('a vocabulary operation in a project feed', () => {
       ]),
     );
     const cells = texts(view.container, 'td');
-    // Each quoted name keeps its own direction (H2-8-2).
-    expect(cells).toContain(
-      'Move vocabulary “\u2068Lexicon\u2069” to project “\u2068Kukama (UMR)\u2069”',
-    );
+    expect(cells).toContain('Move vocabulary “Lexicon” to project “Kukama (UMR)”');
     expect(cells).toContain('Merge 3 vocab items');
     const where = [...view.container.querySelectorAll('td a')].map((a) => [
       a.textContent,
@@ -288,6 +285,47 @@ describe('a vocabulary operation in a project feed', () => {
       ['Kukama', '/projects/p1'],
       ['Kukama', '/projects/p1'],
     ]);
+    await view.unmount();
+  });
+});
+
+// REV-G4-1: a label shows each value in a <bdi>, and its text is the stored
+// label, so a label copied from the feed and pasted into "Search changes…"
+// finds its entry.
+describe('a label copied from the feed', () => {
+  it('is the stored label, and the feed’s search finds the entry by it', async () => {
+    const page = [
+      { ...entry('one'), message: 'Delete entry "kaia"' },
+      { ...entry('two'), message: 'Translation of sentence 1: \u0630\u0647\u0628 Ahmed' },
+    ];
+    const view = await renderComponent(
+      <MemoryRouter>
+        <AuditFeed
+          fetchPage={async () => ({ entries: page, nextCursor: null })}
+          title="Recent"
+          projectHref={(project) => `/projects/${project.id}`}
+          documentHref={(document, project) => `/projects/${project.id}/documents/${document.id}`}
+        />
+      </MemoryRouter>,
+    );
+    await view.step(async () => {});
+    const cell = [...view.container.querySelectorAll('td')].find((td) =>
+      td.textContent.startsWith('Delete entry'),
+    );
+    const copied = cell.textContent;
+    expect(copied).toBe('Delete entry "kaia"');
+    expect(copied).not.toMatch(/[\u2066-\u2069]/);
+    expect(cell.querySelector('bdi')?.textContent).toBe('kaia');
+    const box = view.container.querySelector('input[placeholder="Search changes…"]');
+    await view.step(async () => {
+      Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set.call(
+        box,
+        copied,
+      );
+      box.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+    expect(shown(view.container)).toContain('Delete entry "kaia"');
+    expect(shown(view.container)).not.toContain('Ahmed');
     await view.unmount();
   });
 });

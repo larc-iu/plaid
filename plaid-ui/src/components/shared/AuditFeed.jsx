@@ -6,7 +6,7 @@ import { notifyError } from '../../lib/notify.js';
 import { humanizeError } from '../../lib/errors.js';
 import { useLatestCall } from '../../hooks/useLatestCall.js';
 import { readableDescription, operationKindLabel } from '../../lib/auditText.js';
-import { isolateLabel } from '../../lib/bidi.js';
+import { IsolatedLabel } from './IsolatedLabel.jsx';
 import { KindChip } from './HistoryDrawer.jsx';
 import { compareNames, textIncludes } from '../../domain/collation.js';
 
@@ -160,7 +160,7 @@ export const AuditFeed = ({
       render: (e) => (
         <>
           <KindChip kind={e.kind} />
-          {isolateLabel(entryLabel(e))}
+          <IsolatedLabel label={entryLabel(e)} />
         </>
       ),
     },

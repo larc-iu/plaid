@@ -58,24 +58,38 @@ export const arrowStep = (visualRight, gridRtl) => (visualRight === !!gridRtl ? 
 // drawn from parts puts each value in a `<bdi>` instead.
 export const isolate = (value) => `\u2068${value ?? ''}\u2069`;
 
-// A stored label shown in a list (History, Activity), with each value in it
-// isolated, so a right-to-left value reads in its own order. Isolated where
-// it is shown, never in what is stored (REV-HFT-7). A fixed rule:
+// A stored label shown in a list (History, Activity, the Restore and Undo
+// dialogs), in PARTS: a string is drawn as it is, and `{ isolate: parts }` is
+// drawn in a `<bdi>` (components/shared/IsolatedLabel.jsx), so a
+// right-to-left value reads in its own order while the text stays the stored
+// label, character for character: copied, searched or read by a test it is
+// what was stored, with no U+2066 to U+2069 in it (REV-G4-1). A fixed rule:
 // - with an arrow, each side of it (`Respell كَتَبَ → كتب` reads old to new);
 // - else each quoted run ("…" or “…”), and everything after the first ': '
 //   outside quotes, which is a cell edit's value (`Translation of sentence
-//   1: ذهب Ahmed إلى`, H2-8-2). A value may hold a colon of its own.
-// A label with none of these, or no label, is given back as it is.
+//   1: ذهب Ahmed إلى`, H2-8-2), its own quoted runs isolated within it.
+//   A value may hold a colon of its own.
+// A label with none of these is one plain part. Joining the text of every
+// part gives the label back (`labelText`).
 const QUOTES = { '"': '"', '\u201c': '\u201d' };
 
-const isolateQuoted = (text) =>
-  text.replace(/"([^"]*)"|\u201c([^\u201d]*)\u201d/g, (m, plain, curly) =>
-    plain != null ? `"${isolate(plain)}"` : `\u201c${isolate(curly)}\u201d`,
-  );
+const quotedParts = (text) => {
+  const out = [];
+  let at = 0;
+  for (const m of text.matchAll(/"([^"]*)"|\u201c([^\u201d]*)\u201d/g)) {
+    const inner = m[1] ?? m[2];
+    out.push(text.slice(at, m.index + 1), { isolate: [inner] });
+    at = m.index + 1 + inner.length;
+  }
+  out.push(text.slice(at));
+  return out.filter((p) => p !== '');
+};
 
-export const isolateLabel = (label) => {
-  if (typeof label !== 'string') return label;
-  if (label.includes(' → ')) return label.split(' → ').map(isolate).join(' → ');
+export const labelParts = (label) => {
+  if (typeof label !== 'string' || label === '') return label ? [String(label)] : [];
+  if (label.includes(' → ')) {
+    return label.split(' → ').flatMap((side, i) => [...(i ? [' → '] : []), { isolate: [side] }]);
+  }
   let close = null;
   for (let i = 0; i < label.length; i += 1) {
     const ch = label[i];
@@ -84,8 +98,17 @@ export const isolateLabel = (label) => {
     } else if (QUOTES[ch]) {
       close = QUOTES[ch];
     } else if (ch === ':' && label[i + 1] === ' ') {
-      return `${isolateQuoted(label.slice(0, i))}: ${isolate(isolateQuoted(label.slice(i + 2)))}`;
+      const value = label.slice(i + 2);
+      return [
+        ...quotedParts(label.slice(0, i)),
+        ': ',
+        ...(value ? [{ isolate: quotedParts(value) }] : []),
+      ];
     }
   }
-  return isolateQuoted(label);
+  return quotedParts(label);
 };
+
+/** The text of `labelParts` joined: the label itself. */
+export const labelText = (parts) =>
+  parts.map((p) => (typeof p === 'string' ? p : labelText(p.isolate))).join('');

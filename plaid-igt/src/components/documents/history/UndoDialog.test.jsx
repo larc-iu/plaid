@@ -121,7 +121,7 @@ describe('UndoDialog', () => {
       vocabLayerId: undefined,
     });
     expect(byText(dialog(), 'h2', 'Undo this entry?')).not.toBeNull();
-    expect(text()).toContain('Gloss of "\u2068kai\u2069" in sentence 1: \u2068go\u2069');
+    expect(text()).toContain('Gloss of "kai" in sentence 1: go');
     expect(dialog().querySelector('[data-testid="undo-line"]').textContent).toBe(
       '12 values put back as they were, 1 word removed, 1 morpheme removed, 5 links put back as they were and 2 lexicon entries brought back',
     );
@@ -139,7 +139,11 @@ describe('UndoDialog', () => {
         entry: { id: 'e1', label: 'Respell \u05e9\u05b8\u05dc → \u05e9\u05dc', time: 't' },
       },
     );
-    expect(text()).toContain('\u2068Respell \u05e9\u05b8\u05dc\u2069 → \u2068\u05e9\u05dc\u2069');
+    expect(text()).toContain('Respell \u05e9\u05b8\u05dc → \u05e9\u05dc');
+    // Each side in a <bdi>, the text the stored label (REV-G4-1).
+    expect([...document.body.querySelectorAll('bdi')].map((b) => b.textContent)).toEqual(
+      expect.arrayContaining(['Respell \u05e9\u05b8\u05dc', '\u05e9\u05dc']),
+    );
   });
 
   it('says it is comparing until the dry run answers', async () => {

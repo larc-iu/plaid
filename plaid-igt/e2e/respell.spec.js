@@ -157,9 +157,7 @@ test('F2 respells a glossed, linked, commented word, and all of it stays', async
   const entries = await c.documents.audit(documentId);
   expect(entries.filter((e) => e.message === 'Respell kat → cat')).toHaveLength(1);
   await page.getByRole('button', { name: 'History', exact: true }).click();
-  await expect(
-    page.getByText('\u2068Respell kat\u2069 → \u2068cat\u2069', { exact: true }).first(),
-  ).toBeVisible({
+  await expect(page.getByText('Respell kat → cat', { exact: true }).first()).toBeVisible({
     timeout: 15_000,
   });
   await page.keyboard.press('Escape');

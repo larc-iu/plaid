@@ -69,8 +69,10 @@ describe('HistoryDrawer', () => {
         selectedEntry={null}
       />,
     );
-    expect(view.container.textContent).toContain(
-      '\u2068Respell \u05e9\u05b8\u05dc\u2069 → \u2068\u05e9\u05dc\u2069',
+    expect(view.container.textContent).toContain('Respell \u05e9\u05b8\u05dc → \u05e9\u05dc');
+    // Each side in a <bdi>, the text the stored label (REV-G4-1).
+    expect([...document.body.querySelectorAll('bdi')].map((b) => b.textContent)).toEqual(
+      expect.arrayContaining(['Respell \u05e9\u05b8\u05dc', '\u05e9\u05dc']),
     );
     await view.unmount();
   });
@@ -91,8 +93,10 @@ describe('HistoryDrawer', () => {
         }}
       />,
     );
-    expect(view.container.textContent).toContain(
-      '\u2068Respell \u05e9\u05b8\u05dc\u2069 → \u2068\u05e9\u05dc\u2069',
+    expect(view.container.textContent).toContain('Respell \u05e9\u05b8\u05dc → \u05e9\u05dc');
+    // Each side in a <bdi>, the text the stored label (REV-G4-1).
+    expect([...document.body.querySelectorAll('bdi')].map((b) => b.textContent)).toEqual(
+      expect.arrayContaining(['Respell \u05e9\u05b8\u05dc', '\u05e9\u05dc']),
     );
     await view.unmount();
   });

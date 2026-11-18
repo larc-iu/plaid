@@ -46,8 +46,10 @@ describe('RestoreDialog', () => {
       {},
       { ...entry, label: 'Respell \u05e9\u05b8\u05dc → \u05e9\u05dc' },
     );
-    expect(document.body.textContent).toContain(
-      '\u2068Respell \u05e9\u05b8\u05dc\u2069 → \u2068\u05e9\u05dc\u2069',
+    expect(document.body.textContent).toContain('Respell \u05e9\u05b8\u05dc → \u05e9\u05dc');
+    // Each side in a <bdi>, the text the stored label (REV-G4-1).
+    expect([...document.body.querySelectorAll('bdi')].map((b) => b.textContent)).toEqual(
+      expect.arrayContaining(['Respell \u05e9\u05b8\u05dc', '\u05e9\u05dc']),
     );
   });
 
