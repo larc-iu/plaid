@@ -49,19 +49,14 @@ def _run(monkeypatch, pieces, fills, where):
     return client, job, run_job(job, runner(job))
 
 
-_OPEN = pytest.mark.xfail(strict=True, reason=(
-    'JOIN18 open item: a check by documents whose whole piece ran out is marked "written" before its write '
-    '(go_on), and a send that fails after its request went out does not undo the mark'))
-
-
 @pytest.mark.parametrize('pieces,fills,where', [
     (pieces, fills, where)
     for pieces, fills in [('sentences', None), ('document', None), ('selection', None),
                           # A plan that fills nothing ends such a document
                           # in the walk (UNWORKED_HOW's ``unreachable``).
                           ('document', ()), ('selection', ())]
-    for where in ('gate', 'send') if (pieces, fills, where) != ('document', (), 'send')
-] + [pytest.param('document', (), 'send', marks=_OPEN)])
+    for where in ('gate', 'send')
+])
 def test_a_write_core_never_answers_for_ends_its_document_unanswered(monkeypatch, pieces, fills, where):
     client, job, finished = _run(monkeypatch, pieces, fills, where)
     said = _said(client)
@@ -73,6 +68,7 @@ def test_a_write_core_never_answers_for_ends_its_document_unanswered(monkeypatch
     notice = finished['report']['notice'] or ''
     assert '1 document was not worked: the server did not answer.' in notice, notice
     assert 'someone was editing' not in notice and "the job's step" not in notice, notice
+    assert 'was written' not in notice, notice
 
 
 # REV-JOIN18-3: a document ended unanswered keeps no in-memory "written as
@@ -95,3 +91,38 @@ def test_a_document_ended_unanswered_is_never_tallied_as_written_as_staged(how):
     assert job.rows['d1']['state'] == 'not-reached'
     counts = r.tally('d1', None).get('counts') or {}
     assert counts.get(UNANSWERED) is True and RAN_OUT not in counts, counts
+
+
+@pytest.mark.parametrize('pieces', ['document', 'selection'])
+def test_a_check_whose_unfinished_piece_cannot_be_written_never_says_it_was_written(monkeypatch, pieces):
+    """JOIN18's open item: a check (fills nothing) whose big piece ran out of
+    steps with a change staged, and whose write's send then fails, says the
+    server did not answer, never "what it had staged there was written"."""
+    from plaid_agent.core.prompt import JOB_STEPS_USED_UP
+    clock = {'t': 1_800_000_000.0}
+    client = JobClient({'d1': document('d1', 'Story', [{'words': ['blank']}])})
+    job = start(client, 'Check every gloss.', now=lambda: clock['t'], plan=pieces, fills=())
+
+    def sleep(s):
+        clock['t'] += s
+    job._sleep = sleep
+
+    def answer(asked, n, kwargs):
+        if any(m.get('content') == JOB_STEPS_USED_UP for m in kwargs['messages']):
+            return reply('Ran out.')
+        if n == 1:
+            return reply(calls=[call(1, 'set_analysis', {'document': 'Story', 'ref': 's1.w1',
+                                                         'morphemes': [{'form': 'blank'}]})])
+        return reply(calls=[call(100 + n, 'no_such_tool', {'n': n})])
+    use(monkeypatch, Model(answer))
+
+    def down(*a, **kw):
+        raise PlaidAPIError('HTTP 502', status=502, method='POST')
+    monkeypatch.setattr(igt_job, 'execute_plan', down)
+    finished = run_job(job, runner(job))
+    (d1,) = finished['report']['documents']
+    assert d1['state'] == 'not-reached' and (d1.get('counts') or {}).get(UNANSWERED) is True, d1
+    assert (d1.get('counts') or {}).get('ran_out') is None, d1
+    notice = finished['report']['notice'] or ''
+    assert '1 document was not worked: the server did not answer.' in notice, notice
+    assert 'was written' not in notice, notice

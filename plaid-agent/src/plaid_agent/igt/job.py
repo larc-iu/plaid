@@ -3111,10 +3111,11 @@ class IgtRunner:
         if row.get('state') in ROW_FINAL:
             return
         if how == UNANSWERED:
-            # Never also "written as staged" (REV-JOIN18-3).
+            # Nothing of the job's own write there was written: no
+            # ``ran_out`` its unfinished piece left before it (JOIN18, REV-JOIN18-3).
             self.ran_out.pop(document_id, None)
-            self.job.update_row(document_id, state='not-reached',
-                                counts={**(row.get('counts') or {}), UNANSWERED: True})
+            counts = {k: v for k, v in (row.get('counts') or {}).items() if k != RAN_OUT}
+            self.job.update_row(document_id, state='not-reached', counts={**counts, UNANSWERED: True})
             return
         try:
             doc = self.read(project, document_id)
@@ -3648,6 +3649,17 @@ class IgtRunner:
                     reason = 'in-use' if e.error is None else 'unreachable'
                     core_job.through_core(job, lambda: self.fall_back(document_id, reason))
                     raise
+                except Exception as e:  # noqa: BLE001 - only a check's unwritten write is sorted here
+                    # A check's write that met core's passing trouble once its
+                    # request went out, nothing of it landed before: put off as
+                    # core not answering, as before its first request. It walks
+                    # nothing after its big piece, so taken again (REV-L2B) it
+                    # would end as written (JOIN18).
+                    if not (self.fills_nothing() and getattr(e, 'wrote_any', True) is False
+                            and core_job.core_fault(e) == 'passing'):
+                        raise
+                    core_job.through_core(job, lambda: self.fall_back(document_id, 'unreachable'))
+                    raise Deferred(document_id, e) from e
                 finally:
                     self.whole_taken.add(document_id)
                 continue
