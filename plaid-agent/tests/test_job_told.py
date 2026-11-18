@@ -494,3 +494,50 @@ def test_a_document_core_never_writes_gets_the_same_waits_whatever_the_plan(monk
     r.work(job)
     waits = [m for m in _said(client) if m == 'The server did not answer. Trying again in 10 minutes.']
     assert len(waits) == JOB_DEFER_ROUNDS, (pieces, _said(client))
+
+
+# --- REV-JR2-8: the chat's six text-edit refusals are byte for byte as before ---------------------
+
+def _chat_ws():
+    from plaid_agent.igt.workspace import Workspace
+    c = FakeClient()
+    return Workspace(c, load_project(c, 'p1'))
+
+
+@pytest.mark.parametrize('first,then,said', [
+    (('delete_sentence', {'document': 'Text 1', 'refs': ['s2']}),
+     ('respell', {'document': 'Text 1', 'ref': 's2.w1', 'new_text': 'Gem-ar'}),
+     'Error: Text 1 s2.w1: this plan deletes s2, which this would change. Plan one of them, or discard_plan to '
+     'start over'),
+    (('respell', {'document': 'Text 1', 'ref': 's1.w2', 'new_text': 'gom'}),
+     ('split_word', {'document': 'Text 1', 'ref': 's1.w2', 'at': 1}),
+     'Error: s1.w2: this plan already respells this word. Plan the split, merge or delete on its own once that is '
+     'applied.'),
+    (('split_word', {'document': 'Text 1', 'ref': 's1.w2', 'at': 1}),
+     ('respell', {'document': 'Text 1', 'ref': 's1.w2', 'new_text': 'gom'}),
+     'Error: Text 1 s1.w2: this plan already splits, merges or deletes this word. Plan the respelling on its own '
+     'once that is applied.'),
+    (('retype_sentence', {'document': 'Text 1', 'ref': 's1', 'text': 'Ali-di gam akuna mo.'}),
+     ('respell', {'document': 'Text 1', 'ref': 's2.w1', 'new_text': 'Gem-ar'}),
+     'Error: Text 1 s2.w1: a sentence before or at this point is retyped or appended in this plan; respell it in a '
+     'separate plan'),
+])
+def test_the_chats_text_edit_refusals_are_unchanged(first, then, said):
+    ws = _chat_ws()
+    toolkit.call_tool(ws, *first)
+    assert str(toolkit.call_tool(ws, *then)) == said
+
+
+def test_the_chats_overlap_and_reshape_refusals_are_unchanged():
+    from plaid_agent.core.tools import ToolError
+    from plaid_agent.igt import bulk, tools
+    ws = _chat_ws()
+    ws.planned_respells = lambda text_id: [(0, 5)]
+    with pytest.raises(ToolError) as e:
+        tools.check_respell_overlap(ws, 'tx', 2, 8, 'Text 1 s1.w1')
+    assert str(e.value) == ('Text 1 s1.w1: overlaps a respelling already planned for 0-5 in the same text; '
+                            'discard_plan or narrow the pattern')
+    with pytest.raises(ToolError) as e:
+        bulk.clear_of_reshapes([{'kind': 'split_word', 'doc': 'd1'}], ['d1'], 'respelling')
+    assert str(e.value) == ('This plan already reshapes text or words in a document this respelling reaches. Let '
+                            'the user approve one, then plan the other, or discard_plan and plan this alone.')
