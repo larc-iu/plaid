@@ -564,11 +564,20 @@
   from offsets). Containment is non-strict on the offsets so an equal-extent
   child (e.g. a full-width morpheme) still counts as within its parent; the
   `id <> id` guard keeps a token from being `within` (or `first-in`) itself when
-  child and parent resolve to the same layer."
+  child and parent resolve to the same layer.
+
+  The document equality is a planning hint and changes no row (a text is in
+  one document). With the text alone SQLite finds the child through
+  `idx_tokens_text_begin_end`, every layer's tokens of the text up to the
+  parent's end, once per parent: a one-condition Grew search over 5,000
+  sentences took 1.8 to 2.3 s in SQL. With the document it seeks the child's own
+  layer through `idx_tokens_layer_doc_end`: 0.3 s, and every Grew and
+  assistant query measured got faster or stayed (SCL7-2)."
   [child parent]
   [:and
    [:<> (col child :id) (col parent :id)]
    [:= (col child :text_id) (col parent :text_id)]
+   [:= (col child :document_id) (col parent :document_id)]
    [:<= (col parent :begin) (col child :begin)]
    [:<= (col child :end_) (col parent :end_)]])
 

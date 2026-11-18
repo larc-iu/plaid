@@ -2349,7 +2349,7 @@
    "Kemal"
    "1001"]],
  "plaid.sql.query.exec-m2-test/within-and-first-in"
- [["SELECT DISTINCT t_3.id AS m FROM tokens AS t_1, tokens AS t_2, tokens AS t_3, spans AS s_4, span_tokens AS st_5 WHERE (t_1.token_layer_id IN (?)) AND (t_2.token_layer_id IN (?)) AND (t_3.token_layer_id IN (?)) AND (s_4.span_layer_id IN (?)) AND (s_4.value = ?) AND (st_5.span_id = s_4.id) AND (st_5.token_id = t_3.id) AND ((t_3.id <> t_1.id) AND (t_3.text_id = t_1.text_id) AND (t_1.begin <= t_3.begin) AND (t_3.end_ <= t_1.end_)) AND ((t_1.id <> t_2.id) AND (t_1.text_id = t_2.text_id) AND (t_2.begin <= t_1.begin) AND (t_1.end_ <= t_2.end_)) AND ((t_1.id <> t_2.id) AND (t_1.text_id = t_2.text_id) AND (t_2.begin <= t_1.begin) AND (t_1.end_ <= t_2.end_)) AND NOT EXISTS (SELECT ? FROM tokens AS fi_6 WHERE (fi_6.token_layer_id = t_1.token_layer_id) AND ((fi_6.id <> t_2.id) AND (fi_6.text_id = t_2.text_id) AND (t_2.begin <= fi_6.begin) AND (fi_6.end_ <= t_2.end_)) AND ((fi_6.text_id = t_1.text_id) AND (fi_6.token_layer_id = t_1.token_layer_id) AND ((fi_6.begin, CASE WHEN fi_6.precedence IS NULL THEN ? ELSE ? END, COALESCE(fi_6.precedence, ?), fi_6.end_, fi_6.id) < (t_1.begin, CASE WHEN t_1.precedence IS NULL THEN ? ELSE ? END, COALESCE(t_1.precedence, ?), t_1.end_, t_1.id)))) LIMIT ?"
+ [["SELECT DISTINCT t_3.id AS m FROM tokens AS t_1, tokens AS t_2, tokens AS t_3, spans AS s_4, span_tokens AS st_5 WHERE (t_1.token_layer_id IN (?)) AND (t_2.token_layer_id IN (?)) AND (t_3.token_layer_id IN (?)) AND (s_4.span_layer_id IN (?)) AND (s_4.value = ?) AND (st_5.span_id = s_4.id) AND (st_5.token_id = t_3.id) AND ((t_3.id <> t_1.id) AND (t_3.text_id = t_1.text_id) AND (t_3.document_id = t_1.document_id) AND (t_1.begin <= t_3.begin) AND (t_3.end_ <= t_1.end_)) AND ((t_1.id <> t_2.id) AND (t_1.text_id = t_2.text_id) AND (t_1.document_id = t_2.document_id) AND (t_2.begin <= t_1.begin) AND (t_1.end_ <= t_2.end_)) AND ((t_1.id <> t_2.id) AND (t_1.text_id = t_2.text_id) AND (t_1.document_id = t_2.document_id) AND (t_2.begin <= t_1.begin) AND (t_1.end_ <= t_2.end_)) AND NOT EXISTS (SELECT ? FROM tokens AS fi_6 WHERE (fi_6.token_layer_id = t_1.token_layer_id) AND ((fi_6.id <> t_2.id) AND (fi_6.text_id = t_2.text_id) AND (fi_6.document_id = t_2.document_id) AND (t_2.begin <= fi_6.begin) AND (fi_6.end_ <= t_2.end_)) AND ((fi_6.text_id = t_1.text_id) AND (fi_6.token_layer_id = t_1.token_layer_id) AND ((fi_6.begin, CASE WHEN fi_6.precedence IS NULL THEN ? ELSE ? END, COALESCE(fi_6.precedence, ?), fi_6.end_, fi_6.id) < (t_1.begin, CASE WHEN t_1.precedence IS NULL THEN ? ELSE ? END, COALESCE(t_1.precedence, ?), t_1.end_, t_1.id)))) LIMIT ?"
    "<id>"
    "<id>"
    "<id>"
@@ -2364,12 +2364,12 @@
    "0"
    "1001"]],
  "plaid.sql.query.exec-m2-test/within-excludes-self-and-reverse"
- [["SELECT DISTINCT t_2.id AS c, t_1.id AS p FROM tokens AS t_1, tokens AS t_2 WHERE (t_1.token_layer_id IN (?)) AND (t_2.token_layer_id IN (?)) AND ((t_2.id <> t_1.id) AND (t_2.text_id = t_1.text_id) AND (t_1.begin <= t_2.begin) AND (t_2.end_ <= t_1.end_)) LIMIT ?"
+ [["SELECT DISTINCT t_2.id AS c, t_1.id AS p FROM tokens AS t_1, tokens AS t_2 WHERE (t_1.token_layer_id IN (?)) AND (t_2.token_layer_id IN (?)) AND ((t_2.id <> t_1.id) AND (t_2.text_id = t_1.text_id) AND (t_2.document_id = t_1.document_id) AND (t_1.begin <= t_2.begin) AND (t_2.end_ <= t_1.end_)) LIMIT ?"
    "<id>"
    "<id>"
    "1001"]],
  "plaid.sql.query.exec-m2-test/within-without-first-in"
- [["SELECT DISTINCT t_3.id AS m FROM tokens AS t_1, tokens AS t_2, tokens AS t_3, spans AS s_4, span_tokens AS st_5 WHERE (t_1.token_layer_id IN (?)) AND (t_2.token_layer_id IN (?)) AND (t_3.token_layer_id IN (?)) AND (s_4.span_layer_id IN (?)) AND (s_4.value = ?) AND (st_5.span_id = s_4.id) AND (st_5.token_id = t_3.id) AND ((t_3.id <> t_1.id) AND (t_3.text_id = t_1.text_id) AND (t_1.begin <= t_3.begin) AND (t_3.end_ <= t_1.end_)) AND ((t_1.id <> t_2.id) AND (t_1.text_id = t_2.text_id) AND (t_2.begin <= t_1.begin) AND (t_1.end_ <= t_2.end_)) LIMIT ?"
+ [["SELECT DISTINCT t_3.id AS m FROM tokens AS t_1, tokens AS t_2, tokens AS t_3, spans AS s_4, span_tokens AS st_5 WHERE (t_1.token_layer_id IN (?)) AND (t_2.token_layer_id IN (?)) AND (t_3.token_layer_id IN (?)) AND (s_4.span_layer_id IN (?)) AND (s_4.value = ?) AND (st_5.span_id = s_4.id) AND (st_5.token_id = t_3.id) AND ((t_3.id <> t_1.id) AND (t_3.text_id = t_1.text_id) AND (t_3.document_id = t_1.document_id) AND (t_1.begin <= t_3.begin) AND (t_3.end_ <= t_1.end_)) AND ((t_1.id <> t_2.id) AND (t_1.text_id = t_2.text_id) AND (t_1.document_id = t_2.document_id) AND (t_2.begin <= t_1.begin) AND (t_1.end_ <= t_2.end_)) LIMIT ?"
    "<id>"
    "<id>"
    "<id>"

@@ -130,6 +130,18 @@
     (is (re-find #"text_id = .*text_id" sql))
     (is (re-find #"\(.*begin.*precedence.*end_.*id\) < \(.*begin.*precedence.*end_.*id\)" sql))))
 
+(deftest within-joins-on-the-document-too
+  ;; SCL7-2: with the text alone SQLite found the child through every layer's
+  ;; tokens of the text; the document lets it seek the child's own layer
+  (let [sql (sql-of (qc/compile-query
+                     (resolved {"find" ["?w" "?s"]
+                                "where" [["token" "?w" {"layer" "w"}]
+                                         ["token" "?s" {"layer" "w"}]
+                                         ["within" "?w" "?s"]]}
+                               #{"P1"} ["L1"])))]
+    (is (re-find #"t_1\.text_id = t_2\.text_id" sql))
+    (is (re-find #"t_1\.document_id = t_2\.document_id" sql))))
+
 (defn- surface-sql
   "The SQL and params of a token query with `clauses` after the token clause."
   [cmap & clauses]
