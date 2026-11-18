@@ -1088,7 +1088,7 @@ Then comes the job's own line where the job changed what people wrote or the tex
 * **The job worked on all 45 documents in one step and changed 24 of them.**
 
 **To check** lists what needs a person, a row for each kind with how many there are, and **Show** opens exactly what the row counts: documents in use and not worked, not reached, stopped partway, left out by the plan or not worked because the server did not answer, sentences skipped by why, those skipped and not listed and those too long and not listed, places left blank, values people wrote that the job changed or removed, documents whose text the job changed, changes refused, words respelled, changes proposed or not written, forms left inconsistent and entries with no links.
-A job that core ended before its report was written lists only the documents in use, not reached or stopped partway.
+A job that core ended before its report was written lists only the documents in use, not reached, stopped partway or not worked because the server did not answer.
 It reads **Nothing.** when nothing does.
 
 **Totals** follow in two groups, **Written** and **Not written**, each row shown when it counts something:
