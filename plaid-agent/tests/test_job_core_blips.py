@@ -15,8 +15,8 @@ from plaid_agent.core.job import run_job
 from plaid_agent.core.limits import JOB_LOCK_TRIES
 
 J = 'JB'
-#: the calls a worker makes that are never retried by design: the finish (a
-#: finish core does not take leaves the job to a later claim) and the setup's
+#: the calls this test leaves out: the finish (tried again in ``_finish``,
+#: D13: test_job_finish_tries) and the setup's
 CALLS_OUT = {'jobs.finish', 'jobs.create', 'jobs.claim'}
 RESOURCES = ('documents', 'projects', 'jobs', 'comments', 'guidelines', 'vocab_items', 'vocab_links', 'spans',
              'tokens', 'texts', 'users')
