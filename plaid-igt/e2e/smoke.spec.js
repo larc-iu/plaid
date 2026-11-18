@@ -59,5 +59,15 @@ test('vocabularies list loads', async ({ page }) => {
   await page.waitForTimeout(400);
   report('vocabularies', diag);
   await expect.soft(page.getByText(/Failed to load|Error loading/i)).toHaveCount(0);
-  expect.soft(diag.failures, 'no API failures').toEqual([]);
+  // The list reads each vocabulary it lists again for its count, and leaves
+  // out one that is gone by then (vocabEntryCounts.js): a 404 there is
+  // handled, and any spec running meanwhile may delete a vocabulary (FLK4-5).
+  const goneMeanwhile = (f) =>
+    f.method === 'GET' && f.status === 404 && /\/api\/v1\/vocab-layers\/[^/?]+\?/.test(f.url);
+  expect
+    .soft(
+      diag.failures.filter((f) => !goneMeanwhile(f)),
+      'no API failures',
+    )
+    .toEqual([]);
 });

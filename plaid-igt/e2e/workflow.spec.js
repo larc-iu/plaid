@@ -1,13 +1,16 @@
 import PlaidClient, { ROLES } from '@larc-iu/plaid-client';
 import { test, expect, seedAuth, readToken, CORE } from './fixtures.js';
-import { getFixture, roleOf } from './fixtureProject.js';
+import { createScratchProject, roleOf } from './fixtureProject.js';
 
 // TEST_PLAN surrounding-workflow rows driven end to end on one throwaway
 // document: Baseline save (C3-01 append without a confirm, C3-02 destructive
 // edit with the confirm modal), the built-in tokenizer (C4-01), the Auto-analyze
 // dialog (B15-01/02/03), Copy as IGT (C5-09), and rename/delete from the
-// Metadata tab (C2-02). Lives in "E2E IGT Fixture"; the document is deleted by
-// the last test (and again in afterAll, harmlessly).
+// Metadata tab (C2-02). Lives in a project of its own with one lexicon: on
+// the shared fixture, a vocabulary another spec made and deleted meanwhile
+// failed Auto-analyze's link step (FLK4-3), and another spec's analysis
+// service could be online there. The document is deleted by the last test,
+// and the project in afterAll.
 
 const STAMP = Date.now();
 const FORMS = [`zork${STAMP}`, `blip${STAMP}`, `quux${STAMP}`];
@@ -17,27 +20,33 @@ let client;
 let projectId;
 let documentId;
 let glossLayerId;
-let items = [];
 
 test.describe.configure({ mode: 'serial' });
 
 test.beforeAll(async () => {
   client = new PlaidClient(CORE, readToken().token);
-  ({ projectId } = await getFixture());
+  ({ projectId } = await createScratchProject({
+    name: `workflow ${STAMP}`,
+    docName: 'other',
+    body: 'otro texto',
+  }));
+  await client.vocabLayers.create(projectId, 'IGT Lexicon');
   const full = await client.projects.get(projectId);
   const textLayer = full.textLayers.find((l) => roleOf(l) === ROLES.BASELINE);
   glossLayerId = textLayer.tokenLayers
     .find((l) => roleOf(l) === ROLES.MORPHEME)
     .spanLayers.find((s) => s.name === 'Gloss').id;
   const vocab = full.vocabs.find((v) => v.name === 'IGT Lexicon');
-  for (const f of FORMS) items.push((await client.vocabItems.create(vocab.id, f)).id);
+  for (const f of FORMS) await client.vocabItems.create(vocab.id, f);
   const created = await client.documents.create(projectId, `workflow ${STAMP}`);
   documentId = created.id;
 });
 
 test.afterAll(async () => {
-  if (documentId) await client.documents.delete(documentId).catch(() => {});
-  for (const id of items) await client.vocabItems.delete(id).catch(() => {});
+  if (!projectId) return;
+  const { vocabs = [] } = await client.projects.get(projectId).catch(() => ({}));
+  await client.projects.delete(projectId).catch(() => {});
+  for (const v of vocabs) await client.vocabLayers.delete(v.id).catch(() => {});
 });
 
 async function openTab(page, tab) {
@@ -97,7 +106,7 @@ test('B15-01/02/03: the Auto-analyze dialog cancels cleanly and links on Run', a
   let dialog = await openDialog();
   // Four step toggles (translations, copy previous analyses, propose
   // segmentation and glosses, link to the lexicon); the linking method shows
-  // for the last one. The fixture project has a lexicon and no translation or
+  // for the last one. The project has a lexicon and no translation or
   // analysis service online, so those steps are disabled. With only the
   // built-in linker available the method is stated rather than offered as a
   // one-item dropdown.
