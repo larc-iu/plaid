@@ -279,6 +279,26 @@ describe('discovery while the screen moves on', () => {
     await r.unmount();
   });
 
+  // SCL3-6: each tab of a document page and the assistant read the services
+  // list on mount, so one open asked for the same list up to twelve times.
+  it('shares one read with every other reader of the same list asking at the same time', async () => {
+    const d = deferredDiscovery();
+    const r1 = await mount(d.client);
+    const r2 = await mount(d.client);
+    await r1.step(() => {
+      r1.hook().discoverServices('A');
+      r2.hook().discoverServices('A');
+    });
+    expect(d.client.messages.discoverServices).toHaveBeenCalledTimes(1);
+    await r1.step(async () => d.settle('A', [{ serviceId: 'a' }]));
+    expect(r1.hook().availableServices).toEqual([{ serviceId: 'a' }]);
+    expect(r2.hook().availableServices).toEqual([{ serviceId: 'a' }]);
+    // Each has a list of its own.
+    expect(r1.hook().availableServices).not.toBe(r2.hook().availableServices);
+    await r1.unmount();
+    await r2.unmount();
+  });
+
   it('asks again for a project it has finished with', async () => {
     const d = deferredDiscovery();
     const r = await mount(d.client);

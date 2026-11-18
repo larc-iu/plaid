@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { TASKS, filterServicesByTask } from '@larc-iu/plaid-client';
 import { serviceCache } from './jobs.js';
+import { discoverServices } from '../../lib/discoverServices.js';
 
 // Whether any assistant is online for a project, for the screens that offer to
 // open one.
@@ -75,8 +76,7 @@ export const useAssistantAvailable = (client, projectId, app) => {
       if (alive && attempt < backoff.length) timer = setTimeout(probe, backoff[attempt++]);
     };
     const probe = () =>
-      client.messages
-        .discoverServices(projectId)
+      discoverServices(client, projectId)
         .then((found) => {
           if (!alive) return;
           serviceCache.set(projectId, found || []);

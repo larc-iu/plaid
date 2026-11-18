@@ -2,6 +2,7 @@ import { useState, useCallback, useRef } from 'react';
 import { notifySuccess, notifyError, notifyInfo, notifyWarning } from '../lib/notify.js';
 import { humanizeError } from '../lib/errors.js';
 import { showRunNotice } from '../lib/runNotice.js';
+import { discoverServices as readServices } from '../lib/discoverServices.js';
 import { uuidv4 } from '../../../plaid-client-js/src/ids.js';
 
 // What a stopped or failed run did to its document, as its version says. A
@@ -79,7 +80,7 @@ export const useServiceRequest = (client) => {
 
       let services;
       try {
-        services = await client.messages.discoverServices(projectId);
+        services = await readServices(client, projectId);
       } catch (error) {
         console.error('[ServiceDiscovery] Failed to discover services:', error);
         services = [];

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { assistantsAmong } from './useAssistantAvailable.js';
 import { onAssistantGone, serviceCache } from './jobs.js';
+import { discoverServices } from '../../lib/discoverServices.js';
 
 // Which assistant answers: discovery, the choice a reader may still make, and
 // the one a conversation is already bound to.
@@ -23,7 +24,7 @@ export const useAssistantChoice = ({ client, projectId, app, meta }) => {
 
   const discover = useCallback(async () => {
     try {
-      const found = (await client.messages.discoverServices(projectId)) || [];
+      const found = (await discoverServices(client, projectId)) || [];
       serviceCache.set(projectId, found);
       setServices(found);
     } catch (e) {
