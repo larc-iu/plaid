@@ -67,7 +67,7 @@ from ..core.tools import Refusal, ToolError
 from ..core.version import agent_version
 from . import evidence, jobapply, targets as tg, toolkit
 from .plan import LEXICON_MAINTAINER, REPAIR_OF, PlanOutOfDate, check_entries, execute_plan
-from .project import IgtProject, Sentence, Word, is_virtual, load_project, render_sentence
+from .project import VIRTUAL_PREFIX, IgtProject, Sentence, Word, is_virtual, load_project, render_sentence
 from .prompt import JOB_SYSTEM, build_job_prompt
 from .tools import trim_ignored_edges
 from .trace import TRACER
@@ -2083,8 +2083,12 @@ class Write:
             analysed = {o.get('word_id') for o in rest if o.get('kind') == 'set_analysis'}
             units: Dict[Any, List[Dict[str, Any]]] = {}
             for o in rest:
+                # So is an op on the word's derived morpheme
+                # (``virtual:<word>``): the analysis replaces it (REV-SJ2-4).
+                virtual = o.get('token_id')[len(VIRTUAL_PREFIX):] if is_virtual(o.get('token_id')) else None
                 key = (o.get('word_id') if o.get('kind') == 'set_analysis'
-                       else o.get('analysis_word_id') if o.get('analysis_word_id') in analysed else id(o))
+                       else o.get('analysis_word_id') if o.get('analysis_word_id') in analysed
+                       else virtual if virtual in analysed else id(o))
                 units.setdefault(key, []).append(o)
             groups = list(units.values())
             halves = [[o for g in groups[:len(groups) // 2] for o in g],

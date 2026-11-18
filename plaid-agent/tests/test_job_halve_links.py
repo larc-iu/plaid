@@ -26,3 +26,23 @@ def test_a_cut_in_one_sentence_keeps_each_link_with_its_analysis():
     for half in halves:
         analysed = {o['word_id'] for o in half if o['kind'] == 'set_analysis'}
         assert all(o['analysis_word_id'] in analysed for o in half if o['kind'] == 'link'), halves
+
+
+def test_a_cut_in_one_sentence_keeps_a_link_on_a_derived_morpheme_with_its_words_analysis():
+    """REV-SJ2-4: a link on ``virtual:<word>`` whose word the same try
+    analyses goes in that analysis's half."""
+    client = JobClient({'d1': document('d1', 'Story', [{'words': ['ka', 'ta', 'sa', 'mo']}])})
+    job = start(client)
+    r = runner(job)
+    project = r.project()
+    doc = r.read(project, 'd1')
+    words = [w.id for w in doc.sentences[0].words]
+    links = [{'kind': 'link', 'token_id': f'virtual:{w}', 'vocab_item_id': 'vi-gam'} for w in words]
+    analyses = [{'kind': 'set_analysis', 'word_id': w, 'morphemes': [{'form': 'x'}]} for w in words]
+    ops = links + analyses
+    st = Stretch(doc, project, list(doc.sentences), job.id, frozenset(), r.written('d1'), r.targets(project))
+    halves = Write('d1', 'p', st, [s.id for s in doc.sentences], ops, None).halve(ops)
+    assert halves and len(halves) == 2
+    for half in halves:
+        analysed = {o['word_id'] for o in half if o['kind'] == 'set_analysis'}
+        assert all(o['token_id'][len('virtual:'):] in analysed for o in half if o['kind'] == 'link'), halves
