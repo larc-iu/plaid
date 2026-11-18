@@ -57,6 +57,10 @@ export const FeaturesCell = React.memo(
     // As in EditableCell: Escape cancels, and the blur it fires reads the text
     // React has committed, not the text Escape just cleared.
     const cancelledRef = useRef(false);
+    // The pair a refused write put back in the input, until it is typed over.
+    // Leaving the cell does not send it again: it may have lost to another
+    // person's value, which a blur would then overwrite. Only Enter sends it.
+    const putBackRef = useRef(null);
 
     const inv = featureInventory || { list: [], map: new Map() };
 
@@ -80,6 +84,7 @@ export const FeaturesCell = React.memo(
       // alike (utils/feats.js), both halves trimmed.
       const feature = normalizeFeature(raw ?? text);
       if (!feature) return false; // need non-empty Key=Value
+      putBackRef.current = null;
       // The typed text is KEPT on a refusal, unlike in a cell: a chip is added
       // rather than replacing something, so there is nothing to restore and the
       // annotator can correct what they typed.
@@ -103,6 +108,7 @@ export const FeaturesCell = React.memo(
         const input = inputRef.current;
         if (!input || !input.isConnected || input.value !== '') return;
         setText(feature.pair);
+        putBackRef.current = feature.pair;
         const active = input.ownerDocument.activeElement;
         if (!active || active === input.ownerDocument.body) input.focus();
       };
@@ -304,6 +310,7 @@ export const FeaturesCell = React.memo(
             value={text}
             onChange={(val) => {
               setText(val);
+              putBackRef.current = null;
               setSelectedPill(null);
               setPrecedent(null);
             }}
@@ -315,6 +322,9 @@ export const FeaturesCell = React.memo(
               setPrecedent(null);
               if (cancelledRef.current) {
                 cancelledRef.current = false;
+                setText('');
+              } else if (putBackRef.current != null && text === putBackRef.current) {
+                putBackRef.current = null;
                 setText('');
               } else if (commit() === false) {
                 setText('');

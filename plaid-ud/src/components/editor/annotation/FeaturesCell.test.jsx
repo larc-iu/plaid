@@ -213,6 +213,61 @@ describe('FeaturesCell and a refused add', () => {
     await unmount();
   });
 
+  // H3-2-2: a write that lost to another person's (409) put the pair back,
+  // and leaving the cell sent it again over theirs. Only Enter sends a pair
+  // that was put back, as a conflicted cell keeps yours only on Enter.
+  const refusedOnce = () => {
+    let n = 0;
+    return vi.fn(() => Promise.resolve(n++ === 0 ? { landed: false, status: 409 } : undefined));
+  };
+
+  it('sends nothing when the cell is left with a refused pair put back', async () => {
+    const onAnnotationUpdate = refusedOnce();
+    const { container, step, unmount } = await mount({}, { onAnnotationUpdate });
+    const input = all(container, 'input')[0];
+
+    await step(async () => focus(input));
+    await step(async () => type(input, 'Gender=Fem'));
+    await step(async () => press(input, 'Enter'));
+    await step(async () => {});
+    expect(input.value).toBe('Gender=Fem');
+    await step(async () => blur(input));
+    expect(onAnnotationUpdate).toHaveBeenCalledTimes(1);
+    expect(input.value).toBe('');
+    await unmount();
+  });
+
+  it('sends a refused pair put back again on Enter', async () => {
+    const onAnnotationUpdate = refusedOnce();
+    const { container, step, unmount } = await mount({}, { onAnnotationUpdate });
+    const input = all(container, 'input')[0];
+
+    await step(async () => focus(input));
+    await step(async () => type(input, 'Gender=Fem'));
+    await step(async () => press(input, 'Enter'));
+    await step(async () => {});
+    await step(async () => press(input, 'Enter'));
+    expect(onAnnotationUpdate).toHaveBeenCalledTimes(2);
+    expect(onAnnotationUpdate).toHaveBeenLastCalledWith('t1', 'features', 'Gender=Fem');
+    await unmount();
+  });
+
+  it('sends what is typed over a refused pair on the way out', async () => {
+    const onAnnotationUpdate = refusedOnce();
+    const { container, step, unmount } = await mount({}, { onAnnotationUpdate });
+    const input = all(container, 'input')[0];
+
+    await step(async () => focus(input));
+    await step(async () => type(input, 'Gender=Fem'));
+    await step(async () => press(input, 'Enter'));
+    await step(async () => {});
+    await step(async () => type(input, 'Gender=Masc'));
+    await step(async () => blur(input));
+    expect(onAnnotationUpdate).toHaveBeenCalledTimes(2);
+    expect(onAnnotationUpdate).toHaveBeenLastCalledWith('t1', 'features', 'Gender=Masc');
+    await unmount();
+  });
+
   it('leaves the input empty when the write lands', async () => {
     const { container, step, unmount } = await mount(
       {},
