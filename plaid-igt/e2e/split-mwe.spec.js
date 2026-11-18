@@ -77,6 +77,9 @@ test('a split that hides a multi-word expression asks, and a merge shows it agai
     '1 multi-word expression will not be shown until the sentences are merged again.',
   );
   await expect(dialog).not.toContainText('deletes');
+  // Nothing is deleted, so the plain confirm, not the red delete dialog (REV-RL2-1).
+  await expect(dialog.getByRole('button', { name: 'Split' })).not.toHaveClass(/bg-destructive/);
+  await expect(dialog.locator('.text-destructive')).toHaveCount(0);
   await dialog.getByRole('button', { name: 'Split' }).click();
   await expect(page.locator('.merge-button button')).toHaveCount(1);
   await expect(page.locator('[data-state="saving"]')).toHaveCount(0);

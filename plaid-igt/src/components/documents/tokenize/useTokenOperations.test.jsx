@@ -38,6 +38,10 @@ vi.mock('../../../domain/annotationLoss.js', () => ({
   countReTokenizeLoss: () => ({ annotations: 0, links: 0 }),
   countReTokenizeCut: () => cut,
 }));
+const confirm = vi.hoisted(() => ({ answer: true, fn: null }));
+vi.mock('@ui/components/shared/ConfirmProvider', () => ({
+  useConfirm: () => confirm.fn,
+}));
 vi.mock('@/utils/feedback', () => ({
   humanizeError: (e) => String(e),
   notifySuccess: vi.fn(),
@@ -142,19 +146,51 @@ describe('a sentence split', () => {
     await view.unmount();
   });
 
-  // H6-2: a multi-word expression the split cuts is not deleted, but the
-  // split still asks.
-  it('asks first when it only cuts a multi-word expression', async () => {
+  // H6-2, REV-RL2-1: a multi-word expression the split cuts is not deleted,
+  // so a split that does nothing else asks through the plain confirm, never
+  // the red delete dialog. Its answer decides.
+  it('asks with the plain confirm when it only cuts a multi-word expression', async () => {
+    for (const answer of [false, true]) {
+      confirm.fn = vi.fn(async () => answer);
+      const { doc, view, ops } = await mount();
+      doc.sentenceSplitLoss.mockReturnValue({
+        annotations: 0,
+        links: 0,
+        hiddenMwes: 1,
+        partialMwes: 2,
+      });
+      await view.step(() => ops().splitSentence(8));
+      expect(confirm.fn).toHaveBeenCalledWith({
+        title: 'Split sentence?',
+        description:
+          '1 multi-word expression will not be shown until the sentences are merged again.' +
+          ' 2 multi-word expressions will be shown only in part until the sentences are merged again.',
+        confirmLabel: 'Split',
+        destructive: false,
+      });
+      expect(ops().pendingStructural).toBe(null);
+      if (answer) expect(doc.splitSentence).toHaveBeenCalledWith(8);
+      else expect(doc.splitSentence).not.toHaveBeenCalled();
+      await view.unmount();
+    }
+  });
+
+  it('keeps the red dialog, with both counts, when it also deletes something', async () => {
+    confirm.fn = vi.fn(async () => true);
     const { doc, view, ops } = await mount();
     doc.sentenceSplitLoss.mockReturnValue({
-      annotations: 0,
+      annotations: 1,
       links: 0,
-      hiddenMwes: 0,
-      partialMwes: 1,
+      hiddenMwes: 1,
+      partialMwes: 0,
     });
     await view.step(() => ops().splitSentence(8));
-    expect(doc.splitSentence).not.toHaveBeenCalled();
-    expect(ops().pendingStructural).toMatchObject({ kind: 'sentence-split', partialMwes: 1 });
+    expect(confirm.fn).not.toHaveBeenCalled();
+    expect(ops().pendingStructural).toMatchObject({
+      kind: 'sentence-split',
+      annotations: 1,
+      hiddenMwes: 1,
+    });
     await view.step(() => ops().confirmPendingStructural());
     expect(doc.splitSentence).toHaveBeenCalledWith(8);
     await view.unmount();

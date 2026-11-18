@@ -15,6 +15,8 @@ import { BUILTIN_TOKENIZE_RULE_BASED } from '../../../domain/serviceDefaults.js'
 import { tokenizeNotice } from './tokenizeNotice.js';
 import { notifySuccess, notifyError, notifyInfo, humanizeError } from '@/utils/feedback';
 import { hasLoss } from '@ui/domain/annotationLoss.js';
+import { useConfirm } from '@ui/components/shared/ConfirmProvider';
+import { mweSplitSentences } from '../../../domain/segments.js';
 
 // The rule-based tokenizer is always available and declares no options.
 const TOKENIZE_BUILTINS = [
@@ -32,6 +34,7 @@ const TOKENIZE_BUILTINS = [
 // Only the service glue, method selection, and progress are local.
 export const useTokenOperations = () => {
   const { doc, client, acquireWriteLock } = useDocumentCtx();
+  const confirm = useConfirm();
   useDocumentModel(doc);
   const project = doc.project;
 
@@ -169,9 +172,21 @@ export const useTokenOperations = () => {
   // sentence that the new break cuts, whichever app made them, and hides or
   // cuts the multi-word expressions whose words it puts in two sentences
   // (H6-2). It asks first when there are any, and runs at once otherwise.
+  // A split that deletes nothing asks through the plain confirm, as Split at
+  // segments does: the red dialog is for a delete (REV-RL2-1).
   const splitSentence = async (charPos) => {
     const loss = doc.sentenceSplitLoss([charPos]);
-    if (loss.annotations + loss.links + (loss.hiddenMwes || 0) + (loss.partialMwes || 0) === 0) {
+    const mwes = mweSplitSentences(loss);
+    if (loss.annotations + loss.links === 0) {
+      if (mwes) {
+        const ok = await confirm({
+          title: 'Split sentence?',
+          description: mwes,
+          confirmLabel: 'Split',
+          destructive: false,
+        });
+        if (!ok) return false;
+      }
       return run(() => doc.splitSentence(charPos));
     }
     setPendingStructural({ kind: 'sentence-split', payload: { charPos }, ...loss });

@@ -59,9 +59,7 @@ export const segmentSplitDescription = (n, insideWord, loss) => {
       ? ` ${countOf(insideWord, 'segment')} ${insideWord === 1 ? 'starts' : 'start'} inside a word and ${insideWord === 1 ? 'is' : 'are'} left alone.`
       : '') +
     (lost ? ` Deletes ${lost} that cross the new ${plural(n, 'break')}.` : '') +
-    mweSplitLines(loss)
-      .map(([count, rest]) => ` ${count} ${rest}`)
-      .join('')
+    (mweSplitLines(loss).length ? ` ${mweSplitSentences(loss)}` : '')
   );
 };
 
@@ -77,3 +75,9 @@ export const mweSplitLines = ({ hiddenMwes = 0, partialMwes = 0 } = {}) =>
   ]
     .filter(([n]) => n > 0)
     .map(([n, rest]) => [countOf(n, 'multi-word expression'), rest]);
+
+/** `mweSplitLines` as plain sentences, one after another, or '' for none. */
+export const mweSplitSentences = (loss) =>
+  mweSplitLines(loss)
+    .map(([count, rest]) => `${count} ${rest}`)
+    .join(' ');

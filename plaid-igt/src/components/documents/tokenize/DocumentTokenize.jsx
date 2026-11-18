@@ -375,7 +375,9 @@ export function DocumentTokenize() {
           word(s) carry morpheme-scope annotations the op would destroy
           (split/merge delete the words' morphemes). Word-scope spans survive.
           A sentence split opens it when the new break cuts relations a layer
-          rule keeps inside one sentence, or a multi-word expression. */}
+          rule keeps inside one sentence, and then also names the multi-word
+          expressions it hides. A split that only hides one asks through the
+          plain confirm (useTokenOperations). */}
       <ConfirmDeleteDialog
         open={!!ops.pendingStructural}
         onOpenChange={(o) => {
