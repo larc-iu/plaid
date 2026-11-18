@@ -1443,15 +1443,17 @@
         {:status 404 :body {:error "Vocab layer not found"}}
 
         :else
-        {:status 403
-         ;; Unresolved too when the path names a vocabulary there is none of
-         ;; now (deleted since the caller read it, S5-2), as an id resolved
-         ;; from an entry that is gone is.
-         :body (unresolved-if (or (nil? vocab-id) (not (known? db :vocab_layers vocab-id false)))
-                              {:error (cond
-                                        (nil? vocab-id) (unknown user-id nil)
-                                        refusal refusal
-                                        :else (unknown user-id vocab-id))})}))))
+        ;; Unresolved too when the path names a vocabulary there is none of
+        ;; now (deleted since the caller read it, S5-2), as an id resolved
+        ;; from an entry that is gone is: worded by `unknown`, never by the
+        ;; route's `refusal` (REV-SJ1-6).
+        (let [gone? (or (nil? vocab-id) (not (known? db :vocab_layers vocab-id false)))]
+          {:status 403
+           :body (unresolved-if gone?
+                                {:error (cond
+                                          gone? (unknown user-id vocab-id)
+                                          refusal refusal
+                                          :else (unknown user-id vocab-id))})})))))
 
 (defn wrap-vocab-maintainer-required
   "Requires that the user maintains the vocab layer's home project, or is an

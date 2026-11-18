@@ -110,4 +110,10 @@
     (testing "one never there"
       (let [r (api-call user1-request {:method :get :path (str "/api/v1/vocab-layers/" (random-uuid))})]
         (assert-status 403 r)
-        (is (unresolved? r))))))
+        (is (unresolved? r))))
+    (testing "on a route with a refusal of its own, worded as gone, never by that refusal (REV-SJ1-6)"
+      (let [r (api-call user1-request {:method :post :path (str "/api/v1/vocab-layers/" lex "/move")
+                                       :body {:project-id p}})]
+        (assert-status 403 r)
+        (is (unresolved? r))
+        (is (= (str "User " user1 " lacks maintainer privileges for vocab layer " lex) (-> r :body :error)))))))
