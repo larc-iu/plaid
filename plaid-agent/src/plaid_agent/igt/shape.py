@@ -443,11 +443,57 @@ def t_split_sentence(ws: Workspace, document: str, ref: str, before_word: int) -
     # its ends on two sides, in the split's own transaction.
     note += loss_note(len(other_layers_crossing(_other_layers(ws, doc), ws.project.sentence_layer_id,
                                                 s.id, w.begin)))
+    note += split_mwe_note(doc, s, n)
     ws.add_op({'kind': 'split_sentence', 'sentence_id': s.id, 'position': w.begin,
                'token_at': {'begin': s.begin, 'end': s.end},
                **labelled(f'{ws.doc_label(doc.id)} {plain_ref(doc, ref)}',
                           f'split before w{n} {qv(w.surface)} → {qv(left[:40])} | {qv(right[:40])}{note}')})
     return ws.planned_note(1)
+
+
+def _mwe_words_drawn(link: Link, place: Dict[str, tuple]) -> int:
+    """How many of a multi-word expression's words are drawn, as plaid-igt
+    derive.js ``attachMwes`` draws it: its words in the sentence of its first
+    word (``place``, a word id's sentence key), when there are two or more,
+    else none."""
+    homes = [place[t] for t in link.tokens if t in place]
+    if not homes:
+        return 0
+    here = homes.count(min(homes))
+    return here if here >= 2 else 0
+
+
+def split_mwe_note(doc, s: Sentence, n: int) -> str:
+    """What splitting ``s`` before its word ``n`` does to the multi-word
+    expressions over its words, by plaid-igt's rule for the split dialog
+    (``sentenceSplitLoss``, RL2): one left with fewer than two words in the
+    sentence of its first word is not shown, one left with fewer words than
+    before is shown in part. Neither is deleted: a merge shows it whole
+    again. " (1 multi-word expression will not be shown until the sentences
+    are merged again)", or ''."""
+    before = {w.id: (t.index, 0) for t in doc.sentences for w in t.words}
+    after = dict(before)
+    after.update({w.id: (s.index, 1) for w in s.words[n - 1:]})
+    hidden = partial = 0
+    seen = set()
+    for w in s.words:
+        for link in w.mwes:
+            if link.id in seen:
+                continue
+            seen.add(link.id)
+            was, now = _mwe_words_drawn(link, before), _mwe_words_drawn(link, after)
+            if now >= was:
+                continue
+            if now == 0:
+                hidden += 1
+            else:
+                partial += 1
+
+    def many(k: int) -> str:
+        return f'{k} multi-word expression{"s" if k != 1 else ""}'
+    said = ([f'{many(hidden)} will not be shown'] if hidden else []) + (
+        [f'{many(partial)} will be shown only in part'] if partial else [])
+    return f' ({" and ".join(said)} until the sentences are merged again)' if said else ''
 
 
 def t_merge_sentences(ws: Workspace, document: str, ref: str) -> str:
