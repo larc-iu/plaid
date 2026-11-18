@@ -28,12 +28,12 @@
   (when row
     ;; `revoked-at` is the source of truth for revocation; a non-nil value
     ;; means the token is dead. (No separate boolean flag — keeps the JSON
-    ;; key set clean and avoids a `?`-suffixed wire key.)
+    ;; key set clean and avoids a `?`-suffixed wire key.) The table's
+    ;; `last_used_at` column is never written, so it is not offered (H2-11-3).
     {:api-token/id           (:id row)
      :api-token/user-id      (:user_id row)
      :api-token/name         (:name row)
      :api-token/created-at   (:created_at row)
-     :api-token/last-used-at (:last_used_at row)
      :api-token/revoked-at   (:revoked_at row)}))
 
 ;; reads ---------------------------------------------------------------------------

@@ -71,7 +71,9 @@
             (is (= tid (:api-token/id t)))
             (is (= "svc" (:api-token/name t)))
             (is (nil? (:api-token/revoked-at t)))
-            (is (not (contains? t :token))))))
+            (is (not (contains? t :token)))
+            ;; H2-11-3: nothing records a token's use, so no field claims it
+            (is (not (contains? t :api-token/last-used-at))))))
       (testing "the minted token authenticates real requests"
         (assert-ok (api-call (token-req-fn tok)
                              {:method :get :path (tokens-path "user1@example.com")}))))))

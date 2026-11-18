@@ -737,7 +737,6 @@
  * @property {string} userId
  * @property {string} name
  * @property {string} createdAt
- * @property {string | null} lastUsedAt
  * @property {string | null} revokedAt
  */
 
