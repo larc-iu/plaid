@@ -13,7 +13,9 @@ from umr_fixtures import document_raw, umr_client, umr_ws
 
 def excerpt_raw():
     """The fixture as a file numbered from snt5 imports it: records snt 5 and
-    6, and every variable named for them."""
+    6 marked as numbered by the file (``numbering: 'file'``, the mark the
+    import writes and the only thing that makes a document go by its file's
+    numbers since H3-9-1), and every variable named for them."""
     raw = copy.deepcopy(document_raw())
     for tl in raw['text_layers']:
         for tk in tl['token_layers']:
@@ -21,6 +23,7 @@ def excerpt_raw():
                 umr = (t.get('metadata') or {}).get('umr')
                 if isinstance(umr, dict) and 'snt' in umr:
                     umr['snt'] = umr['snt'] + 4
+                    umr['numbering'] = 'file'
             for sl in tk.get('span_layers') or []:
                 for sp in sl.get('spans') or []:
                     umr = (sp.get('metadata') or {}).get('umr') or {}
