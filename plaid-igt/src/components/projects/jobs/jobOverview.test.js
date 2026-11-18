@@ -143,6 +143,23 @@ describe('the headline', () => {
     expect(jobHeadline(job([null, null]))).toBe('Changed nothing.');
   });
 
+  // REV-JOIN18-1: a document put off for a person carries ranOut 'put-off',
+  // which is no sign the step ended unfinished.
+  it('says nothing of an unfinished step when a document was only put off for a person', () => {
+    const job = {
+      state: 'done',
+      documents: [{ documentId: 'd1' }, { documentId: 'd2' }],
+      report: {
+        totals: { sentences: 3, changes: 3 },
+        documents: [
+          { documentId: 'd1', state: 'done', counts: { oneStep: true, changes: 3 } },
+          { documentId: 'd2', state: 'done', counts: { changes: 0, ranOut: 'put-off' } },
+        ],
+      },
+    };
+    expect(jobHeadline(job)).toBe('Changed 3 sentences in 1 of 2 documents in one step.');
+  });
+
   it('counts the changes from the documents where the totals hold none', () => {
     const job = {
       state: 'cancelled',

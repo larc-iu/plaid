@@ -14,6 +14,10 @@ const sum = (list, f) => list.reduce((n, x) => n + (f(x) ?? 0), 0);
 // The report's documents, or the job's own rows where the report has none.
 const documentsOf = (job) => job?.report?.documents ?? job?.documents ?? [];
 
+// The worker's `ran_out` values that say the one step itself ended before
+// its work was done (CONTRACT, added by RW).
+const STEP_UNFINISHED = ['written', 'unchanged', 'not-read'];
+
 // The facts the headline is made of (`headlineText`).
 export const headlineFacts = (job) => {
   const report = job?.report || {};
@@ -30,8 +34,11 @@ export const headlineFacts = (job) => {
     oneStep: docs.some(oneStep),
     // The one step ended before its work was done: its documents carry what
     // happened there (the worker's `ran_out`, REV-RW-R2-2), those it never
-    // read 'not-read' (the owner's "Say both", 2026-11-18).
-    stepUnfinished: docs.some(oneStep) && docs.some((d) => d.counts?.ranOut),
+    // read 'not-read' (the owner's "Say both", 2026-11-18). Only the step's
+    // own values: 'put-off' and the others say what followed a step that may
+    // have finished (REV-JOIN18-1).
+    stepUnfinished:
+      docs.some(oneStep) && docs.some((d) => STEP_UNFINISHED.includes(d.counts?.ranOut)),
     notGotTo: docs.filter((d) => d.counts?.ranOut === 'not-read').length,
     findings: typeof report.findings === 'string' && report.findings !== '',
   };
