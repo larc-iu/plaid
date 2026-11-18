@@ -1,3 +1,4 @@
+import { apiPath } from "./path.js";
 import { markReplayed } from "./replayed.js";
 import { transformRequest, transformResponse } from "./transforms.js";
 import { nextIdempotencyKey } from "./operations.js";
@@ -676,7 +677,7 @@ async function learnOmittedVersion(client) {
     client._learningOmittedVersion = makeRequest(
       client,
       "GET",
-      `/api/v1/documents/${docId}`,
+      apiPath`/api/v1/documents/${docId}`,
       { learningOmittedVersion: true },
     ).finally(() => {
       client._learningOmittedVersion = null;

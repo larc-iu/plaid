@@ -4,6 +4,7 @@
  * installs them).
  */
 
+import { apiPath } from "./path.js";
 import { auditMethods, bodyOf } from "./families.js";
 import { normalizeUserId } from "./ids.js";
 import { iterPages, listAll, listPage } from "./pagination.js";
@@ -112,7 +113,7 @@ export function usersApi(client) {
      * @returns {Promise<User>}
      */
     get: (id) =>
-      client._request("GET", `/api/v1/users/${id}`),
+      client._request("GET", apiPath`/api/v1/users/${id}`),
     /**
      * Fetch a user's profile picture as raw bytes. Most callers want
      * avatarUrl() instead. This one is for non-browser consumers.
@@ -120,7 +121,7 @@ export function usersApi(client) {
      * @returns {Promise<ArrayBuffer>}
      */
     getAvatar: (id) =>
-      client._request("GET", `/api/v1/users/${id}/avatar`, {
+      client._request("GET", apiPath`/api/v1/users/${id}/avatar`, {
         binaryResponse: true,
       }),
     /**
@@ -202,7 +203,7 @@ export function usersApi(client) {
      * @returns {Promise<User>}
      */
     update: (id, password, displayName, isAdmin, auditMessage, { currentPassword } = {}) =>
-      client._request("PATCH", `/api/v1/users/${id}`, {
+      client._request("PATCH", apiPath`/api/v1/users/${id}`, {
         auditMessage,
         body: bodyOf({
           password,
@@ -222,7 +223,7 @@ export function usersApi(client) {
      * @returns {Promise<void>}
      */
     delete: (id, auditMessage) =>
-      client._request("DELETE", `/api/v1/users/${id}`, { auditMessage }),
+      client._request("DELETE", apiPath`/api/v1/users/${id}`, { auditMessage }),
     /**
      * Reactivate a deactivated user, restoring their ability to log in.
      * Project memberships and API tokens removed
@@ -232,7 +233,7 @@ export function usersApi(client) {
      * @returns {Promise<User>}
      */
     activate: (id, auditMessage) =>
-      client._request("POST", `/api/v1/users/${id}/activate`, { auditMessage }),
+      client._request("POST", apiPath`/api/v1/users/${id}/activate`, { auditMessage }),
     /**
      * A token that shows any user's profile picture without an
      * Authorization header, for an `<img>`, which cannot send one. Resolves
@@ -318,7 +319,7 @@ export function usersApi(client) {
       const { token } = await self.users.avatarToken({ renew });
       const params = new URLSearchParams({ "avatar-token": token });
       if (avatarHash) params.set("v", avatarHash);
-      return `${client.baseUrl}/api/v1/users/${id}/avatar?${params}`;
+      return `${client.baseUrl}${apiPath`/api/v1/users/${id}/avatar`}?${params}`;
     },
     /**
      * Upload a profile picture. Your own, or anyone's if you are an admin.
@@ -333,7 +334,7 @@ export function usersApi(client) {
     setAvatar: (id, file, auditMessage) => {
       const fd = new FormData();
       fd.append("file", file);
-      return client._request("PUT", `/api/v1/users/${id}/avatar`, {
+      return client._request("PUT", apiPath`/api/v1/users/${id}/avatar`, {
         auditMessage,
         body: fd,
         formData: true,
@@ -350,7 +351,7 @@ export function usersApi(client) {
     // batched, but a DELETE carries no blob, so the batch transport takes
     // it. It is an ordinary audited write and queues like any other.
     deleteAvatar: (id, auditMessage) =>
-      client._request("DELETE", `/api/v1/users/${id}/avatar`, {
+      client._request("DELETE", apiPath`/api/v1/users/${id}/avatar`, {
         auditMessage,
       }),
     ...auditMethods(client, "users"),
@@ -367,7 +368,7 @@ export function apiTokensApi(client) {
      * @param {string} userId - The user ID who owns the tokens
      * @returns {Promise<ApiToken[]>}
      */
-    list: (userId) => listAll(client, `/api/v1/users/${userId}/tokens`),
+    list: (userId) => listAll(client, apiPath`/api/v1/users/${userId}/tokens`),
     /**
      * Fetch a single page of a user's named API tokens.
      * @param {string} userId - The user ID who owns the tokens
@@ -377,7 +378,7 @@ export function apiTokensApi(client) {
      * @returns {Promise<Page<ApiToken>>}
      */
     listPage: (userId, { limit, cursor } = {}) =>
-      listPage(client, `/api/v1/users/${userId}/tokens`, { limit, cursor }),
+      listPage(client, apiPath`/api/v1/users/${userId}/tokens`, { limit, cursor }),
     /**
      * Async-iterate a user's named API tokens page by page; yields each
      * page's entries array.
@@ -387,7 +388,7 @@ export function apiTokensApi(client) {
      * @returns {AsyncGenerator<ApiToken[]>}
      */
     iterPages: (userId, { pageSize } = {}) =>
-      iterPages(client, `/api/v1/users/${userId}/tokens`, { pageSize }),
+      iterPages(client, apiPath`/api/v1/users/${userId}/tokens`, { pageSize }),
     /**
      * Mint a named API token for a user. The returned `token` is the signed
      * credential and is shown ONLY here — store it immediately. API tokens
@@ -400,7 +401,7 @@ export function apiTokensApi(client) {
      * @returns {Promise<{id: string, name: string, token: string}>}
      */
     create: (userId, name, auditMessage) =>
-      client._request("POST", `/api/v1/users/${userId}/tokens`, {
+      client._request("POST", apiPath`/api/v1/users/${userId}/tokens`, {
         auditMessage,
         body: bodyOf({ name }),
         // The answer is the secret, which the server never keeps, so it
@@ -417,7 +418,7 @@ export function apiTokensApi(client) {
      * @returns {Promise<void>}
      */
     revoke: (userId, tokenId, auditMessage) =>
-      client._request("DELETE", `/api/v1/users/${userId}/tokens/${tokenId}`, {
+      client._request("DELETE", apiPath`/api/v1/users/${userId}/tokens/${tokenId}`, {
         auditMessage,
       }),
   };
@@ -533,7 +534,7 @@ export function invitesApi(client) {
      * @returns {Promise<void>}
      */
     revoke: (id, auditMessage) =>
-      client._request("DELETE", `/api/v1/invites/${id}`, { auditMessage }),
+      client._request("DELETE", apiPath`/api/v1/invites/${id}`, { auditMessage }),
     /**
      * Join the project of an invite code with the account this client is
      * signed in as: the account gets the invite's project role and the link
@@ -583,7 +584,7 @@ export function authApi(client) {
 // server as a key, and the server refuses to store one (H20-4).
 const userDataPath = (userId, key) => {
   if (key === "." || key === "..") throw new Error("A key cannot be . or ..");
-  return `/api/v1/users/${userId}/data/${encodeURIComponent(key)}`;
+  return apiPath`/api/v1/users/${userId}/data/${key}`;
 };
 
 /** @param {import("./client.js").PlaidClient} client */
@@ -622,7 +623,7 @@ export function userDataApi(client) {
      * @returns {Promise<UserDataEntry[]>}
      */
     list: (userId, { prefix, pattern, includeValues, pageSize = 100 } = {}) =>
-      listAll(client, `/api/v1/users/${userId}/data`, {
+      listAll(client, apiPath`/api/v1/users/${userId}/data`, {
         pageSize,
         query: { prefix, pattern, "include-values": includeValues },
       }),
@@ -641,7 +642,7 @@ export function userDataApi(client) {
       userId,
       { prefix, pattern, includeValues, limit, cursor } = {},
     ) =>
-      listPage(client, `/api/v1/users/${userId}/data`, {
+      listPage(client, apiPath`/api/v1/users/${userId}/data`, {
         limit,
         cursor,
         query: { prefix, pattern, "include-values": includeValues },
@@ -660,7 +661,7 @@ export function userDataApi(client) {
       userId,
       { prefix, pattern, includeValues, pageSize = 100 } = {},
     ) =>
-      iterPages(client, `/api/v1/users/${userId}/data`, {
+      iterPages(client, apiPath`/api/v1/users/${userId}/data`, {
         pageSize,
         query: { prefix, pattern, "include-values": includeValues },
       }),

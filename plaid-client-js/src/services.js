@@ -8,6 +8,7 @@
  * receives them on its channel and reports back via plain POSTs that the
  * server relays to the one waiting requester.
  */
+import { apiPath } from './path.js';
 import { transformRequest, transformResponse } from './transforms.js';
 import { uuidv4 } from './ids.js';
 
@@ -160,7 +161,7 @@ export function serviceErrorMessage(error, serviceName = '', secrets = []) {
  * @returns {Promise<Array>} [{serviceId, serviceName, description, extras, online, lastSeenAt, runnerName, runByYou, servesYou, claimedByName, claimedBy, seen}]
  */
 export function discoverServices(client, projectId) {
-  return client._request('GET', `/api/v1/projects/${projectId}/services`);
+  return client._request('GET', apiPath`/api/v1/projects/${projectId}/services`);
 }
 
 /**
@@ -176,7 +177,7 @@ export function discoverServices(client, projectId) {
 export function discardService(client, projectId, serviceId) {
   // outOfBand: the registry is not project data (see the note at the top of
   // http.js).
-  return client._request('DELETE', `/api/v1/projects/${projectId}/services/${encodeURIComponent(serviceId)}`, {
+  return client._request('DELETE', apiPath`/api/v1/projects/${projectId}/services/${serviceId}`, {
     outOfBand: true,
   });
 }
@@ -197,7 +198,7 @@ export function discardService(client, projectId, serviceId) {
 export function releaseService(client, projectId, serviceId) {
   // outOfBand: the registry is not project data (see the note at the top of
   // http.js).
-  return client._request('DELETE', `/api/v1/projects/${projectId}/services/${encodeURIComponent(serviceId)}/owner`, {
+  return client._request('DELETE', apiPath`/api/v1/projects/${projectId}/services/${serviceId}/owner`, {
     outOfBand: true,
   });
 }
@@ -222,7 +223,7 @@ export function releaseService(client, projectId, serviceId) {
 export function reportRequestEvent(client, projectId, requestId, body) {
   return client._request(
     'POST',
-    `/api/v1/projects/${projectId}/service-requests/${encodeURIComponent(requestId)}/events`,
+    apiPath`/api/v1/projects/${projectId}/service-requests/${requestId}/events`,
     { body, outOfBand: true },
   );
 }
@@ -355,7 +356,7 @@ export function serve(client, projectId, serviceInfo, onServiceRequest, extras =
   if (extras && Object.keys(extras).length) params.set('extras', JSON.stringify(transformRequest(extras)));
   params.set('instance-id', INSTANCE_ID);
   const qs = params.toString();
-  const channelPath = `/api/v1/projects/${projectId}/services/${encodeURIComponent(serviceId)}/requests${qs ? `?${qs}` : ''}`;
+  const channelPath = apiPath`/api/v1/projects/${projectId}/services/${serviceId}/requests` + (qs ? `?${qs}` : '');
 
   // The requests this channel is serving, by id, each flagged once a
   // `service_cancel` arrives. The handler reads it as `responseHelper.cancelled`;
@@ -622,7 +623,7 @@ export function requestService(client, projectId, serviceId, data, timeout = 100
   const submit = () => streamServiceRequest(
     client,
     {
-      url: `${client.baseUrl}/api/v1/projects/${projectId}/services/${encodeURIComponent(serviceId)}/requests${qs}`,
+      url: client.baseUrl + apiPath`/api/v1/projects/${projectId}/services/${serviceId}/requests` + qs,
       method: 'POST',
       body: JSON.stringify(payload === undefined ? null : transformRequest(payload)),
       // `notLive` (with `serviceId`) lets an app say it in the service's own
@@ -673,7 +674,7 @@ export function attachServiceRequest(client, projectId, requestId, timeout = 100
   return streamServiceRequest(
     client,
     {
-      url: `${client.baseUrl}/api/v1/projects/${projectId}/service-requests/${encodeURIComponent(requestId)}`,
+      url: client.baseUrl + apiPath`/api/v1/projects/${projectId}/service-requests/${requestId}`,
       method: 'GET',
       what: 'Attach to service request',
     },
@@ -772,7 +773,7 @@ export function createCancelScope(isCancelled, isGone = () => false) {
 export function cancelServiceRequest(client, projectId, requestId) {
   return client._request(
     'DELETE',
-    `/api/v1/projects/${projectId}/service-requests/${encodeURIComponent(requestId)}`,
+    apiPath`/api/v1/projects/${projectId}/service-requests/${requestId}`,
     { outOfBand: true },
   );
 }

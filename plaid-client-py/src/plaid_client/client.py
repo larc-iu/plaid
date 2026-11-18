@@ -18,7 +18,7 @@ from plaid_client.document_lock import with_document_lock
 from plaid_client.operations import _Operations
 from plaid_client.http import (
     _UNSET as _HTTP_UNSET, PlaidAPIError, make_request, build_api_error, network_error,
-    DEFAULT_TIMEOUT_S, DEFAULT_BATCH_TIMEOUT_S, json_body, wire_timeout, query_timeout,
+    DEFAULT_TIMEOUT_S, DEFAULT_BATCH_TIMEOUT_S, json_body, wire_timeout, query_timeout, segment,
 )
 from plaid_client.ids import normalize_user_id
 from plaid_client.pagination import iter_pages, list_all, list_page
@@ -79,7 +79,7 @@ class _ConstraintMethods:
     _kind = None
 
     def _constraints_path(self, layer_id):
-        return f'/api/v1/{self._kind}/{layer_id}/constraints'
+        return f'/api/v1/{segment(self._kind)}/{segment(layer_id)}/constraints'
 
     def set_constraints(self, layer_id: str, namespace: str, constraints: list, audit_message=None,
                         expected: Any = _UNSET) -> Any:
@@ -96,7 +96,7 @@ class _ConstraintMethods:
 
         Returns the layer's whole constraint map as ``{'constraints': {...}}``.
         """
-        return self._request('PUT', f'{self._constraints_path(layer_id)}/{namespace}',
+        return self._request('PUT', f'{self._constraints_path(layer_id)}/{segment(namespace)}',
                              body=_constraints_body(constraints, expected), audit_message=audit_message)
 
     def delete_constraints(self, layer_id: str, namespace: str, audit_message=None,
@@ -110,7 +110,7 @@ class _ConstraintMethods:
         """
         body = _constraints_body(_UNSET, expected)
         kwargs = {'body': body} if body else {}
-        return self._request('DELETE', f'{self._constraints_path(layer_id)}/{namespace}',
+        return self._request('DELETE', f'{self._constraints_path(layer_id)}/{segment(namespace)}',
                              audit_message=audit_message, **kwargs)
 
     def check_constraints(self, layer_id: str, constraints: list, limit: int = None) -> Any:
@@ -178,7 +178,7 @@ class _ValueSetMethods:
         if limit is not None:
             body['limit'] = limit
         # out_of_band, as check_constraints.
-        return self._request('POST', f'/api/v1/{self._kind}/{layer_id}/constraints/refused-values', body=body,
+        return self._request('POST', f'/api/v1/{segment(self._kind)}/{segment(layer_id)}/constraints/refused-values', body=body,
                              out_of_band=True)
 
 
@@ -197,7 +197,7 @@ class _MetadataMethods:
             id: The entity's ID
             body: The new metadata map
         """
-        return self._request('PUT', f'/api/v1/{self._kind}/{id}/metadata',
+        return self._request('PUT', f'/api/v1/{segment(self._kind)}/{segment(id)}/metadata',
                              raw_body=body, audit_message=audit_message)
 
     def delete_metadata(self, id: str, audit_message=None) -> Any:
@@ -206,7 +206,7 @@ class _MetadataMethods:
         Args:
             id: The entity's ID
         """
-        return self._request('DELETE', f'/api/v1/{self._kind}/{id}/metadata',
+        return self._request('DELETE', f'/api/v1/{segment(self._kind)}/{segment(id)}/metadata',
                              audit_message=audit_message)
 
     def patch_metadata(self, id: str, body: Any, audit_message=None) -> Any:
@@ -224,7 +224,7 @@ class _MetadataMethods:
             id: The entity's ID
             body: The metadata ops
         """
-        return self._request('PATCH', f'/api/v1/{self._kind}/{id}/metadata',
+        return self._request('PATCH', f'/api/v1/{segment(self._kind)}/{segment(id)}/metadata',
                              raw_body=body, audit_message=audit_message)
 
 
@@ -248,7 +248,7 @@ class _ConfigMethods:
                 the key already holds is not written and leaves no audit row, so the value read,
                 expecting it, states in a batch that the key is unchanged.
         """
-        return self._request('PUT', f'/api/v1/{self._kind}/{id}/config/{namespace}/{config_key}',
+        return self._request('PUT', f'/api/v1/{segment(self._kind)}/{segment(id)}/config/{segment(namespace)}/{segment(config_key)}',
                              **_config_request(audit_message, config_value, expected))
 
     def delete_config(self, id: str, namespace: str, config_key: str, audit_message=None,
@@ -262,7 +262,7 @@ class _ConfigMethods:
             expected: As on ``set_config``. A key that is absent is not written, so expecting
                 ``None`` states in a batch that it is still absent.
         """
-        return self._request('DELETE', f'/api/v1/{self._kind}/{id}/config/{namespace}/{config_key}',
+        return self._request('DELETE', f'/api/v1/{segment(self._kind)}/{segment(id)}/config/{segment(namespace)}/{segment(config_key)}',
                              **_config_request(audit_message, _UNSET, expected))
 
 
@@ -278,7 +278,7 @@ class _LayerMethods:
         Args:
             layer_id: The layer ID
         """
-        return self._request('GET', f'/api/v1/{self._kind}/{layer_id}')
+        return self._request('GET', f'/api/v1/{segment(self._kind)}/{segment(layer_id)}')
 
     def delete(self, layer_id: str, audit_message=None) -> Any:
         """Delete a layer.
@@ -286,7 +286,7 @@ class _LayerMethods:
         Args:
             layer_id: The layer ID
         """
-        return self._request('DELETE', f'/api/v1/{self._kind}/{layer_id}', audit_message=audit_message)
+        return self._request('DELETE', f'/api/v1/{segment(self._kind)}/{segment(layer_id)}', audit_message=audit_message)
 
     def update(self, layer_id: str, name: str, audit_message=None) -> Any:
         """Rename a layer.
@@ -295,7 +295,7 @@ class _LayerMethods:
             layer_id: The layer ID
             name: The new name
         """
-        return self._request('PATCH', f'/api/v1/{self._kind}/{layer_id}',
+        return self._request('PATCH', f'/api/v1/{segment(self._kind)}/{segment(layer_id)}',
                              body=_body_of(name=name), audit_message=audit_message)
 
     def shift(self, layer_id: str, direction: str, audit_message=None) -> Any:
@@ -305,7 +305,7 @@ class _LayerMethods:
             layer_id: The layer ID
             direction: The direction ("up" or "down")
         """
-        return self._request('POST', f'/api/v1/{self._kind}/{layer_id}/shift',
+        return self._request('POST', f'/api/v1/{segment(self._kind)}/{segment(layer_id)}/shift',
                              body=_body_of(direction=direction), audit_message=audit_message)
 
 
@@ -370,7 +370,7 @@ class VocabLinksResource(_MetadataMethods, _Resource):
         Args:
             id: The resource ID
         """
-        return self._request('GET', f'/api/v1/vocab-links/{id}')
+        return self._request('GET', f'/api/v1/vocab-links/{segment(id)}')
 
     def create(self, vocab_item: str, tokens: list, metadata: Any = _UNSET, audit_message=None,
                *, id: str | None = None) -> Any:
@@ -395,7 +395,7 @@ class VocabLinksResource(_MetadataMethods, _Resource):
         Args:
             id: The resource ID
         """
-        return self._request('DELETE', f'/api/v1/vocab-links/{id}', audit_message=audit_message)
+        return self._request('DELETE', f'/api/v1/vocab-links/{segment(id)}', audit_message=audit_message)
 
     def bulk_create(self, body: list, audit_message=None) -> dict:
         """Create multiple vocab links in a single operation.
@@ -439,7 +439,7 @@ class VocabLayersResource(_ConfigMethods, _Resource):
             include_items: Include vocab items
             as_of: The moment to read at (ISO-8601 instant)
         """
-        return self._request('GET', f'/api/v1/vocab-layers/{id}',
+        return self._request('GET', f'/api/v1/vocab-layers/{segment(id)}',
                              query_params={'include-items': include_items, 'as-of': as_of})
 
     def get_item_at(self, id: str, item_id: str, as_of: str) -> Any:
@@ -454,7 +454,7 @@ class VocabLayersResource(_ConfigMethods, _Resource):
             item_id: The entry ID
             as_of: The moment to read at (ISO-8601 instant)
         """
-        return self._request('GET', f'/api/v1/vocab-layers/{id}/items/{item_id}',
+        return self._request('GET', f'/api/v1/vocab-layers/{segment(id)}/items/{segment(item_id)}',
                              query_params={'as-of': as_of})
 
     def list(self) -> Any:
@@ -517,7 +517,7 @@ class VocabLayersResource(_ConfigMethods, _Resource):
             id: The resource ID
             name: The name
         """
-        return self._request('PATCH', f'/api/v1/vocab-layers/{id}',
+        return self._request('PATCH', f'/api/v1/vocab-layers/{segment(id)}',
                              body=_body_of(name=name), audit_message=audit_message)
 
     def delete(self, id: str, audit_message=None) -> Any:
@@ -532,7 +532,7 @@ class VocabLayersResource(_ConfigMethods, _Resource):
         Args:
             id: The resource ID
         """
-        return self._request('DELETE', f'/api/v1/vocab-layers/{id}', audit_message=audit_message)
+        return self._request('DELETE', f'/api/v1/vocab-layers/{segment(id)}', audit_message=audit_message)
 
     def deletion(self, id: str) -> Any:
         """What deleting a vocabulary would remove, without writing:
@@ -546,7 +546,7 @@ class VocabLayersResource(_ConfigMethods, _Resource):
         Args:
             id: The vocabulary ID
         """
-        return self._request('GET', f'/api/v1/vocab-layers/{id}/deletion')
+        return self._request('GET', f'/api/v1/vocab-layers/{segment(id)}/deletion')
 
     def move(self, id: str, project_id: str, audit_message=None) -> Any:
         """Move a vocabulary to another project, which becomes its home.
@@ -560,7 +560,7 @@ class VocabLayersResource(_ConfigMethods, _Resource):
             id: The vocabulary ID
             project_id: The new home project's ID
         """
-        return self._request('POST', f'/api/v1/vocab-layers/{id}/move',
+        return self._request('POST', f'/api/v1/vocab-layers/{segment(id)}/move',
                              body=_body_of(project_id=project_id), audit_message=audit_message)
 
     def borrowers(self, id: str) -> Any:
@@ -574,7 +574,7 @@ class VocabLayersResource(_ConfigMethods, _Resource):
         Args:
             id: The vocabulary ID
         """
-        return self._request('GET', f'/api/v1/vocab-layers/{id}/borrowers')
+        return self._request('GET', f'/api/v1/vocab-layers/{segment(id)}/borrowers')
 
     def audit(self, id: str, *, start_time: str | None = None,
               end_time: str | None = None,
@@ -598,7 +598,7 @@ class VocabLayersResource(_ConfigMethods, _Resource):
             kinds: Only the entries of operations of these kinds, as a list or
                 comma-separated string (e.g. ``['review']``), each whole
         """
-        return list_all(self._client, f'/api/v1/vocab-layers/{id}/audit',
+        return list_all(self._client, f'/api/v1/vocab-layers/{segment(id)}/audit',
                         query=_audit_query(start_time, end_time, op_types, kinds, item_id=item_id))
 
     def audit_page(self, id: str, *, start_time: str | None = None,
@@ -625,7 +625,7 @@ class VocabLayersResource(_ConfigMethods, _Resource):
                 naming the entry
             item_id: Only the changes that wrote this one entry
         """
-        return list_page(self._client, f'/api/v1/vocab-layers/{id}/audit', limit=limit, cursor=cursor,
+        return list_page(self._client, f'/api/v1/vocab-layers/{segment(id)}/audit', limit=limit, cursor=cursor,
                          query=_audit_query(start_time, end_time, op_types, kinds, order=order,
                                             ops_limit=ops_limit, entry_id=entry_id, item_id=item_id))
 
@@ -654,7 +654,7 @@ class VocabLayersResource(_ConfigMethods, _Resource):
                 would change
             audit_message: Custom audit message for this operation
         """
-        return self._request('POST', f'/api/v1/vocab-layers/{id}/items/{item_id}/restore',
+        return self._request('POST', f'/api/v1/vocab-layers/{segment(id)}/items/{segment(item_id)}/restore',
                              query_params={'as-of': as_of,
                                            'dry-run': 'true' if dry_run else None},
                              audit_message=audit_message)
@@ -669,7 +669,7 @@ class RelationsResource(_MetadataMethods, _Resource):
         Args:
             relation_id: The relation ID
         """
-        return self._request('GET', f'/api/v1/relations/{relation_id}')
+        return self._request('GET', f'/api/v1/relations/{segment(relation_id)}')
 
     def create(self, relation_layer_id: str, source: str, target: str, value: Any,
                metadata: Any = _UNSET, audit_message=None, *, id: str | None = None) -> Any:
@@ -701,7 +701,7 @@ class RelationsResource(_MetadataMethods, _Resource):
             relation_id: The relation ID
             value: The value
         """
-        return self._request('PATCH', f'/api/v1/relations/{relation_id}',
+        return self._request('PATCH', f'/api/v1/relations/{segment(relation_id)}',
                              body=_body_of(value=value), audit_message=audit_message)
 
     def delete(self, relation_id: str, audit_message=None) -> Any:
@@ -710,7 +710,7 @@ class RelationsResource(_MetadataMethods, _Resource):
         Args:
             relation_id: The relation ID
         """
-        return self._request('DELETE', f'/api/v1/relations/{relation_id}', audit_message=audit_message)
+        return self._request('DELETE', f'/api/v1/relations/{segment(relation_id)}', audit_message=audit_message)
 
     def bulk_create(self, body: list, audit_message=None) -> dict:
         """Create multiple relations in a single operation.
@@ -759,7 +759,7 @@ class RelationsResource(_MetadataMethods, _Resource):
             relation_id: The relation ID
             span_id: The span ID
         """
-        return self._request('PUT', f'/api/v1/relations/{relation_id}/target',
+        return self._request('PUT', f'/api/v1/relations/{segment(relation_id)}/target',
                              body=_body_of(span_id=span_id), audit_message=audit_message)
 
     def set_source(self, relation_id: str, span_id: str, audit_message=None) -> Any:
@@ -769,7 +769,7 @@ class RelationsResource(_MetadataMethods, _Resource):
             relation_id: The relation ID
             span_id: The span ID
         """
-        return self._request('PUT', f'/api/v1/relations/{relation_id}/source',
+        return self._request('PUT', f'/api/v1/relations/{segment(relation_id)}/source',
                              body=_body_of(span_id=span_id), audit_message=audit_message)
 
 
@@ -801,7 +801,7 @@ class SpansResource(_MetadataMethods, _Resource):
         Args:
             span_id: The span ID
         """
-        return self._request('GET', f'/api/v1/spans/{span_id}')
+        return self._request('GET', f'/api/v1/spans/{segment(span_id)}')
 
     def create(self, span_layer_id: str, tokens: list, value: Any, metadata: Any = _UNSET,
                audit_message=None, *, id: str | None = None) -> Any:
@@ -832,7 +832,7 @@ class SpansResource(_MetadataMethods, _Resource):
             span_id: The span ID
             value: The value
         """
-        return self._request('PATCH', f'/api/v1/spans/{span_id}',
+        return self._request('PATCH', f'/api/v1/spans/{segment(span_id)}',
                              body=_body_of(value=value), audit_message=audit_message)
 
     def delete(self, span_id: str, audit_message=None) -> Any:
@@ -841,7 +841,7 @@ class SpansResource(_MetadataMethods, _Resource):
         Args:
             span_id: The span ID
         """
-        return self._request('DELETE', f'/api/v1/spans/{span_id}', audit_message=audit_message)
+        return self._request('DELETE', f'/api/v1/spans/{segment(span_id)}', audit_message=audit_message)
 
     def bulk_create(self, body: list, audit_message=None) -> dict:
         """Create multiple spans in a single operation.
@@ -890,7 +890,7 @@ class SpansResource(_MetadataMethods, _Resource):
             span_id: The span ID
             tokens: The tokens
         """
-        return self._request('PUT', f'/api/v1/spans/{span_id}/tokens',
+        return self._request('PUT', f'/api/v1/spans/{segment(span_id)}/tokens',
                              body=_body_of(tokens=tokens), audit_message=audit_message)
 
 
@@ -903,7 +903,7 @@ class TextsResource(_MetadataMethods, _Resource):
         Args:
             text_id: The text ID
         """
-        return self._request('GET', f'/api/v1/texts/{text_id}')
+        return self._request('GET', f'/api/v1/texts/{segment(text_id)}')
 
     def create(self, text_layer_id: str, document_id: str, body: str,
                metadata: Any = _UNSET, audit_message=None, *, id: str | None = None,
@@ -958,7 +958,7 @@ class TextsResource(_MetadataMethods, _Resource):
                 places the old tokens ("Tokenize new text"), and they come in
                 the answer's ``reshape``.
         """
-        return self._request('PATCH', f'/api/v1/texts/{text_id}',
+        return self._request('PATCH', f'/api/v1/texts/{segment(text_id)}',
                              body=_body_of(body=body, base=_UNSET if base is None else base,
                                            tokenize_layer=_UNSET if tokenize_layer is None else tokenize_layer),
                              audit_message=audit_message,
@@ -970,7 +970,7 @@ class TextsResource(_MetadataMethods, _Resource):
         Args:
             text_id: The text ID
         """
-        return self._request('DELETE', f'/api/v1/texts/{text_id}', audit_message=audit_message)
+        return self._request('DELETE', f'/api/v1/texts/{segment(text_id)}', audit_message=audit_message)
 
     def edit(self, text_id: str, edits: list, audit_message=None, *, base: str | None = None,
              versioned: bool | None = None, tokenize_layer: str | None = None) -> Any:
@@ -997,7 +997,7 @@ class TextsResource(_MetadataMethods, _Resource):
                 places the old tokens ("Tokenize new text"), and they come in
                 the answer's ``reshape``.
         """
-        return self._request('PATCH', f'/api/v1/texts/{text_id}',
+        return self._request('PATCH', f'/api/v1/texts/{segment(text_id)}',
                              body=_body_of(edits=edits, base=_UNSET if base is None else base,
                                            tokenize_layer=_UNSET if tokenize_layer is None else tokenize_layer),
                              audit_message=audit_message,
@@ -1010,7 +1010,7 @@ class UsersResource(_Resource):
         Args:
             id: The resource ID
         """
-        return self._request('GET', f'/api/v1/users/{id}')
+        return self._request('GET', f'/api/v1/users/{segment(id)}')
 
     def get_avatar(self, id: str) -> bytes:
         """Get a user's profile picture as raw bytes.
@@ -1021,7 +1021,7 @@ class UsersResource(_Resource):
         Args:
             id: The user ID
         """
-        return self._request('GET', f'/api/v1/users/{id}/avatar',
+        return self._request('GET', f'/api/v1/users/{segment(id)}/avatar',
                              binary_response=True)
 
     def list(self, *, q: str | None = None) -> Any:
@@ -1105,7 +1105,7 @@ class UsersResource(_Resource):
             current_password: The password being replaced, for a change of
                 your own.
         """
-        return self._request('PATCH', f'/api/v1/users/{id}',
+        return self._request('PATCH', f'/api/v1/users/{segment(id)}',
                              body=_body_of(password=password, current_password=current_password,
                                            display_name=display_name, is_admin=is_admin),
                              audit_message=audit_message)
@@ -1122,7 +1122,7 @@ class UsersResource(_Resource):
         Args:
             id: The resource ID
         """
-        return self._request('DELETE', f'/api/v1/users/{id}', audit_message=audit_message)
+        return self._request('DELETE', f'/api/v1/users/{segment(id)}', audit_message=audit_message)
 
     def activate(self, id: str, audit_message=None) -> Any:
         """Reactivate a deactivated user, restoring their ability to log in.
@@ -1133,7 +1133,7 @@ class UsersResource(_Resource):
         Args:
             id: The resource ID
         """
-        return self._request('POST', f'/api/v1/users/{id}/activate', audit_message=audit_message)
+        return self._request('POST', f'/api/v1/users/{segment(id)}/activate', audit_message=audit_message)
 
     def audit(self, user_id: str, *, start_time: str | None = None,
               end_time: str | None = None,
@@ -1155,7 +1155,7 @@ class UsersResource(_Resource):
             kinds: Only the entries of operations of these kinds, as a list or
                 comma-separated string (e.g. ``['review']``), each whole
         """
-        return list_all(self._client, f'/api/v1/users/{user_id}/audit',
+        return list_all(self._client, f'/api/v1/users/{segment(user_id)}/audit',
                         query=_audit_query(start_time, end_time, op_types, kinds))
 
     def audit_page(self, user_id: str, *, start_time: str | None = None,
@@ -1180,7 +1180,7 @@ class UsersResource(_Resource):
                 inside an entry reads that operation alone, its ``part_of``
                 naming the entry
         """
-        return list_page(self._client, f'/api/v1/users/{user_id}/audit', limit=limit, cursor=cursor,
+        return list_page(self._client, f'/api/v1/users/{segment(user_id)}/audit', limit=limit, cursor=cursor,
                          query=_audit_query(start_time, end_time, op_types, kinds, order=order,
                                             ops_limit=ops_limit, entry_id=entry_id))
 
@@ -1196,7 +1196,7 @@ class UsersResource(_Resource):
             id: The user ID
             file: The image to upload (an open binary file object or bytes)
         """
-        return self._request('PUT', f'/api/v1/users/{id}/avatar',
+        return self._request('PUT', f'/api/v1/users/{segment(id)}/avatar',
                              body={'file': file}, form_data=True, no_batch=True,
                              audit_message=audit_message)
 
@@ -1209,7 +1209,7 @@ class UsersResource(_Resource):
         # No flag: the upload above is multipart and cannot be batched, but a
         # DELETE carries no blob, so the batch transport takes it. It is an
         # ordinary audited write and queues like any other.
-        return self._request('DELETE', f'/api/v1/users/{id}/avatar',
+        return self._request('DELETE', f'/api/v1/users/{segment(id)}/avatar',
                              audit_message=audit_message)
 
     def avatar_token(self, renew: bool = False) -> dict:
@@ -1268,7 +1268,7 @@ class UsersResource(_Resource):
         params = {'avatar-token': self.avatar_token(renew=renew)['token']}
         if avatar_hash:
             params['v'] = avatar_hash
-        return f'{self._client.base_url}/api/v1/users/{id}/avatar?{urlencode(params)}'
+        return f'{self._client.base_url}/api/v1/users/{segment(id)}/avatar?{urlencode(params)}'
 
 
 class ApiTokensResource(_Resource):
@@ -1282,7 +1282,7 @@ class ApiTokensResource(_Resource):
         Args:
             user_id: The user ID who owns the tokens
         """
-        return list_all(self._client, f'/api/v1/users/{user_id}/tokens')
+        return list_all(self._client, f'/api/v1/users/{segment(user_id)}/tokens')
 
     def list_page(self, user_id: str, *, limit: int | None = None,
                   cursor: str | None = None) -> Any:
@@ -1293,7 +1293,7 @@ class ApiTokensResource(_Resource):
             limit: Page size (1..1000)
             cursor: Opaque cursor from a previous page's ``next_cursor``
         """
-        return list_page(self._client, f'/api/v1/users/{user_id}/tokens',
+        return list_page(self._client, f'/api/v1/users/{segment(user_id)}/tokens',
                          limit=limit, cursor=cursor)
 
     def iter_pages(self, user_id: str, *, page_size: int = 1000):
@@ -1303,7 +1303,7 @@ class ApiTokensResource(_Resource):
             user_id: The user ID who owns the tokens
             page_size: Page size (1..1000)
         """
-        return iter_pages(self._client, f'/api/v1/users/{user_id}/tokens',
+        return iter_pages(self._client, f'/api/v1/users/{segment(user_id)}/tokens',
                           page_size=page_size)
 
     def create(self, user_id: str, name: str, audit_message=None) -> Any:
@@ -1324,7 +1324,7 @@ class ApiTokensResource(_Resource):
         """
         # no_batch: the answer is the secret, which the server never keeps, so
         # it takes no Idempotency-Key and a batch cannot carry it.
-        return self._request('POST', f'/api/v1/users/{user_id}/tokens',
+        return self._request('POST', f'/api/v1/users/{segment(user_id)}/tokens',
                              body=_body_of(name=name), audit_message=audit_message,
                              no_batch=True)
 
@@ -1338,7 +1338,7 @@ class ApiTokensResource(_Resource):
             user_id: The user ID who owns the token
             token_id: The token ID to revoke
         """
-        return self._request('DELETE', f'/api/v1/users/{user_id}/tokens/{token_id}', audit_message=audit_message)
+        return self._request('DELETE', f'/api/v1/users/{segment(user_id)}/tokens/{segment(token_id)}', audit_message=audit_message)
 
 
 def _user_data_path(user_id: str, key: str) -> str:
@@ -1347,7 +1347,7 @@ def _user_data_path(user_id: str, key: str) -> str:
     store one (H20-4)."""
     if key in ('.', '..'):
         raise ValueError('A key cannot be . or ..')
-    return f'/api/v1/users/{user_id}/data/{quote(key, safe="")}'
+    return f'/api/v1/users/{segment(user_id)}/data/{segment(key)}'
 
 
 class UserDataResource(_Resource):
@@ -1386,7 +1386,7 @@ class UserDataResource(_Resource):
                 can be asked for. Raise it when the listing is keys, or the values are
                 known to be small.
         """
-        return list_all(self._client, f'/api/v1/users/{user_id}/data', page_size=page_size,
+        return list_all(self._client, f'/api/v1/users/{segment(user_id)}/data', page_size=page_size,
                         query={'prefix': prefix, 'pattern': pattern,
                                'include-values': include_values or None})
 
@@ -1403,7 +1403,7 @@ class UserDataResource(_Resource):
             limit: Page size (1..1000; server default 100)
             cursor: Opaque cursor from a previous page's ``next_cursor``
         """
-        return list_page(self._client, f'/api/v1/users/{user_id}/data', limit=limit, cursor=cursor,
+        return list_page(self._client, f'/api/v1/users/{segment(user_id)}/data', limit=limit, cursor=cursor,
                          query={'prefix': prefix, 'pattern': pattern,
                                 'include-values': include_values or None})
 
@@ -1418,7 +1418,7 @@ class UserDataResource(_Resource):
             include_values: Also return each entry's value
             page_size: Entries per request (1..1000)
         """
-        return iter_pages(self._client, f'/api/v1/users/{user_id}/data', page_size=page_size,
+        return iter_pages(self._client, f'/api/v1/users/{segment(user_id)}/data', page_size=page_size,
                           query={'prefix': prefix, 'pattern': pattern,
                                  'include-values': include_values or None})
 
@@ -1480,7 +1480,7 @@ class CommentsResource(_Resource):
 
     def get(self, comment_id: str) -> Any:
         """Read one comment."""
-        return self._request('GET', f'/api/v1/comments/{comment_id}')
+        return self._request('GET', f'/api/v1/comments/{segment(comment_id)}')
 
     def list(self, project_id: str, *, document_id: str | None = None,
              entity_type: str | None = None, entity_id: str | None = None) -> Any:
@@ -1495,7 +1495,7 @@ class CommentsResource(_Resource):
             entity_type: With entity_id, only this entity's thread
             entity_id: With entity_type, only this entity's thread
         """
-        return list_all(self._client, f'/api/v1/projects/{project_id}/comments',
+        return list_all(self._client, f'/api/v1/projects/{segment(project_id)}/comments',
                         query={'document-id': document_id, 'entity-type': entity_type,
                                'entity-id': entity_id})
 
@@ -1512,7 +1512,7 @@ class CommentsResource(_Resource):
             entity_type: With entity_id, only this entity's thread
             entity_id: With entity_type, only this entity's thread
         """
-        return list_page(self._client, f'/api/v1/projects/{project_id}/comments',
+        return list_page(self._client, f'/api/v1/projects/{segment(project_id)}/comments',
                          limit=limit, cursor=cursor,
                          query={'document-id': document_id, 'entity-type': entity_type,
                                 'entity-id': entity_id})
@@ -1529,7 +1529,7 @@ class CommentsResource(_Resource):
             entity_type: With entity_id, only this entity's thread
             entity_id: With entity_type, only this entity's thread
         """
-        return iter_pages(self._client, f'/api/v1/projects/{project_id}/comments',
+        return iter_pages(self._client, f'/api/v1/projects/{segment(project_id)}/comments',
                           page_size=page_size,
                           query={'document-id': document_id, 'entity-type': entity_type,
                                  'entity-id': entity_id})
@@ -1544,7 +1544,7 @@ class CommentsResource(_Resource):
             vocab_id: The vocab layer to read
             entity_id: Only this entry's thread
         """
-        return list_all(self._client, f'/api/v1/vocab-layers/{vocab_id}/comments',
+        return list_all(self._client, f'/api/v1/vocab-layers/{segment(vocab_id)}/comments',
                         query={'entity-id': entity_id})
 
     def list_in_vocab_page(self, vocab_id: str, *, limit: int | None = None,
@@ -1557,7 +1557,7 @@ class CommentsResource(_Resource):
             cursor: Opaque cursor from a previous page's ``next_cursor``
             entity_id: Only this entry's thread
         """
-        return list_page(self._client, f'/api/v1/vocab-layers/{vocab_id}/comments',
+        return list_page(self._client, f'/api/v1/vocab-layers/{segment(vocab_id)}/comments',
                          limit=limit, cursor=cursor, query={'entity-id': entity_id})
 
     def iter_in_vocab_pages(self, vocab_id: str, *, entity_id: str | None = None,
@@ -1570,7 +1570,7 @@ class CommentsResource(_Resource):
             entity_id: Only this entry's thread
             page_size: Page size (1..1000)
         """
-        return iter_pages(self._client, f'/api/v1/vocab-layers/{vocab_id}/comments',
+        return iter_pages(self._client, f'/api/v1/vocab-layers/{segment(vocab_id)}/comments',
                           page_size=page_size, query={'entity-id': entity_id})
 
     def create(self, entity_type: str, entity_id: str, body: str, *,
@@ -1602,12 +1602,12 @@ class CommentsResource(_Resource):
         Only the comment's author may do this — not maintainers, not admins.
         Sets ``edited`` on the returned comment.
         """
-        return self._request('PATCH', f'/api/v1/comments/{comment_id}',
+        return self._request('PATCH', f'/api/v1/comments/{segment(comment_id)}',
                              body=_body_of(body=body), no_operation=True)
 
     def delete(self, comment_id: str) -> Any:
         """Delete a comment (author, or a maintainer of its project)."""
-        return self._request('DELETE', f'/api/v1/comments/{comment_id}', no_operation=True)
+        return self._request('DELETE', f'/api/v1/comments/{segment(comment_id)}', no_operation=True)
 
     def counts(self, project_id: str, *, document_id: str | None = None,
                entity_type: str | None = None, entity_id: str | None = None) -> Any:
@@ -1620,7 +1620,7 @@ class CommentsResource(_Resource):
         The response is NOT key-transformed: its keys are entity ids, and
         recasing would mangle the hyphens in a UUID.
         """
-        return self._request('GET', f'/api/v1/projects/{project_id}/comments/counts',
+        return self._request('GET', f'/api/v1/projects/{segment(project_id)}/comments/counts',
                              query_params={'document-id': document_id,
                                            'entity-type': entity_type,
                                            'entity-id': entity_id},
@@ -1631,7 +1631,7 @@ class CommentsResource(_Resource):
 
         The response is NOT key-transformed: its keys are entry ids.
         """
-        return self._request('GET', f'/api/v1/vocab-layers/{vocab_id}/comments/counts',
+        return self._request('GET', f'/api/v1/vocab-layers/{segment(vocab_id)}/comments/counts',
                              query_params={'entity-id': entity_id},
                              skip_response_transform=True)
 
@@ -1655,7 +1655,7 @@ class GuidelinesResource(_Resource):
 
     def get(self, guideline_id: str) -> Any:
         """Read one guideline, Markdown body included."""
-        return self._request('GET', f'/api/v1/guidelines/{guideline_id}')
+        return self._request('GET', f'/api/v1/guidelines/{segment(guideline_id)}')
 
     def list(self, project_id: str, *, include_bodies: bool | None = None) -> Any:
         """List a project's guidelines, by title.
@@ -1672,7 +1672,7 @@ class GuidelinesResource(_Resource):
             project_id: The project to read
             include_bodies: Return each body instead of its length
         """
-        return list_all(self._client, f'/api/v1/projects/{project_id}/guidelines',
+        return list_all(self._client, f'/api/v1/projects/{segment(project_id)}/guidelines',
                         query={'include-bodies': include_bodies})
 
     def list_page(self, project_id: str, *, limit: int | None = None,
@@ -1685,7 +1685,7 @@ class GuidelinesResource(_Resource):
             cursor: Opaque cursor from a previous page's ``next_cursor``
             include_bodies: Return each body instead of its length
         """
-        return list_page(self._client, f'/api/v1/projects/{project_id}/guidelines',
+        return list_page(self._client, f'/api/v1/projects/{segment(project_id)}/guidelines',
                          limit=limit, cursor=cursor,
                          query={'include-bodies': include_bodies})
 
@@ -1698,7 +1698,7 @@ class GuidelinesResource(_Resource):
             page_size: Per-request page size
             include_bodies: Return each body instead of its length
         """
-        return iter_pages(self._client, f'/api/v1/projects/{project_id}/guidelines',
+        return iter_pages(self._client, f'/api/v1/projects/{segment(project_id)}/guidelines',
                           page_size=page_size,
                           query={'include-bodies': include_bodies})
 
@@ -1718,7 +1718,7 @@ class GuidelinesResource(_Resource):
                 its answer was lost lands once (409 with ``id_taken`` when the
                 id was used before).
         """
-        return self._request('POST', f'/api/v1/projects/{project_id}/guidelines',
+        return self._request('POST', f'/api/v1/projects/{segment(project_id)}/guidelines',
                              body=_body_of(id=_UNSET if id is None else id, title=title,
                                            body=_UNSET if body is None else body,
                                            pinned=_UNSET if pinned is None else pinned),
@@ -1746,7 +1746,7 @@ class GuidelinesResource(_Resource):
             expected_updated_at: Write only if this is still the stored updated_at
             audit_message: Message recorded on the operation
         """
-        return self._request('PATCH', f'/api/v1/guidelines/{guideline_id}',
+        return self._request('PATCH', f'/api/v1/guidelines/{segment(guideline_id)}',
                              query_params={'updated-at': expected_updated_at},
                              body=_body_of(title=_UNSET if title is None else title,
                                            body=_UNSET if body is None else body,
@@ -1755,7 +1755,7 @@ class GuidelinesResource(_Resource):
 
     def delete(self, guideline_id: str, audit_message=None) -> Any:
         """Delete a guideline."""
-        return self._request('DELETE', f'/api/v1/guidelines/{guideline_id}',
+        return self._request('DELETE', f'/api/v1/guidelines/{segment(guideline_id)}',
                              audit_message=audit_message)
 
 
@@ -1866,7 +1866,7 @@ class InvitesResource(_Resource):
         Args:
             invite_id: The invite ID
         """
-        return self._request('DELETE', f'/api/v1/invites/{invite_id}',
+        return self._request('DELETE', f'/api/v1/invites/{segment(invite_id)}',
                              audit_message=audit_message)
 
     def accept(self, code: str, audit_message=None) -> Any:
@@ -1980,7 +1980,7 @@ class DocumentsResource(_MetadataMethods, _Resource):
             as_of: Temporal query timestamp
             layers: Layer ids to restrict a body read to
         """
-        return self._request('GET', f'/api/v1/documents/{document_id}',
+        return self._request('GET', f'/api/v1/documents/{segment(document_id)}',
                              query_params={'include-body': include_body, 'as-of': as_of,
                                            'layers': _csv_param(layers)})
 
@@ -2003,7 +2003,7 @@ class DocumentsResource(_MetadataMethods, _Resource):
                 ``(connect, read)`` pair), not a cap on the whole transfer.
                 None or 0 waits as long as it takes.
         """
-        return self._request('GET', f'/api/v1/documents/{document_id}/media',
+        return self._request('GET', f'/api/v1/documents/{segment(document_id)}/media',
                              binary_response=True, to_path=to_path,
                              on_download_progress=on_progress, timeout=timeout)
 
@@ -2039,7 +2039,7 @@ class DocumentsResource(_MetadataMethods, _Resource):
             document_id: The document ID
             name: The name
         """
-        return self._request('PATCH', f'/api/v1/documents/{document_id}',
+        return self._request('PATCH', f'/api/v1/documents/{segment(document_id)}',
                              body=_body_of(name=name), audit_message=audit_message)
 
     def delete(self, document_id: str, audit_message=None) -> Any:
@@ -2048,7 +2048,7 @@ class DocumentsResource(_MetadataMethods, _Resource):
         Args:
             document_id: The document ID
         """
-        return self._request('DELETE', f'/api/v1/documents/{document_id}', audit_message=audit_message)
+        return self._request('DELETE', f'/api/v1/documents/{segment(document_id)}', audit_message=audit_message)
 
     def check_lock(self, document_id: str) -> Any:
         """Get information about a document lock.
@@ -2056,7 +2056,7 @@ class DocumentsResource(_MetadataMethods, _Resource):
         Args:
             document_id: The document ID
         """
-        return self._request('GET', f'/api/v1/documents/{document_id}/lock')
+        return self._request('GET', f'/api/v1/documents/{segment(document_id)}/lock')
 
     def acquire_lock(self, document_id: str, audit_message=None, new_lock_id=None) -> Any:
         """Acquire a document lock as a new holder.
@@ -2081,7 +2081,7 @@ class DocumentsResource(_MetadataMethods, _Resource):
             document_id: The document ID
             new_lock_id: Optional holder id this client minted
         """
-        return self._request('POST', f'/api/v1/documents/{document_id}/lock',
+        return self._request('POST', f'/api/v1/documents/{segment(document_id)}/lock',
                              query_params=({'new-lock-id': new_lock_id}
                                            if new_lock_id is not None else None),
                              audit_message=audit_message, out_of_band=True)
@@ -2098,7 +2098,7 @@ class DocumentsResource(_MetadataMethods, _Resource):
             document_id: The document ID
             lock_id: The ``lock_id`` :meth:`acquire_lock` answered with
         """
-        return self._request('POST', f'/api/v1/documents/{document_id}/lock',
+        return self._request('POST', f'/api/v1/documents/{segment(document_id)}/lock',
                              query_params={'lock-id': lock_id},
                              audit_message=audit_message, out_of_band=True)
 
@@ -2114,7 +2114,7 @@ class DocumentsResource(_MetadataMethods, _Resource):
             document_id: The document ID
             lock_id: The ``lock_id`` :meth:`acquire_lock` answered with
         """
-        return self._request('DELETE', f'/api/v1/documents/{document_id}/lock',
+        return self._request('DELETE', f'/api/v1/documents/{segment(document_id)}/lock',
                              query_params={'lock-id': lock_id},
                              audit_message=audit_message, out_of_band=True)
 
@@ -2202,7 +2202,7 @@ class DocumentsResource(_MetadataMethods, _Resource):
         Args:
             document_id: The document ID
         """
-        link = self._request('POST', f'/api/v1/documents/{document_id}/media/link',
+        link = self._request('POST', f'/api/v1/documents/{segment(document_id)}/media/link',
                              out_of_band=True)
         return {**link, 'url': f"{self._client.base_url}{link['url']}"}
 
@@ -2231,7 +2231,7 @@ class DocumentsResource(_MetadataMethods, _Resource):
                 the call may still raise it, and the server may store the
                 file all the same: read the document to know.
         """
-        return self._request('PUT', f'/api/v1/documents/{document_id}/media',
+        return self._request('PUT', f'/api/v1/documents/{segment(document_id)}/media',
                              body={'file': file}, form_data=True, no_batch=True,
                              audit_message=audit_message, on_upload_progress=on_progress,
                              signal=signal)
@@ -2253,7 +2253,7 @@ class DocumentsResource(_MetadataMethods, _Resource):
         # write of the document's own data and queues like any other. The
         # server removes the file only after the write commits, so a batch that
         # aborts after this op leaves the recording in place.
-        return self._request('DELETE', f'/api/v1/documents/{document_id}/media',
+        return self._request('DELETE', f'/api/v1/documents/{segment(document_id)}/media',
                              query_params={'media-version': media_version},
                              audit_message=audit_message)
 
@@ -2281,7 +2281,7 @@ class DocumentsResource(_MetadataMethods, _Resource):
             kinds: Only the entries of operations of these kinds, as a list or
                 comma-separated string (e.g. ``['review']``), each whole
         """
-        return list_all(self._client, f'/api/v1/documents/{document_id}/audit',
+        return list_all(self._client, f'/api/v1/documents/{segment(document_id)}/audit',
                         query=_audit_query(start_time, end_time, op_types, kinds))
 
     def audit_page(self, document_id: str, *, start_time: str | None = None,
@@ -2306,7 +2306,7 @@ class DocumentsResource(_MetadataMethods, _Resource):
                 inside an entry reads that operation alone, its ``part_of``
                 naming the entry
         """
-        return list_page(self._client, f'/api/v1/documents/{document_id}/audit', limit=limit, cursor=cursor,
+        return list_page(self._client, f'/api/v1/documents/{segment(document_id)}/audit', limit=limit, cursor=cursor,
                          query=_audit_query(start_time, end_time, op_types, kinds, order=order,
                                             ops_limit=ops_limit, entry_id=entry_id))
 
@@ -2333,7 +2333,7 @@ class DocumentsResource(_MetadataMethods, _Resource):
                 would change
             audit_message: Custom audit message for this operation
         """
-        return self._request('POST', f'/api/v1/documents/{document_id}/restore',
+        return self._request('POST', f'/api/v1/documents/{segment(document_id)}/restore',
                              query_params={'as-of': as_of,
                                            'dry-run': 'true' if dry_run else None},
                              audit_message=audit_message)
@@ -2365,7 +2365,7 @@ class DocumentsResource(_MetadataMethods, _Resource):
                 its answer was lost lands once (409 with ``id_taken`` when the
                 id was used before).
         """
-        return self._request('POST', f'/api/v1/documents/{document_id}/copy',
+        return self._request('POST', f'/api/v1/documents/{segment(document_id)}/copy',
                              body=_body_of(id=_UNSET if id is None else id, name=name, include_media=include_media,
                                            free_name=True if free_name else _UNSET),
                              audit_message=audit_message)
@@ -2410,7 +2410,7 @@ class MessagesResource(_Resource):
         Returns:
             Response from the send operation
         """
-        return self._request('POST', f'/api/v1/projects/{project_id}/message',
+        return self._request('POST', f'/api/v1/projects/{segment(project_id)}/message',
                              raw_body={'body': data}, no_operation=True)
 
     def discover_services(self, project_id: str) -> list:
@@ -2570,7 +2570,7 @@ class ProjectsResource(_ConfigMethods, _Resource):
         Args:
             id: The resource ID
         """
-        return self._request('GET', f'/api/v1/projects/{id}')
+        return self._request('GET', f'/api/v1/projects/{segment(id)}')
 
     def list(self) -> Any:
         """List all projects accessible to the current user.
@@ -2612,7 +2612,7 @@ class ProjectsResource(_ConfigMethods, _Resource):
         Args:
             id: The project ID
         """
-        return list_all(self._client, f'/api/v1/projects/{id}/documents')
+        return list_all(self._client, f'/api/v1/projects/{segment(id)}/documents')
 
     def list_documents_page(self, id: str, *, limit: int | None = None,
                             cursor: str | None = None) -> Any:
@@ -2626,7 +2626,7 @@ class ProjectsResource(_ConfigMethods, _Resource):
             limit: Page size (1..1000)
             cursor: Opaque cursor from a previous page's ``next_cursor``
         """
-        return list_page(self._client, f'/api/v1/projects/{id}/documents',
+        return list_page(self._client, f'/api/v1/projects/{segment(id)}/documents',
                          limit=limit, cursor=cursor)
 
     def iter_documents(self, id: str, *, page_size: int = 1000):
@@ -2639,7 +2639,7 @@ class ProjectsResource(_ConfigMethods, _Resource):
             id: The project ID
             page_size: Page size (1..1000)
         """
-        return iter_pages(self._client, f'/api/v1/projects/{id}/documents',
+        return iter_pages(self._client, f'/api/v1/projects/{segment(id)}/documents',
                           page_size=page_size)
 
     def create(self, name: str, audit_message=None, *, id: str | None = None) -> Any:
@@ -2664,7 +2664,7 @@ class ProjectsResource(_ConfigMethods, _Resource):
             id: The resource ID
             name: The name
         """
-        return self._request('PATCH', f'/api/v1/projects/{id}',
+        return self._request('PATCH', f'/api/v1/projects/{segment(id)}',
                              body=_body_of(name=name), audit_message=audit_message)
 
     def delete(self, id: str, audit_message=None, timeout=_UNSET) -> Any:
@@ -2683,7 +2683,7 @@ class ProjectsResource(_ConfigMethods, _Resource):
             timeout: Per-request timeout in seconds, the client's own by
                 default. ``None`` or 0 disables it.
         """
-        return self._request('DELETE', f'/api/v1/projects/{id}',
+        return self._request('DELETE', f'/api/v1/projects/{segment(id)}',
                               audit_message=audit_message,
                               **_body_of(timeout=timeout))
 
@@ -2700,7 +2700,7 @@ class ProjectsResource(_ConfigMethods, _Resource):
         Args:
             id: The project ID
         """
-        return self._request('GET', f'/api/v1/projects/{id}/deletion')
+        return self._request('GET', f'/api/v1/projects/{segment(id)}/deletion')
 
     def add_writer(self, id: str, user_id: str, audit_message=None) -> Any:
         """Set a user's access level to read and write for this project.
@@ -2709,7 +2709,7 @@ class ProjectsResource(_ConfigMethods, _Resource):
             id: The resource ID
             user_id: The user ID
         """
-        return self._request('POST', f'/api/v1/projects/{id}/writers/{user_id}', audit_message=audit_message)
+        return self._request('POST', f'/api/v1/projects/{segment(id)}/writers/{segment(user_id)}', audit_message=audit_message)
 
     def remove_writer(self, id: str, user_id: str, audit_message=None) -> Any:
         """Remove a user's writer privileges for this project.
@@ -2718,7 +2718,7 @@ class ProjectsResource(_ConfigMethods, _Resource):
             id: The resource ID
             user_id: The user ID
         """
-        return self._request('DELETE', f'/api/v1/projects/{id}/writers/{user_id}', audit_message=audit_message)
+        return self._request('DELETE', f'/api/v1/projects/{segment(id)}/writers/{segment(user_id)}', audit_message=audit_message)
 
     def add_reader(self, id: str, user_id: str, audit_message=None) -> Any:
         """Set a user's access level to read-only for this project.
@@ -2727,7 +2727,7 @@ class ProjectsResource(_ConfigMethods, _Resource):
             id: The resource ID
             user_id: The user ID
         """
-        return self._request('POST', f'/api/v1/projects/{id}/readers/{user_id}', audit_message=audit_message)
+        return self._request('POST', f'/api/v1/projects/{segment(id)}/readers/{segment(user_id)}', audit_message=audit_message)
 
     def remove_reader(self, id: str, user_id: str, audit_message=None) -> Any:
         """Remove a user's reader privileges for this project.
@@ -2736,7 +2736,7 @@ class ProjectsResource(_ConfigMethods, _Resource):
             id: The resource ID
             user_id: The user ID
         """
-        return self._request('DELETE', f'/api/v1/projects/{id}/readers/{user_id}', audit_message=audit_message)
+        return self._request('DELETE', f'/api/v1/projects/{segment(id)}/readers/{segment(user_id)}', audit_message=audit_message)
 
     def add_maintainer(self, id: str, user_id: str, audit_message=None) -> Any:
         """Assign a user as a maintainer for this project.
@@ -2745,7 +2745,7 @@ class ProjectsResource(_ConfigMethods, _Resource):
             id: The resource ID
             user_id: The user ID
         """
-        return self._request('POST', f'/api/v1/projects/{id}/maintainers/{user_id}', audit_message=audit_message)
+        return self._request('POST', f'/api/v1/projects/{segment(id)}/maintainers/{segment(user_id)}', audit_message=audit_message)
 
     def remove_maintainer(self, id: str, user_id: str, audit_message=None) -> Any:
         """Remove a user's maintainer privileges for this project.
@@ -2754,7 +2754,7 @@ class ProjectsResource(_ConfigMethods, _Resource):
             id: The resource ID
             user_id: The user ID
         """
-        return self._request('DELETE', f'/api/v1/projects/{id}/maintainers/{user_id}', audit_message=audit_message)
+        return self._request('DELETE', f'/api/v1/projects/{segment(id)}/maintainers/{segment(user_id)}', audit_message=audit_message)
 
     def audit(self, project_id: str, *, start_time: str | None = None,
               end_time: str | None = None,
@@ -2780,7 +2780,7 @@ class ProjectsResource(_ConfigMethods, _Resource):
             kinds: Only the entries of operations of these kinds, as a list or
                 comma-separated string (e.g. ``['review']``), each whole
         """
-        return list_all(self._client, f'/api/v1/projects/{project_id}/audit',
+        return list_all(self._client, f'/api/v1/projects/{segment(project_id)}/audit',
                         query=_audit_query(start_time, end_time, op_types, kinds))
 
     def audit_page(self, project_id: str, *, start_time: str | None = None,
@@ -2805,7 +2805,7 @@ class ProjectsResource(_ConfigMethods, _Resource):
                 inside an entry reads that operation alone, its ``part_of``
                 naming the entry
         """
-        return list_page(self._client, f'/api/v1/projects/{project_id}/audit', limit=limit, cursor=cursor,
+        return list_page(self._client, f'/api/v1/projects/{segment(project_id)}/audit', limit=limit, cursor=cursor,
                          query=_audit_query(start_time, end_time, op_types, kinds, order=order,
                                             ops_limit=ops_limit, entry_id=entry_id))
 
@@ -2822,7 +2822,7 @@ class ProjectsResource(_ConfigMethods, _Resource):
         Args:
             project_id: The project ID
         """
-        return self._request('GET', f'/api/v1/projects/{project_id}/audit/last-edits',
+        return self._request('GET', f'/api/v1/projects/{segment(project_id)}/audit/last-edits',
                              skip_response_transform=True)
 
     def link_vocab(self, id: str, vocab_id: str, audit_message=None) -> Any:
@@ -2837,7 +2837,7 @@ class ProjectsResource(_ConfigMethods, _Resource):
             id: The resource ID
             vocab_id: The vocab layer ID
         """
-        return self._request('POST', f'/api/v1/projects/{id}/vocabs/{vocab_id}', audit_message=audit_message)
+        return self._request('POST', f'/api/v1/projects/{segment(id)}/vocabs/{segment(vocab_id)}', audit_message=audit_message)
 
     def unlink_vocab(self, id: str, vocab_id: str, audit_message=None) -> Any:
         """End a project's borrowing of a vocabulary, removing that project's
@@ -2852,7 +2852,7 @@ class ProjectsResource(_ConfigMethods, _Resource):
             id: The resource ID
             vocab_id: The vocab layer ID
         """
-        return self._request('DELETE', f'/api/v1/projects/{id}/vocabs/{vocab_id}', audit_message=audit_message)
+        return self._request('DELETE', f'/api/v1/projects/{segment(id)}/vocabs/{segment(vocab_id)}', audit_message=audit_message)
 
     def vocab_unlinking(self, id: str, vocab_id: str) -> Any:
         """What unlinking a vocabulary from a project would remove, without
@@ -2867,7 +2867,7 @@ class ProjectsResource(_ConfigMethods, _Resource):
             id: The project ID
             vocab_id: The vocab layer ID
         """
-        return self._request('GET', f'/api/v1/projects/{id}/vocabs/{vocab_id}/unlinking')
+        return self._request('GET', f'/api/v1/projects/{segment(id)}/vocabs/{segment(vocab_id)}/unlinking')
 
 
 class TextLayersResource(_ConfigMethods, _LayerMethods, _Resource):
@@ -2898,7 +2898,7 @@ class VocabItemsResource(_MetadataMethods, _Resource):
         Args:
             id: The resource ID
         """
-        return self._request('GET', f'/api/v1/vocab-items/{id}')
+        return self._request('GET', f'/api/v1/vocab-items/{segment(id)}')
 
     def create(self, vocab_layer_id: str, form: str, metadata: Any = _UNSET, audit_message=None,
                *, id: str | None = None) -> Any:
@@ -2932,7 +2932,7 @@ class VocabItemsResource(_MetadataMethods, _Resource):
             id: The resource ID
             form: The vocab item form
         """
-        return self._request('PATCH', f'/api/v1/vocab-items/{id}',
+        return self._request('PATCH', f'/api/v1/vocab-items/{segment(id)}',
                              body=_body_of(form=form), audit_message=audit_message)
 
     def delete(self, id: str, audit_message=None, expected_link_count: int = None) -> Any:
@@ -2948,7 +2948,7 @@ class VocabItemsResource(_MetadataMethods, _Resource):
                 delete is refused with a 409 when the entry has any other
                 number of links by then.
         """
-        return self._request('DELETE', f'/api/v1/vocab-items/{id}',
+        return self._request('DELETE', f'/api/v1/vocab-items/{segment(id)}',
                              query_params={'expected-link-count': expected_link_count},
                              audit_message=audit_message)
 
@@ -3028,7 +3028,7 @@ class VocabItemsResource(_MetadataMethods, _Resource):
         Returns:
             ``{'moved': n, 'duplicates': n, 'removed': [ids]}``
         """
-        return self._request('POST', f'/api/v1/vocab-items/{survivor_id}/merge',
+        return self._request('POST', f'/api/v1/vocab-items/{segment(survivor_id)}/merge',
                              body={'losers': list(loser_ids)}, audit_message=audit_message)
 
 class RelationLayersResource(_ConfigMethods, _LayerMethods, _ConstraintMethods, _ValueSetMethods, _Resource):
@@ -3059,7 +3059,7 @@ class TokensResource(_MetadataMethods, _Resource):
         Args:
             token_id: The token ID
         """
-        return self._request('GET', f'/api/v1/tokens/{token_id}')
+        return self._request('GET', f'/api/v1/tokens/{segment(token_id)}')
 
     def create(self, token_layer_id: str, text: str, begin: int, end: int, *,
                precedence: Any = _UNSET, metadata: Any = _UNSET, audit_message=None,
@@ -3112,7 +3112,7 @@ class TokensResource(_MetadataMethods, _Resource):
                 int to set; pass ``None`` explicitly to CLEAR it (revert to no
                 explicit ordering).
         """
-        return self._request('PATCH', f'/api/v1/tokens/{token_id}',
+        return self._request('PATCH', f'/api/v1/tokens/{segment(token_id)}',
                              body=_body_of(begin=begin, end=end, precedence=precedence), audit_message=audit_message)
 
     def delete(self, token_id: str, audit_message=None) -> Any:
@@ -3124,7 +3124,7 @@ class TokensResource(_MetadataMethods, _Resource):
         Args:
             token_id: The token ID
         """
-        return self._request('DELETE', f'/api/v1/tokens/{token_id}', audit_message=audit_message)
+        return self._request('DELETE', f'/api/v1/tokens/{segment(token_id)}', audit_message=audit_message)
 
     def bulk_create(self, body: list, audit_message=None) -> dict:
         """Create multiple tokens in a single operation.
@@ -3187,7 +3187,7 @@ class TokensResource(_MetadataMethods, _Resource):
                 default. With ``'right'`` the new token, whose id is answered,
                 is the left half.
         """
-        return self._request('POST', f'/api/v1/tokens/{token_id}/split',
+        return self._request('POST', f'/api/v1/tokens/{segment(token_id)}/split',
                              body=_body_of(id=_UNSET if id is None else id,
                                            keep=_UNSET if keep is None else keep, position=position),
                              audit_message=audit_message)
@@ -3204,7 +3204,7 @@ class TokensResource(_MetadataMethods, _Resource):
             token_id: The anchor token ID
             other_token_id: The other token to merge in
         """
-        return self._request('POST', f'/api/v1/tokens/{token_id}/merge',
+        return self._request('POST', f'/api/v1/tokens/{segment(token_id)}/merge',
                              body=_body_of(other_token_id=other_token_id), audit_message=audit_message)
 
     def shift(self, token_id: str, *, begin: Any = _UNSET, end: Any = _UNSET, audit_message=None) -> Any:
@@ -3219,7 +3219,7 @@ class TokensResource(_MetadataMethods, _Resource):
             begin: New start offset, inclusive (Unicode code points). Omit to leave unchanged.
             end: New end offset, exclusive (Unicode code points). Omit to leave unchanged.
         """
-        return self._request('POST', f'/api/v1/tokens/{token_id}/shift',
+        return self._request('POST', f'/api/v1/tokens/{segment(token_id)}/shift',
                              body=_body_of(begin=begin, end=end), audit_message=audit_message)
 
 
@@ -3352,7 +3352,7 @@ class AdminResource(_Resource):
         Args:
             document_id: The document to unlock
         """
-        return self._request('DELETE', f'/api/v1/admin/locks/{document_id}',
+        return self._request('DELETE', f'/api/v1/admin/locks/{segment(document_id)}',
                              out_of_band=True)
 
     def rate_limits(self) -> Any:
@@ -3530,7 +3530,7 @@ class AuditResource(_Resource):
             document_id: Only the rows of this document
             vocab_layer_id: Only the rows of this vocabulary
         """
-        return list_all(self._client, f'/api/v1/audit/entries/{entry_id}/changes',
+        return list_all(self._client, f'/api/v1/audit/entries/{segment(entry_id)}/changes',
                         query={'document-id': document_id, 'vocab-layer-id': vocab_layer_id})
 
     def changes_page(self, entry_id: str, *, document_id: str | None = None,
@@ -3546,7 +3546,7 @@ class AuditResource(_Resource):
             limit: Page size (1..1000)
             cursor: Opaque cursor from a previous page's ``next_cursor``
         """
-        return list_page(self._client, f'/api/v1/audit/entries/{entry_id}/changes',
+        return list_page(self._client, f'/api/v1/audit/entries/{segment(entry_id)}/changes',
                          limit=limit, cursor=cursor,
                          query={'document-id': document_id, 'vocab-layer-id': vocab_layer_id})
 
@@ -3583,7 +3583,7 @@ class AuditResource(_Resource):
             vocab_layer_id: Only this vocabulary's entries and the links that
                 name one of them
         """
-        return self._request('POST', f'/api/v1/audit/entries/{entry_id}/undo',
+        return self._request('POST', f'/api/v1/audit/entries/{segment(entry_id)}/undo',
                              query_params={'dry-run': 'true' if dry_run else None,
                                            'document-id': document_id,
                                            'vocab-layer-id': vocab_layer_id},
@@ -3630,7 +3630,7 @@ class AuditResource(_Resource):
             daily: Also return ``by_day``, a list of ``{date, changes}`` per
                 user, oldest first, at the cost of a second grouped scan
         """
-        path = (f'/api/v1/projects/{project_id}/audit/tally' if project_id
+        path = (f'/api/v1/projects/{segment(project_id)}/audit/tally' if project_id
                 else '/api/v1/audit/tally')
         result = self._request('GET', path,
                                query_params={'start-time': start_time, 'end-time': end_time,
@@ -3666,7 +3666,7 @@ class EventsResource(_Resource):
             start_time: Only events the server stamped at or after this instant
             end_time: Only events the server stamped at or before this instant
         """
-        return list_all(self._client, f'/api/v1/projects/{project_id}/events',
+        return list_all(self._client, f'/api/v1/projects/{segment(project_id)}/events',
                         query={'types': _csv_param(types), 'start-time': start_time,
                                'end-time': end_time})
 
@@ -3683,7 +3683,7 @@ class EventsResource(_Resource):
             limit: Page size (1..1000)
             cursor: Opaque cursor from a previous page's ``next_cursor``
         """
-        return list_page(self._client, f'/api/v1/projects/{project_id}/events',
+        return list_page(self._client, f'/api/v1/projects/{segment(project_id)}/events',
                          limit=limit, cursor=cursor,
                          query={'types': _csv_param(types), 'start-time': start_time,
                                 'end-time': end_time})
@@ -3699,7 +3699,7 @@ class EventsResource(_Resource):
             end_time: Only events the server stamped at or before this instant
             page_size: Page size (1..1000)
         """
-        return iter_pages(self._client, f'/api/v1/projects/{project_id}/events',
+        return iter_pages(self._client, f'/api/v1/projects/{segment(project_id)}/events',
                           page_size=page_size,
                           query={'types': _csv_param(types), 'start-time': start_time,
                                  'end-time': end_time})
@@ -3719,7 +3719,7 @@ class EventsResource(_Resource):
         Returns:
             ``{'count': n}``, the number stored
         """
-        return self._request('POST', f'/api/v1/projects/{project_id}/events',
+        return self._request('POST', f'/api/v1/projects/{segment(project_id)}/events',
                              body=list(events), out_of_band=True)
 
 
@@ -3772,7 +3772,7 @@ class JobsResource(_Resource):
         """
         # A job is not audited, so it never joins an open operation, and never
         # takes a number from an operation's Idempotency-Key seed.
-        return self._request('POST', f'/api/v1/projects/{project_id}/jobs',
+        return self._request('POST', f'/api/v1/projects/{segment(project_id)}/jobs',
                              body=_body_of(id=_UNSET if id is None else id, app=app,
                                            documents=_UNSET if documents is None else documents,
                                            instructions=instructions,
@@ -3784,7 +3784,7 @@ class JobsResource(_Resource):
         report and with ``document_count``, how many documents it holds.
         Transparently follows pagination cursors and returns the full flat
         list. Any reader of the project."""
-        return list_all(self._client, f'/api/v1/projects/{project_id}/jobs')
+        return list_all(self._client, f'/api/v1/projects/{segment(project_id)}/jobs')
 
     def list_page(self, project_id: str, *, limit: int | None = None,
                   cursor: str | None = None) -> Any:
@@ -3796,7 +3796,7 @@ class JobsResource(_Resource):
             limit: Page size (1..1000)
             cursor: Opaque cursor from a previous page's ``next_cursor``
         """
-        return list_page(self._client, f'/api/v1/projects/{project_id}/jobs',
+        return list_page(self._client, f'/api/v1/projects/{segment(project_id)}/jobs',
                          limit=limit, cursor=cursor)
 
     def iter_pages(self, project_id: str, *, page_size: int = 1000):
@@ -3807,7 +3807,7 @@ class JobsResource(_Resource):
             project_id: The project
             page_size: Page size (1..1000)
         """
-        return iter_pages(self._client, f'/api/v1/projects/{project_id}/jobs',
+        return iter_pages(self._client, f'/api/v1/projects/{segment(project_id)}/jobs',
                           page_size=page_size)
 
     def get(self, job_id: str) -> Any:
@@ -3818,7 +3818,7 @@ class JobsResource(_Resource):
         its worker has gone silent. ``wrote`` (this read only) is True when
         History holds a change the job wrote, whatever its report counts. A
         read changes nothing."""
-        return self._request('GET', f'/api/v1/jobs/{job_id}')
+        return self._request('GET', f'/api/v1/jobs/{segment(job_id)}')
 
     def pieces(self, job_id: str) -> Any:
         """What a job has done so far, newest first: a row per piece of its
@@ -3828,7 +3828,7 @@ class JobsResource(_Resource):
         summary as it wrote it, keys re-cased. Any reader of the job's
         project. Transparently follows pagination cursors and returns the full
         flat list."""
-        return list_all(self._client, f'/api/v1/jobs/{job_id}/pieces')
+        return list_all(self._client, f'/api/v1/jobs/{segment(job_id)}/pieces')
 
     def pieces_page(self, job_id: str, *, limit: int | None = None, cursor: str | None = None) -> Any:
         """One page of what a job has done so far, newest first.
@@ -3838,12 +3838,12 @@ class JobsResource(_Resource):
             limit: Page size (1..1000)
             cursor: Opaque cursor from a previous page's ``next_cursor``
         """
-        return list_page(self._client, f'/api/v1/jobs/{job_id}/pieces', limit=limit, cursor=cursor)
+        return list_page(self._client, f'/api/v1/jobs/{segment(job_id)}/pieces', limit=limit, cursor=cursor)
 
     def active(self, project_id: str) -> Any:
         """The project's job that is waiting, running or stopping, with its
         documents and no report, or None when it has none."""
-        return _or_none(self._request('GET', f'/api/v1/projects/{project_id}/jobs/active'))
+        return _or_none(self._request('GET', f'/api/v1/projects/{segment(project_id)}/jobs/active'))
 
     def cancel(self, job_id: str) -> Any:
         """Stop a job.
@@ -3854,7 +3854,7 @@ class JobsResource(_Resource):
         its worker finishes the stretch in flight, or ends at once when no
         worker holds it. Refused with 409 ``job-finished`` once it has ended.
         """
-        return self._request('POST', f'/api/v1/jobs/{job_id}/cancel', no_operation=True)
+        return self._request('POST', f'/api/v1/jobs/{segment(job_id)}/cancel', no_operation=True)
 
     def undo(self, job_id: str, *, dry_run: bool = False) -> Any:
         """Undo everything an ended job wrote, as one operation.
@@ -3873,7 +3873,7 @@ class JobsResource(_Resource):
             job_id: The job
             dry_run: Write nothing and say what would be done
         """
-        return self._request('POST', f'/api/v1/jobs/{job_id}/undo',
+        return self._request('POST', f'/api/v1/jobs/{segment(job_id)}/undo',
                              query_params={'dry-run': 'true' if dry_run else None},
                              timeout=self._client.batch_timeout, no_operation=True)
 
@@ -3923,7 +3923,7 @@ class JobsResource(_Resource):
             waiting_for: ``people`` or ``model``
             current_document: The document being worked
         """
-        return self._request('POST', f'/api/v1/jobs/{job_id}/heartbeat',
+        return self._request('POST', f'/api/v1/jobs/{segment(job_id)}/heartbeat',
                              body=_body_of(worker_id=worker_id, phase=phase, message=message,
                                            waiting_for=waiting_for, current_document=current_document),
                              out_of_band=True)
@@ -3957,7 +3957,7 @@ class JobsResource(_Resource):
             gloss_group: The operation group of the job's work here
             harmonize_group: The operation group of its harmonize here
         """
-        return self._request('PUT', f'/api/v1/jobs/{job_id}/documents/{document_id}',
+        return self._request('PUT', f'/api/v1/jobs/{segment(job_id)}/documents/{segment(document_id)}',
                              body=_body_of(worker_id=worker_id, state=state, sentences=sentences,
                                            targets=targets, done=done, last_sentence=last_sentence,
                                            defers=defers, counts=counts, skipped=skipped,
@@ -3979,7 +3979,7 @@ class JobsResource(_Resource):
             report: The report (the core manual, "Jobs")
             reason: Why, for a failed job (the manual's reason codes)
         """
-        return self._request('POST', f'/api/v1/jobs/{job_id}/finish',
+        return self._request('POST', f'/api/v1/jobs/{segment(job_id)}/finish',
                              body=_body_of(worker_id=worker_id, state=state,
                                            reason=_UNSET if reason is None else reason, report=report),
                              out_of_band=True)
@@ -3995,14 +3995,14 @@ class JobsResource(_Resource):
             decisions: ``[{form, key, analysis, count, document_id, sentence_id}]``,
                 ``analysis`` the worker's canonical JSON text, kept verbatim
         """
-        self._request('POST', f'/api/v1/jobs/{job_id}/decisions',
+        self._request('POST', f'/api/v1/jobs/{segment(job_id)}/decisions',
                       body={'worker_id': worker_id, 'decisions': decisions}, out_of_band=True)
 
     def lookup_decisions(self, job_id: str, forms: list) -> Any:
         """Every decision of a job for these forms, by form, then count from
         the most, then key. Admin only. 1 to 1,000 forms."""
         # A read that travels as a POST, so a form may hold any character.
-        return self._request('POST', f'/api/v1/jobs/{job_id}/decisions/lookup',
+        return self._request('POST', f'/api/v1/jobs/{segment(job_id)}/decisions/lookup',
                              body={'forms': forms}, out_of_band=True)
 
     def landed(self, job_id: str, refs: list) -> list:
@@ -4011,13 +4011,13 @@ class JobsResource(_Resource):
         under each seed of ``refs``, read from the audit log, which keeps
         them for good. An admin or the job's own token. 1 to 1,000 seeds."""
         # A read that travels as a POST, so the seeds go in its body.
-        return (self._request('POST', f'/api/v1/jobs/{job_id}/landed', body={'refs': refs},
+        return (self._request('POST', f'/api/v1/jobs/{segment(job_id)}/landed', body={'refs': refs},
                               out_of_band=True) or {}).get('keys') or []
 
     def decisions(self, job_id: str) -> Any:
         """Every decision of a job, by form and key. Admin only. Transparently
         follows pagination cursors and returns the full flat list."""
-        return list_all(self._client, f'/api/v1/jobs/{job_id}/decisions')
+        return list_all(self._client, f'/api/v1/jobs/{segment(job_id)}/decisions')
 
     def model_busy(self, pool: str) -> Any:
         """How busy a model key is: ``{in_flight, last_finished_at}``, the
@@ -4039,7 +4039,7 @@ class OperationGroupsResource(_Resource):
         Args:
             id: The group id
         """
-        return self._request('GET', f'/api/v1/operation-groups/{id}')
+        return self._request('GET', f'/api/v1/operation-groups/{segment(id)}')
 
     def update(self, id: str, message: str | None) -> Any:
         """Relabel a logical-operation group after the fact. Owner or admin only.
@@ -4048,7 +4048,7 @@ class OperationGroupsResource(_Resource):
             id: The group id
             message: The new label
         """
-        return self._request('PATCH', f'/api/v1/operation-groups/{id}', body={'message': message})
+        return self._request('PATCH', f'/api/v1/operation-groups/{segment(id)}', body={'message': message})
 
 
 def _install_resources(target):

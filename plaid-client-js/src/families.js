@@ -5,6 +5,7 @@
  * comma-separated value, and an audit read's query.
  */
 
+import { apiPath } from "./path.js";
 import { constraintsBody } from "./constraints.js";
 import { listAll, listPage } from "./pagination.js";
 
@@ -117,7 +118,7 @@ export function auditQuery({ startTime, endTime, opTypes, itemId, kinds, order, 
  * @param {"documents"|"projects"|"users"} kind
  */
 export function auditMethods(client, kind) {
-  const path = (id) => `/api/v1/${kind}/${id}/audit`;
+  const path = (id) => apiPath`/api/v1/${kind}/${id}/audit`;
   return {
     /**
      * Get the audit log of a document or a project, or of a user's actions.
@@ -181,7 +182,7 @@ export function auditMethods(client, kind) {
  * @param {K} kind
  */
 export function metadataMethods(client, kind) {
-  const path = (id) => `/api/v1/${kind}/${id}/metadata`;
+  const path = (id) => apiPath`/api/v1/${kind}/${id}/metadata`;
   return {
     /**
      * Replace all metadata of an entity. Keys left out of the new map are removed.
@@ -218,7 +219,7 @@ export function metadataMethods(client, kind) {
  * @param {string} kind
  */
 export function configMethods(client, kind) {
-  const path = (id, namespace, configKey) => `/api/v1/${kind}/${id}/config/${namespace}/${configKey}`;
+  const path = (id, namespace, configKey) => apiPath`/api/v1/${kind}/${id}/config/${namespace}/${configKey}`;
   return {
     /**
      * Set a configuration value in an editor namespace.
@@ -266,7 +267,7 @@ export function configMethods(client, kind) {
  * @param {K} kind
  */
 export function layerMethods(client, kind) {
-  const path = (layerId) => `/api/v1/${kind}/${layerId}`;
+  const path = (layerId) => apiPath`/api/v1/${kind}/${layerId}`;
   return {
     /**
      * Get a layer by ID.
@@ -312,7 +313,7 @@ export function layerMethods(client, kind) {
  * @param {string} kind
  */
 export function constraintMethods(client, kind) {
-  const base = (layerId) => `/api/v1/${kind}/${layerId}/constraints`;
+  const base = (layerId) => apiPath`/api/v1/${kind}/${layerId}/constraints`;
   return {
     /**
      * Declare an app namespace's constraints on this layer, replacing that
@@ -328,7 +329,7 @@ export function constraintMethods(client, kind) {
      * @returns {Promise<{constraints: Record<string, LayerConstraint[]>}>} the layer's whole constraint map
      */
     setConstraints: (layerId, namespace, constraints, auditMessage, options) =>
-      client._request("PUT", `${base(layerId)}/${namespace}`, {
+      client._request("PUT", base(layerId) + apiPath`/${namespace}`, {
         auditMessage,
         body: constraintsBody(constraints, options),
       }),
@@ -342,7 +343,7 @@ export function constraintMethods(client, kind) {
      */
     deleteConstraints: (layerId, namespace, auditMessage, options) => {
       const body = constraintsBody(undefined, options);
-      return client._request("DELETE", `${base(layerId)}/${namespace}`, {
+      return client._request("DELETE", base(layerId) + apiPath`/${namespace}`, {
         auditMessage,
         ...(Object.keys(body).length ? { body } : {}),
       });
@@ -409,7 +410,7 @@ export function valueSetMethods(client, kind) {
      */
     // outOfBand, as checkConstraints.
     refusedValues: (layerId, rule, options) =>
-      client._request("POST", `/api/v1/${kind}/${layerId}/constraints/refused-values`, {
+      client._request("POST", apiPath`/api/v1/${kind}/${layerId}/constraints/refused-values`, {
         outOfBand: true,
         body: bodyOf({
           values: rule?.values,

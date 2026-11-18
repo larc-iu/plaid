@@ -4,6 +4,7 @@
  * client (client.js installs them).
  */
 
+import { apiPath } from "./path.js";
 import { recorderFor } from "./events.js";
 import { auditMethods, bodyOf, configMethods, refuseUnknownOptions } from "./families.js";
 import { iterPages, listAll, listPage } from "./pagination.js";
@@ -116,7 +117,7 @@ export function projectsApi(client) {
      * @returns {Promise<Project>}
      */
     get: (id) =>
-      client._request("GET", `/api/v1/projects/${id}`),
+      client._request("GET", apiPath`/api/v1/projects/${id}`),
     /**
      * List all projects accessible to user. Transparently follows pagination
      * cursors and returns the full flat array.
@@ -154,7 +155,7 @@ export function projectsApi(client) {
      * @param {string} id - The project ID
      * @returns {Promise<DocumentListEntry[]>}
      */
-    listDocuments: (id) => listAll(client, `/api/v1/projects/${id}/documents`),
+    listDocuments: (id) => listAll(client, apiPath`/api/v1/projects/${id}/documents`),
     /**
      * Fetch a single page of a project's documents.
      *
@@ -167,7 +168,7 @@ export function projectsApi(client) {
      * @returns {Promise<Page<DocumentListEntry>>}
      */
     listDocumentsPage: (id, { limit, cursor } = {}) =>
-      listPage(client, `/api/v1/projects/${id}/documents`, { limit, cursor }),
+      listPage(client, apiPath`/api/v1/projects/${id}/documents`, { limit, cursor }),
     /**
      * Async-iterate a project's documents page by page; yields each page's
      * entries array.
@@ -180,7 +181,7 @@ export function projectsApi(client) {
      * @returns {AsyncGenerator<DocumentListEntry[]>}
      */
     iterDocuments: (id, { pageSize } = {}) =>
-      iterPages(client, `/api/v1/projects/${id}/documents`, { pageSize }),
+      iterPages(client, apiPath`/api/v1/projects/${id}/documents`, { pageSize }),
     /**
      * Create a new project. Note: this also registers the user as a maintainer.
      * @param {string} name - The name
@@ -202,7 +203,7 @@ export function projectsApi(client) {
      * @returns {Promise<Project>}
      */
     update: (id, name, auditMessage) =>
-      client._request("PATCH", `/api/v1/projects/${id}`, {
+      client._request("PATCH", apiPath`/api/v1/projects/${id}`, {
         auditMessage,
         body: bodyOf({ name }),
       }),
@@ -223,7 +224,7 @@ export function projectsApi(client) {
      */
     delete: (id, auditMessage, options = {}) => {
       refuseUnknownOptions("projects.delete", options, ["timeout"]);
-      return client._request("DELETE", `/api/v1/projects/${id}`, {
+      return client._request("DELETE", apiPath`/api/v1/projects/${id}`, {
         auditMessage,
         timeout: options.timeout,
       });
@@ -238,7 +239,7 @@ export function projectsApi(client) {
      * @param {string} id - The project ID
      * @returns {Promise<{vocabularies: Array<{id: string, name: string}>}>}
      */
-    deletion: (id) => client._request("GET", `/api/v1/projects/${id}/deletion`),
+    deletion: (id) => client._request("GET", apiPath`/api/v1/projects/${id}/deletion`),
     /**
      * Set a user's access level to read and write for this project.
      * @param {string} id - The resource ID
@@ -247,7 +248,7 @@ export function projectsApi(client) {
      * @returns {Promise<void>}
      */
     addWriter: (id, userId, auditMessage) =>
-      client._request("POST", `/api/v1/projects/${id}/writers/${userId}`, {
+      client._request("POST", apiPath`/api/v1/projects/${id}/writers/${userId}`, {
         auditMessage,
       }),
     /**
@@ -258,7 +259,7 @@ export function projectsApi(client) {
      * @returns {Promise<void>}
      */
     removeWriter: (id, userId, auditMessage) =>
-      client._request("DELETE", `/api/v1/projects/${id}/writers/${userId}`, {
+      client._request("DELETE", apiPath`/api/v1/projects/${id}/writers/${userId}`, {
         auditMessage,
       }),
     /**
@@ -269,7 +270,7 @@ export function projectsApi(client) {
      * @returns {Promise<void>}
      */
     addReader: (id, userId, auditMessage) =>
-      client._request("POST", `/api/v1/projects/${id}/readers/${userId}`, {
+      client._request("POST", apiPath`/api/v1/projects/${id}/readers/${userId}`, {
         auditMessage,
       }),
     /**
@@ -280,7 +281,7 @@ export function projectsApi(client) {
      * @returns {Promise<void>}
      */
     removeReader: (id, userId, auditMessage) =>
-      client._request("DELETE", `/api/v1/projects/${id}/readers/${userId}`, {
+      client._request("DELETE", apiPath`/api/v1/projects/${id}/readers/${userId}`, {
         auditMessage,
       }),
     /**
@@ -291,7 +292,7 @@ export function projectsApi(client) {
      * @returns {Promise<void>}
      */
     addMaintainer: (id, userId, auditMessage) =>
-      client._request("POST", `/api/v1/projects/${id}/maintainers/${userId}`, {
+      client._request("POST", apiPath`/api/v1/projects/${id}/maintainers/${userId}`, {
         auditMessage,
       }),
     /**
@@ -304,7 +305,7 @@ export function projectsApi(client) {
     removeMaintainer: (id, userId, auditMessage) =>
       client._request(
         "DELETE",
-        `/api/v1/projects/${id}/maintainers/${userId}`,
+        apiPath`/api/v1/projects/${id}/maintainers/${userId}`,
         { auditMessage },
       ),
     /**
@@ -318,7 +319,7 @@ export function projectsApi(client) {
      * @returns {Promise<Object<string, string>>}
      */
     myLastEdits: (projectId) =>
-      client._request("GET", `/api/v1/projects/${projectId}/audit/last-edits`, {
+      client._request("GET", apiPath`/api/v1/projects/${projectId}/audit/last-edits`, {
         skipResponseTransform: true,
       }),
     /**
@@ -333,7 +334,7 @@ export function projectsApi(client) {
      * @returns {Promise<void>}
      */
     linkVocab: (id, vocabId, auditMessage) =>
-      client._request("POST", `/api/v1/projects/${id}/vocabs/${vocabId}`, {
+      client._request("POST", apiPath`/api/v1/projects/${id}/vocabs/${vocabId}`, {
         auditMessage,
       }),
     /**
@@ -351,7 +352,7 @@ export function projectsApi(client) {
      */
     unlinkVocab: (id, vocabId, auditMessage, options = {}) => {
       refuseUnknownOptions("projects.unlinkVocab", options);
-      return client._request("DELETE", `/api/v1/projects/${id}/vocabs/${vocabId}`, { auditMessage });
+      return client._request("DELETE", apiPath`/api/v1/projects/${id}/vocabs/${vocabId}`, { auditMessage });
     },
     /**
      * What unlinking a vocabulary from a project would remove, without
@@ -364,7 +365,7 @@ export function projectsApi(client) {
      * @returns {Promise<{links: number}>}
      */
     vocabUnlinking: (id, vocabId) =>
-      client._request("GET", `/api/v1/projects/${id}/vocabs/${vocabId}/unlinking`),
+      client._request("GET", apiPath`/api/v1/projects/${id}/vocabs/${vocabId}/unlinking`),
     ...configMethods(client, "projects"),
     ...auditMethods(client, "projects"),
   };
@@ -378,7 +379,7 @@ export function guidelinesApi(client) {
      * @param {string} id - The guideline id
      * @returns {Promise<Guideline>}
      */
-    get: (id) => client._request("GET", `/api/v1/guidelines/${id}`),
+    get: (id) => client._request("GET", apiPath`/api/v1/guidelines/${id}`),
     /**
      * List a project's guidelines, by title. Transparently follows
      * pagination cursors and returns the full flat array.
@@ -393,7 +394,7 @@ export function guidelinesApi(client) {
      * @returns {Promise<Guideline[]>}
      */
     list: (projectId, { includeBodies } = {}) =>
-      listAll(client, `/api/v1/projects/${projectId}/guidelines`, {
+      listAll(client, apiPath`/api/v1/projects/${projectId}/guidelines`, {
         query: { "include-bodies": includeBodies },
       }),
     /**
@@ -406,7 +407,7 @@ export function guidelinesApi(client) {
      * @returns {Promise<Page<Guideline>>}
      */
     listPage: (projectId, { limit, cursor, includeBodies } = {}) =>
-      listPage(client, `/api/v1/projects/${projectId}/guidelines`, {
+      listPage(client, apiPath`/api/v1/projects/${projectId}/guidelines`, {
         limit,
         cursor,
         query: { "include-bodies": includeBodies },
@@ -420,7 +421,7 @@ export function guidelinesApi(client) {
      * @returns {AsyncGenerator<Guideline[]>}
      */
     iterPages: (projectId, { pageSize, includeBodies } = {}) =>
-      iterPages(client, `/api/v1/projects/${projectId}/guidelines`, {
+      iterPages(client, apiPath`/api/v1/projects/${projectId}/guidelines`, {
         pageSize,
         query: { "include-bodies": includeBodies },
       }),
@@ -440,7 +441,7 @@ export function guidelinesApi(client) {
      * @returns {Promise<{id: string}>}
      */
     create: (projectId, title, { body, pinned, id } = {}, auditMessage) =>
-      client._request("POST", `/api/v1/projects/${projectId}/guidelines`, {
+      client._request("POST", apiPath`/api/v1/projects/${projectId}/guidelines`, {
         auditMessage,
         body: bodyOf({ id, title, body, pinned }),
       }),
@@ -466,7 +467,7 @@ export function guidelinesApi(client) {
       { title, body, pinned, expectedUpdatedAt } = {},
       auditMessage,
     ) =>
-      client._request("PATCH", `/api/v1/guidelines/${id}`, {
+      client._request("PATCH", apiPath`/api/v1/guidelines/${id}`, {
         auditMessage,
         queryParams: { "updated-at": expectedUpdatedAt },
         body: bodyOf({ title, body, pinned }),
@@ -478,7 +479,7 @@ export function guidelinesApi(client) {
      * @returns {Promise<void>}
      */
     delete: (id, auditMessage) =>
-      client._request("DELETE", `/api/v1/guidelines/${id}`, { auditMessage }),
+      client._request("DELETE", apiPath`/api/v1/guidelines/${id}`, { auditMessage }),
   };
 }
 
@@ -490,7 +491,7 @@ export function commentsApi(client) {
      * @param {string} id - The comment id
      * @returns {Promise<Comment>}
      */
-    get: (id) => client._request("GET", `/api/v1/comments/${id}`),
+    get: (id) => client._request("GET", apiPath`/api/v1/comments/${id}`),
     /**
      * List comments in a project, oldest first. Transparently follows
      * pagination cursors and returns the full flat array.
@@ -502,7 +503,7 @@ export function commentsApi(client) {
      * @returns {Promise<Comment[]>}
      */
     list: (projectId, { documentId, entityType, entityId } = {}) =>
-      listAll(client, `/api/v1/projects/${projectId}/comments`, {
+      listAll(client, apiPath`/api/v1/projects/${projectId}/comments`, {
         query: {
           "document-id": documentId,
           "entity-type": entityType,
@@ -524,7 +525,7 @@ export function commentsApi(client) {
       projectId,
       { limit, cursor, documentId, entityType, entityId } = {},
     ) =>
-      listPage(client, `/api/v1/projects/${projectId}/comments`, {
+      listPage(client, apiPath`/api/v1/projects/${projectId}/comments`, {
         limit,
         cursor,
         query: {
@@ -547,7 +548,7 @@ export function commentsApi(client) {
       projectId,
       { pageSize, documentId, entityType, entityId } = {},
     ) =>
-      iterPages(client, `/api/v1/projects/${projectId}/comments`, {
+      iterPages(client, apiPath`/api/v1/projects/${projectId}/comments`, {
         pageSize,
         query: {
           "document-id": documentId,
@@ -565,7 +566,7 @@ export function commentsApi(client) {
      * @returns {Promise<Comment[]>}
      */
     listInVocab: (vocabId, { entityId } = {}) =>
-      listAll(client, `/api/v1/vocab-layers/${vocabId}/comments`, {
+      listAll(client, apiPath`/api/v1/vocab-layers/${vocabId}/comments`, {
         query: { "entity-id": entityId },
       }),
     /**
@@ -578,7 +579,7 @@ export function commentsApi(client) {
      * @returns {Promise<Page<Comment>>}
      */
     listInVocabPage: (vocabId, { limit, cursor, entityId } = {}) =>
-      listPage(client, `/api/v1/vocab-layers/${vocabId}/comments`, {
+      listPage(client, apiPath`/api/v1/vocab-layers/${vocabId}/comments`, {
         limit,
         cursor,
         query: { "entity-id": entityId },
@@ -593,7 +594,7 @@ export function commentsApi(client) {
      * @returns {AsyncGenerator<Comment[]>}
      */
     iterInVocabPages: (vocabId, { entityId, pageSize } = {}) =>
-      iterPages(client, `/api/v1/vocab-layers/${vocabId}/comments`, {
+      iterPages(client, apiPath`/api/v1/vocab-layers/${vocabId}/comments`, {
         pageSize,
         query: { "entity-id": entityId },
       }),
@@ -635,7 +636,7 @@ export function commentsApi(client) {
      * @returns {Promise<Comment>}
      */
     update: (id, body) =>
-      client._request("PATCH", `/api/v1/comments/${id}`, {
+      client._request("PATCH", apiPath`/api/v1/comments/${id}`, {
         body: { body },
         noOperation: true,
       }),
@@ -646,7 +647,7 @@ export function commentsApi(client) {
      * @returns {Promise<void>}
      */
     delete: (id) =>
-      client._request("DELETE", `/api/v1/comments/${id}`, { noOperation: true }),
+      client._request("DELETE", apiPath`/api/v1/comments/${id}`, { noOperation: true }),
     /**
      * Comment counts per entity, as an `{entityId: n}` map, over the same
      * scope and filters as `list`. One cheap request paints a comment
@@ -660,7 +661,7 @@ export function commentsApi(client) {
      * @returns {Promise<Object<string, number>>}
      */
     counts: (projectId, { documentId, entityType, entityId } = {}) =>
-      client._request("GET", `/api/v1/projects/${projectId}/comments/counts`, {
+      client._request("GET", apiPath`/api/v1/projects/${projectId}/comments/counts`, {
         queryParams: {
           "document-id": documentId,
           "entity-type": entityType,
@@ -679,7 +680,7 @@ export function commentsApi(client) {
     countsInVocab: (vocabId, { entityId } = {}) =>
       client._request(
         "GET",
-        `/api/v1/vocab-layers/${vocabId}/comments/counts`,
+        apiPath`/api/v1/vocab-layers/${vocabId}/comments/counts`,
         {
           queryParams: { "entity-id": entityId },
           skipResponseTransform: true,
@@ -703,7 +704,7 @@ export function eventsApi(client) {
      * @returns {Promise<ClientEvent[]>}
      */
     list: (projectId, { types, startTime, endTime } = {}) =>
-      listAll(client, `/api/v1/projects/${projectId}/events`, {
+      listAll(client, apiPath`/api/v1/projects/${projectId}/events`, {
         query: eventQuery(types, startTime, endTime),
       }),
     /**
@@ -721,7 +722,7 @@ export function eventsApi(client) {
       projectId,
       { limit, cursor, types, startTime, endTime } = {},
     ) =>
-      listPage(client, `/api/v1/projects/${projectId}/events`, {
+      listPage(client, apiPath`/api/v1/projects/${projectId}/events`, {
         limit,
         cursor,
         query: eventQuery(types, startTime, endTime),
@@ -737,7 +738,7 @@ export function eventsApi(client) {
      * @returns {AsyncGenerator<ClientEvent[]>}
      */
     iterPages: (projectId, { pageSize, types, startTime, endTime } = {}) =>
-      iterPages(client, `/api/v1/projects/${projectId}/events`, {
+      iterPages(client, apiPath`/api/v1/projects/${projectId}/events`, {
         pageSize,
         query: eventQuery(types, startTime, endTime),
       }),
@@ -750,7 +751,7 @@ export function eventsApi(client) {
      * @returns {Promise<{count: number}>}
      */
     create: (projectId, events) =>
-      client._request("POST", `/api/v1/projects/${projectId}/events`, {
+      client._request("POST", apiPath`/api/v1/projects/${projectId}/events`, {
         body: events,
         outOfBand: true,
       }),
@@ -799,7 +800,7 @@ export function operationGroupsApi(client) {
      * @param {string} id - The group id
      * @returns {Promise<OperationGroup>}
      */
-    get: (id) => client._request("GET", `/api/v1/operation-groups/${id}`),
+    get: (id) => client._request("GET", apiPath`/api/v1/operation-groups/${id}`),
     /**
      * Relabel a logical-operation group after the fact. Owner or admin only.
      * @param {string} id - The group id
@@ -807,7 +808,7 @@ export function operationGroupsApi(client) {
      * @returns {Promise<OperationGroup>}
      */
     update: (id, message) =>
-      client._request("PATCH", `/api/v1/operation-groups/${id}`, {
+      client._request("PATCH", apiPath`/api/v1/operation-groups/${id}`, {
         body: { message },
       }),
   };

@@ -20,7 +20,7 @@ import uuid
 import requests
 import urllib3.exceptions as urllib3_exceptions
 
-from plaid_client.http import PlaidAPIError, short_error
+from plaid_client.http import PlaidAPIError, segment, short_error
 from plaid_client.sse import SSE_CONNECT_TIMEOUT_S, abort_response
 from plaid_client.transforms import transform_request, transform_response
 
@@ -206,7 +206,7 @@ def discover_services(client, project_id):
     entry with ``seen: False`` for each held id whose registration was
     forgotten.
     """
-    return client.messages._request('GET', f'/api/v1/projects/{project_id}/services')
+    return client.messages._request('GET', f'/api/v1/projects/{segment(project_id)}/services')
 
 
 def discard_service(client, project_id, service_id):
@@ -217,7 +217,7 @@ def discard_service(client, project_id, service_id):
     # of http.py).
     return client.messages._request(
         'DELETE',
-        f'/api/v1/projects/{project_id}/services/{urllib.parse.quote(service_id, safe="")}',
+        f'/api/v1/projects/{segment(project_id)}/services/{segment(service_id)}',
         out_of_band=True)
 
 
@@ -233,7 +233,7 @@ def release_service(client, project_id, service_id):
     # of http.py).
     return client.messages._request(
         'DELETE',
-        f'/api/v1/projects/{project_id}/services/{urllib.parse.quote(service_id, safe="")}/owner',
+        f'/api/v1/projects/{segment(project_id)}/services/{segment(service_id)}/owner',
         out_of_band=True)
 
 
@@ -250,8 +250,8 @@ def _report_event(client, project_id, request_id, body):
     """
     client.messages._request(
         'POST',
-        f'/api/v1/projects/{project_id}/service-requests/'
-        f'{urllib.parse.quote(str(request_id), safe="")}/events',
+        f'/api/v1/projects/{segment(project_id)}/service-requests/'
+        f'{segment(request_id)}/events',
         body=body, out_of_band=True)
 
 
@@ -493,8 +493,8 @@ def serve(client, project_id, service_info, on_service_request, extras=None,
     if extras:
         params['extras'] = json.dumps(transform_request(extras))
     query = urllib.parse.urlencode({k: v for k, v in params.items() if v})
-    channel_path = (f'/api/v1/projects/{project_id}/services/'
-                    f'{urllib.parse.quote(service_id, safe="")}/requests')
+    channel_path = (f'/api/v1/projects/{segment(project_id)}/services/'
+                    f'{segment(service_id)}/requests')
     if query:
         channel_path = f'{channel_path}?{query}'
 
@@ -839,8 +839,8 @@ def request_service(client, project_id, service_id, data, timeout=10.0, on_progr
     ``no_operation`` carries no open operation: the service's writes are a
     group of their own, not part of whatever operation the client has open.
     """
-    url = (f'{client.base_url}/api/v1/projects/{project_id}/services/'
-           f'{urllib.parse.quote(service_id, safe="")}/requests')
+    url = (f'{client.base_url}/api/v1/projects/{segment(project_id)}/services/'
+           f'{segment(service_id)}/requests')
     query = {}
     if request_id:
         query['request-id'] = request_id
@@ -905,8 +905,8 @@ def attach_service_request(client, project_id, request_id, timeout=10.0, on_prog
     :func:`request_service`, ``timeout`` is how long the service may be silent
     (None, 0 or a negative number: no limit), and an error carrying ``pending = True`` means the request is still there
     to rejoin again."""
-    url = (f'{client.base_url}/api/v1/projects/{project_id}/service-requests/'
-           f'{urllib.parse.quote(str(request_id), safe="")}')
+    url = (f'{client.base_url}/api/v1/projects/{segment(project_id)}/service-requests/'
+           f'{segment(request_id)}')
     try:
         resp = requests.get(url, headers=_stream_headers(client), stream=True, timeout=(10, None))
     except Exception as e:
@@ -926,7 +926,7 @@ def cancel_service_request(client, project_id, request_id):
     """
     return client.messages._request(
         'DELETE',
-        f'/api/v1/projects/{project_id}/service-requests/{urllib.parse.quote(str(request_id), safe="")}',
+        f'/api/v1/projects/{segment(project_id)}/service-requests/{segment(request_id)}',
         out_of_band=True)
 
 

@@ -13,6 +13,7 @@
  * them.
  */
 
+import { apiPath } from "./path.js";
 import { bodyOf } from "./families.js";
 import { iterPages, listAll, listPage } from "./pagination.js";
 
@@ -59,7 +60,7 @@ export function jobsApi(client) {
      * @returns {Promise<Job>}
      */
     create: (projectId, { app, instructions, documents, setup, id } = {}) =>
-      client._request("POST", `/api/v1/projects/${projectId}/jobs`, {
+      client._request("POST", apiPath`/api/v1/projects/${projectId}/jobs`, {
         // A job is not audited, so it never joins an open operation, and
         // never takes a number from an edit's Idempotency-Key seed.
         noOperation: true,
@@ -72,7 +73,7 @@ export function jobsApi(client) {
      * @param {string} projectId - The project
      * @returns {Promise<Job[]>}
      */
-    list: (projectId) => listAll(client, `/api/v1/projects/${projectId}/jobs`),
+    list: (projectId) => listAll(client, apiPath`/api/v1/projects/${projectId}/jobs`),
     /**
      * One page of a project's jobs, newest first, each with `documentCount`
      * in place of its documents.
@@ -83,7 +84,7 @@ export function jobsApi(client) {
      * @returns {Promise<Page<Job>>}
      */
     listPage: (projectId, { limit, cursor } = {}) =>
-      listPage(client, `/api/v1/projects/${projectId}/jobs`, { limit, cursor }),
+      listPage(client, apiPath`/api/v1/projects/${projectId}/jobs`, { limit, cursor }),
     /**
      * Async-iterate a project's jobs page by page, newest first; yields each
      * page's entries array.
@@ -93,7 +94,7 @@ export function jobsApi(client) {
      * @returns {AsyncGenerator<Job[]>}
      */
     iterPages: (projectId, { pageSize } = {}) =>
-      iterPages(client, `/api/v1/projects/${projectId}/jobs`, { pageSize }),
+      iterPages(client, apiPath`/api/v1/projects/${projectId}/jobs`, { pageSize }),
     /**
      * Read one job, with its documents (in the job's order) and, once it has
      * ended, its report. Any reader of its project. `lapsed` is true while
@@ -104,7 +105,7 @@ export function jobsApi(client) {
      * @param {string} jobId - The job
      * @returns {Promise<Job>}
      */
-    get: (jobId) => client._request("GET", `/api/v1/jobs/${jobId}`),
+    get: (jobId) => client._request("GET", apiPath`/api/v1/jobs/${jobId}`),
     /**
      * What a job has done so far, newest first: a row per piece of its work,
      * as its worker summed the piece up once its writes were known, and
@@ -115,7 +116,7 @@ export function jobsApi(client) {
      * @param {string} jobId - The job
      * @returns {Promise<JobPiece[]>}
      */
-    pieces: (jobId) => listAll(client, `/api/v1/jobs/${jobId}/pieces`),
+    pieces: (jobId) => listAll(client, apiPath`/api/v1/jobs/${jobId}/pieces`),
     /**
      * One page of what a job has done so far, newest first.
      * @param {string} jobId - The job
@@ -125,7 +126,7 @@ export function jobsApi(client) {
      * @returns {Promise<Page<JobPiece>>}
      */
     piecesPage: (jobId, { limit, cursor } = {}) =>
-      listPage(client, `/api/v1/jobs/${jobId}/pieces`, { limit, cursor }),
+      listPage(client, apiPath`/api/v1/jobs/${jobId}/pieces`, { limit, cursor }),
     /**
      * The project's job that is waiting, running or stopping, with its
      * documents and no report, or null when it has none.
@@ -133,7 +134,7 @@ export function jobsApi(client) {
      * @returns {Promise<Job | null>}
      */
     active: async (projectId) =>
-      orNull(await client._request("GET", `/api/v1/projects/${projectId}/jobs/active`)),
+      orNull(await client._request("GET", apiPath`/api/v1/projects/${projectId}/jobs/active`)),
     /**
      * Stop a job. Allowed to the person who started it while they still
      * write the project, to a maintainer and to an admin, and never to a
@@ -145,7 +146,7 @@ export function jobsApi(client) {
      * @returns {Promise<Job>}
      */
     cancel: (jobId) =>
-      client._request("POST", `/api/v1/jobs/${jobId}/cancel`, { noOperation: true }),
+      client._request("POST", apiPath`/api/v1/jobs/${jobId}/cancel`, { noOperation: true }),
     /**
      * Undo everything an ended job wrote, as one operation named "Undo job:
      * <label>": every group of every document of it (its gloss and its
@@ -162,7 +163,7 @@ export function jobsApi(client) {
      * @returns {Promise<import("./types.js").AuditUndoSummary>}
      */
     undo: (jobId, { dryRun } = {}) =>
-      client._request("POST", `/api/v1/jobs/${jobId}/undo`, {
+      client._request("POST", apiPath`/api/v1/jobs/${jobId}/undo`, {
         queryParams: { "dry-run": dryRun ? "true" : undefined },
         timeout: client.batchTimeout,
         noOperation: true,
@@ -212,7 +213,7 @@ export function jobsApi(client) {
      * @returns {Promise<{state: string, token: string, leaseS: number}>}
      */
     heartbeat: (jobId, workerId, { phase, message, waitingFor, currentDocument } = {}) =>
-      client._request("POST", `/api/v1/jobs/${jobId}/heartbeat`, {
+      client._request("POST", apiPath`/api/v1/jobs/${jobId}/heartbeat`, {
         outOfBand: true,
         body: bodyOf({
           "worker-id": workerId,
@@ -250,7 +251,7 @@ export function jobsApi(client) {
         harmonizeGroup,
       } = {},
     ) =>
-      client._request("PUT", `/api/v1/jobs/${jobId}/documents/${documentId}`, {
+      client._request("PUT", apiPath`/api/v1/jobs/${jobId}/documents/${documentId}`, {
         outOfBand: true,
         body: bodyOf({
           "worker-id": workerId,
@@ -280,7 +281,7 @@ export function jobsApi(client) {
      * @returns {Promise<Job>}
      */
     finish: (jobId, workerId, { state, reason, report } = {}) =>
-      client._request("POST", `/api/v1/jobs/${jobId}/finish`, {
+      client._request("POST", apiPath`/api/v1/jobs/${jobId}/finish`, {
         outOfBand: true,
         body: bodyOf({ "worker-id": workerId, state, reason, report }),
       }),
@@ -294,7 +295,7 @@ export function jobsApi(client) {
      * @returns {Promise<void>}
      */
     addDecisions: async (jobId, workerId, decisions) => {
-      await client._request("POST", `/api/v1/jobs/${jobId}/decisions`, {
+      await client._request("POST", apiPath`/api/v1/jobs/${jobId}/decisions`, {
         outOfBand: true,
         body: { "worker-id": workerId, decisions },
       });
@@ -307,7 +308,7 @@ export function jobsApi(client) {
      * @returns {Promise<JobDecisionRow[]>}
      */
     lookupDecisions: (jobId, forms) =>
-      client._request("POST", `/api/v1/jobs/${jobId}/decisions/lookup`, {
+      client._request("POST", apiPath`/api/v1/jobs/${jobId}/decisions/lookup`, {
         // A read that travels as a POST, so a form may hold any character.
         outOfBand: true,
         body: { forms },
@@ -323,7 +324,7 @@ export function jobsApi(client) {
      */
     landed: async (jobId, refs) => {
       // A read that travels as a POST, so the seeds go in its body.
-      const answer = await client._request("POST", `/api/v1/jobs/${jobId}/landed`, {
+      const answer = await client._request("POST", apiPath`/api/v1/jobs/${jobId}/landed`, {
         outOfBand: true,
         body: { refs },
       });
@@ -335,7 +336,7 @@ export function jobsApi(client) {
      * @param {string} jobId - The job
      * @returns {Promise<JobDecisionRow[]>}
      */
-    decisions: (jobId) => listAll(client, `/api/v1/jobs/${jobId}/decisions`),
+    decisions: (jobId) => listAll(client, apiPath`/api/v1/jobs/${jobId}/decisions`),
     /**
      * How busy a model key is: the requests in flight to live services that
      * declare this `model-pool` in their extras, and when the last of them

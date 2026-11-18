@@ -498,5 +498,70 @@
     "sends": [{"method": "POST", "path": "/api/v1/projects/p1/jobs",
                "body": {"app": "igt", "instructions": "Fill Case.",
                         "setup": {"fills": [{"id": "L1", "name": "Case"}], "text": false, "conversation": "c1", "two-words": 1}}}]
+  },
+  {
+    "name": "projects.removeWriter puts a user id holding ? # / % a space and a non-ASCII letter in its path as one segment (ACL5-2)",
+    "js": ["projects.removeWriter", "P1", "odd?#/% ñ@x.org"],
+    "sends": [{"method": "DELETE", "path": "/api/v1/projects/P1/writers/odd%3F%23%2F%25%20%C3%B1@x.org"}]
+  },
+  {
+    "name": "projects.addWriter puts a user id holding ? # / % a space and a non-ASCII letter in its path as one segment (ACL5-2)",
+    "js": ["projects.addWriter", "P1", "odd?#/% ñ@x.org"],
+    "sends": [{"method": "POST", "path": "/api/v1/projects/P1/writers/odd%3F%23%2F%25%20%C3%B1@x.org"}]
+  },
+  {
+    "name": "projects.addReader puts a user id holding ? # / % a space and a non-ASCII letter in its path as one segment (ACL5-2)",
+    "js": ["projects.addReader", "P1", "odd?#/% ñ@x.org"],
+    "sends": [{"method": "POST", "path": "/api/v1/projects/P1/readers/odd%3F%23%2F%25%20%C3%B1@x.org"}]
+  },
+  {
+    "name": "projects.removeReader puts a user id holding ? # / % a space and a non-ASCII letter in its path as one segment (ACL5-2)",
+    "js": ["projects.removeReader", "P1", "odd?#/% ñ@x.org"],
+    "sends": [{"method": "DELETE", "path": "/api/v1/projects/P1/readers/odd%3F%23%2F%25%20%C3%B1@x.org"}]
+  },
+  {
+    "name": "projects.addMaintainer puts a user id holding ? # / % a space and a non-ASCII letter in its path as one segment (ACL5-2)",
+    "js": ["projects.addMaintainer", "P1", "odd?#/% ñ@x.org"],
+    "sends": [{"method": "POST", "path": "/api/v1/projects/P1/maintainers/odd%3F%23%2F%25%20%C3%B1@x.org"}]
+  },
+  {
+    "name": "projects.removeMaintainer puts a user id holding ? # / % a space and a non-ASCII letter in its path as one segment (ACL5-2)",
+    "js": ["projects.removeMaintainer", "P1", "odd?#/% ñ@x.org"],
+    "sends": [{"method": "DELETE", "path": "/api/v1/projects/P1/maintainers/odd%3F%23%2F%25%20%C3%B1@x.org"}]
+  },
+  {
+    "name": "projects.removeWriter of carol@x.org?z names that account, not the one before the ? (ACL5-2)",
+    "js": ["projects.removeWriter", "P1", "carol@x.org?z"],
+    "sends": [{"method": "DELETE", "path": "/api/v1/projects/P1/writers/carol@x.org%3Fz"}]
+  },
+  {
+    "name": "projects.removeWriter of dave@x.org#x names that account, not the one before the # (ACL5-2)",
+    "js": ["projects.removeWriter", "P1", "dave@x.org#x"],
+    "sends": [{"method": "DELETE", "path": "/api/v1/projects/P1/writers/dave@x.org%23x"}]
+  },
+  {
+    "name": "users.get puts an odd user id in its path as one segment (ACL5-2)",
+    "js": ["users.get", "odd?#/% ñ@x.org"],
+    "sends": [{"method": "GET", "path": "/api/v1/users/odd%3F%23%2F%25%20%C3%B1@x.org"}]
+  },
+  {
+    "name": "users.delete puts an odd user id in its path as one segment (ACL5-2)",
+    "js": ["users.delete", "odd?#/% ñ@x.org"],
+    "sends": [{"method": "DELETE", "path": "/api/v1/users/odd%3F%23%2F%25%20%C3%B1@x.org"}]
+  },
+  {
+    "name": "users.activate puts an odd user id in its path as one segment (ACL5-2)",
+    "js": ["users.activate", "odd?#/% ñ@x.org"],
+    "sends": [{"method": "POST", "path": "/api/v1/users/odd%3F%23%2F%25%20%C3%B1@x.org/activate"}]
+  },
+  {
+    "name": "apiTokens.revoke puts an odd user id in its path as one segment (ACL5-2)",
+    "js": ["apiTokens.revoke", "odd?#/% ñ@x.org", "T1"],
+    "sends": [{"method": "DELETE", "path": "/api/v1/users/odd%3F%23%2F%25%20%C3%B1@x.org/tokens/T1"}]
+  },
+  {
+    "name": "userData.get puts an odd user id and key in its path as one segment each (ACL5-2)",
+    "js": ["userData.get", "odd?#/% ñ@x.org", "a/b?c"],
+    "sends": [{"method": "GET", "path": "/api/v1/users/odd%3F%23%2F%25%20%C3%B1@x.org/data/a%2Fb%3Fc"}]
   }
 ]

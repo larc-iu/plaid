@@ -4,6 +4,7 @@
  * (client.js installs them).
  */
 
+import { apiPath } from "./path.js";
 import { auditQuery } from "./families.js";
 import { iterPages, listAll, listPage } from "./pagination.js";
 import { PlaidClient } from "./client.js";
@@ -222,7 +223,7 @@ export function adminApi(client) {
      * @returns {Promise<{result: string}>}
      */
     releaseLock: (documentId) =>
-      client._request("DELETE", `/api/v1/admin/locks/${documentId}`, {
+      client._request("DELETE", apiPath`/api/v1/admin/locks/${documentId}`, {
         outOfBand: true,
       }),
     /**
@@ -411,7 +412,7 @@ export function auditApi(client) {
      * @returns {Promise<AuditRowChange[]>}
      */
     changes: (entryId, { documentId, vocabLayerId } = {}) =>
-      listAll(client, `/api/v1/audit/entries/${entryId}/changes`, {
+      listAll(client, apiPath`/api/v1/audit/entries/${entryId}/changes`, {
         query: { "document-id": documentId, "vocab-layer-id": vocabLayerId },
       }),
     /**
@@ -426,7 +427,7 @@ export function auditApi(client) {
      * @returns {Promise<Page<AuditRowChange>>}
      */
     changesPage: (entryId, { documentId, vocabLayerId, limit, cursor } = {}) =>
-      listPage(client, `/api/v1/audit/entries/${entryId}/changes`, {
+      listPage(client, apiPath`/api/v1/audit/entries/${entryId}/changes`, {
         limit,
         cursor,
         query: { "document-id": documentId, "vocab-layer-id": vocabLayerId },
@@ -460,7 +461,7 @@ export function auditApi(client) {
      * @returns {Promise<AuditUndoSummary>}
      */
     undo: (entryId, { dryRun, documentId, vocabLayerId } = {}) =>
-      client._request("POST", `/api/v1/audit/entries/${entryId}/undo`, {
+      client._request("POST", apiPath`/api/v1/audit/entries/${entryId}/undo`, {
         queryParams: {
           "dry-run": dryRun ? "true" : undefined,
           "document-id": documentId,
@@ -511,7 +512,7 @@ export function auditApi(client) {
      */
     tally: async ({ projectId, startTime, endTime, daily } = {}) => {
       const path = projectId
-        ? `/api/v1/projects/${projectId}/audit/tally`
+        ? apiPath`/api/v1/projects/${projectId}/audit/tally`
         : "/api/v1/audit/tally";
       const result = await client._request("GET", path, {
         queryParams: {

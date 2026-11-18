@@ -4,6 +4,7 @@
  * client (client.js installs it).
  */
 
+import { apiPath } from "./path.js";
 import { attachServiceRequest, cancelServiceRequest, discardService, discoverServices, releaseService, requestService, serve } from "./services.js";
 import { createSSEConnection } from "./sse.js";
 
@@ -127,7 +128,7 @@ export function messagesApi(client) {
      * @returns {Promise<{success: boolean, message: string}>}
      */
     sendMessage: (projectId, data) =>
-      client._request("POST", `/api/v1/projects/${projectId}/message`, {
+      client._request("POST", apiPath`/api/v1/projects/${projectId}/message`, {
         noOperation: true,
         rawBody: { body: data },
       }),

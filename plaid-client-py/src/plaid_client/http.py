@@ -86,6 +86,18 @@ DEFAULT_BATCH_TIMEOUT_S = 180.0
 DEFAULT_QUERY_TIMEOUT_S = 35.0
 
 
+def segment(value) -> str:
+    """The one way this client puts a value into a request path: as one path
+    segment, percent-encoded, every path f-string wrapping each value in it.
+    An id goes into a URL as it is only while it holds no ``?``, ``#``, ``/``,
+    ``%`` or space. A user id is an email, which may hold any of them, and an
+    unencoded ``carol@x.org?z`` named ``carol@x.org`` to the server: a role
+    change or a deactivation meant for one account landed on another
+    (ACL5-2). Encoded as the JS client's ``apiPath`` encodes
+    (``encodeURIComponent``, ``@`` kept), so both send the same path."""
+    return quote(str(value), safe="@!'()*")
+
+
 def query_timeout(client):
     """The timeout for a query: the client's own, raised to
     :data:`DEFAULT_QUERY_TIMEOUT_S` when it is shorter. A disabled timeout
@@ -444,7 +456,7 @@ def _learn_omitted_version(client):
     with _omitted_version_lock:
         doc_id = _omitted_strict_document(client)
         if doc_id:
-            make_request(client, 'GET', f'/api/v1/documents/{doc_id}',
+            make_request(client, 'GET', f'/api/v1/documents/{segment(doc_id)}',
                          _learning_omitted_version=True)
 
 

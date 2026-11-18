@@ -3,6 +3,7 @@
  * of the client (client.js installs them).
  */
 
+import { apiPath } from "./path.js";
 import { auditQuery, bodyOf, configMethods, metadataMethods, refuseUnknownOptions } from "./families.js";
 import { iterPages, listAll, listPage } from "./pagination.js";
 
@@ -109,7 +110,7 @@ export function vocabLayersApi(client) {
      * @returns {Promise<VocabLayer>}
      */
     get: (id, includeItems, asOf) =>
-      client._request("GET", `/api/v1/vocab-layers/${id}`, {
+      client._request("GET", apiPath`/api/v1/vocab-layers/${id}`, {
         queryParams: { "include-items": includeItems, "as-of": asOf },
       }),
     /**
@@ -122,7 +123,7 @@ export function vocabLayersApi(client) {
      * @returns {Promise<VocabItem>}
      */
     getItemAt: (id, itemId, asOf) =>
-      client._request("GET", `/api/v1/vocab-layers/${id}/items/${itemId}`, {
+      client._request("GET", apiPath`/api/v1/vocab-layers/${id}/items/${itemId}`, {
         queryParams: { "as-of": asOf },
       }),
     /**
@@ -181,7 +182,7 @@ export function vocabLayersApi(client) {
      * @returns {Promise<VocabLayer>}
      */
     update: (id, name, auditMessage) =>
-      client._request("PATCH", `/api/v1/vocab-layers/${id}`, {
+      client._request("PATCH", apiPath`/api/v1/vocab-layers/${id}`, {
         auditMessage,
         body: bodyOf({ name }),
       }),
@@ -200,7 +201,7 @@ export function vocabLayersApi(client) {
      */
     delete: (id, auditMessage, options = {}) => {
       refuseUnknownOptions("vocabLayers.delete", options);
-      return client._request("DELETE", `/api/v1/vocab-layers/${id}`, { auditMessage });
+      return client._request("DELETE", apiPath`/api/v1/vocab-layers/${id}`, { auditMessage });
     },
     /**
      * What deleting a vocabulary would remove, without writing: `{links}`,
@@ -212,7 +213,7 @@ export function vocabLayersApi(client) {
      * @param {string} id - The vocabulary ID
      * @returns {Promise<{links: number}>}
      */
-    deletion: (id) => client._request("GET", `/api/v1/vocab-layers/${id}/deletion`),
+    deletion: (id) => client._request("GET", apiPath`/api/v1/vocab-layers/${id}/deletion`),
     /**
      * Move a vocabulary to another project, which becomes its home. Needs
      * maintainer rights on both projects (403 otherwise). The old home keeps
@@ -224,7 +225,7 @@ export function vocabLayersApi(client) {
      * @returns {Promise<VocabLayer>}
      */
     move: (id, projectId, auditMessage) =>
-      client._request("POST", `/api/v1/vocab-layers/${id}/move`, {
+      client._request("POST", apiPath`/api/v1/vocab-layers/${id}/move`, {
         auditMessage,
         body: bodyOf({ "project-id": projectId }),
       }),
@@ -237,7 +238,7 @@ export function vocabLayersApi(client) {
      * @returns {Promise<Array<{id: string, name: string | null}>>}
      */
     borrowers: (id) =>
-      client._request("GET", `/api/v1/vocab-layers/${id}/borrowers`),
+      client._request("GET", apiPath`/api/v1/vocab-layers/${id}/borrowers`),
     /**
      * Get the audit log of a vocabulary: every change to it or to its
      * entries, folded into entries as the document log is. Links are not
@@ -256,7 +257,7 @@ export function vocabLayersApi(client) {
      * @returns {Promise<AuditEntry[]>}
      */
     audit: (id, startTime, endTime, opTypes, itemId, kinds) =>
-      listAll(client, `/api/v1/vocab-layers/${id}/audit`, {
+      listAll(client, apiPath`/api/v1/vocab-layers/${id}/audit`, {
         query: auditQuery({ startTime, endTime, opTypes, itemId, kinds }),
       }),
     /**
@@ -286,7 +287,7 @@ export function vocabLayersApi(client) {
       id,
       { startTime, endTime, opTypes, kinds, order, limit, cursor, opsLimit, entryId, itemId } = {},
     ) =>
-      listPage(client, `/api/v1/vocab-layers/${id}/audit`, {
+      listPage(client, apiPath`/api/v1/vocab-layers/${id}/audit`, {
         limit,
         cursor,
         query: auditQuery({ startTime, endTime, opTypes, kinds, order, opsLimit, entryId, itemId }),
@@ -315,7 +316,7 @@ export function vocabLayersApi(client) {
     restoreItem: (id, itemId, asOf, { dryRun } = {}, auditMessage) =>
       client._request(
         "POST",
-        `/api/v1/vocab-layers/${id}/items/${itemId}/restore`,
+        apiPath`/api/v1/vocab-layers/${id}/items/${itemId}/restore`,
         {
           queryParams: {
             "as-of": asOf,
@@ -337,7 +338,7 @@ export function vocabItemsApi(client) {
      * @returns {Promise<VocabItem>}
      */
     get: (id) =>
-      client._request("GET", `/api/v1/vocab-items/${id}`),
+      client._request("GET", apiPath`/api/v1/vocab-items/${id}`),
     /**
      * Create a new vocab item. A writer or maintainer of the vocabulary's
      * home project, whatever project the caller works in.
@@ -365,7 +366,7 @@ export function vocabItemsApi(client) {
      * @returns {Promise<VocabItem>}
      */
     update: (id, form, auditMessage) =>
-      client._request("PATCH", `/api/v1/vocab-items/${id}`, {
+      client._request("PATCH", apiPath`/api/v1/vocab-items/${id}`, {
         auditMessage,
         body: bodyOf({ form }),
       }),
@@ -382,7 +383,7 @@ export function vocabItemsApi(client) {
      * @returns {Promise<void>}
      */
     delete: (id, auditMessage, { expectedLinkCount } = {}) =>
-      client._request("DELETE", `/api/v1/vocab-items/${id}`, {
+      client._request("DELETE", apiPath`/api/v1/vocab-items/${id}`, {
         auditMessage,
         queryParams: { "expected-link-count": expectedLinkCount },
       }),
@@ -447,7 +448,7 @@ export function vocabItemsApi(client) {
      * @returns {Promise<{moved: number, duplicates: number, removed: string[]}>}
      */
     merge: (survivorId, loserIds, auditMessage) =>
-      client._request("POST", `/api/v1/vocab-items/${survivorId}/merge`, {
+      client._request("POST", apiPath`/api/v1/vocab-items/${survivorId}/merge`, {
         auditMessage,
         body: { losers: loserIds },
       }),

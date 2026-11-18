@@ -6,7 +6,7 @@ import time
 
 import requests
 
-from plaid_client.http import short_error
+from plaid_client.http import segment, short_error
 from plaid_client.transforms import transform_response
 
 logger = logging.getLogger(__name__)
@@ -169,7 +169,7 @@ class SSEConnection:
         # (/listen); service request channels pass their own path. Only the
         # /listen stream emits `heartbeat` events needing a POST confirmation —
         # other streams keep themselves alive with ignored SSE comments.
-        self._path = path or f'/api/v1/projects/{project_id}/listen'
+        self._path = path or f'/api/v1/projects/{segment(project_id)}/listen'
 
         self._thread = threading.Thread(target=self._run, daemon=True)
         self._thread.start()
@@ -230,7 +230,7 @@ class SSEConnection:
             return
         try:
             requests.post(
-                f'{self._client.base_url}/api/v1/projects/{self._project_id}/heartbeat',
+                f'{self._client.base_url}/api/v1/projects/{segment(self._project_id)}/heartbeat',
                 headers={
                     'Authorization': f'Bearer {self._client.token}',
                     'Content-Type': 'application/json',

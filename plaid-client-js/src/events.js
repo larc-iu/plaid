@@ -1,3 +1,4 @@
+import { apiPath } from "./path.js";
 import { transformRequest } from "./transforms.js";
 import { readResearchTelemetry } from "./roles.js";
 
@@ -230,7 +231,7 @@ export class EventRecorder {
   _send(projectId, events, keepalive) {
     const client = this.client;
     try {
-      const url = `${client.baseUrl}/api/v1/projects/${projectId}/events`;
+      const url = client.baseUrl + apiPath`/api/v1/projects/${projectId}/events`;
       fetch(url, {
         method: "POST",
         keepalive,

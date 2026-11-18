@@ -1,3 +1,4 @@
+import { apiPath } from './path.js';
 import { transformResponse } from './transforms.js';
 
 // A live SSE stream is never silent for long: the server sends a keepalive
@@ -59,7 +60,7 @@ function tell(client, hook) {
  *   carries an error named `StreamClosed`.
  */
 export function createSSEConnection(client, projectId, onEvent, path) {
-  const streamPath = path || `/api/v1/projects/${projectId}/listen`;
+  const streamPath = path || apiPath`/api/v1/projects/${projectId}/listen`;
   const startTime = Date.now();
   let isConnected = false;
   let isClosed = false;
@@ -70,7 +71,7 @@ export function createSSEConnection(client, projectId, onEvent, path) {
   const sendHeartbeatConfirmation = async () => {
     if (!clientId || isClosed) return;
     try {
-      const response = await fetch(`${client.baseUrl}/api/v1/projects/${projectId}/heartbeat`, {
+      const response = await fetch(client.baseUrl + apiPath`/api/v1/projects/${projectId}/heartbeat`, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${client.token}`,

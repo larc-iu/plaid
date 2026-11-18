@@ -3,6 +3,7 @@
  * texts, each a factory of the client (client.js installs them).
  */
 
+import { apiPath } from "./path.js";
 import { withDocumentLock } from "./documentLock.js";
 import { auditMethods, bodyOf, csvParam, metadataMethods } from "./families.js";
 
@@ -119,7 +120,7 @@ export function documentsApi(client) {
      * @returns {Promise<PlaidDocument>}
      */
     get: (documentId, includeBody, asOf, layers) =>
-      client._request("GET", `/api/v1/documents/${documentId}`, {
+      client._request("GET", apiPath`/api/v1/documents/${documentId}`, {
         queryParams: {
           "include-body": includeBody,
           "as-of": asOf,
@@ -140,7 +141,7 @@ export function documentsApi(client) {
      * @returns {Promise<Blob>}
      */
     getMedia: (documentId, { timeout, onProgress } = {}) =>
-      client._request("GET", `/api/v1/documents/${documentId}/media`, {
+      client._request("GET", apiPath`/api/v1/documents/${documentId}/media`, {
         blobResponse: true,
         onDownloadProgress: onProgress,
         timeout,
@@ -179,7 +180,7 @@ export function documentsApi(client) {
      * @returns {Promise<PlaidDocument>}
      */
     update: (documentId, name, auditMessage) =>
-      client._request("PATCH", `/api/v1/documents/${documentId}`, {
+      client._request("PATCH", apiPath`/api/v1/documents/${documentId}`, {
         auditMessage,
         body: bodyOf({ name }),
       }),
@@ -190,7 +191,7 @@ export function documentsApi(client) {
      * @returns {Promise<void>}
      */
     delete: (documentId, auditMessage) =>
-      client._request("DELETE", `/api/v1/documents/${documentId}`, {
+      client._request("DELETE", apiPath`/api/v1/documents/${documentId}`, {
         auditMessage,
       }),
     /**
@@ -199,7 +200,7 @@ export function documentsApi(client) {
      * @returns {Promise<{userId: string, expiresAt: number} | void>}
      */
     checkLock: (documentId) =>
-      client._request("GET", `/api/v1/documents/${documentId}/lock`),
+      client._request("GET", apiPath`/api/v1/documents/${documentId}/lock`),
     /**
      * Acquire a document lock as a new holder.
      *
@@ -224,7 +225,7 @@ export function documentsApi(client) {
      * @returns {Promise<LockGrant>}
      */
     acquireLock: (documentId, auditMessage, newLockId) =>
-      client._request("POST", `/api/v1/documents/${documentId}/lock`, {
+      client._request("POST", apiPath`/api/v1/documents/${documentId}/lock`, {
         ...(newLockId !== undefined && newLockId !== null
           ? { queryParams: { "new-lock-id": newLockId } }
           : {}),
@@ -242,7 +243,7 @@ export function documentsApi(client) {
      * @returns {Promise<LockGrant>}
      */
     renewLock: (documentId, lockId, auditMessage) =>
-      client._request("POST", `/api/v1/documents/${documentId}/lock`, {
+      client._request("POST", apiPath`/api/v1/documents/${documentId}/lock`, {
         queryParams: { "lock-id": lockId },
         auditMessage,
         outOfBand: true,
@@ -258,7 +259,7 @@ export function documentsApi(client) {
      * @returns {Promise<void>}
      */
     releaseLock: (documentId, lockId, auditMessage) =>
-      client._request("DELETE", `/api/v1/documents/${documentId}/lock`, {
+      client._request("DELETE", apiPath`/api/v1/documents/${documentId}/lock`, {
         queryParams: { "lock-id": lockId },
         auditMessage,
         outOfBand: true,
@@ -330,7 +331,7 @@ export function documentsApi(client) {
     mediaLink: async (documentId) => {
       const link = await client._request(
         "POST",
-        `/api/v1/documents/${documentId}/media/link`,
+        apiPath`/api/v1/documents/${documentId}/media/link`,
         { outOfBand: true },
       );
       return { ...link, url: `${client.baseUrl}${link.url}` };
@@ -351,7 +352,7 @@ export function documentsApi(client) {
     uploadMedia: (documentId, file, auditMessage, { onProgress, signal } = {}) => {
       const fd = new FormData();
       fd.append("file", file);
-      return client._request("PUT", `/api/v1/documents/${documentId}/media`, {
+      return client._request("PUT", apiPath`/api/v1/documents/${documentId}/media`, {
         auditMessage,
         body: fd,
         formData: true,
@@ -376,7 +377,7 @@ export function documentsApi(client) {
     // removes the file only after the write commits, so a batch that aborts
     // after this op leaves the recording in place.
     deleteMedia: (documentId, auditMessage, { mediaVersion } = {}) =>
-      client._request("DELETE", `/api/v1/documents/${documentId}/media`, {
+      client._request("DELETE", apiPath`/api/v1/documents/${documentId}/media`, {
         auditMessage,
         queryParams: { "media-version": mediaVersion },
       }),
@@ -401,7 +402,7 @@ export function documentsApi(client) {
      * @returns {Promise<DocumentRestoreSummary>}
      */
     restore: (documentId, asOf, { dryRun } = {}, auditMessage) =>
-      client._request("POST", `/api/v1/documents/${documentId}/restore`, {
+      client._request("POST", apiPath`/api/v1/documents/${documentId}/restore`, {
         queryParams: {
           "as-of": asOf,
           "dry-run": dryRun ? "true" : undefined,
@@ -429,7 +430,7 @@ export function documentsApi(client) {
      * @returns {Promise<{id: string, name: string, mediaError?: string}>}
      */
     copy: (documentId, name, { includeMedia, id, freeName } = {}, auditMessage) =>
-      client._request("POST", `/api/v1/documents/${documentId}/copy`, {
+      client._request("POST", apiPath`/api/v1/documents/${documentId}/copy`, {
         auditMessage,
         body: bodyOf({
           id,
@@ -452,7 +453,7 @@ export function textsApi(client) {
      * @returns {Promise<PlaidText>}
      */
     get: (textId) =>
-      client._request("GET", `/api/v1/texts/${textId}`),
+      client._request("GET", apiPath`/api/v1/texts/${textId}`),
     /**
      * Create a new text in a document's text layer. A text is a container for
      * one long string in `body` for a given layer.
@@ -514,7 +515,7 @@ export function textsApi(client) {
      * @returns {Promise<PlaidText & {reshape: TextReshape}>}
      */
     update: (textId, body, auditMessage, { base, versioned, tokenizeLayer } = {}) =>
-      client._request("PATCH", `/api/v1/texts/${textId}`, {
+      client._request("PATCH", apiPath`/api/v1/texts/${textId}`, {
         auditMessage,
         body: bodyOf({ body, base, "tokenize-layer": tokenizeLayer }),
         versioned: versioned ?? (base === undefined || base === null),
@@ -526,7 +527,7 @@ export function textsApi(client) {
      * @returns {Promise<void>}
      */
     delete: (textId, auditMessage) =>
-      client._request("DELETE", `/api/v1/texts/${textId}`, { auditMessage }),
+      client._request("DELETE", apiPath`/api/v1/texts/${textId}`, { auditMessage }),
     /**
      * Change a text's body by the edits made at the caret: a list of edit
      * directives as `update` takes them (code-point indices, applied in
@@ -547,7 +548,7 @@ export function textsApi(client) {
      * @returns {Promise<PlaidText & {reshape: TextReshape}>}
      */
     edit: (textId, edits, auditMessage, { base, versioned, tokenizeLayer } = {}) =>
-      client._request("PATCH", `/api/v1/texts/${textId}`, {
+      client._request("PATCH", apiPath`/api/v1/texts/${textId}`, {
         auditMessage,
         body: bodyOf({ edits, base, "tokenize-layer": tokenizeLayer }),
         versioned: versioned ?? (base === undefined || base === null),

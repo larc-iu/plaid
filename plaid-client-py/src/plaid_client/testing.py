@@ -78,7 +78,6 @@ import time
 import types
 import sys
 from datetime import datetime, timezone
-from urllib.parse import quote
 
 from requests.structures import CaseInsensitiveDict
 
@@ -86,7 +85,7 @@ from plaid_client import client as _client
 from plaid_client import operations as _operations
 from plaid_client.document_lock import DocumentLock
 from plaid_client.batch import BatchRef
-from plaid_client.http import PlaidAPIError
+from plaid_client.http import PlaidAPIError, segment
 from plaid_client.ids import normalize_user_id, uuid7
 from plaid_client.metadata_ops import apply_metadata_ops
 from plaid_client.provenance import PROV_KEY, PROVENANCE_KEYS, is_machine, is_protected
@@ -997,7 +996,7 @@ class _AuditLog(list):
         self._root = root
 
     def _changes(self, entry_id, document_id, vocab_layer_id):
-        path = f'/api/v1/audit/entries/{entry_id}/changes'
+        path = f'/api/v1/audit/entries/{segment(entry_id)}/changes'
         rows = self._root.unit_changes.get(entry_id)
         if rows is None:
             raise _refusal(self._root, 404, 'Entry not found', 'GET', path)
@@ -1512,7 +1511,7 @@ class FakeClient:
             root = self._root
             root.reads.append({'id': document_id, 'layers': layers})
             root.record('read', document_id)
-            path = f'/api/v1/documents/{document_id}'
+            path = f'/api/v1/documents/{segment(document_id)}'
             named = _client._csv_param(layers)
             if named and not include_body:
                 raise _refusal(root, 400, '?layers= selects which layers a body read returns, '
@@ -1563,7 +1562,7 @@ class FakeClient:
         def restore(self, document_id, as_of, *, dry_run=False, audit_message=None):
             """The server's restore, recorded dry or not. Either way it answers
             with ``restore_summary``: what WOULD change, or what did."""
-            path = f'/api/v1/documents/{document_id}/restore'
+            path = f'/api/v1/documents/{segment(document_id)}/restore'
             writer = self._client
             if isinstance(writer, _Batch):
                 writer.check_open(path)
@@ -1583,7 +1582,7 @@ class FakeClient:
             self._client = client
 
         def get(self, id):
-            return self._client._project(id, f'/api/v1/projects/{id}')['project']
+            return self._client._project(id, f'/api/v1/projects/{segment(id)}')['project']
 
         def list(self):
             c = self._client
@@ -1592,7 +1591,7 @@ class FakeClient:
 
         def audit(self, project_id, *, start_time=None, end_time=None, op_types=None,
                   kinds=None):
-            spec = self._client._project(project_id, f'/api/v1/projects/{project_id}/audit')
+            spec = self._client._project(project_id, f'/api/v1/projects/{segment(project_id)}/audit')
             return _audit_filter(spec['audit'], start_time, end_time, op_types, kinds)
 
         def audit_page(self, project_id, *, start_time=None, end_time=None,
@@ -1604,7 +1603,7 @@ class FakeClient:
                                             entry_id)
 
         def list_documents(self, id):
-            docs = self._client._project(id, f'/api/v1/projects/{id}/documents')['documents']
+            docs = self._client._project(id, f'/api/v1/projects/{segment(id)}/documents')['documents']
             docs = docs.values() if isinstance(docs, dict) else docs
             return [{'id': d.get('id'), 'name': d.get('name'), 'version': d.get('version'),
                      'time_created': d.get('time_created'),
@@ -1627,13 +1626,13 @@ class FakeClient:
             return vocabulary
 
         def get(self, id, *, include_items=None, as_of=None):
-            vocabulary = self._vocabulary(id, f'/api/v1/vocab-layers/{id}')
+            vocabulary = self._vocabulary(id, f'/api/v1/vocab-layers/{segment(id)}')
             if include_items:
                 return copy.deepcopy(vocabulary)
             return copy.deepcopy({k: v for k, v in vocabulary.items() if k != 'items'})
 
         def get_item_at(self, id, item_id, as_of):
-            path = f'/api/v1/vocab-layers/{id}/items/{item_id}'
+            path = f'/api/v1/vocab-layers/{segment(id)}/items/{segment(item_id)}'
             for item in self._vocabulary(id, path).get('items') or []:
                 if item.get('id') == item_id:
                     return copy.deepcopy(item)
@@ -1641,7 +1640,7 @@ class FakeClient:
 
         def audit(self, id, *, start_time=None, end_time=None, op_types=None, item_id=None,
                   kinds=None):
-            self._vocabulary(id, f'/api/v1/vocab-layers/{id}/audit')
+            self._vocabulary(id, f'/api/v1/vocab-layers/{segment(id)}/audit')
             key = (id, item_id) if item_id else id
             return _audit_filter(self._root.vocab_audit.get(key, []), start_time, end_time,
                                  op_types, kinds)
@@ -1660,7 +1659,7 @@ class FakeClient:
             did."""
             writer = self._client
             if isinstance(writer, _Batch):
-                writer.check_open(f'/api/v1/vocab-layers/{id}/items/{item_id}/restore')
+                writer.check_open(f'/api/v1/vocab-layers/{segment(id)}/items/{segment(item_id)}/restore')
             summary = self._root.vocab_restore_summary
             writer.fail_if_asked('vocab_layers.restore_item')
             writer.record('vocab_layers.restore_item',
@@ -1687,7 +1686,7 @@ class FakeClient:
                 for item in vocabulary.get('items') or []:
                     if item.get('id') == id:
                         return copy.deepcopy({**item, 'layer': vid})
-            raise _refusal(root, 404, 'Vocab item not found', 'GET', f'/api/v1/vocab-items/{id}')
+            raise _refusal(root, 404, 'Vocab item not found', 'GET', f'/api/v1/vocab-items/{segment(id)}')
 
     class _Tokens(Resource):
         """One token read by id, answered from the documents as the fixture
@@ -1715,7 +1714,7 @@ class FakeClient:
                         for token in layer.get('tokens') or []:
                             if token.get('id') == token_id:
                                 return copy.deepcopy({**token, 'token_layer': layer.get('id')})
-            raise _refusal(root, 404, 'Token not found', 'GET', f'/api/v1/tokens/{token_id}')
+            raise _refusal(root, 404, 'Token not found', 'GET', f'/api/v1/tokens/{segment(token_id)}')
 
     class _Comments:
         """The project's comments, read from the fixture. A comment posted is
@@ -1727,7 +1726,7 @@ class FakeClient:
             self._root = _root(writer)
 
         def list(self, project_id, *, document_id=None, entity_type=None, entity_id=None):
-            rows = self._root._project(project_id, f'/api/v1/projects/{project_id}/comments')
+            rows = self._root._project(project_id, f'/api/v1/projects/{segment(project_id)}/comments')
             return [r for r in rows['comments']
                     if (not document_id or r.get('document_id') == document_id)
                     and (not entity_type or r.get('entity_type') == entity_type)
@@ -1760,7 +1759,7 @@ class FakeClient:
             self._root = _root(writer)
 
         def _rows(self, project_id):
-            path = f'/api/v1/projects/{project_id}/guidelines'
+            path = f'/api/v1/projects/{segment(project_id)}/guidelines'
             return self._root._project(project_id, path)['guidelines']
 
         def _table(self, guideline_id, method):
@@ -1769,7 +1768,7 @@ class FakeClient:
                 if any(r.get('id') == guideline_id for r in rows):
                     return rows
             raise _refusal(self._root, 404, 'Guideline not found', method,
-                           f'/api/v1/guidelines/{guideline_id}')
+                           f'/api/v1/guidelines/{segment(guideline_id)}')
 
         def _row(self, guideline_id, method):
             rows = self._table(guideline_id, method)
@@ -1819,7 +1818,7 @@ class FakeClient:
             kwargs = {'body': body or ''}
             if id is not None:
                 kwargs['id'] = id
-            return self._write('guidelines.create', f'/api/v1/projects/{project_id}/guidelines',
+            return self._write('guidelines.create', f'/api/v1/projects/{segment(project_id)}/guidelines',
                                {'args': (project_id, title), 'kwargs': kwargs},
                                {'body': {'id': new}}, effect)
 
@@ -1830,7 +1829,7 @@ class FakeClient:
             write is unconditional."""
             changed = {k: v for k, v in (('title', title), ('body', body), ('pinned', pinned))
                        if v is not None}
-            path = f'/api/v1/guidelines/{guideline_id}'
+            path = f'/api/v1/guidelines/{segment(guideline_id)}'
 
             def effect():
                 row = self._row(guideline_id, 'PATCH')
@@ -1846,7 +1845,7 @@ class FakeClient:
                                {'body': {'id': guideline_id}}, effect)
 
         def delete(self, guideline_id, audit_message=None):
-            path = f'/api/v1/guidelines/{guideline_id}'
+            path = f'/api/v1/guidelines/{segment(guideline_id)}'
 
             def effect():
                 self._table(guideline_id, 'DELETE').remove(self._row(guideline_id, 'DELETE'))
@@ -1861,7 +1860,7 @@ class FakeClient:
 
         def discover_services(self, project_id):
             c = self._client
-            c._project(project_id, f'/api/v1/projects/{project_id}/services')
+            c._project(project_id, f'/api/v1/projects/{segment(project_id)}/services')
             return [dict(s) for s in c.services.get(project_id, [])]
 
     class _Users:
@@ -1889,7 +1888,7 @@ class FakeClient:
 
         def _missing(self, user_id, key, method):
             return _refusal(self, 404, 'No such entry', method,
-                            f'/api/v1/users/{user_id}/data/{quote(key, safe="")}')
+                            f'/api/v1/users/{segment(user_id)}/data/{segment(key)}')
 
         def get(self, user_id, key):
             entry = self.store.get((normalize_user_id(user_id), key))
@@ -1913,7 +1912,7 @@ class FakeClient:
             return {'key': key, 'updated_at': entry['updated_at'], 'version': entry['version']}
 
         def _version_mismatch(self, user_id, key, stored, was):
-            path = f'/api/v1/users/{user_id}/data/{quote(key, safe="")}'
+            path = f'/api/v1/users/{segment(user_id)}/data/{segment(key)}'
             raise PlaidAPIError(f'HTTP 409 version-mismatch at {self.base_url}{path}', status=409,
                                 url=f'{self.base_url}{path}', method='PUT',
                                 response_data={'error': 'version-mismatch', 'version': stored,
@@ -2050,7 +2049,7 @@ class _FakeJobs:
                              response_data={'error': error, **extra})
 
     def _documents_of(self, project_id):
-        path = f'/api/v1/projects/{project_id}/documents'
+        path = f'/api/v1/projects/{segment(project_id)}/documents'
         docs = self._client._project(project_id, path)['documents']
         docs = docs.values() if isinstance(docs, dict) else docs
         return {d.get('id'): d for d in docs}
@@ -2157,7 +2156,7 @@ class _FakeJobs:
 
     # -- a person's calls --
     def create(self, project_id, app, instructions, documents=None, *, id=None, setup=None):
-        path = f'/api/v1/projects/{project_id}/jobs'
+        path = f'/api/v1/projects/{segment(project_id)}/jobs'
         self.calls.append(('create', {'project_id': project_id, 'app': app, 'instructions': instructions,
                                       'documents': None if documents is None else list(documents), 'id': id,
                                       'setup': copy.deepcopy(setup)}))
@@ -2229,7 +2228,7 @@ class _FakeJobs:
         """A project's jobs, newest first, each without documents and report
         and with ``document_count``."""
         self.calls.append(('list', {'project_id': project_id}))
-        self._client._project(project_id, f'/api/v1/projects/{project_id}/jobs')
+        self._client._project(project_id, f'/api/v1/projects/{segment(project_id)}/jobs')
         jobs = sorted((j for j in self.rows.values() if j['project'] == project_id),
                       key=lambda j: j['seq'], reverse=True)
         return [{**self._shape(j, documents=False, report=False), 'document_count': len(j['documents'])}
@@ -2250,7 +2249,7 @@ class _FakeJobs:
 
     def get(self, job_id):
         self.calls.append(('get', {'job_id': job_id}))
-        job = self._job(job_id, 'GET', f'/api/v1/jobs/{job_id}')
+        job = self._job(job_id, 'GET', f'/api/v1/jobs/{segment(job_id)}')
         # As core's: History holds a write under a group the job's rows name.
         groups = {g for r in job['documents'] for g in (r.get('gloss_group'), r.get('harmonize_group')) if g}
         return {**self._shape(job), 'wrote': bool(groups & getattr(self._client, 'written_groups', set()))}
@@ -2260,7 +2259,7 @@ class _FakeJobs:
         the form ``" piece"``, each ``{seq, piece}`` with the row's JSON read
         back as the wire gives it."""
         self.calls.append(('pieces', {'job_id': job_id}))
-        self._job(job_id, 'GET', f'/api/v1/jobs/{job_id}/pieces')
+        self._job(job_id, 'GET', f'/api/v1/jobs/{segment(job_id)}/pieces')
         rows = [r for (form, _k), r in self.decision_rows.get(job_id, {}).items() if form == _JOB_PIECE_FORM]
         return [{'seq': r['key'], 'piece': transform_response(json.loads(r['analysis']))}
                 for r in sorted(rows, key=lambda r: r['key'], reverse=True)]
@@ -2281,7 +2280,7 @@ class _FakeJobs:
         return None
 
     def cancel(self, job_id):
-        path = f'/api/v1/jobs/{job_id}/cancel'
+        path = f'/api/v1/jobs/{segment(job_id)}/cancel'
         self.calls.append(('cancel', {'job_id': job_id}))
         job = self._job(job_id, 'POST', path)
         if job['state'] in _JOB_FINAL:
@@ -2300,7 +2299,7 @@ class _FakeJobs:
         """Core's undo of a whole job: refused 409 while the job is waiting,
         running or stopping, else answered with the client's ``undo_summary``
         (the fake applies nothing), recorded dry or not."""
-        path = f'/api/v1/jobs/{job_id}/undo'
+        path = f'/api/v1/jobs/{segment(job_id)}/undo'
         self.calls.append(('undo', {'job_id': job_id, 'dry_run': dry_run}))
         job = self._job(job_id, 'POST', path)
         if job['state'] not in _JOB_FINAL:
@@ -2356,7 +2355,7 @@ class _FakeJobs:
 
     def heartbeat(self, job_id, worker_id, *, phase=_client._UNSET, message=_client._UNSET,
                   waiting_for=_client._UNSET, current_document=_client._UNSET):
-        path = f'/api/v1/jobs/{job_id}/heartbeat'
+        path = f'/api/v1/jobs/{segment(job_id)}/heartbeat'
         fields = {k: v for k, v in (('phase', phase), ('message', message), ('waiting_for', waiting_for),
                                     ('current_document', current_document)) if v is not _client._UNSET}
         self.calls.append(('heartbeat', {'job_id': job_id, 'worker_id': worker_id, **fields}))
@@ -2389,7 +2388,7 @@ class _FakeJobs:
                         last_sentence=_client._UNSET, defers=_client._UNSET, counts=_client._UNSET,
                         skipped=_client._UNSET, gloss_group=_client._UNSET,
                         harmonize_group=_client._UNSET):
-        path = f'/api/v1/jobs/{job_id}/documents/{document_id}'
+        path = f'/api/v1/jobs/{segment(job_id)}/documents/{segment(document_id)}'
         fields = {k: copy.deepcopy(v) for k, v in (
             ('state', state), ('sentences', sentences), ('targets', targets), ('done', done),
             ('last_sentence', last_sentence), ('defers', defers), ('counts', counts),
@@ -2407,7 +2406,7 @@ class _FakeJobs:
         return self._shape(job)['documents'][row['position']]
 
     def finish(self, job_id, worker_id, state, report, reason=None):
-        path = f'/api/v1/jobs/{job_id}/finish'
+        path = f'/api/v1/jobs/{segment(job_id)}/finish'
         self.calls.append(('finish', {'job_id': job_id, 'worker_id': worker_id, 'state': state,
                                       'reason': reason, 'report': copy.deepcopy(report)}))
         job = self._held(job_id, worker_id, 'POST', path)
@@ -2435,7 +2434,7 @@ class _FakeJobs:
         return self._shape(job)
 
     def add_decisions(self, job_id, worker_id, decisions):
-        path = f'/api/v1/jobs/{job_id}/decisions'
+        path = f'/api/v1/jobs/{segment(job_id)}/decisions'
         self.calls.append(('add_decisions', {'job_id': job_id, 'worker_id': worker_id,
                                              'decisions': copy.deepcopy(list(decisions))}))
         self._working(job_id, worker_id, 'POST', path)
@@ -2455,7 +2454,7 @@ class _FakeJobs:
             row['count'] += d['count']
 
     def lookup_decisions(self, job_id, forms):
-        path = f'/api/v1/jobs/{job_id}/decisions/lookup'
+        path = f'/api/v1/jobs/{segment(job_id)}/decisions/lookup'
         self.calls.append(('lookup_decisions', {'job_id': job_id, 'forms': list(forms)}))
         self._job(job_id, 'POST', path)
         if not forms:
@@ -2472,7 +2471,7 @@ class _FakeJobs:
         idempotency store, for a day, for any (``forget_answers``). The fake
         keeps no project for a write, so it answers the starter's writes in
         any project, as core's store does for that day."""
-        path = f'/api/v1/jobs/{job_id}/landed'
+        path = f'/api/v1/jobs/{segment(job_id)}/landed'
         self.calls.append(('landed', {'job_id': job_id, 'refs': list(refs)}))
         job = self._job(job_id, 'POST', path)
         if not refs:
@@ -2485,7 +2484,7 @@ class _FakeJobs:
 
     def decisions(self, job_id):
         self.calls.append(('decisions', {'job_id': job_id}))
-        self._job(job_id, 'GET', f'/api/v1/jobs/{job_id}/decisions')
+        self._job(job_id, 'GET', f'/api/v1/jobs/{segment(job_id)}/decisions')
         rows = self.decision_rows.get(job_id, {}).values()
         return [dict(r) for r in sorted(rows, key=lambda r: (r['form'], r['key']))]
 
@@ -2507,7 +2506,7 @@ class _BatchUserData:
         self._store = store
 
     def _refuse(self, user_id, key):
-        path = f'/api/v1/users/{user_id}/data/{quote(key, safe="")}'
+        path = f'/api/v1/users/{segment(user_id)}/data/{segment(key)}'
         self._batch.check_open(path)
         raise PlaidAPIError(f'This endpoint cannot be used in a batch: {path}')
 

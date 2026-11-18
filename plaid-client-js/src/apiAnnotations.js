@@ -3,6 +3,7 @@
  * each a factory of the client (client.js installs them).
  */
 
+import { apiPath } from "./path.js";
 import { bodyOf, metadataMethods } from "./families.js";
 
 /**
@@ -103,7 +104,7 @@ export function tokensApi(client) {
      * @returns {Promise<Token>}
      */
     get: (tokenId) =>
-      client._request("GET", `/api/v1/tokens/${tokenId}`),
+      client._request("GET", apiPath`/api/v1/tokens/${tokenId}`),
     /**
      * Create a new token in a token layer. Tokens define text substrings
      * using begin and end offsets. Tokens may be zero-width and may overlap.
@@ -161,7 +162,7 @@ export function tokensApi(client) {
      * @returns {Promise<Token>}
      */
     update: (tokenId, begin, end, precedence, auditMessage) =>
-      client._request("PATCH", `/api/v1/tokens/${tokenId}`, {
+      client._request("PATCH", apiPath`/api/v1/tokens/${tokenId}`, {
         auditMessage,
         body: bodyOf({ begin, end, precedence }),
       }),
@@ -173,7 +174,7 @@ export function tokensApi(client) {
      * @returns {Promise<void>}
      */
     delete: (tokenId, auditMessage) =>
-      client._request("DELETE", `/api/v1/tokens/${tokenId}`, { auditMessage }),
+      client._request("DELETE", apiPath`/api/v1/tokens/${tokenId}`, { auditMessage }),
     /**
      * Create multiple tokens in a single operation.
      * @param {Array} body - The tokens to create, each as its single create takes it
@@ -223,7 +224,7 @@ export function tokensApi(client) {
       auditMessage,
       { id, keep } = {},
     ) =>
-      client._request("POST", `/api/v1/tokens/${tokenId}/split`, {
+      client._request("POST", apiPath`/api/v1/tokens/${tokenId}/split`, {
         auditMessage,
         body: bodyOf({ id, keep, position }),
       }),
@@ -238,7 +239,7 @@ export function tokensApi(client) {
      * @returns {Promise<Token>}
      */
     merge: (tokenId, otherTokenId, auditMessage) =>
-      client._request("POST", `/api/v1/tokens/${tokenId}/merge`, {
+      client._request("POST", apiPath`/api/v1/tokens/${tokenId}/merge`, {
         auditMessage,
         body: bodyOf({ "other-token-id": otherTokenId }),
       }),
@@ -253,7 +254,7 @@ export function tokensApi(client) {
      * @returns {Promise<Token>}
      */
     shift: (tokenId, begin, end, auditMessage) =>
-      client._request("POST", `/api/v1/tokens/${tokenId}/shift`, {
+      client._request("POST", apiPath`/api/v1/tokens/${tokenId}/shift`, {
         auditMessage,
         body: bodyOf({ begin, end }),
       }),
@@ -270,7 +271,7 @@ export function spansApi(client) {
      * @returns {Promise<Span>}
      */
     get: (spanId) =>
-      client._request("GET", `/api/v1/spans/${spanId}`),
+      client._request("GET", apiPath`/api/v1/spans/${spanId}`),
     /**
      * Create a new span. A span holds a primary atomic value and optional
      * metadata, and must at all times be associated with one or more tokens.
@@ -302,7 +303,7 @@ export function spansApi(client) {
      * @returns {Promise<Span>}
      */
     update: (spanId, value, auditMessage) =>
-      client._request("PATCH", `/api/v1/spans/${spanId}`, {
+      client._request("PATCH", apiPath`/api/v1/spans/${spanId}`, {
         auditMessage,
         body: bodyOf({ value }),
       }),
@@ -313,7 +314,7 @@ export function spansApi(client) {
      * @returns {Promise<void>}
      */
     delete: (spanId, auditMessage) =>
-      client._request("DELETE", `/api/v1/spans/${spanId}`, { auditMessage }),
+      client._request("DELETE", apiPath`/api/v1/spans/${spanId}`, { auditMessage }),
     /**
      * Create multiple spans in a single operation.
      * @param {Array} body - The spans to create, each as its single create takes it
@@ -349,7 +350,7 @@ export function spansApi(client) {
      * @returns {Promise<Span>}
      */
     setTokens: (spanId, tokens, auditMessage) =>
-      client._request("PUT", `/api/v1/spans/${spanId}/tokens`, {
+      client._request("PUT", apiPath`/api/v1/spans/${spanId}/tokens`, {
         auditMessage,
         body: bodyOf({ tokens }),
       }),
@@ -366,7 +367,7 @@ export function relationsApi(client) {
      * @returns {Promise<Relation>}
      */
     get: (relationId) =>
-      client._request("GET", `/api/v1/relations/${relationId}`),
+      client._request("GET", apiPath`/api/v1/relations/${relationId}`),
     /**
      * Create a new relation. A relation is a directed edge between two spans
      * with a value, useful for expressing phenomena such as syntactic or
@@ -409,7 +410,7 @@ export function relationsApi(client) {
      * @returns {Promise<Relation>}
      */
     update: (relationId, value, auditMessage) =>
-      client._request("PATCH", `/api/v1/relations/${relationId}`, {
+      client._request("PATCH", apiPath`/api/v1/relations/${relationId}`, {
         auditMessage,
         body: bodyOf({ value }),
       }),
@@ -420,7 +421,7 @@ export function relationsApi(client) {
      * @returns {Promise<void>}
      */
     delete: (relationId, auditMessage) =>
-      client._request("DELETE", `/api/v1/relations/${relationId}`, {
+      client._request("DELETE", apiPath`/api/v1/relations/${relationId}`, {
         auditMessage,
       }),
     /**
@@ -461,7 +462,7 @@ export function relationsApi(client) {
      * @returns {Promise<Relation>}
      */
     setTarget: (relationId, spanId, auditMessage) =>
-      client._request("PUT", `/api/v1/relations/${relationId}/target`, {
+      client._request("PUT", apiPath`/api/v1/relations/${relationId}/target`, {
         auditMessage,
         body: bodyOf({ "span-id": spanId }),
       }),
@@ -473,7 +474,7 @@ export function relationsApi(client) {
      * @returns {Promise<Relation>}
      */
     setSource: (relationId, spanId, auditMessage) =>
-      client._request("PUT", `/api/v1/relations/${relationId}/source`, {
+      client._request("PUT", apiPath`/api/v1/relations/${relationId}/source`, {
         auditMessage,
         body: bodyOf({ "span-id": spanId }),
       }),
@@ -490,7 +491,7 @@ export function vocabLinksApi(client) {
      * @returns {Promise<VocabLink>}
      */
     get: (id) =>
-      client._request("GET", `/api/v1/vocab-links/${id}`),
+      client._request("GET", apiPath`/api/v1/vocab-links/${id}`),
     /**
      * Create a new vocab link between tokens and a vocab item.
      * @param {string} vocabItem - The vocab item to link
@@ -513,7 +514,7 @@ export function vocabLinksApi(client) {
      * @returns {Promise<void>}
      */
     delete: (id, auditMessage) =>
-      client._request("DELETE", `/api/v1/vocab-links/${id}`, { auditMessage }),
+      client._request("DELETE", apiPath`/api/v1/vocab-links/${id}`, { auditMessage }),
     /**
      * Create multiple vocab links in a single operation. Entries may
      * reference different vocab items, but all tokens across the call must
