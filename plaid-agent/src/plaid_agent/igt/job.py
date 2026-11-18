@@ -42,7 +42,7 @@ from plaid_client.provenance import PROV_CONFIRMED_KEY, PROV_DETAIL_KEY, project
 from plaid_client.service import locked_for_writes
 
 from ..core import job as core_job
-from ..core.agent import ModelConfig, Toolkit, TurnCancelled, TurnResult, run_turn
+from ..core.agent import ModelConfig, Toolkit, TurnCancelled, TurnResult, run_turn, token_counter
 from ..core.garble import seed
 from ..core.trace import plural
 from ..core.guidelines import manual_chars
@@ -2240,7 +2240,10 @@ class IgtRunner:
         self.write_summary = write_summary
         self.cfg = cfg
         self.trace_dir = trace_dir
-        self.count = count
+        #: the tokens a value costs the model: the counter given (tests, a
+        #: scripted model), else the model's own, the one ``Pace`` budgets
+        #: with (REV-JR1-1: the worker gives none for a real model)
+        self.count = count or token_counter(cfg.model)
         self.version = agent_version([JOB_SYSTEM], toolkit.TOOLS)
         self.detail = {'model': cfg.model, 'version': self.version, JOB_DETAIL_KEY: job.id}
         self.source = job_source(cfg.model)

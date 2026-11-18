@@ -72,8 +72,8 @@ class ScriptedModel:
 
 
 def count_chars(value) -> int:
-    """Tokens as a scripted run counts them, without a tokenizer: a quarter
-    of the characters."""
+    """Tokens counted without a tokenizer, as some live tests count them: a
+    quarter of the characters."""
     text = value if isinstance(value, str) else json.dumps(value, ensure_ascii=False)
     return len(text) // 4
 
@@ -158,7 +158,9 @@ def main(argv=None) -> int:
         agent.litellm.completion = ScriptedModel.load(args.scripted_model)
         # A scripted model has no provider: litellm's "Provider List" banner says nothing here.
         agent.litellm.suppress_debug_info = True
-        count = count_chars
+        # Counted with the model's own tokenizer, as a real model is (litellm
+        # holds it locally): a scripted run builds the runner exactly as a
+        # real one does (REV-JR1-1).
         print(f'Model: scripted, from {args.scripted_model}')
     cfg = ModelConfig(model=args.model, api_base=args.api_base, api_key=args.api_key, max_steps=1000,
                       max_tokens=output_cap(args.model, args.max_tokens), timeout=args.timeout,
