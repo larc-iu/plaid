@@ -442,3 +442,11 @@ def test_no_progress_line_for_a_500_sentence_document_passes_cores_cap():
     assert sentences_text(list(range(1, 2 * SENTENCES_NAMED, 2))) == \
         'sentences ' + ', '.join(str(i) for i in range(1, 2 * SENTENCES_NAMED, 2))
 
+
+def test_a_one_sentence_stretch_reads_sentence_n_of_m():
+    """REV-JR2-10."""
+    client = JobClient({'d1': document('d1', 'Story', [{'words': ['blank']}]),
+                        'd2': document('d2', 'Other', [{'words': ['ta']}])})
+    job = start(client)
+    assert runner(job).progress_line('Story', False, [5], 7) == 'Story: sentence 5 of 7.'
+

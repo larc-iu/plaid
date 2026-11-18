@@ -183,7 +183,7 @@ def test_the_line_names_the_document_when_the_job_has_more_than_one(monkeypatch)
     use(monkeypatch, Model(answer))
     run_job(job, runner(job))
     firsts = [m for m in lines if 'steps' not in m]
-    assert firsts == ['Story: sentences 1 to 4 of 4.', 'Story B: sentences 1 to 1 of 1.'], lines
+    assert firsts == ['Story: sentences 1 to 4 of 4.', 'Story B: sentence 1 of 1.'], lines
 
 
 def test_a_whole_document_piece_says_so_on_its_line(monkeypatch):

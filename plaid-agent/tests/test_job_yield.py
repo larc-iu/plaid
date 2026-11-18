@@ -50,7 +50,7 @@ def test_requests_in_flight_pause_the_job_before_a_model_call(monkeypatch):
     runner(job).document('d1')
     assert seen[0][0] - start_t >= 30, 'no call while people used the model'
     beats = [c[1] for c in client.jobs.calls if c[0] == 'heartbeat']
-    assert any(b.get('waiting_for') == 'people' and b.get('message') == f'Sentences 1 to 1 of 1. {TAKING_TURNS}'
+    assert any(b.get('waiting_for') == 'people' and b.get('message') == f'Sentence 1 of 1. {TAKING_TURNS}'
                for b in beats), 'the line keeps its words and says the job takes turns with people'
     assert beats[-1].get('waiting_for') is None
     assert job.paused['people'] >= 30

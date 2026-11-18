@@ -3588,8 +3588,7 @@ class IgtRunner:
         own numbers and ``total`` the document's sentences, as the work list
         names a piece "s3 to s7" (RP4-5 F4: one numbering), each named when
         they are not a run (D12)."""
-        run = f'sentences {indexes[0]} to {indexes[-1]}' if is_run(indexes) else sentences_text(indexes)
-        said = 'the whole document as one part' if whole else f'{run} of {total}'
+        said = 'the whole document as one part' if whole else f'{sentences_text(indexes)} of {total}'
         return f'{name}: {said}.' if len(self.job.order) > 1 else said[0].upper() + said[1:] + '.'
 
     def matching_line(self, doc, part: List[Sentence]) -> str:
