@@ -2342,7 +2342,8 @@ class _FakeJobs:
             self._end(job, 'failed', 'starter-access')
             job['core_failed'] = True
             raise lost
-        if len(fields.get('message') or '') > 300:
+        # Measured as core's schema measures a string: in UTF-16 units.
+        if len((fields.get('message') or '').encode('utf-16-le')) // 2 > 300:
             raise self._refuse(400, 'POST', path, 'message: at most 300 characters.')
         if fields.get('phase') not in (None, 'checking', 'planning', 'working', 'harmonizing', 'reporting'):
             raise self._refuse(400, 'POST', path, f"Unknown phase: {fields['phase']}.")

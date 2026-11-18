@@ -362,11 +362,34 @@ def core_fault(e: Optional[BaseException]) -> Optional[str]:
 WORKER_ERROR = 'worker-error'
 
 
+#: The longest line core keeps for a job, in UTF-16 units (its schema's
+#: measure of a string).
+JOB_LINE_MAX = 300
+
+
+def fit_line(text: Optional[str]) -> Optional[str]:
+    """``text`` composed, as core keeps it, and cut to :data:`JOB_LINE_MAX`
+    UTF-16 units with "…" where it was cut (D7): a line core refuses would
+    refuse every heartbeat after it. None as None."""
+    if text is None:
+        return None
+    text = composed(text)
+
+    def units(t: str) -> int:
+        return len(t.encode('utf-16-le')) // 2
+    if units(text) <= JOB_LINE_MAX:
+        return text
+    while units(text) > JOB_LINE_MAX - 1:
+        text = text[:-1]
+    return text + '…'
+
+
 def error_line(e: BaseException) -> str:
-    """The job's message for an error the worker has no rule for, at most
-    the 300 characters core keeps. The error's own words, never Python's
-    class name (test_error_text): the worker's log has the traceback."""
-    return composed(f'The job worker met an error and stopped the job: {e}')[:300]
+    """The job's message for an error the worker has no rule for, cut to
+    what core keeps (:func:`fit_line`). The error's own words, never
+    Python's class name (test_error_text): the worker's log has the
+    traceback."""
+    return fit_line(f'The job worker met an error and stopped the job: {e}')
 
 
 class Job:
@@ -530,7 +553,7 @@ class Job:
         :attr:`line`, carried as :meth:`shown` says."""
         if 'message' in status:
             self.line = status['message']
-            status['message'] = self.shown(self.line)
+            status['message'] = fit_line(self.shown(self.line))
         changed = any(self.status.get(k) != v for k, v in status.items())
         self.status.update(status)
         if changed:
@@ -541,7 +564,7 @@ class Job:
         carries it. For a line that changes with every model call (BRIEF
         LV), which must never send heartbeats more often."""
         self.line = message
-        self.status['message'] = self.shown(message)
+        self.status['message'] = fit_line(self.shown(message))
 
     # --- checkpoints ---------------------------------------------------------
 
