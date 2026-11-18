@@ -611,7 +611,7 @@ Step 2 reuses your own work, in the manner of FieldWorks' guesses from previous 
 A word receives a copy only when it is **unanalyzed**: still a single morpheme identical to the word, with no annotation values and no lexicon link.
 A word you have segmented, glossed, or linked, even partly, is never touched.
 
-For each such word, Plaid IGT looks at every other occurrence of the same form in the document and in up to 25 other documents of the project, those with the most words it is looking for, and copies the analysis given most often: the morphemes, the lexicon links, and the annotation values.
+For each such word, Plaid IGT looks at every other occurrence of the same form in the document and in up to 25 other documents of the project, those with the most words it is looking for (a document of more than 10,000 words only when there are not 25 shorter ones), and copies the analysis given most often: the morphemes, the lexicon links, and the annotation values.
 If two analyses are tied, the word is left alone for you to decide.
 Only analyses a person made or confirmed count, so one machine pass never feeds the next.
 What a copy carries is set per project under **Settings → Services** (see <<_settings_services>>).

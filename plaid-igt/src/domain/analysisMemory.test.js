@@ -368,4 +368,25 @@ describe('rankSourceDocs', () => {
     expect(docIds).toEqual(['d1', 'd3']);
     expect(truncated).toBe(true);
   });
+
+  // SCL3-3: by the raw count of matches the longest document led for every
+  // common form, and a 20,000-word document was read whole on every run.
+  it('puts a document of more than 10,000 words after every shorter one', () => {
+    const result = {
+      results: [
+        ['huge', 'perros', 400],
+        ['huge', 'otro', 19600],
+        ['short', 'perros', 20],
+        ['short', 'otro', 220],
+        ['edge', 'perros', 30],
+        ['edge', 'otro', 9970],
+      ],
+    };
+    expect(rankSourceDocs(result, new Set(['perros']), { maxDocs: 2 }).docIds).toEqual([
+      'edge',
+      'short',
+    ]);
+    // Still read when there are not enough others.
+    expect(rankSourceDocs(result, new Set(['perros'])).docIds).toEqual(['edge', 'short', 'huge']);
+  });
 });

@@ -306,22 +306,33 @@ export const wordFormDocIndexQuery = (wordTokenLayerId) => ({
   return: { group: ['?d', '?t.value'], aggregates: [['count']] },
 });
 
+// A source document longer than this many words is read only when there are
+// not enough shorter ones (SCL3-3): by the count of matches alone, the
+// longest document in the project led for any common form and was read whole
+// on every run.
+export const LONG_SOURCE_WORDS = 10_000;
+
 // Pick the documents worth fetching for a set of target forms: those
 // containing an exact or casefolded match, ranked by matching-token count,
-// capped. Returns { docIds, truncated }.
+// with documents over LONG_SOURCE_WORDS words after all others (the index
+// lists every form of a document, so its rows add up to its length), capped.
+// Returns { docIds, truncated }.
 export function rankSourceDocs(result, targetForms, { excludeDocId = null, maxDocs = 25 } = {}) {
   const exact = new Set(targetForms);
   const folded = new Set([...targetForms].map((f) => f.toLowerCase()));
   const counts = new Map();
+  const lengths = new Map();
   for (const [docId, form, n] of result?.results || []) {
+    const d = String(docId);
+    lengths.set(d, (lengths.get(d) || 0) + n);
     const f = (form ?? '').toString();
     if (!f) continue;
-    const d = String(docId);
     if (excludeDocId != null && d === String(excludeDocId)) continue;
     if (!exact.has(f) && !folded.has(f.toLowerCase())) continue;
     counts.set(d, (counts.get(d) || 0) + n);
   }
-  const ranked = [...counts.entries()].sort((a, b) => b[1] - a[1]);
+  const long = ([d]) => (lengths.get(d) > LONG_SOURCE_WORDS ? 1 : 0);
+  const ranked = [...counts.entries()].sort((a, b) => long(a) - long(b) || b[1] - a[1]);
   return {
     docIds: ranked.slice(0, maxDocs).map(([d]) => d),
     truncated: ranked.length > maxDocs,
