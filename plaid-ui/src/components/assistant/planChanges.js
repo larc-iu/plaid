@@ -142,10 +142,10 @@ export const staleLine = (reason) =>
 // numbers of changes add up each row's `count`, which the service writes from
 // the same rule (`row_changes`), so they sum to this line. It is what the turn
 // staged and stays so whatever became of the plan: the card says that. A plan
-// whose record holds no count gets no line.
+// whose record holds no count, or that stages none, gets no line.
 export const stagedLine = (plan) => {
   const n = plan?.proposedCount;
-  return Number.isInteger(n) && n >= 0 ? `Staged: ${count(n, 'change', 'changes')}` : null;
+  return Number.isInteger(n) && n > 0 ? `Staged: ${count(n, 'change', 'changes')}` : null;
 };
 
 // How many rows a settled plan's record no longer holds (planRecord.js).

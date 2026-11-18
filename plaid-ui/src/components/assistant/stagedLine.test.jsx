@@ -88,10 +88,11 @@ describe('the staged line', () => {
     await view.unmount();
   });
 
-  it('says one change in the singular, and groups thousands as the card does', () => {
+  it('says one change in the singular, groups thousands, and is not drawn for none', () => {
     expect(stagedLine(plan({ proposedCount: 1 }))).toBe('Staged: 1 change');
     expect(stagedLine(plan({ proposedCount: 6244 }))).toBe('Staged: 6,244 changes');
-    expect(stagedLine(plan({ proposedCount: 0 }))).toBe('Staged: 0 changes');
+    // A plan that writes nothing (only kept values) staged no change.
+    expect(stagedLine(plan({ proposedCount: 0 }))).toBeNull();
   });
 
   // The fact of the turn: the card says what became of the plan, and the line
