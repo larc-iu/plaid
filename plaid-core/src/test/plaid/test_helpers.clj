@@ -695,6 +695,8 @@
         db (File. dir "plaid.db")]
     (.mkdirs dir)
     (.deleteOnExit dir)
+    ;; a core started on it writes its JWT secret beside the database
+    (.deleteOnExit (File. dir "jwt-secret.txt"))
     (doseq [suffix ["" "-wal" "-shm" ".lock"]]
       (.deleteOnExit (File. (str (.getAbsolutePath db) suffix))))
     (.getAbsolutePath db)))
