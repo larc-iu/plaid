@@ -894,6 +894,24 @@
     (and ref (> (count ref) og/ref-max-length))
     (str "group-ref must be at most " og/ref-max-length " characters")))
 
+(defn- job-ref-refusal
+  "Why the request's `?group-ref=` `ref` may not be taken from the caller
+  whose scoped token's `:jti` is `token-key`, or nil. A ref is the caller's
+  claim about its own write, and core reads only one kind, `job:<id>/...`,
+  to decide anything (whether a job stands undone, which writes are a
+  job's own). So the rule: a ref that starts with `job:` is taken only from
+  that job's own token (`job:<id>`, `plaid.rest-api.v1.auth/issue-job-token!`),
+  and `job:<id>/undo` and `job:<id>/redo` from nobody, since core writes them
+  itself on an undo (ACL7-1). Any other ref is a label core never reads."
+  [ref token-key]
+  (when (and ref (str/starts-with? ref "job:"))
+    (let [own? (and (string? token-key)
+                    (str/starts-with? token-key "job:")
+                    (or (= ref token-key) (str/starts-with? ref (str token-key "/"))))]
+      (when (or (not own?)
+                (contains? #{(str token-key "/undo") (str token-key "/redo")} ref))
+        "A group-ref that names a job is taken only from that job's own worker."))))
+
 (defn wrap-operation-group
   "When a write request carries `?group-id=<uuid>` (plus an optional
   `?group-message=<text>`, `?group-kind=<kind>` and `?group-ref=<text>`),
@@ -914,7 +932,8 @@
   kind must be one of `plaid.sql.operation-group/kinds` and the ref at most
   `ref-max-length` characters, or the request is refused (400): unlike the
   message, both are read by programs, so a cut ref or an unknown kind would
-  be a wrong record rather than an untidy one."
+  be a wrong record rather than an untidy one. A ref that names a job is
+  taken only from that job's own token (`job-ref-refusal`), else 403."
   [handler]
   (fn [request]
     (let [raw (raw-query-param request "group-id")
@@ -931,6 +950,10 @@
         (group-structure-error gid kind ref)
         {:status 400
          :body {:error (group-structure-error gid kind ref)}}
+
+        (job-ref-refusal ref (-> request :auth/token-scope :token-key))
+        {:status 403
+         :body {:error (job-ref-refusal ref (-> request :auth/token-scope :token-key))}}
 
         gid
         (binding [op/*current-group-id* gid

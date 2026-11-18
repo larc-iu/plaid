@@ -17,9 +17,12 @@
 
 (defn- claims [token] (jwt/unsign token "fake-secret"))
 
-(defn- write-in [who p gid name]
+(defn- write-in
+  "Write in `p` under group `gid` with job `job`'s own ref, which core takes
+  only from that job's token (ACL7-1)."
+  [who p gid name job]
   (call who :post (str "/api/v1/documents?group-id=" gid "&group-message=Assistant%20job&group-kind=job"
-                       "&group-ref=job:x/doc:y/pass:gloss")
+                       "&group-ref=job:" job "/doc:y/pass:gloss")
         {:project-id p :name name}))
 
 (defn- reads [token p]
@@ -49,12 +52,12 @@
 (deftest the-token-reaches-only-what-the-starter-may-in-the-project
   (let [{:keys [p q d1] :as world} (jh/world!)
         _ (jh/grant! q "writers" "maintainer@example.com")
-        _ (job-id (start! (:m world) p))
+        job (job-id (start! (:m world) p))
         job-token (as (-> (claim! jh/worker-a) :body :token))
         vocab (-> (call admin-request :post "/api/v1/vocab-layers" {:name "lex" :project-id p}) :body :id)]
     (testing "inside its project it reads and writes"
       (is (= 200 (:status (call job-token :get (str "/api/v1/documents/" d1)))))
-      (is (= 201 (:status (write-in job-token p (random-uuid) "made by the job")))))
+      (is (= 201 (:status (write-in job-token p (random-uuid) "made by the job" job)))))
     (testing "outside its project it is refused, though its user writes there"
       (is (= 403 (:status (call job-token :get (str "/api/v1/projects/" q)))))
       (is (= 403 (:status (call job-token :post "/api/v1/documents" {:project-id q :name "elsewhere"})))))
@@ -79,8 +82,8 @@
         gid (random-uuid)]
     (is (string? renewed) "a fresh token with every heartbeat")
     (is (= (:jti (claims first-token)) (:jti (claims renewed))))
-    (is (= 201 (:status (write-in (as first-token) p gid "one"))))
-    (is (= 201 (:status (write-in (as renewed) p gid "two"))) "the renewed token joins the group")
+    (is (= 201 (:status (write-in (as first-token) p gid "one" j))))
+    (is (= 201 (:status (write-in (as renewed) p gid "two" j))) "the renewed token joins the group")
     (let [row (psc/fetch-by-id fix/db :operation_groups gid)]
       (is (= "starter@example.com" (:user_id row)))
       (is (= "job" (:kind row)))
@@ -95,7 +98,7 @@
             _ (claim! jh/worker-b)
             other (auth/issue-job-token! fix/db "fake-secret" "starter@example.com" p other-job jh/worker-b
                                          nil "admin@example.com" nil)
-            r (write-in (as other) p gid "three")]
+            r (write-in (as other) p gid "three" other-job)]
         (is (= 200 (reads other p)))
         (is (= 403 (:status r)))
         (is (empty? (psc/q fix/db {:select [:id] :from [:documents] :where [:= :name "three"]})))))))
