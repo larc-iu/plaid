@@ -62,8 +62,11 @@ const rebase = (draft, before, now) => {
     for (const k of Object.keys(now[g])) {
       if (sameConfig(mine[g][k], before[g][k])) continue;
       next[g][k] = draft[g][k];
-      if (!sameConfig(now[g][k], before[g][k]) && !sameConfig(now[g][k], mine[g][k])) {
-        next.elsewhere[g][k] = now[g][k];
+      if (sameConfig(now[g][k], mine[g][k])) continue;
+      if (!sameConfig(now[g][k], before[g][k])) next.elsewhere[g][k] = now[g][k];
+      // A field not changed again since the last read keeps its mark.
+      else if (Object.hasOwn(draft.elsewhere?.[g] ?? {}, k)) {
+        next.elsewhere[g][k] = draft.elsewhere[g][k];
       }
     }
   }
@@ -216,8 +219,10 @@ export const LanguagesSettings = ({ project, projectId, client, onProjectUpdate 
         undefined,
         expectStored(project, IGT_NAMESPACE, 'languages'),
       );
-      // What the edits made after this save are made on.
+      // What the edits made after this save are made on. Its marks are
+      // answered by it.
       prevSaved.current = stored;
+      setDraft(({ elsewhere: _answered, ...d }) => d);
       // Save stays held until the project is read again, so a next save
       // expects what this one stored. The save has landed by now, so a read
       // that fails is not a failed save.

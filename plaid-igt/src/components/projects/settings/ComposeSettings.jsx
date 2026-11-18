@@ -91,7 +91,8 @@ const rebase = (draft, before, now, ours) => {
       rows.push({
         ...d,
         was: n.was,
-        elsewhere: ours || sameRow(n, d.was) || sameRow(n, d) ? null : n,
+        // A row not changed again since the last read keeps its mark.
+        elsewhere: ours || sameRow(n, d) ? null : !sameRow(n, d.was) ? n : (d.elsewhere ?? null),
       });
   }
   // A row changed here whose code is stored no more stays, as a new one.

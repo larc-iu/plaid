@@ -86,7 +86,10 @@ describe('Special characters, two maintainers', () => {
     await page.view.step(() => type(charBox, char));
     await page.view.step(() => type(noteBox, note));
   };
-  const rowOf = (page, code) => page.view.container.querySelector(`[data-code-row="${code}"]`);
+  const rowOf = (page, code) =>
+    [...page.view.container.querySelectorAll('[data-code-row]')].find(
+      (r) => r.dataset.codeRow === code,
+    ) ?? null;
   const stored = (server) => server.config.igt.compose.codes.map((c) => c.code).sort();
 
   it("a refused save shows the other's code with this one's, and a second save keeps both", async () => {
@@ -253,6 +256,35 @@ describe('Special characters, two maintainers', () => {
     await ben.view.unmount();
   });
 
+  // REV-G2-4: a second refusal, for a change to another row, keeps the mark.
+  it('a code both changed keeps its mark through a second refusal', async () => {
+    const { server, client } = makeServer();
+    const ana = await openPage(ComposeSettings, server, client);
+    const plain = (page) =>
+      [...page.view.container.querySelectorAll('[data-code-row]')].map((r) => r.dataset.codeRow);
+    const [c1] = plain(ana);
+    const ben = await openPage(ComposeSettings, server, client);
+    const cy = await openPage(ComposeSettings, server, client);
+    await ana.view.step(() => type(note(ana, c1), 'by Ana'));
+    await press(ana, /^Save$/);
+    await ben.view.step(() => type(note(ben, c1), 'by Ben'));
+    await press(ben, /^Save$/);
+    await cy.view.unmount();
+    const cy2 = await openPage(ComposeSettings, server, client);
+    const c2 = plain(cy2).find((c) => c !== c1);
+    await cy2.view.step(() => type(note(cy2, c2), 'by Cy'));
+    await press(cy2, /^Save$/);
+    await press(ben, /^Save$/);
+    expect(client.refused).toBe(2);
+    expect(rowOf(ben, c1).textContent).toContain('Changed elsewhere to');
+    expect(rowOf(ben, c1).textContent).toContain('(by Ana).');
+    await press(ben, /^Save$/);
+    expect(rowOf(ben, c1).textContent).not.toContain('Changed elsewhere');
+    await ana.view.unmount();
+    await ben.view.unmount();
+    await cy2.view.unmount();
+  });
+
   it('a code deleted on this page stays deleted when the list is read again', async () => {
     const { server, client } = makeServer();
     server.config.igt.compose = {
@@ -317,6 +349,28 @@ describe('Languages, two maintainers', () => {
     expect(box(ben, 'obj-lang-name').value).toBe('two');
     expect(ben.view.container.textContent).not.toContain('Changed elsewhere');
     await ben.view.unmount();
+  });
+
+  it('a field both changed keeps its mark through a second refusal', async () => {
+    const { server, client } = makeServer();
+    const ana = await openPage(LanguagesSettings, server, client);
+    const ben = await openPage(LanguagesSettings, server, client);
+    await ana.view.step(() => type(box(ana, 'obj-lang-name'), 'Kalo'));
+    await press(ana, /^Save$/);
+    await ben.view.step(() => type(box(ben, 'obj-lang-name'), 'Calo'));
+    await press(ben, /^Save$/);
+    const cy = await openPage(LanguagesSettings, server, client);
+    await cy.view.step(() => type(box(cy, 'meta-lang-name'), 'Dutch'));
+    await press(cy, /^Save$/);
+    await press(ben, /^Save$/);
+    expect(client.refused).toBe(2);
+    expect(ben.view.container.textContent).toContain('Changed elsewhere to Kalo.');
+    expect(box(ben, 'meta-lang-name').value).toBe('Dutch');
+    await press(ben, /^Save$/);
+    expect(ben.view.container.textContent).not.toContain('Changed elsewhere');
+    await ana.view.unmount();
+    await ben.view.unmount();
+    await cy.view.unmount();
   });
 
   it('a field both changed keeps what this page typed and says what is stored', async () => {
