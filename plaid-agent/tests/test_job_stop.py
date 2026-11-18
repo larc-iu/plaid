@@ -149,6 +149,18 @@ def test_a_job_that_ends_keeps_no_progress_line(monkeypatch):
     assert client.jobs.rows[job.id]['message'] is None, 'not "Writing the report."'
 
 
+def test_a_job_whose_report_prose_a_model_wrote_keeps_no_progress_line(monkeypatch):
+    """S8-4: the prose is written after the line was cleared, and set the
+    line "Writing the report." again, which read_job then told the
+    assistant of a done job."""
+    client = _client(1)
+    job = start(client)
+    use(monkeypatch, Model(_analyse))
+    assert run_job(job, runner(job, write_summary=True))['state'] == 'done'
+    assert client.jobs.rows[job.id]['report']['summary_by'] == 'model'
+    assert client.jobs.rows[job.id]['message'] is None, 'not "Writing the report."'
+
+
 def test_a_stopped_job_keeps_no_progress_line(monkeypatch):
     client = _client(2)
     job = start(client)
