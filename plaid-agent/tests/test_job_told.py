@@ -266,3 +266,34 @@ def test_documents_the_plan_left_out_are_counted_and_said_apart_from_those_not_r
     assert (counts['not_reached'], counts['left_out']) == (1, 1)
     assert state_text(report['documents'][1], {'l1'}) == 'left out by the plan'
     assert state_text(report['documents'][2], {'l1'}) == 'not-reached'
+
+
+# --- D24: a text-edit refusal in a job carries no chat step ---------------------------------------
+
+def _text_ws():
+    ws = _job_ws()
+    ws.edits_text = True
+    return ws
+
+
+@pytest.mark.parametrize('first,then', [
+    (('delete_sentence', {'document': 'Text 1', 'refs': ['s2']}),
+     ('respell', {'document': 'Text 1', 'ref': 's2.w1', 'new_text': 'Gem-ar'})),
+    (('respell', {'document': 'Text 1', 'ref': 's1.w2', 'new_text': 'gom'}),
+     ('split_word', {'document': 'Text 1', 'ref': 's1.w2', 'at': 1})),
+    (('split_word', {'document': 'Text 1', 'ref': 's1.w2', 'at': 1}),
+     ('respell', {'document': 'Text 1', 'ref': 's1.w2', 'new_text': 'gom'})),
+    (('retype_sentence', {'document': 'Text 1', 'ref': 's1', 'text': 'Ali-di gam akuna mo.'}),
+     ('respell', {'document': 'Text 1', 'ref': 's2.w1', 'new_text': 'Gem-ar'})),
+])
+def test_two_text_changes_that_cannot_stand_together_are_left_with_the_jobs_line(first, then):
+    from plaid_agent.core.prompt import JOB_LEAVE_IT
+    ws = _text_ws()
+    toolkit.job_piece_call(ws, *first)
+    held = list(ws.ops)
+    out = toolkit.job_piece_call(ws, *then)
+    assert out.startswith('Error: ') and out.endswith(JOB_LEAVE_IT), out
+    for chat in ('discard_plan', 'separate plan', 'once that is applied', 'approve'):
+        assert chat not in out
+    assert ws.ops == held and len(ws.left_by_refusal) == 1
+

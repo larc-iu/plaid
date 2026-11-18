@@ -1147,9 +1147,9 @@ def clear_of_reshapes(ops: List[Dict[str, Any]], docs, what: str) -> None:
     reach = set(docs)
     for op in ops:
         if op.get('kind') in RESHAPES and (op.get('doc') in reach or not op.get('doc')):
-            raise ToolError(f'This plan already reshapes text or words in a document this {what} '
-                            'reaches. Let the user approve one, then plan the other, or discard_plan and plan '
-                            'this alone.', kind='conflict')
+            raise ToolError(f'This plan already reshapes text or words in a document this {what} reaches.',
+                            kind='conflict', code='text', advice='Let the user approve one, then plan the other, '
+                            'or discard_plan and plan this alone.')
 
 
 def _names_morpheme_forms(ws: Workspace, field: str) -> bool:

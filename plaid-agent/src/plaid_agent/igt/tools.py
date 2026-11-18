@@ -832,12 +832,13 @@ def check_respell_overlap(ws: Workspace, text_id: str, begin: int, end: int, whe
     overlapping ranges would corrupt the text."""
     for b, e in ws.planned_respells(text_id):
         if (b, e) != (begin, end) and b < end and begin < e:
-            raise ToolError(f'{where}: overlaps a respelling already planned for {b}-{e} in the same text; '
-                            f'discard_plan or narrow the pattern', kind='conflict')
+            # The chat's step as advice, which a job never reads (D24).
+            raise ToolError(f'{where}: overlaps a respelling already planned for {b}-{e} in the same text.',
+                            kind='conflict', code='text', advice='discard_plan or narrow the pattern.')
     for op in ws.ops:
         if op.get('kind') == 'edit_text' and op.get('text_id') == text_id and op['begin'] < end:
-            raise ToolError(f'{where}: a sentence before or at this point is retyped or appended in this plan; '
-                            'respell it in a separate plan', kind='conflict')
+            raise ToolError(f'{where}: a sentence before or at this point is retyped or appended in this plan.',
+                            kind='conflict', code='text', advice='Respell it in a separate plan.')
     doc = next((d for d in ws._docs.values() if d.text_id == text_id), None)
     refuse_text_in_deleted_sentence(ws, doc, begin, end, where)
     # A word this plan splits, merges or deletes is cut again before the
@@ -850,8 +851,9 @@ def check_respell_overlap(ws: Workspace, text_id: str, begin: int, end: int, whe
         for sentence in doc.sentences:
             for w in sentence.words:
                 if w.id in reshaped and w.begin < end and begin < w.end:
-                    raise ToolError(f'{where}: this plan already splits, merges or deletes this word. Plan the '
-                                    'respelling on its own once that is applied.', kind='conflict')
+                    raise ToolError(f'{where}: this plan already splits, merges or deletes this word.',
+                                    kind='conflict', code='text', sentence_id=sentence.id,
+                                    advice='Plan the respelling on its own once that is applied.')
     no_scope_reaches(ws, doc.id if doc is not None else None, where, placed=True)
 
 
@@ -872,8 +874,8 @@ def refuse_text_in_deleted_sentence(ws: Workspace, doc, begin: int, end: int, wh
     refused by ``delete_sentence`` itself."""
     for s in deleted_sentences(ws, doc):
         if begin < max(s.end, s.begin + 1) and s.begin < max(end, begin + 1):
-            raise ToolError(f'{where}: this plan deletes s{s.index}, which this would change. Plan one of them, '
-                            'or discard_plan to start over', kind='conflict')
+            raise ToolError(f'{where}: this plan deletes s{s.index}, which this would change.', kind='conflict',
+                            code='text', advice='Plan one of them, or discard_plan to start over.', sentence_id=s.id)
 
 
 def refuse_shape_and_respell(ws: Workspace, words, where: str) -> None:
@@ -882,8 +884,8 @@ def refuse_shape_and_respell(ws: Workspace, words, where: str) -> None:
     for w in words:
         for b, e in ws.planned_respells(w.text_id):
             if b < w.end and w.begin < e:
-                raise ToolError(f'{where}: this plan already respells this word. Plan the split, merge or '
-                                'delete on its own once that is applied.', kind='conflict')
+                raise ToolError(f'{where}: this plan already respells this word.', kind='conflict', code='shape',
+                                advice='Plan the split, merge or delete on its own once that is applied.')
 
 
 def reshape_guards(ws: Workspace, doc, where: Optional[str] = None) -> None:
