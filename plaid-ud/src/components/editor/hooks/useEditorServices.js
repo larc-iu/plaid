@@ -69,9 +69,6 @@ export const useEditorServices = ({ client, projectId, doc, project, acquireWrit
       errorTitle: 'Failed to parse',
       errorMessage: 'The parse did not run.',
       stoppedTitle: 'Parse',
-      // This parser's write phase is one critical block with no checkpoint in
-      // it, so a run it reports as stopped stopped before writing.
-      stoppedMessage: 'Nothing was written.',
       // The words for the counts the service reports. A run that skipped
       // every sentence warns rather than congratulates (C8).
       notice: parseNotice,
@@ -94,10 +91,6 @@ export const useEditorServices = ({ client, projectId, doc, project, acquireWrit
       errorTitle: 'Failed to tokenize',
       errorMessage: 'The tokenizer did not run.',
       stoppedTitle: 'Tokenize',
-      // The bundled tokenizer writes in one critical block with no checkpoint
-      // in it, as the parser does, so a run it reports as stopped stopped
-      // before writing (H2-9-4).
-      stoppedMessage: 'Nothing was written.',
       notice: tokenizeNotice,
     },
   });

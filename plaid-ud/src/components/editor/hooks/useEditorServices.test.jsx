@@ -74,7 +74,15 @@ const deferred = () => {
 // when the request goes out and may return a value, an Error to throw, or a
 // promise to settle later.
 const sent = [];
-const fakeClient = ({ services = [], answer = () => ({}) } = {}) => ({
+// `versions`: the document's version on the server at each read, the last
+// repeated. Without it the version cannot be read, as from a fake that has
+// no documents.
+const fakeClient = ({ services = [], answer = () => ({}), versions = null } = {}) => ({
+  ...(versions && {
+    documents: {
+      get: vi.fn(async () => ({ version: versions.length > 1 ? versions.shift() : versions[0] })),
+    },
+  }),
   messages: {
     discoverServices: vi.fn(async () => services),
     requestService: vi.fn(
@@ -412,9 +420,15 @@ describe('a run someone stopped', () => {
       'lock:release',
     ]);
     // "Parsed. Stopped." is the contradiction this copy exists to prevent: the
-    // title is the run's plain name, and the message says what is true of THIS
-    // parser, whose write phase is one critical block.
-    expect(toasts).toEqual([{ kind: 'info', title: 'Parse', message: 'Nothing was written.' }]);
+    // title is the run's plain name. With no version to read, the message
+    // claims nothing it cannot know.
+    expect(toasts).toEqual([
+      {
+        kind: 'info',
+        title: 'Parse',
+        message: 'Stopped partway. What ran before the stop is in the document.',
+      },
+    ]);
     expect(toasts.some((t) => t.kind === 'success')).toBe(false);
     await view.unmount();
   });
@@ -427,9 +441,13 @@ describe('a run someone stopped', () => {
 
     await view.step(() => view.api().tokenize.start('some text'));
 
-    // The bundled tokenizer writes in one critical block, as the parser does,
-    // so a stop it honours lands before any write (H2-9-4).
-    expect(toasts).toEqual([{ kind: 'info', title: 'Tokenize', message: 'Nothing was written.' }]);
+    expect(toasts).toEqual([
+      {
+        kind: 'info',
+        title: 'Tokenize',
+        message: 'Stopped partway. What ran before the stop is in the document.',
+      },
+    ]);
     await view.unmount();
   });
 
@@ -466,6 +484,63 @@ describe('a run someone stopped', () => {
       'lock:release',
     ]);
     await view.unmount();
+  });
+});
+
+// A stopped or dropped run reads the document's version before and after and
+// says what it finds, for any service (H2-9-4, H2-9-5, REV-G5-9).
+describe('a run that stopped or dropped says whether the document changed', () => {
+  const run = async (spot, answer, versions) => {
+    if (spot === 'tokenize') localStorage.setItem(TOKENIZE_KEY, 'service:tok:punkt');
+    const services = spot === 'tokenize' ? [TOKENIZE_SERVICE] : [parseService()];
+    const view = await mount({ client: fakeClient({ services, answer, versions }) });
+    await view.step(() =>
+      spot === 'tokenize' ? view.api().tokenize.start('some text') : view.api().parse.start(),
+    );
+    await view.unmount();
+  };
+
+  it.each([
+    ['parse', 'Parse'],
+    ['tokenize', 'Tokenize'],
+  ])('a %s stopped before writing: nothing was written', async (spot, title) => {
+    await run(spot, () => ({ stopped: true }), [3, 3]);
+    expect(toasts).toEqual([{ kind: 'info', title, message: 'Nothing was written.' }]);
+  });
+
+  it.each([
+    ['parse', 'Parse'],
+    ['tokenize', 'Tokenize'],
+  ])('a %s stopped after writing: the document changed', async (spot, title) => {
+    await run(spot, () => ({ stopped: true }), [3, 5]);
+    expect(toasts).toEqual([
+      { kind: 'info', title, message: 'The document changed during the run.' },
+    ]);
+  });
+
+  it.each([
+    ['parse', 'Failed to parse', 'Parse'],
+    ['tokenize', 'Failed to tokenize', 'Tokenize'],
+  ])('a %s whose service dropped partway says to run it again', async (spot, title, name) => {
+    await run(spot, () => new Error('Service disconnected'), [3, 9]);
+    expect(toasts).toEqual([
+      {
+        kind: 'error',
+        title,
+        message: `Service disconnected. The document changed during the run. Run ${name} again to finish.`,
+      },
+    ]);
+  });
+
+  it('a parse whose service dropped before writing says nothing was written', async () => {
+    await run('parse', () => new Error('Service disconnected'), [3, 3]);
+    expect(toasts).toEqual([
+      {
+        kind: 'error',
+        title: 'Failed to parse',
+        message: 'Service disconnected. Nothing was written.',
+      },
+    ]);
   });
 });
 

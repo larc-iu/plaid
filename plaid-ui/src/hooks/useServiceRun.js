@@ -71,6 +71,8 @@ export const useServiceRun = ({
           {
             timeout,
             ...copy,
+            // A stopped or failed run says whether the document changed.
+            runName: label,
             // The banner shows the run, and it outlives the tab that started it.
             onProgress: lock.onProgress,
             // Written down before the request is submitted, so a reload in that

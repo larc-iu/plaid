@@ -4,6 +4,23 @@ import { humanizeError } from '../lib/errors.js';
 import { showRunNotice } from '../lib/runNotice.js';
 import { uuidv4 } from '../../../plaid-client-js/src/ids.js';
 
+// What a stopped or failed run did to its document, as its version says. A
+// moved version is not called the run's own writes: before the service takes
+// the document's lock someone else may write, and a service of another
+// author may not take it at all, so the page cannot tell whose the change is.
+const changedLine = (changed) =>
+  changed ? 'The document changed during the run.' : 'Nothing was written.';
+
+// The document's version on the server, or null when it cannot be read.
+const readVersion = async (client, documentId) => {
+  try {
+    const v = (await client.documents.get(documentId))?.version;
+    return v === undefined ? null : v;
+  } catch {
+    return null;
+  }
+};
+
 // One service request, from discovery to result, with the progress contract
 // every run in every app wears.
 //
@@ -80,12 +97,18 @@ export const useServiceRequest = (client) => {
   // own words: telling someone who has just pressed Stop that "Tokenization
   // Complete. Stopped." reads as a contradiction. `stoppedTitle` is the run's
   // plain name, the way the banner and the run record already name it.
-  const succeed = useCallback((result, copy) => {
+  //
+  // `changed` is what the run did to the document, read from its version
+  // (`runName` below): false, true or null when it could not be read.
+  const succeed = useCallback((result, copy, changed = null) => {
     const stopped = result?.stopped === true;
     setProgressPercent(stopped ? null : 100);
     setProgressMessage(stopped ? 'Stopped.' : 'Finished.');
     if (stopped) {
-      notifyInfo(copy.stoppedMessage, copy.stoppedTitle || copy.successTitle);
+      notifyInfo(
+        changed === null ? copy.stoppedMessage : changedLine(changed),
+        copy.stoppedTitle || copy.successTitle,
+      );
       return;
     }
     // A service reports a per-item failure in its counts rather than by
@@ -105,7 +128,7 @@ export const useServiceRequest = (client) => {
   // writing. Saying "it failed" would be false, and the caller must keep the
   // run record so a reload can rejoin it. A caller that keeps NO record (speech
   // detection) says so instead of promising a reload that finds nothing.
-  const fail = useCallback((error, copy) => {
+  const fail = useCallback((error, copy, changed = null) => {
     if (error?.pending) {
       setProgressMessage('Lost contact with the service.');
       notifyWarning(copy.lostMessage, copy.stoppedTitle);
@@ -117,7 +140,17 @@ export const useServiceRequest = (client) => {
       ? `${copy.serviceName || 'The service'} is not running on this project.`
       : humanizeError(error, copy.errorMessage);
     setProgressMessage(said);
-    notifyError(said, copy.errorTitle);
+    // A run that never reached its service wrote nothing, and says so as it
+    // is (`notLive`). Any other failure says what became of the document.
+    if (changed === null || error?.notLive) {
+      notifyError(said, copy.errorTitle);
+      return;
+    }
+    const again = changed ? ` Run ${copy.runName} again to finish.` : '';
+    notifyError(
+      `${/[.!?]$/.test(said) ? said : `${said}.`} ${changedLine(changed)}${again}`,
+      copy.errorTitle,
+    );
   }, []);
 
   // Generic service request with progress tracking.
@@ -166,14 +199,28 @@ export const useServiceRequest = (client) => {
         // page that comes back to the document rejoins the request and is the
         // one that says how it went (REV-RUN-1).
         quiet,
+        // The run's own name ("Parse"), given by a run on one document: a
+        // stopped or failed run then reads the document's version before and
+        // after, and says whether it changed rather than guessing (H2-9-5).
+        runName,
       } = options;
 
       const requestId = uuidv4();
       inFlight.current = { projectId, requestId };
       onRequestId?.(requestId);
 
+      // The document's version as the run starts, or null when it is not
+      // asked for or cannot be read.
+      let before = null;
+      const changedSince = async () => {
+        if (before === null) return null;
+        const now = await readVersion(client, documentId);
+        return now === null ? null : now !== before;
+      };
+
       try {
         begin();
+        if (runName) before = await readVersion(client, documentId);
         const result = await client.messages.requestService(
           projectId,
           serviceId,
@@ -189,7 +236,12 @@ export const useServiceRequest = (client) => {
           { requestId, noOperation: !inOperation },
         );
         if (!quiet?.()) {
-          succeed(result, { successMessage, successTitle, stoppedTitle, stoppedMessage, notice });
+          const changed = result?.stopped === true ? await changedSince() : null;
+          succeed(
+            result,
+            { successMessage, successTitle, stoppedTitle, stoppedMessage, notice },
+            changed,
+          );
         }
         return result;
       } catch (error) {
@@ -198,7 +250,12 @@ export const useServiceRequest = (client) => {
           (s) => s.serviceId === serviceId,
         )?.serviceName;
         if (!quiet?.()) {
-          fail(error, { errorMessage, errorTitle, stoppedTitle, lostMessage, serviceName });
+          const changed = error?.pending ? null : await changedSince();
+          fail(
+            error,
+            { errorMessage, errorTitle, stoppedTitle, lostMessage, serviceName, runName },
+            changed,
+          );
         }
         // Said out loud already (or kept quiet on purpose), so a caller's own
         // catch does not say it again.
