@@ -232,7 +232,9 @@ def test_a_client_error_is_not_retried(env):
 
 
 def test_an_upstream_timeout_is_infra(env):
-    fake, g, log = env([('sleep', 1.0)], upstream_timeout_s=0.2, retry_budget_s=0.3)
+    # The first attempt ends at its 0.2 s timeout: a budget of 1 s leaves the
+    # second attempt room on a loaded machine (0.3 s left it 50 ms).
+    fake, g, log = env([('sleep', 1.0)], upstream_timeout_s=0.2, retry_budget_s=1.0)
     status, _ = ask(g)
     assert status == 502
     rec = records(log)[0]
