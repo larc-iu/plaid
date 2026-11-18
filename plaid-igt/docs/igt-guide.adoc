@@ -270,7 +270,7 @@ A proposal is a stretch of time with no text, dashed on the timeline and in the 
 Type into one and it becomes an ordinary segment with those times.
 The **×** on its row discards it, and **Discard** in the detection dialog discards them all.
 Proposals are kept with the document, so they can be transcribed another day or by someone else, whatever method is chosen and whether or not the service that made them is running.
-The detection dialog names the method that made them, and **Detect** replaces them.
+**Detect** replaces them.
 
 The built-in detector's options change what is proposed:
 
