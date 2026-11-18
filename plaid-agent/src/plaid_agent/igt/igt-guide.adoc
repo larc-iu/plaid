@@ -1040,6 +1040,8 @@ A new job is **Waiting** until the job worker takes it, and it shows how many jo
 A job that runs is **Running**, with what it is doing beside it: **Checking**, **Planning**, **Working**, **Making analyses consistent** or **Writing the report**.
 A line under it says where it is, such as **Story B: sentences 1 to 5 of 17. 3 steps in this part.**
 When the worker has not reported for two minutes, the page says **No worker has reported since** and the time, and the job goes on once a worker runs again.
+A job taken up again this way ten times ends **Failed**: **Its worker stopped during it ten times.**
+A job whose AI model's provider refuses its key or its model ends **Failed**: **The model’s provider refused the job’s calls**, with the provider's words.
 
 While the job runs, **Overview** gives its instructions, what it was set up to fill, **Documents done** of how many, when it started (or **Waiting since**) and how long it has run, its plan once planning has ended, and **Work so far** (see below).
 **Setup** gives the plan, the assistant's instructions to each part of the work, the number of documents, who started the job, when it was queued or started (**Waiting since**, **Started**), how long it waited, when it ended, how long it has run and the AI model.
@@ -1111,7 +1113,7 @@ A row of **To check** on the Overview opens the table on that one reason, such a
 Each list of the report has a section of its own, shown only when it holds something, its count beside its name:
 
 * **Blank**: in each document, under **Left blank in sentences the job changed:**, every word, morpheme or sentence still empty of what the job fills in the sentences it wrote in, linked into the editor with what it is blank for, then, in the totals' words, how much is blank in the sentences the job did not change, did not reach, and skipped, 25 documents to a page.
-* **Skipped**, under **Skipped sentences**: each sentence with why it was skipped: **Too long**, **Changed during the job**, **Write interrupted**, **No answer from the assistant**, or **Failed** with what failed, such as **Failed: answer too long**.
+* **Skipped**, under **Skipped sentences**: each sentence with why it was skipped: **Too long**, **Changed during the job**, **Write interrupted**, **No answer from the assistant**, or **Failed** with what failed, such as **Failed: answer too long** or **Failed: refused by the model**.
 * **Proposed**, under **Proposed changes**: what the job did not write, each with **Where**, **Change**, **From** and **To**.
 * **Entries**: the entries the job created, a link to the machine drafts in each lexicon, and **Entries with no links**.
 * **Respelled**, under **Respelled, analysis kept: check its morphemes**: words a text edit respelled that kept their analysis, so their morphemes may still spell the old word.

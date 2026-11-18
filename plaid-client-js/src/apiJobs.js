@@ -99,7 +99,8 @@ export function jobsApi(client) {
      * ended, its report. Any reader of its project. `lapsed` is true while
      * it is running or stopping and no heartbeat came within `leaseS`
      * seconds (the last at `heartbeatAt`), on every job read: its worker has
-     * gone silent. A read changes nothing.
+     * gone silent. `wrote` (this read only) is true when History holds a
+     * change the job wrote, whatever its report counts. A read changes nothing.
      * @param {string} jobId - The job
      * @returns {Promise<Job>}
      */

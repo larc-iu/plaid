@@ -52,9 +52,10 @@
   "How many times a job whose lease lapsed is taken up again. The next
   claim of it ends it: `failed`, `worker-lost` (a `stopping` one
   `cancelled`), with the report of its rows. A deploy or a restart of the
-  worker or of core lapses a job once, so an honest job outlives ten of
-  them, and a job that crashes its worker at the same point holds the one
-  slot for at most ten leases and its runs (S3-3)."
+  worker lapses a running job once, and so does a stop of core longer than
+  the worker's tries (a short one lapses nothing), so an honest job outlives
+  ten of them, and a job that crashes its worker at the same point holds
+  the one slot for at most ten leases and its runs (S3-3)."
   10)
 
 (def documents-max

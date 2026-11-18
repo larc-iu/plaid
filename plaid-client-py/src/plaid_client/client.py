@@ -3814,7 +3814,9 @@ class JobsResource(_Resource):
         has ended, its report. Any reader of its project. ``lapsed`` is True
         while it is running or stopping and no heartbeat came within
         ``lease_s`` seconds (the last at ``heartbeat_at``), on every job read:
-        its worker has gone silent. A read changes nothing."""
+        its worker has gone silent. ``wrote`` (this read only) is True when
+        History holds a change the job wrote, whatever its report counts. A
+        read changes nothing."""
         return self._request('GET', f'/api/v1/jobs/{job_id}')
 
     def pieces(self, job_id: str) -> Any:

@@ -865,20 +865,21 @@ A job is `waiting` until the worker takes it, then `running`, and ends `done`, `
 Stopping a waiting job (`jobs.cancel`) cancels it at once.
 Stopping a running one makes it `stopping`, and the worker ends it after the work in hand.
 A job that ended `cancelled` or `failed` has a `reason`.
-The server sets `cancelled` and `starter-access` (the person who started it can no longer write in the project).
-The igt worker sets `no-plan`, `planning-failed`, `setup-gone`, `setup-unreadable`, `guidelines-too-long`, `no-documents` and `worker-error`, and may say why in `message`.
+The server sets `cancelled`, `starter-access` (the person who started it can no longer write in the project) and `worker-lost` (its worker stopped during it ten times, below).
+The igt worker sets `no-plan`, `planning-failed`, `setup-gone`, `setup-unreadable`, `guidelines-too-long`, `no-documents`, `model-refused` (the model's provider refused its key or its model) and `worker-error`, and may say why in `message`.
 
 A job read carries its `instructions`, `app`, `started-by` and `started-by-name`, `state`, `reason`, `model`, `cancelled-by`, and `created-at`, `started-at`, `heartbeat-at` and `finished-at`.
 While it runs, `phase` is `checking`, `planning`, `working`, `harmonizing` or `reporting`, `message` is the worker's line on what it is doing, `current-document` the document in hand, and `waiting-for` is `people` or `model` while it waits on the model.
 A waiting job's `ahead` counts the jobs that have not ended and were started before it, across the server.
 `lapsed` is true while a running or stopping job's worker has sent nothing for two minutes.
 `undone` names the operation, time and user of an undo that stands (see <<Undo of one entry>>).
+`GET /api/v1/jobs/{id}` also carries `wrote`, true when History holds a change the job wrote, whatever its report counts.
 
 `documents` lists a row per document of the job, in its order, with the document's `name` (null once it is deleted) and the worker's `state` for it: `waiting`, `working`, `deferred`, `done`, `in-use`, `gone` or `not-reached`.
 `sentences`, `targets` and `done` count its sentences, those the job takes, and those finished, and `counts`, `skipped` (at most 500), `gloss-group` and `harmonize-group` are the worker's.
 When a job ends, every row not finished is `not-reached`.
 The `report` is the worker's JSON, at most 1,000,000 bytes.
-When a job ends without its worker (stopped while no worker reports, or failed for `starter-access`), the server writes the report from the rows, with `stopped` set to `without-worker` when it was stopped.
+When a job ends without its worker (stopped while no worker reports, failed for `starter-access` or `worker-lost`), the server writes the report from the rows, with `stopped` set to `without-worker` when it was stopped.
 
 [cols="2,3"]
 |===
@@ -928,6 +929,7 @@ While any job is running the server gives out no other: a worker that asks first
 A job whose starter can no longer write the project is failed with `starter-access` instead of being given out.
 While it works the worker sends `jobs.heartbeat` every 30 seconds, which answers the job's state and a fresh token.
 A job whose worker has sent nothing for two minutes is taken by the next worker that asks, which goes on from where the job was, and the old worker's next call is refused with `job-taken`.
+A job is taken up again this way at most ten times: the next claim that finds it lapsed ends it `failed` with `worker-lost`, or `cancelled` when it was stopping, and gives out the next job.
 Once a job has ended, its document rows and decisions are refused with 409 and `job-finished`, except for a job the server failed whose report the worker has not yet sent.
 
 The worker writes into documents only with the token of the person who started the job.
