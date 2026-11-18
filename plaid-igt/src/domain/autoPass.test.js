@@ -71,7 +71,14 @@ describe('runBuiltinAnalysis: stopping', () => {
       copyContents: copyAll,
       shouldStop: () => true,
     });
-    expect(res).toEqual({ copied: 0, copiedWordIds: [], linked: 0, ok: true, stopped: true });
+    expect(res).toEqual({
+      copied: 0,
+      copiedWordIds: [],
+      linked: 0,
+      linkCut: false,
+      ok: true,
+      stopped: true,
+    });
     expect(doc.gets).toHaveLength(0);
     expect(doc.bulkApplyAnalyses).not.toHaveBeenCalled();
   });
@@ -128,7 +135,14 @@ describe('runBuiltinAnalysis: stopping', () => {
   it('runs to the end and reports stopped: false when nothing asks it to stop', async () => {
     const doc = makeDoc(3);
     const res = await runBuiltinAnalysis(doc, { copy: true, link: false, copyContents: copyAll });
-    expect(res).toEqual({ copied: 0, copiedWordIds: [], linked: 0, ok: true, stopped: false });
+    expect(res).toEqual({
+      copied: 0,
+      copiedWordIds: [],
+      linked: 0,
+      linkCut: false,
+      ok: true,
+      stopped: false,
+    });
     expect(doc.gets).toEqual(['src-0', 'src-1', 'src-2']);
   });
 
@@ -372,19 +386,26 @@ describe('runBuiltinAnalysis: link precedent', () => {
   // The rows are in entry-id order, so the cut drops the later entries
   // whole: here kai1, linked twice for kai2's once. Linking on what is left
   // would write kai2.
-  it('fails the run on a count the server cut, rather than linking on part of it', async () => {
-    const server = { a: ['kai1', 'kai1', 'kai2'], b: [] };
+  // REV-CP-3: the run still ends, says the count was cut, and links the
+  // multi-word expressions, which need no project count.
+  it('links no word on a count the server cut, and ends saying so', async () => {
+    const server = { a: ['kai1', 'kai1', 'kai2'], b: ['kai1'] };
     const doc = makeLinkDoc(server);
+    doc.vocabularies.v1.items = [
+      ...items,
+      { id: 'mwe1', form: 'kai kai', metadata: { morphType: 'phrase' } },
+    ];
+    doc.bulkLinkMwes.mockImplementation(async (proposals) => proposals.length);
     const whole = doc.client.query.getMockImplementation();
     doc.client.query.mockImplementation(async (q) => {
       const res = await whole(q);
       if (!q.where.some((c) => c[0] === 'link-item')) return res;
       return { results: res.results.filter((r) => r[0] !== 'kai1'), truncated: true };
     });
-    await expect(runBuiltinAnalysis(doc, { copy: false, link: true })).rejects.toThrow(
-      'Too many links in the project to count.',
-    );
+    const res = await runBuiltinAnalysis(doc, { copy: false, link: true });
+    expect(res).toMatchObject({ ok: true, linked: 1, linkCut: true });
     expect(doc.bulkLinkVocab).not.toHaveBeenCalled();
+    expect(doc.bulkLinkMwes.mock.calls[0][0].map((p) => p.vocabItemId)).toEqual(['mwe1']);
   });
 
   it('fails the run when the project cannot be asked, rather than linking without it', async () => {

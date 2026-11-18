@@ -41,7 +41,7 @@ import {
   computeAutoLinkProposals,
   computeMweProposals,
 } from './autoLink.js';
-import { linkPrecedentQueries, createTally, foldLinkRows, wholeAnswer } from './precedent.js';
+import { linkPrecedentQueries, createTally, foldLinkRows } from './precedent.js';
 import { countOf } from '@ui/lib/plural.js';
 import { builtinDetail, builtinRun } from './builtinVersion.js';
 import { BUILTIN_ANALYSIS_COPY, BUILTIN_LINK_PRECEDENT } from './serviceDefaults.js';
@@ -66,7 +66,9 @@ const checkpoint = (shouldStop) => {
 //   leave        — words whose links (and their morphemes') the link phase
 //                  keeps, filling only what has none: the ones a copy phase
 //                  run before analyzed (H17-IGT-EDIT-2, H5-5)
-// Returns { copied, copiedWordIds, linked, ok, stopped }. `copiedWordIds` names
+// Returns { copied, copiedWordIds, linked, linkCut, ok, stopped }. `linkCut`
+// says the project's link count was cut at the server's cap, so the link
+// phase linked no single word or morpheme (see linkPhase). `copiedWordIds` names
 // the words the copy phase wrote, so the dialog can tell the model step to
 // leave them. Copy runs first so the linker doesn't
 // re-handle words a copy just analyzed; a phase that fails (the mutation
@@ -95,6 +97,7 @@ export async function runBuiltinAnalysis(
   let copied = 0;
   let copiedWordIds = [];
   let linked = 0;
+  let linkCut = false;
   try {
     if (copy) {
       const res = await runCopyPhase(doc, copyContents, onProgress, shouldStop);
@@ -103,15 +106,15 @@ export async function runBuiltinAnalysis(
     }
     checkpoint(shouldStop);
     if (link) {
-      const n = await runLinkPhase(doc, onProgress, shouldStop, [...leave, ...copiedWordIds]);
-      if (n === false) return { copied, copiedWordIds, linked, ok: false, stopped: false };
-      linked = n;
+      const res = await runLinkPhase(doc, onProgress, shouldStop, [...leave, ...copiedWordIds]);
+      if (res === false) return { copied, copiedWordIds, linked, ok: false, stopped: false };
+      ({ linked, cut: linkCut } = res);
     }
   } catch (err) {
     if (!(err instanceof Stopped)) throw err;
-    return { copied, copiedWordIds, linked, ok: true, stopped: true };
+    return { copied, copiedWordIds, linked, linkCut, ok: true, stopped: true };
   }
-  return { copied, copiedWordIds, linked, ok: true, stopped: false };
+  return { copied, copiedWordIds, linked, linkCut, ok: true, stopped: false };
 }
 
 // { copied, copiedWordIds } (the count and the words it was proposed for), or
@@ -229,12 +232,14 @@ async function remoteTalliesFor(
 // after the copy phase already holds what that phase wrote. Not the editor's
 // shared read (precedentCache.js), which can be minutes old and would write
 // by links since changed or entries since deleted. A failed query fails the
-// run: linking without the project's precedent would link by smallest id. So
-// does an answer the server cut at its cap (`wholeAnswer`), which would link
-// a form to whichever of its entries the cut left in.
+// run: linking without the project's precedent would link by smallest id.
+// Null when the server cut an answer at its cap (`truncated`): its rows are
+// in entry-id order, so the cut leaves out every entry past it, and linking
+// by what is left links a form to a rarer entry (SCL3-2).
 async function linkPrecedentFor(doc, vocabIds, ignoredCfg) {
   const queries = linkPrecedentQueries(vocabIds, { projectId: doc.projectId });
-  const results = await Promise.all(queries.map((q) => doc.client.query(q).then(wholeAnswer)));
+  const results = await Promise.all(queries.map((q) => doc.client.query(q)));
+  if (results.some((r) => r?.truncated)) return null;
   return foldLinkRows(createTally(), results, ignoredCfg);
 }
 
@@ -253,8 +258,10 @@ async function runLinkPhase(doc, onProgress, shouldStop, leave = []) {
   );
 }
 
-// Number of links written, or false on mutation failure. Throws Stopped as the
-// copy phase does. The two writes below are each preceded by a checkpoint, so a
+// { linked, cut }: the number of links written, and whether the project's
+// link count was cut (then no single word or morpheme is linked, and the
+// multi-word expressions, which need no project count, still are). False on
+// mutation failure. Throws Stopped as the copy phase does. The two writes below are each preceded by a checkpoint, so a
 // stop lands between them rather than inside one.
 async function linkPhase(
   doc,
@@ -264,17 +271,19 @@ async function linkPhase(
   leave = [],
 ) {
   const vocabIds = Object.keys(doc.vocabularies || {});
-  if (!vocabIds.length) return 0;
+  if (!vocabIds.length) return { linked: 0, cut: false };
   onProgress({ percent: null, message: 'Reading the lexicon…' });
   const ignoredCfg = readIgnoredTokens(doc.layerInfo.primaryTokenLayer?.config);
   const precedent = await linkPrecedentFor(doc, vocabIds, ignoredCfg);
-  const proposals = computeAutoLinkProposals({
-    sentences: doc.sentences,
-    vocabularies: doc.vocabularies,
-    precedent,
-    ignoredCfg,
-    leave,
-  });
+  const proposals = precedent
+    ? computeAutoLinkProposals({
+        sentences: doc.sentences,
+        vocabularies: doc.vocabularies,
+        precedent,
+        ignoredCfg,
+        leave,
+      })
+    : [];
   const stamp = { detail: await builtinDetail(BUILTIN_LINK_PRECEDENT), ...run };
   let linked = 0;
   if (proposals.length) {
@@ -298,5 +307,5 @@ async function linkPhase(
     if (n === false) return false;
     linked += n;
   }
-  return linked;
+  return { linked, cut: !precedent };
 }

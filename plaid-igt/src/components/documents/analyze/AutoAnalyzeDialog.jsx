@@ -7,7 +7,6 @@ import { useServiceSpot } from '@ui/hooks/useServiceSpot.js';
 import { ServiceRunDialog } from '@ui/components/services/ServiceRunDialog.jsx';
 import { ServiceMethodRow } from '@ui/components/services/ServiceMethodRow.jsx';
 import { runBuiltinAnalysis } from '@/domain/autoPass';
-import { PrecedentTooLarge } from '@/domain/precedent';
 import { BUILTIN_LINK_PRECEDENT } from '@/domain/serviceDefaults';
 import { resolveAutoAnalysis } from '@/domain/igtConfig';
 import { fieldIdsOf, fieldNamesOf, fieldRolesOf } from '@/domain/fieldInventory';
@@ -380,6 +379,7 @@ export const AutoAnalyzeDialog = ({ open, onOpenChange, doc }) => {
           builtinStep('link');
           const {
             linked,
+            linkCut,
             ok,
             stopped: wasStopped,
           } = await runBuiltinAnalysis(doc, {
@@ -396,6 +396,9 @@ export const AutoAnalyzeDialog = ({ open, onOpenChange, doc }) => {
           if (linked) {
             parts.push(`linked ${countOf(linked, 'word')}/${plural(linked, 'morpheme')}`);
             wrote = true;
+          }
+          if (linkCut) {
+            parts.push('did not link words or morphemes: too many links in the project to count');
           }
         } else {
           at('link');
@@ -451,11 +454,7 @@ export const AutoAnalyzeDialog = ({ open, onOpenChange, doc }) => {
       // `isProcessing`, which the closure fixes at false for the whole run, so
       // every service failure was toasted twice: once by its own name, and
       // again as "Auto-analyze failed".
-      // A project too large to count fails the same way on every try.
-      if (!err?.reported && !left) {
-        const why = err instanceof PrecedentTooLarge ? err.message : 'Try again.';
-        notifyError(why, 'Failed to run Auto-analyze');
-      }
+      if (!err?.reported && !left) notifyError('Try again.', 'Failed to run Auto-analyze');
     } finally {
       // A record a left run keeps is for the page that comes back.
       if (!stillOut && !left) clearRunRecord(doc.id);
