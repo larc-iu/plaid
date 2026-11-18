@@ -716,6 +716,9 @@ CHANGE_KINDS = ('values', 'analyses', 'links', 'entries', 'text', 'other')
 #: A row's count of the sentences skipped past the cap of its ``skipped``
 #: list (core's JOB_SKIPPED_PER_DOCUMENT), which are counted and not listed.
 SKIPPED_MORE = 'skipped_more'
+#: A document's sentences too long for a job past its row's skipped list:
+#: never targets, never counted done, so never in ``skipped_more`` (D11).
+TOO_LONG_MORE = 'too_long_more'
 
 
 def empty_counts() -> Dict[str, int]:
@@ -1048,6 +1051,7 @@ def fit_report(report: Dict[str, Any], budget: int = JOB_REPORT_BUDGET_BYTES) ->
         for holder, key, (more,) in _report_cuts(report):
             rows = holder.get(key) or []
             cut = 0
+            cuts: Dict[str, int] = {}
             while rows and over > 0:
                 row = rows.pop()
                 over -= report_bytes(row) + 1
@@ -1057,10 +1061,15 @@ def fit_report(report: Dict[str, Any], budget: int = JOB_REPORT_BUDGET_BYTES) ->
                     totals = report['totals']
                     if totals.get(reason):
                         totals[reason] -= 1
-                    totals['skipped_more'] = (totals.get('skipped_more') or 0) + 1
+                    # A too-long one is never a target (D11).
+                    into = TOO_LONG_MORE if row.get('reason') == 'too-long' else SKIPPED_MORE
+                    totals[into] = (totals.get(into) or 0) + 1
+                    cuts[into] = cuts.get(into, 0) + 1
             if cut and more == 'skipped':
-                holder['counts'] = {**(holder.get('counts') or {}),
-                                    'skipped_more': ((holder.get('counts') or {}).get('skipped_more') or 0) + cut}
+                counts = dict(holder.get('counts') or {})
+                for into, n in cuts.items():
+                    counts[into] = (counts.get(into) or 0) + n
+                holder['counts'] = counts
             elif cut:
                 holder[more] = (holder.get(more) or 0) + cut
             if over <= 0:
@@ -1247,7 +1256,7 @@ def build_report(job: Job, state: str, reason: Optional[str], documents: List[Di
     totals = {'documents_done': 0, 'documents_in_use': 0, 'documents_gone': 0, 'documents_not_reached': 0,
               'sentences': 0, 'translations': 0, 'refreshed': 0, 'words': 0, 'links': 0, 'entries': 0,
               'skipped_too_long': 0, 'skipped_failed': 0, 'skipped_changed': 0, 'skipped_interrupted': 0,
-              'skipped_no_answer': 0, 'skipped_more': 0, 'changed': 0, 'proposed': 0, 'changes': 0, 'deletions': 0,
+              'skipped_no_answer': 0, 'skipped_more': 0, TOO_LONG_MORE: 0, 'changed': 0, 'proposed': 0, 'changes': 0, 'deletions': 0,
               'repeated': 0, 'peoples_values_changed': 0, 'text_changes': 0, 'words_added': 0, 'tokens_changed': 0}
     fields: List[Dict[str, Any]] = []
     outside: List[Dict[str, Any]] = []
@@ -1262,7 +1271,7 @@ def build_report(job: Job, state: str, reason: Optional[str], documents: List[Di
         # written, skipped or failed (REV-J-B2 S3-5): ``done`` counts those.
         totals['sentences'] += counts.get('analyzed') or 0
         for k in ('translations', 'refreshed', 'words', 'links', 'entries', 'changed', 'proposed', 'skipped_more',
-                  'changes', 'deletions', 'repeated', 'peoples_values_changed', 'text_changes', 'words_added',
+                  TOO_LONG_MORE, 'changes', 'deletions', 'repeated', 'peoples_values_changed', 'text_changes', 'words_added',
                   'tokens_changed'):
             totals[k] += counts.get(k) or 0
         for p in counts.get('changes_parts') or []:

@@ -177,3 +177,43 @@ def test_read_job_says_the_words_core_s_own_report_holds_in_its_documents_and_wh
     assert top == ('The report\'s top line: "Text: 25 words added, 2 existing words or punctuation marks changed or '
                    'removed."'), top
 
+
+# --- D11: a sentence too long for a job is not a skipped target ------------------------------------
+
+def test_too_long_sentences_past_the_list_are_counted_apart_from_the_skipped_ones(monkeypatch):
+    from plaid_agent.core.limits import JOB_SENTENCE_MAX_WORDS
+    from plaid_agent.igt import job as igt_job
+    monkeypatch.setattr(igt_job, 'JOB_SKIPPED_PER_DOCUMENT', 1)
+    long = {'words': ['a'] * (JOB_SENTENCE_MAX_WORDS + 1)}
+    client = JobClient({'d1': document('d1', 'Story', [long, {'words': ['blank']}, long])})
+    job = start(client)
+    use(monkeypatch, Model(lambda asked, n, kwargs: reply('Done.')))
+    r = runner(job)
+    assert r.check(job) is None
+    row = job.rows['d1']
+    assert [s['reason'] for s in row['skipped']] == ['too-long'] and row['targets'] == 1
+    assert row['counts'].get('too_long_more') == 1 and not row['counts'].get('skipped_more')
+    assert r.document('d1') == 'done'
+    row = job.rows['d1']
+    assert row['done'] == 1 and row['counts'].get('too_long_more') == 1 and not row['counts'].get('skipped_more')
+
+
+def test_the_documents_count_a_document_whose_targets_were_all_worked_as_done():
+    from plaid_agent.igt.job import document_counts
+    d = {'state': 'done', 'done': 3, 'targets': 3, 'counts': {'too_long_more': 2},
+         'skipped': [{'sentence': f's{i}', 'sentence_id': f't{i}', 'reason': 'too-long'} for i in range(3)]}
+    assert document_counts({'totals': {'documents_done': 1}, 'documents': [d]})['done'] == 1
+
+
+def test_a_too_long_sentence_cut_from_the_report_is_counted_as_one_more_too_long():
+    from plaid_agent.core.job import build_report, fit_report
+    rows = [{'sentence': f's{i}', 'sentence_id': f't{i}' * 40, 'reason': 'too-long', 'kind': None}
+            for i in range(40)]
+    report = {'totals': {'skipped_too_long': 40}, 'documents': [{'skipped': list(rows), 'counts': {}}]}
+    fit_report(report, budget=2000)
+    d = report['documents'][0]
+    cut = 40 - len(d['skipped'])
+    assert cut and d['counts'].get('too_long_more') == cut and not d['counts'].get('skipped_more')
+    assert report['totals']['too_long_more'] == cut and not report['totals'].get('skipped_more')
+    assert report['totals']['skipped_too_long'] == 40 - cut
+    assert build_report.__doc__

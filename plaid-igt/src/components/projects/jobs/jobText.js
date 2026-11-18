@@ -432,8 +432,12 @@ export const whoText = (userId, job, user, names = {}) =>
 
 // How many of a document's sentences the job skipped (its rows' skipped list,
 // and those past the list's cap). Its `done` counts them with the sentences
-// it worked.
-const skippedCount = (d) => (d?.skipped?.length ?? 0) + (d?.counts?.skippedMore ?? 0);
+// it worked. A sentence too long for a job was never a target, and `done`
+// does not count it: counted apart (D11).
+const skippedCount = (d) =>
+  (d?.skipped ?? []).filter((s) => s.reason !== 'too-long').length + (d?.counts?.skippedMore ?? 0);
+const tooLongCount = (d) =>
+  (d?.skipped ?? []).filter((s) => s.reason === 'too-long').length + (d?.counts?.tooLongMore ?? 0);
 
 // Whether the job finished a document by skipping every sentence of it:
 // nothing in it was worked, so it never reads "Done" (REV-RPF-P-9).
@@ -467,6 +471,7 @@ export const documentSentencesText = (d, plan = null) => {
     return [
       `${((d.done ?? 0) - skippedHere).toLocaleString()} of ${d.targets.toLocaleString()} matching`,
       ...(skippedHere > 0 ? [`${skippedHere.toLocaleString()} skipped`] : []),
+      ...(tooLongCount(d) > 0 ? [`${tooLongCount(d).toLocaleString()} too long`] : []),
       ...(others > 0
         ? [
             `${others.toLocaleString()} not found by the plan’s search` +
@@ -477,7 +482,12 @@ export const documentSentencesText = (d, plan = null) => {
   }
   const skipped = Math.min(skippedCount(d), d.done ?? 0);
   const worked = `${((d.done ?? 0) - skipped).toLocaleString()} of ${d.targets.toLocaleString()}`;
-  return [worked, ...(skipped > 0 ? [`${skipped.toLocaleString()} skipped`] : [])].join(', ');
+  const tooLong = tooLongCount(d);
+  return [
+    worked,
+    ...(skipped > 0 ? [`${skipped.toLocaleString()} skipped`] : []),
+    ...(tooLong > 0 ? [`${tooLong.toLocaleString()} too long`] : []),
+  ].join(', ');
 };
 
 // The report's documents counted as the page says them (REV-RPF3-4): done

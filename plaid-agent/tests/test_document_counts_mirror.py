@@ -33,6 +33,13 @@ CASES = [
      'documents': [_doc('done', 4), _doc('not-reached', 5), _doc('not-reached', 0, {'changes': 1}),
                    _doc('not-reached', 0, {'changes': 0})]},
     {'totals': {'documents_done': 2}, 'documents': [_doc('done', 2, skipped=2), _doc('done', 3, skipped=1)]},
+    # D11: sentences too long for a job were never targets, and done does
+    # not count them: a document whose every target was worked is done.
+    {'totals': {'documents_done': 2},
+     'documents': [{**_doc('done', 3, {'too_long_more': 1}),
+                    'skipped': [{'sentence': f's{i}', 'sentence_id': f't{i}', 'reason': 'too-long'} for i in range(3)]},
+                   {**_doc('done', 2, {'skipped_more': 1, 'too_long_more': 4}),
+                    'skipped': [{'sentence': 's9', 'sentence_id': 'x9', 'reason': 'failed'}]}]},
     {'totals': {'documents_done': 1, 'documents_not_reached': 4}},
     # A plan limited by a search (SF): two documents it matched nothing in,
     # one it matched and worked, one it matched and was not reached.

@@ -46,7 +46,7 @@ from ..core.agent import ModelConfig, Toolkit, TurnCancelled, TurnResult, run_tu
 from ..core.garble import seed
 from ..core.trace import plural
 from ..core.guidelines import manual_chars
-from ..core.job import (BUDGET, OUTPUT, REPEATING, ROW_FINAL, SKIPPED_MORE, JobStopped, Pace, StretchFailed, canonical, analysis_key,
+from ..core.job import (BUDGET, OUTPUT, REPEATING, ROW_FINAL, SKIPPED_MORE, TOO_LONG_MORE, JobStopped, Pace, StretchFailed, canonical, analysis_key,
                         field_counts, fields_text,
                         BLANK_WHERE, blank_text, empty_counts, failure_kind, halve, harmonized, not_answering)
 from ..core.limits import (JOB_ANALYSIS_MAX_CHARS, JOB_CHANGE_VALUE_CHARS, JOB_CHANGES_MAX, JOB_CONTEXT_SENTENCES,
@@ -1063,8 +1063,11 @@ def document_counts(report: Dict[str, Any]) -> Dict[str, int]:
 
     changed = sum(1 for d in docs if d.get('state') == 'done' and (counts(d).get('changes') or 0) > 0)
     unmatched = sum(1 for d in docs if no_match(d))
+    # A sentence too long for a job was never a target, and done does not
+    # count it (D11).
     skipped = sum(1 for d in docs if d.get('state') == 'done' and (d.get('done') or 0) > 0
-                  and len(d.get('skipped') or []) + (counts(d).get('skipped_more') or 0) >= (d.get('done') or 0))
+                  and len([s for s in d.get('skipped') or [] if s.get('reason') != 'too-long'])
+                  + (counts(d).get('skipped_more') or 0) >= (d.get('done') or 0))
     unfinished = [d for d in docs if d.get('state') == 'not-reached']
     partway = sum(1 for d in unfinished if (d.get('done') or 0) > 0 or (counts(d).get('changes') or 0) > 0)
     return {'done': max(0, (totals.get('documents_done') or 0) - skipped - unmatched),
@@ -2468,7 +2471,9 @@ class IgtRunner:
                 targets += 1
             counts = {**empty_counts(), **(row.get('counts') or {})}
             if self.too_long.get(d):
-                counts[SKIPPED_MORE] = len(self.too_long[d])
+                # Never a target, and not counted done: apart from the
+                # skipped sentences done counts (D11).
+                counts[TOO_LONG_MORE] = len(self.too_long[d])
             job.update_row(d, sentences=len(doc.sentences), targets=targets, done=row.get('done') or 0,
                            skipped=skipped, counts=counts)
             left += 1
@@ -5798,10 +5803,13 @@ class IgtRunner:
             # How many of its sentences the plan's search matched (SF).
             counts[MATCHED] = len(searched.get(document_id, ()))
         failed = len(self.unlisted.get(document_id) or ())
-        more = max((row.get('counts') or {}).get(SKIPPED_MORE) or 0,
-                   failed + len(self.too_long.get(document_id) or ()))
+        more = max((row.get('counts') or {}).get(SKIPPED_MORE) or 0, failed)
         if more:
             counts[SKIPPED_MORE] = more
+        too_long = max((row.get('counts') or {}).get(TOO_LONG_MORE) or 0, len(self.too_long.get(document_id) or ()))
+        if too_long:
+            # Never a target, so never in done (D11).
+            counts[TOO_LONG_MORE] = too_long
         # A sentence too long for a stretch was never a target (the checks
         # leave it out of ``targets``), so it is not counted done.
         done = len(self.finished(document_id)
