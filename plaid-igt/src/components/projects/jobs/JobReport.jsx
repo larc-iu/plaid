@@ -458,7 +458,7 @@ export const SkippedDocument = ({ d, projectId }) => (
       <DocumentName projectId={projectId} d={d} />
     </p>
     <ul className="ml-4 list-disc">
-      {d.skipped.map((s) => (
+      {(d.skipped || []).map((s) => (
         <li key={s.sentenceId ?? s.sentence}>
           {d.name && s.sentenceId ? (
             <Link
@@ -477,6 +477,11 @@ export const SkippedDocument = ({ d, projectId }) => (
     {d.counts?.skippedMore > 0 && (
       <p className="ml-4 text-muted-foreground">
         And {d.counts.skippedMore.toLocaleString()} more skipped.
+      </p>
+    )}
+    {d.counts?.tooLongMore > 0 && (
+      <p className="ml-4 text-muted-foreground">
+        And {d.counts.tooLongMore.toLocaleString()} more too long.
       </p>
     )}
   </div>

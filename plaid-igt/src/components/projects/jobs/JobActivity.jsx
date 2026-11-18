@@ -160,9 +160,15 @@ const Where = ({ piece, projectId, names }) => {
   }
   // A piece of a plan limited by a search names its sentences, which are no
   // run (the worker's `matching`, CONTRACT, added by SF).
+  // Scattered sentences are named one by one (`sentences`, the rest past
+  // the list `sentencesMore`, D12, REV-JR2-2).
   const range = piece.matching?.length
     ? `${piece.matching.join(', ')}, matching the plan’s search`
-    : piece.first && (piece.first === piece.last ? piece.first : `${piece.first} to ${piece.last}`);
+    : piece.sentences?.length
+      ? piece.sentences.join(', ') +
+        (piece.sentencesMore > 0 ? ` and ${piece.sentencesMore.toLocaleString()} more` : '')
+      : piece.first &&
+        (piece.first === piece.last ? piece.first : `${piece.first} to ${piece.last}`);
   const to = piece.firstId
     ? APP_ROUTES.sentence(projectId, piece.document, piece.firstId)
     : APP_ROUTES.document(projectId, piece.document);

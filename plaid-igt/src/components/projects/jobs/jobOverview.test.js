@@ -7,6 +7,7 @@ import {
   jobSections,
   toCheckRows,
 } from './jobOverview.js';
+import { totalRows } from './jobTotals.js';
 
 // The facts of a job that wrote, which each case changes a part of.
 const WROTE = {
@@ -525,5 +526,78 @@ describe('what to check adds up with what it opens', () => {
     // documents the section lists.
     const untouched = rows.find((r) => r.key === 'untouched-Translation');
     expect(n(untouched)).toBe(report.totals.blank[0].untouched);
+  });
+});
+
+// JOIN18 (JR2's page half, REV-JR2-6): the plan's left-out documents and those
+// the server never answered for are not "not reached", and the sentences too
+// long for a job past a document's list are counted as the Skipped section
+// counts them.
+describe('left out, unanswered and too long past a list', () => {
+  const job = {
+    state: 'done',
+    documents: [
+      { documentId: 'd1', state: 'not-reached', done: 0, counts: {} },
+      { documentId: 'd2', state: 'not-reached', done: 0, counts: { unanswered: true } },
+      { documentId: 'd3', state: 'not-reached', done: 0, counts: {} },
+      { documentId: 'd4', state: 'done', done: 4, counts: { changes: 1, tooLongMore: 3 } },
+    ],
+    report: {
+      totals: { documentsDone: 1, skippedTooLong: 1, tooLongMore: 3 },
+      plan: { leftOut: [{ documentId: 'd1' }] },
+      documents: [
+        { documentId: 'd1', state: 'not-reached', done: 0, counts: {} },
+        { documentId: 'd2', state: 'not-reached', done: 0, counts: { unanswered: true } },
+        { documentId: 'd3', state: 'not-reached', done: 0, counts: {} },
+        {
+          documentId: 'd4',
+          state: 'done',
+          done: 4,
+          skipped: [{ sentence: 's2', reason: 'too-long' }],
+          counts: { changes: 1, tooLongMore: 3 },
+        },
+        // Only overflow, no list.
+        { documentId: 'd5', state: 'done', done: 1, counts: { tooLongMore: 2 } },
+      ],
+    },
+  };
+
+  it('has a row each, never counting a left-out or unanswered document as not reached', () => {
+    const rows = toCheckRows(job).map((r) => [r.text, r.view, r.filter ?? null]);
+    expect(rows).toContainEqual(['1 document not reached', 'documents', 'not-reached']);
+    expect(rows).toContainEqual([
+      '1 document not worked: the server did not answer',
+      'documents',
+      'unanswered',
+    ]);
+    expect(rows).toContainEqual(['1 document left out by the plan', 'leftout', null]);
+    expect(rows).toContainEqual(['3 sentences too long and not listed', 'skipped', null]);
+  });
+
+  it('gives each document its own reason, and none for a left-out one', () => {
+    const leftOut = new Set(['d1']);
+    const kinds = (d) => documentChecks(d, null, leftOut).map((c) => c.kind);
+    expect(kinds(job.documents[0])).toEqual([]);
+    expect(documentChecks(job.documents[1], null, leftOut)).toEqual([
+      { kind: 'unanswered', text: 'Not worked: the server did not answer' },
+    ]);
+    expect(kinds(job.documents[2])).toEqual(['not-reached']);
+    expect(documentChecks(job.documents[3], job.report.documents[3], leftOut)).toContainEqual({
+      kind: 'skipped',
+      text: '4 sentences skipped',
+    });
+  });
+
+  it('counts the too-long sentences past a list in the Skipped section', () => {
+    const tab = jobSections(job, null).find((s) => s.key === 'skipped');
+    expect(tab.count).toBe(1 + 3 + 2);
+  });
+
+  it('has totals rows for each', () => {
+    const rows = totalRows(job.report).map(([label, value]) => [label, value]);
+    expect(rows).toContainEqual(['Documents not reached', '1']);
+    expect(rows).toContainEqual(['Documents left out by the plan', '1']);
+    expect(rows).toContainEqual(['Documents not worked, the server did not answer', '1']);
+    expect(rows).toContainEqual(['Sentences too long and not listed', '3']);
   });
 });

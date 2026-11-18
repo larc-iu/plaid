@@ -101,11 +101,22 @@ export const toCheckRows = (job) => {
 
   const inUse = docs.filter((d) => d.state === 'in-use').length;
   check('in-use', inUse, `${countOf(inUse, 'document')} in use, not worked`);
-  const unfinished = docs.filter((d) => d.state === 'not-reached');
+  // The plan's left-out documents and those the server never answered for
+  // are not "not reached" (D22, REV-JR2-3).
+  const leftIds = new Set((report?.plan?.leftOut || []).map((d) => d.documentId));
+  const unanswered = docs.filter((d) => d.state === 'not-reached' && d.counts?.unanswered === true);
+  const unfinished = docs.filter(
+    (d) => d.state === 'not-reached' && !leftIds.has(d.documentId) && d.counts?.unanswered !== true,
+  );
   const partway = unfinished.filter(stoppedPartway).length;
   const notReached = unfinished.length - partway;
   check('not-reached', notReached, `${countOf(notReached, 'document')} not reached`);
   check('partway', partway, `${countOf(partway, 'document')} stopped partway`);
+  check(
+    'unanswered',
+    unanswered.length,
+    `${countOf(unanswered.length, 'document')} not worked: the server did not answer`,
+  );
   // An ended job core failed before its worker's report arrived has only its
   // documents' rows: nothing else is known (REV-RP-4).
   if (!report) return rows;
@@ -128,6 +139,14 @@ export const toCheckRows = (job) => {
     'skipped-more',
     notListed,
     `${countOf(notListed, 'sentence')} skipped and not listed`,
+    'skipped',
+  );
+  // Too long for a job, past a document's list (D11).
+  const tooLongNotListed = t.tooLongMore ?? sum(docs, (d) => d.counts?.tooLongMore);
+  add(
+    'too-long-more',
+    tooLongNotListed,
+    `${countOf(tooLongNotListed, 'sentence')} too long and not listed`,
     'skipped',
   );
 
@@ -221,6 +240,7 @@ export const CHECK_KINDS = {
   'in-use': 'In use',
   'not-reached': 'Not reached',
   partway: 'Stopped partway',
+  unanswered: 'Server did not answer',
   skipped: 'Skipped',
   left: 'Left blank',
   untouched: 'Not changed',
@@ -233,16 +253,19 @@ export const CHECK_KINDS = {
 // Why one document of an ended job needs a person, each `{kind, text}` in a
 // few words, or none: the Documents table's To check column and filters. `d`
 // is the job's row, `reported` the report's row of it where there is one.
-export const documentChecks = (d, reported = null) => {
+export const documentChecks = (d, reported = null, leftOut = new Set()) => {
   const r = reported ?? d;
   const out = [];
   const add = (kind, text) => out.push({ kind, text });
   if (d.state === 'in-use') add('in-use', 'In use, not worked');
-  if (d.state === 'not-reached') {
-    if (stoppedPartway(d)) add('partway', 'Stopped partway');
+  // `leftOut`: the plan's left-out document ids, never "not reached" (D22).
+  if (d.state === 'not-reached' && !leftOut.has(d.documentId)) {
+    if (d.counts?.unanswered === true) add('unanswered', 'Not worked: the server did not answer');
+    else if (stoppedPartway(d)) add('partway', 'Stopped partway');
     else add('not-reached', 'Not reached');
   }
-  const skipped = (r.skipped?.length ?? 0) + (r.counts?.skippedMore ?? 0);
+  const skipped =
+    (r.skipped?.length ?? 0) + (r.counts?.skippedMore ?? 0) + (r.counts?.tooLongMore ?? 0);
   if (skipped > 0) add('skipped', `${countOf(skipped, 'sentence')} skipped`);
   const left = leftText(r);
   if (left !== null && left !== '0') add('left', `${left} left blank`);
@@ -286,7 +309,11 @@ export const jobSections = (job, notes = null, vocabs = []) => {
     add(
       'skipped',
       'Skipped',
-      sum(skippedDocuments(report), (d) => d.skipped.length + (d.counts?.skippedMore ?? 0)),
+      sum(
+        skippedDocuments(report),
+        (d) =>
+          (d.skipped?.length ?? 0) + (d.counts?.skippedMore ?? 0) + (d.counts?.tooLongMore ?? 0),
+      ),
     );
     add('proposed', 'Proposed', (report.proposed?.length ?? 0) + (report.proposedMore ?? 0));
     const e = report.entries || {};

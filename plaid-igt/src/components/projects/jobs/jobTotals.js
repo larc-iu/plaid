@@ -135,6 +135,10 @@ export const totalRows = (report) => {
   optional('Documents in use', t.documentsInUse, NOT_WRITTEN);
   optional('Documents deleted', t.documentsGone, NOT_WRITTEN);
   optional('Documents not reached', docs.notReached, NOT_WRITTEN);
+  // The plan's left-out documents (D22) and those the server never answered
+  // for (REV-JR2-3), apart from those not reached.
+  optional('Documents left out by the plan', docs.leftOut, NOT_WRITTEN);
+  optional('Documents not worked, the server did not answer', docs.unanswered, NOT_WRITTEN);
   optional('Documents stopped partway', docs.stoppedPartway, NOT_WRITTEN);
   rows.push(['Sentences written in', t.sentences]);
   // One definition of a change, said in its parts (RP-3, RP-6).
@@ -200,6 +204,7 @@ export const totalRows = (report) => {
   optional('Sentences skipped after an interrupted write', t.skippedInterrupted, NOT_WRITTEN);
   optional('Sentences skipped with no answer from the assistant', t.skippedNoAnswer, NOT_WRITTEN);
   optional('Sentences skipped and not listed', t.skippedMore, NOT_WRITTEN);
+  optional('Sentences too long and not listed', t.tooLongMore, NOT_WRITTEN);
   optional('Changes not written, changed during the job', t.changed, NOT_WRITTEN);
   optional('Changes left out, sentence written before an interruption', t.repeated, NOT_WRITTEN);
   return rows.map(([label, n, group = WRITTEN]) => [
@@ -245,7 +250,9 @@ export const pausedRows = (report) =>
 
 // The report's documents with skipped sentences.
 export const skippedDocuments = (report) =>
-  (report.documents || []).filter((d) => d.skipped?.length);
+  (report.documents || []).filter(
+    (d) => d.skipped?.length || d.counts?.skippedMore > 0 || d.counts?.tooLongMore > 0,
+  );
 
 // The report's documents with something under Left blank.
 export const blankDocuments = (report) =>

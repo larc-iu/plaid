@@ -422,6 +422,34 @@ describe('the job page’s list of its work', () => {
 
   // RPF3-B: the piece after a text edit is a row of its own, named by what it
   // took.
+  // D12, REV-JR2-2 (JOIN18): a piece of scattered sentences is named one by
+  // one, the rest past its list counted.
+  it('names a piece of scattered sentences one by one', async () => {
+    const scattered = (seq, extra) => ({
+      seq,
+      piece: { ...FIRST.piece, piece: `k${seq}`, first: 's3', last: 's7', ...extra },
+    });
+    const v = await mount(
+      clientOf(
+        [jobOf()],
+        [
+          page([
+            scattered('000007', { sentences: ['s3', 's5', 's7'] }),
+            scattered('000008', { sentences: ['s3', 's5', 's7'], sentencesMore: 40 }),
+            scattered('000009', {}),
+          ]),
+        ],
+      ),
+    );
+    const where = rows(v.container).map((r) => text(r.querySelector('a')));
+    expect(where).toEqual([
+      'Story A s3, s5, s7',
+      'Story A s3, s5, s7 and 40 more',
+      'Story A s3 to s7',
+    ]);
+    await v.unmount();
+  });
+
   it('names a piece after a text edit by what it took', async () => {
     const after = (seq, afterText) => ({
       seq,

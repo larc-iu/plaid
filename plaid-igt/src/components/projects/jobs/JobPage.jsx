@@ -730,7 +730,7 @@ const JobDocuments = ({ job, projectId, plan }) => {
   const checks = new Map(
     (job.documents || []).map((d) => [
       d.documentId,
-      ended ? documentChecks(d, reported.get(d.documentId)) : [],
+      ended ? documentChecks(d, reported.get(d.documentId), leftOut) : [],
     ]),
   );
   const toCheck = (job.documents || []).filter((d) => checks.get(d.documentId).length > 0);
