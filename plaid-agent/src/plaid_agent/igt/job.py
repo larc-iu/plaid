@@ -6549,6 +6549,11 @@ class IgtRunner:
             # reached has none either: its state says so.
             unread = d in blank and blank[d] is None
             found = blank.get(d) or {}
+            if found.get('unworked'):
+                # A sentence holding words the job never worked (a person
+                # merged them in after it wrote there) is not counted done
+                # (S5-3, REV-SJ2-10).
+                done = max(0, (done or 0) - len(found['unworked']))
             listed = found.get('left') or []
             unreached = found.get('not_reached') or []
             untouched = found.get('untouched') or []
@@ -7002,37 +7007,48 @@ class IgtRunner:
                 if only is not None:
                     words = [w for w in words if w.id in only[0]]
                     fields = fields if s.id in only[1] else []
-                listed = lists.get(where)
+                # In a sentence the job wrote in, the words no write of it
+                # named (a person's merge or insert brought them after): the
+                # walk never takes that sentence again (REV-B4-1), so they
+                # are blank where the job did not reach, never left by it
+                # (S5-3, REV-SJ2-10).
+                newcomers = ({f'w{w.index}' for w in s.words if word_tag(w.id) not in known}
+                             if where in ('left', 'untouched') and wrote_in(s, known) else set())
                 begins = {f'w{w.index}': w.begin for w in s.words}
                 # One entry per unit as the Empty line names it (targets.units:
                 # a word, a morpheme sN.wK.mJ, a sentence field), with every
                 # target it is empty for (REV-DF-S-6).
                 entries: Dict[str, Dict[str, Any]] = {}
                 for ref, form, t in tg.units(s, fill, words={w.id for w in words}, fields=fields):
+                    here = 'not_reached' if ref and ref.split('.')[0] in newcomers else where
+                    if here != where:
+                        unworked = lists.setdefault('unworked', [])
+                        if s.id not in unworked:
+                            unworked.append(s.id)
                     # A word with no morphemes, empty for segmentation too,
                     # is one unit, a word, counted once under segmentation:
                     # never again as a morpheme of a morpheme field (RP-3).
                     if not (t.scope == 'Morpheme' and ref and '.m' not in ref):
-                        tally[t.id][where] += 1
-                    elif where == 'left':
+                        tally[t.id][here] += 1
+                    elif here == 'left':
                         # Such a word, listed blank for the morpheme field
                         # too, is counted as a word not segmented beside the
                         # field's morphemes, so the totals add up with the
                         # list (RPF3-B, RP2-2: "Gloss left blank 0
                         # morphemes" beside a word listed blank for Gloss).
                         tally[t.id]['unsegmented'] = tally[t.id].get('unsegmented', 0) + 1
-                    if listed is None:
+                    if lists.get(here) is None:
                         continue
                     e = entries.get(ref)
                     if e is None:
                         e = entries[ref] = {'ref': f's{s.index}.{ref}' if ref else f's{s.index}', 'sentence_id': s.id,
                                             'begin': begins.get(ref.split('.')[0]) if ref else None,
-                                            'form': form if ref else None, 'targets': []}
+                                            'form': form if ref else None, 'targets': [], 'where': here}
                     e['targets'].append(t.name)
-                if listed is not None:
-                    # In the order of the text, the sentence's fields last.
-                    listed += sorted(entries.values(), key=lambda e: (
-                        e['begin'] is None, e['begin'] or 0, [int(n) for n in re.findall(r'\d+', e['ref'])]))
+                # In the order of the text, the sentence's fields last.
+                for e in sorted(entries.values(), key=lambda e: (
+                        e['begin'] is None, e['begin'] or 0, [int(n) for n in re.findall(r'\d+', e['ref'])])):
+                    lists[e.pop('where')].append(e)
             # Per target of the plan, a row even at nothing left, counted in
             # its own unit: a word, a morpheme, a sentence (REV-DF-S-6: a
             # morpheme field's values and blanks sum). A target the plan
