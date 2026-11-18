@@ -686,17 +686,24 @@
 ;; Temporary files
 (defn temp-db-path
   "A database path in a new temporary directory, for a test that needs its
-  own database. `cleanup!` removes both."
+  own database. `cleanup!` removes both. Whatever a test leaves of them goes
+  at exit: the JVM deletes in the reverse of this order, so the files go
+  before their directory."
   []
   (let [dir (File. (System/getProperty "java.io.tmpdir")
-                   (str "plaid-test-" (System/nanoTime) "-" (rand-int 1000000)))]
+                   (str "plaid-test-" (System/nanoTime) "-" (rand-int 1000000)))
+        db (File. dir "plaid.db")]
     (.mkdirs dir)
-    (.getAbsolutePath (File. dir "plaid.db"))))
+    (.deleteOnExit dir)
+    (doseq [suffix ["" "-wal" "-shm" ".lock"]]
+      (.deleteOnExit (File. (str (.getAbsolutePath db) suffix))))
+    (.getAbsolutePath db)))
 
 (defn cleanup!
-  "Delete a `temp-db-path` database, its WAL files and its directory."
+  "Delete a `temp-db-path` database, its WAL files, its instance lock file and
+  its directory."
   [db-path]
-  (doseq [suffix ["" "-wal" "-shm"]]
+  (doseq [suffix ["" "-wal" "-shm" ".lock"]]
     (let [f (File. (str db-path suffix))]
       (when (.exists f) (.delete f))))
   (let [parent (.getParentFile (File. ^String db-path))]

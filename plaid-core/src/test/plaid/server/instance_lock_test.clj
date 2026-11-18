@@ -12,8 +12,12 @@
 (def ^:private acquire! #'plaid.server.sql/acquire-instance-lock!)
 
 (defn- temp-db-path []
-  (str (Files/createTempFile "instance-lock-test" ".db"
-                             (make-array java.nio.file.attribute.FileAttribute 0))))
+  (let [path (str (Files/createTempFile "instance-lock-test" ".db"
+                                        (make-array java.nio.file.attribute.FileAttribute 0)))]
+    ;; The file and the lock file the instance lock writes beside it.
+    (doseq [suffix ["" ".lock"]]
+      (.deleteOnExit (java.io.File. (str path suffix))))
+    path))
 
 (deftest second-acquire-fails-loudly
   (let [db-path (temp-db-path)
