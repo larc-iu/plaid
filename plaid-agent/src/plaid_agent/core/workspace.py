@@ -694,9 +694,9 @@ class BaseWorkspace:
                'documents': self.touched_documents()}
         # A plan of only kinds that write no value of the assistant's (a
         # confirmation, a deletion): the two approve buttons would write the
-        # same, so the card offers one Approve (OpKind.stamped). A discard
-        # (ud's set_span carrying ``discard``) deletes, or leaves the
-        # machine's value as the machine's, so it writes no stamp either.
+        # same, so the card offers one Approve (OpKind.stamped). An op
+        # carrying ``discard`` deletes, or leaves the machine's value as the
+        # machine's, so it writes no stamp either.
         if not any(self.KIND[op['kind']].stamped and not op.get('discard')
                    for op in ops if op.get('kind') in self.KIND):
             out['stamp_choice'] = False
