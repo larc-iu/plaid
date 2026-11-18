@@ -31,6 +31,12 @@ export function splitConlluByNewdoc(text) {
     }
     cur.lines.push(line);
   }
+  // Comment lines before the first `# newdoc id` (a licence, CoNLL-U Plus's
+  // `# global.columns`) are no document of their own: they go with the first
+  // one, whose first sentence takes them as fields.
+  if (docs.length > 1 && docs[0].id === null && docs[0].lines.every((l) => /^\s*(#|$)/.test(l))) {
+    docs[1].lines.unshift(...docs.shift().lines);
+  }
   return docs
     .map((d) => ({ id: d.id, text: d.lines.join('\n').trim() }))
     .filter((d) => d.text.length > 0);

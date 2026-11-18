@@ -241,7 +241,7 @@ Every sentence carries `sent_id`, CoNLL-U's own identifier for it.
 Other fields are a maintainer's choice, under **Settings → UD settings**. A free translation is conventionally `text_en`, naming its language.
 Fields save as you leave them, and clearing one removes it.
 On export, sentence fields are written above their sentence, as `# sent_id = ...` or `# text_en = ...`.
-On import, a comment line under `# newdoc id`, such as `# source = ...`, becomes a field of the document's first sentence, not of the document.
+On import, a comment line under `# newdoc id`, such as `# source = ...`, becomes a field of the document's first sentence, not of the document, and so does one above a file's first `# newdoc id`, such as a licence.
 A sentence holds one field of each name, so where a file repeats a comment line, such as a second `# comment = ...`, the first is kept, the repeat is dropped, and the import says how many.
 A sentence with no `sent_id`, such as one made by a split, is given one on export: the document's name with an underscore for each space or slash, then its number, as in `Field_notes-3`.
 

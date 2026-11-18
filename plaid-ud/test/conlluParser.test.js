@@ -3,7 +3,11 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { parseCoNLLU, buildConlluHierarchy } from '../src/utils/conlluParser.js';
+import {
+  parseCoNLLU,
+  buildConlluHierarchy,
+  splitConlluByNewdoc,
+} from '../src/utils/conlluParser.js';
 
 const conllu = (lines) => lines.join('\n') + '\n';
 
@@ -221,5 +225,43 @@ test('a multi-word token range past the last row, or over another, is refused', 
       '2\ttwo\t_\tX\t_\t_\t1\tdep\t_\t_',
     ]),
     'Invalid multi-word token range in sentence 1: 1-3 runs past the last ID, 2.',
+  );
+});
+
+// H3-5-7: comment lines before the first `# newdoc id` (a licence, CoNLL-U
+// Plus's `# global.columns`) became a document of their own, refused as
+// holding no sentences.
+test('comment lines before the first newdoc go with the first document', () => {
+  const chunks = splitConlluByNewdoc(
+    [
+      '# This treebank is licensed CC BY-SA 4.0.',
+      '# Annotated by the Kukama team, 2026.',
+      '',
+      '# newdoc id = licdoc',
+      '# sent_id = l-1',
+      '1\ta\t_\tX\t_\t_\t0\troot\t_\t_',
+      '',
+      '# newdoc id = second',
+      '1\tb\t_\tX\t_\t_\t0\troot\t_\t_',
+    ].join('\n'),
+  );
+  assert.deepEqual(
+    chunks.map((c) => c.id),
+    ['licdoc', 'second'],
+  );
+  const [first] = parseCoNLLU(chunks[0].text).sentences;
+  assert.equal(first.metadata['This treebank is licensed CC BY-SA 4.0.'], true);
+  assert.equal(first.metadata.sent_id, 'l-1');
+  // A file with rows before its first newdoc keeps them as a document.
+  assert.deepEqual(
+    splitConlluByNewdoc(
+      [
+        '1\ta\t_\tX\t_\t_\t0\troot\t_\t_',
+        '',
+        '# newdoc id = d',
+        '1\tb\t_\tX\t_\t_\t0\troot\t_\t_',
+      ].join('\n'),
+    ).map((c) => c.id),
+    [null, 'd'],
   );
 });
