@@ -252,6 +252,16 @@ export const storesList = (layer, field) => {
   return Array.isArray(v) && v.length > 0;
 };
 
+// A closed list's rule is made of two cells of its layer, the list and its
+// mode: given one of them (`entity` a layer of `info`, getUdLayerInfo's
+// answer), the key of the other, or null for any other cell.
+export const ruleCellSibling = (info, entity, key) => {
+  const list = MODED_LISTS.find(([, layer]) => info[layer]?.id === entity?.id)?.[3];
+  if (!list) return null;
+  if (key === 'vocabMode') return list;
+  return key === list ? 'vocabMode' : null;
+};
+
 // The cells that store each list of `info` (getUdLayerInfo's answer) that is
 // closed with nothing stored, as the page shows it, `{bundle, layer, key,
 // value}` with `layer` the key of its layer in `info` (REV-TR-1). A list with

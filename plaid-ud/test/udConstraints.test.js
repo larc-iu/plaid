@@ -314,3 +314,97 @@ test('a list found closed with nothing stored is stored and its rule declared ag
     [['config', 'colors']],
   );
 });
+
+// H3-7-6: two maintainers, one closing XPOS and one adding a tag, were both
+// told "saved", and core's rule left the new tag out. A closed list's rule is
+// made of two cells, the list and its mode, so a save that writes one states
+// the other as it read it: a change there since refuses the save (409).
+test('a save that writes a list or its mode states the other cell as it was read', () => {
+  const raw = rawDocFromConllu(INPUT, 'e');
+  const base = getUdLayerInfo(raw);
+  const project = withConfigWrites(raw, [{ entity: base.xposLayer, key: 'vocab', value: ['DT'] }]);
+  const info = getUdLayerInfo(project);
+  const run = (cells) => {
+    const calls = [];
+    const bundle = (name) => ({
+      setConfig: (id, ns, key, value, _i, opts) =>
+        calls.push({ op: 'set', name, id, key, value, opts }),
+      deleteConfig: (id, ns, key, _i, opts) => calls.push({ op: 'delete', name, id, key, opts }),
+      setConstraints: (id, ns, constraints, _i, opts) =>
+        calls.push({ op: 'rule', name, id, constraints, opts }),
+      repairConstraints: () => {},
+    });
+    queueVocabCells(
+      {
+        spanLayers: bundle('spanLayers'),
+        relationLayers: bundle('relationLayers'),
+        tokenLayers: bundle('tokenLayers'),
+      },
+      project,
+      cells,
+    );
+    return calls.filter((c) => c.op !== 'rule');
+  };
+  const xpos = info.xposLayer.id;
+
+  // Closing the list states the list it closed.
+  assert.deepEqual(
+    run([{ bundle: 'spanLayers', entity: info.xposLayer, key: 'vocabMode', value: 'closed' }]),
+    [
+      {
+        op: 'set',
+        name: 'spanLayers',
+        id: xpos,
+        key: 'vocabMode',
+        value: 'closed',
+        opts: { expected: undefined },
+      },
+      {
+        op: 'set',
+        name: 'spanLayers',
+        id: xpos,
+        key: 'vocab',
+        value: ['DT'],
+        opts: { expected: ['DT'] },
+      },
+    ],
+  );
+  // Adding a tag states the mode, absent here, by a delete expecting nothing.
+  assert.deepEqual(
+    run([{ bundle: 'spanLayers', entity: info.xposLayer, key: 'vocab', value: ['DT', 'NN'] }]),
+    [
+      {
+        op: 'set',
+        name: 'spanLayers',
+        id: xpos,
+        key: 'vocab',
+        value: ['DT', 'NN'],
+        opts: { expected: ['DT'] },
+      },
+      { op: 'delete', name: 'spanLayers', id: xpos, key: 'vocabMode', opts: { expected: null } },
+    ],
+  );
+  // Both written: nothing more to state. A colour states nothing.
+  assert.deepEqual(
+    run([
+      { bundle: 'spanLayers', entity: info.xposLayer, key: 'vocab', value: ['DT', 'NN'] },
+      { bundle: 'spanLayers', entity: info.xposLayer, key: 'vocabMode', value: 'closed' },
+      { bundle: 'spanLayers', entity: info.uposLayer, key: 'colors', value: {} },
+    ]).map((c) => [c.op, c.key]),
+    [
+      ['set', 'vocab'],
+      ['set', 'vocabMode'],
+      ['set', 'colors'],
+    ],
+  );
+  // The feature inventory is the features layer's list.
+  assert.deepEqual(
+    run([
+      { bundle: 'spanLayers', entity: info.featuresLayer, key: 'vocabMode', value: 'open' },
+    ]).map((c) => [c.op, c.key, c.opts]),
+    [
+      ['set', 'vocabMode', { expected: undefined }],
+      ['delete', 'inventory', { expected: null }],
+    ],
+  );
+});
