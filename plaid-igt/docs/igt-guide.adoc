@@ -1129,6 +1129,7 @@ Under a document in **Blank**, **Not done, refused:** lists the changes the job 
 * **Analysis of a word in a sentence the job retyped**.
 * **Value on a word or sentence the job did not add**: the job fills only the words it adds.
 * **Outside the part's own sentences**: the change was in a sentence the part was not given.
+* **Change in a sentence too long for a job**: the sentence is over 250 words or 4,000 characters, and a job writes nothing in it.
 
 A job that fills nothing, such as a check, shows its **Findings** first in its report, in full, with **Copy** and **Written by the assistant, not checked against the counts below.**
 A job that is undone says so in its state line and its opening sentence, its **To check** list keeps only the changes it proposed and never applied, and its totals read **What the job had written**.
