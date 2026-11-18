@@ -6985,7 +6985,7 @@ class IgtRunner:
                 out[d] = None
                 continue
             lists = out.setdefault(d, {'left': [], 'untouched': [], 'not_reached': [], 'blank': []})
-            added = self.added()[0]
+            added = core_job.through_core(job, self.added)[0]
             tally = {t.id: {k: 0 for k in BLANK_WHERE} for t in fill}
             for s in doc.sentences:
                 if s.id in wrote or wrote_in(s, wrote_known):
