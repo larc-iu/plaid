@@ -967,6 +967,46 @@ describe('buildCldfDocuments — per-example media', () => {
     }
   });
 
+  it("takes a contribution's audio row over a PDF or transcript listed before it (H2-13-3)", () => {
+    const ds = (rows) =>
+      dataset(
+        'ID,Primary_Text,Analyzed_Word,Gloss,Contribution_ID\r\n1,uno,uno,one,c1\r\n',
+        [...BASIC_COLUMNS, col('Contribution_ID', 'contributionReference')],
+        [
+          {
+            url: 'contributions.csv',
+            'dc:conformsTo': `${TERMS}ContributionTable`,
+            tableSchema: { columns: [col('ID', 'id'), col('Name', 'name')] },
+          },
+          {
+            ...mediaTable,
+            tableSchema: {
+              columns: [
+                ...mediaTable.tableSchema.columns,
+                col('Contribution_ID', 'contributionReference'),
+              ],
+            },
+          },
+        ],
+        {
+          'contributions.csv': 'ID,Name\r\nc1,Session one\r\n',
+          'media.csv': `ID,Media_Type,Download_URL,Contribution_ID\r\n${rows}`,
+          'docs/notes.pdf': '%PDF',
+          'media/s1.eaf': '<ANNOTATION_DOCUMENT/>',
+          'media/s1.wav': 'RIFFfake',
+        },
+      );
+    const pick = (rows) => buildCldfDocuments(ds(rows)).documents[0].mediaName;
+    expect(pick('m1,application/pdf,docs/notes.pdf,c1\r\nm2,audio/wav,media/s1.wav,c1\r\n')).toBe(
+      's1.wav',
+    );
+    expect(pick('m1,text/x-eaf+xml,media/s1.eaf,c1\r\nm2,audio/wav,media/s1.wav,c1\r\n')).toBe(
+      's1.wav',
+    );
+    // With no row typed audio or video, the first row as before.
+    expect(pick('m1,,docs/notes.pdf,c1\r\nm2,,media/s1.wav,c1\r\n')).toBe('notes.pdf');
+  });
+
   it('says nothing about media once each example is its own document', () => {
     expect(buildCldfDocuments(ds()).warnings.join(' ')).not.toMatch(/media file/);
   });

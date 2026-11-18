@@ -312,10 +312,15 @@ function makeMediaIndex(dataset) {
   const table = dataset.components?.MediaTable;
   const byId = new Map();
   const byContribution = new Map();
+  // A contribution's recording is its first row typed audio or video, else
+  // its first row: a transcript or a PDF listed first is not it (H2-13-3).
+  const playable = (row) => /^(audio|video)\//i.test(cell(table, row, 'mediaType') || '');
   for (const row of table?.rows || []) {
     byId.set(cell(table, row, 'id'), row);
     const c = cell(table, row, 'contributionReference');
-    if (c && !byContribution.has(c)) byContribution.set(c, row);
+    if (!c) continue;
+    const kept = byContribution.get(c);
+    if (!kept || (!playable(kept) && playable(row))) byContribution.set(c, row);
   }
   return { table, byId, byContribution };
 }

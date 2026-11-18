@@ -1206,7 +1206,7 @@ Five formats are supported:
 
 * **FieldWorks (FLEx) backup** (`.fwbackup`): a whole FLEx project, with its texts, words, morphemes, glosses, translations, the full lexicon, and what each text's Info tab holds. The backup's writing systems become the project's languages and each field's language, so a later FLEx export is tagged the way FLEx expects. Words that cannot be aligned to their baseline are listed before the import and skipped.
 * **FieldWorks (FLEx) interlinear texts** (`.flextext`): one or more files exported from FLEx with **File > Export Interlinear**, with their texts and analyses but no lexicon. A `.flextext` holds only what the Interlinear view showed, so turn on every line you want before exporting. An analysis FLEx marks as a guess arrives as machine work to review.
-* **CLDF** (`.zip`): a Cross-Linguistic Data Formats dataset. Its examples become interlinear texts, its lexicon a vocabulary, and its language the project's identity.
+* **CLDF** (`.zip`): a Cross-Linguistic Data Formats dataset. Its examples become interlinear texts, its lexicon a vocabulary, and its language the project's identity. A text's recording is the first audio or video file the dataset lists for it.
 * **ELAN** (`.eaf`): a set of annotation files in which each tier means the same thing in every file. Each file becomes a document, with its tiers, speakers, time alignment, and its recording when you choose that alongside.
 * **Plaid IGT archive** (`.zip`): recreates a project exactly, with its vocabularies, media, comments, and guidelines. Which members' work is reviewed is not carried, since it names people.
 
