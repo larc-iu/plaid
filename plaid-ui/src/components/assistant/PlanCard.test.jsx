@@ -625,6 +625,33 @@ describe('the two approve buttons', () => {
     }
   });
 
+  // A plan with no stamp to choose (a parse, whose values are the parser's)
+  // was approved with a single Approve, so no stamp is named: "Approved as
+  // verified." over a parse stored as unverified was untrue (H2-9-1).
+  it.each([[{}], [{ recordedAsHuman: true }]])(
+    'a settled plan with no stamp to choose names none (%o)',
+    async (recorded) => {
+      for (const status of ['applied', 'partial']) {
+        const view = await mount(confirmOnly(), {
+          status,
+          outcome: '1 of 2 changes written.',
+          ...recorded,
+        });
+        expect(view.container.querySelector('[data-testid="plan-approved-as"]')).toBeNull();
+        await view.unmount();
+      }
+    },
+  );
+
+  it('is exported as applied, with no stamp, when it had none to choose', () => {
+    const conv = {
+      display: [{ kind: 'assistant', text: 'Planned.', plan: confirmOnly(), status: 'applied' }],
+    };
+    const md = conversationToMarkdown(conv, { title: 'T' }, { adapter: { ...adapter } });
+    expect(md).toContain('(Applied.)');
+    expect(md).not.toContain('Approved as');
+  });
+
   it('says nothing of an approval on a plan not approved', async () => {
     for (const status of [null, 'discarded', 'stale', 'replaced']) {
       const view = await mount(one(), { status });

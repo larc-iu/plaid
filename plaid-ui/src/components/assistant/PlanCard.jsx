@@ -192,7 +192,9 @@ export const PlanCard = ({
           {unknown && ' The server did not answer for the rest.'}
         </p>
       )}
-      {(applied || partial) && (
+      {/* A plan with no stamp to choose was approved with one Approve, so no
+          stamp is named (a parse's values are the parser's, H2-9-1). */}
+      {(applied || partial) && plan.stampChoice !== false && (
         <p className="mt-2 text-xs text-muted-foreground" data-testid="plan-approved-as">
           {approvedLine({
             asHuman: recordedAsHuman,

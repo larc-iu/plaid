@@ -114,7 +114,9 @@ const jobCardToMarkdown = (card) => {
 const planToMarkdown = (plan, status, outcome, inProject, reason, recorded) => {
   const said =
     status === 'applied'
-      ? `Approved as ${approvedAs(recorded)} and applied.`
+      ? plan?.stampChoice === false
+        ? 'Applied.'
+        : `Approved as ${approvedAs(recorded)} and applied.`
       : status === 'partial'
         ? `Partly applied: ${outcome}`
         : status === 'discarded'

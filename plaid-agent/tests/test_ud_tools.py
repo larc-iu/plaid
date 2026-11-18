@@ -819,6 +819,17 @@ def test_run_parse_plans_the_whole_document(ws, monkeypatch):
     assert op['service_id'] == 'stanza-parser' and op['project_id'] == PID
 
 
+def test_a_parse_plan_offers_one_approve(ws, monkeypatch):
+    """The parser writes its own values under its own stamp, so neither
+    approve button changes what is written, and the card offers one Approve,
+    as for a plan of confirmations (H2-9-1)."""
+    from plaid_agent.ud.plan import KIND
+    monkeypatch.setattr('plaid_agent.ud.tools.parse_services', lambda w: _parsers('stanza-parser'))
+    call_tool(ws, 'run_parse', {'documents': ['Viaje']})
+    assert not KIND['run_parse'].stamped
+    assert ws.plan_payload()['stamp_choice'] is False
+
+
 def test_run_parse_names_documents_without_reading_them(ws, monkeypatch):
     """The label was built by loading every named document, which on a
     corpus-sized parse is a full fetch each for a string the document list
