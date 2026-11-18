@@ -565,6 +565,7 @@ It keeps track of which services are connected, sends each request to the one se
 
 A service calls `serve` with a handler, which Plaid runs once per request.
 The handler receives the request's data and a **response helper**, with which it reports `progress(percent, message)` and finishes with `complete(result)` or `error(message)`.
+Each request runs on its own (in Python, on a thread of its own), so two requests can run at once, and a handler that must take one at a time keeps a lock of its own.
 
 [,python]
 ----

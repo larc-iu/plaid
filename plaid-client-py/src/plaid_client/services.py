@@ -312,6 +312,9 @@ class ServiceRegistration:
         self._running = True
         self._stop_event = threading.Event()
         self._supervisor_thread = None
+        # The threads requests are handled on, the finished ones pruned as
+        # each new one starts (a test joins them).
+        self._workers = []
         # Last state REPORTED through `_on_status`, so an outage produces one
         # "lost" line and one "back" line however many retries it took.
         self._on_status = on_status
@@ -430,9 +433,11 @@ def serve(client, project_id, service_info, on_service_request, extras=None,
     discovery (presence = open channel) — and handles work on it. For each
     request, runs
     ``on_service_request(data, response_helper)`` where ``response_helper`` has
-    ``progress(percent, msg)`` / ``complete(data)`` / ``error(err)``. The
-    handler runs synchronously on the channel's reader thread (one request at a
-    time), matching the previous behavior.
+    ``progress(percent, msg)`` / ``complete(data)`` / ``error(err)``. Each
+    request runs on a thread of its own, never on the channel's reader thread,
+    which must stay free to read the ``service_cancel`` that stops it. So two
+    requests can run at once, as in the JavaScript client: a handler that must
+    take one at a time keeps its own lock (``BaseService`` refuses a second).
 
     If ``extras`` declares ``delegation: True`` the server mints a short-lived
     token for whoever submits each request and the handler's ``data`` carries
@@ -648,29 +653,37 @@ def serve(client, project_id, service_info, on_service_request, extras=None,
                 self._send_last({'status': 'error', 'data': {'error': requester_message(error)}}, 'error')
 
         helper = ResponseHelper()
-        try:
-            on_service_request(req_data, helper)
-        except ServiceRequestGone:
-            # The server no longer knows the request: nobody waits for an
-            # answer, and nobody asked it to stop.
-            logger.info('Service %s: request %s ended, the server no longer knows it', service_id, req_id)
-            helper._finished()
-        except ServiceCancelled:
-            # Asked to stop, and it did. Not a failure: the requester already
-            # knows, and whatever was written before the checkpoint stands.
-            helper.stopped()
-        except Refusal as e:
-            # Written for the person who asked, and expected: one line.
-            logger.info('Service %s refused request %s: %s', service_id, req_id, e)
-            helper.error(service_error_message(e, service_name))
-        except Exception as e:
-            # What reaches the requester is the sanitized half: the raw text
-            # names the endpoint the client called and, for an exception with
-            # no message of its own, the Python class that raised it. Neither
-            # is the requester's business, and the operator's log below keeps
-            # the whole thing.
-            logger.exception('Service %s failed request %s', service_id, req_id)
-            helper.error(service_error_message(e, service_name))
+
+        def run():
+            try:
+                on_service_request(req_data, helper)
+            except ServiceRequestGone:
+                # The server no longer knows the request: nobody waits for an
+                # answer, and nobody asked it to stop.
+                logger.info('Service %s: request %s ended, the server no longer knows it', service_id, req_id)
+                helper._finished()
+            except ServiceCancelled:
+                # Asked to stop, and it did. Not a failure: the requester already
+                # knows, and whatever was written before the checkpoint stands.
+                helper.stopped()
+            except Refusal as e:
+                # Written for the person who asked, and expected: one line.
+                logger.info('Service %s refused request %s: %s', service_id, req_id, e)
+                helper.error(service_error_message(e, service_name))
+            except Exception as e:
+                # What reaches the requester is the sanitized half: the raw text
+                # names the endpoint the client called and, for an exception with
+                # no message of its own, the Python class that raised it. Neither
+                # is the requester's business, and the operator's log below keeps
+                # the whole thing.
+                logger.exception('Service %s failed request %s', service_id, req_id)
+                helper.error(service_error_message(e, service_name))
+
+        # Off the reader thread (H2-11-2): the service_cancel for this request
+        # comes down the same channel, and is read only while the reader is free.
+        worker = threading.Thread(target=run, name=f'plaid-service-request-{req_id}', daemon=True)
+        registration._workers = [t for t in registration._workers if t.is_alive()] + [worker]
+        worker.start()
 
     # Open the inbound request channel; this registers the service for
     # discovery (presence = open channel). The opener hands back a connection

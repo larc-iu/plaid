@@ -582,11 +582,11 @@ class BaseService(ABC):
         the right model. (:attr:`CONCURRENT` services skip the lock and handle
         each request on a thread of its own.)
 
-        Either way the work runs on a thread of its own, because this is called
-        ON the SSE reader thread: running a long request inline blocks the very
-        channel that carries ``service_cancel`` for it, so the stop is not read
-        until the work it was meant to stop has finished. Single-flight is kept
-        by taking the lock here and releasing it when the work ends.
+        Either way the work runs on a thread of its own, so a caller is never
+        held by it (``serve`` already calls this off the SSE reader thread,
+        which must stay free to read the ``service_cancel`` for the work).
+        Single-flight is kept by taking the lock here and releasing it when the
+        work ends.
 
         Returns the thread the work is running on, or ``None`` when the request
         was rejected. ``serve`` ignores it; a test joins it.

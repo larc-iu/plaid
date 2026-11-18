@@ -655,9 +655,12 @@ class _OpenConnection:
         pass
 
 
-def _serve_with_capture(handler):
+def _serve_with_capture(handler, wait=True):
     """Register a handler through ``serve`` on a fake client and return the
-    channel's event callback plus the events the service reported back."""
+    channel's event callback plus the events the service reported back.
+
+    ``serve`` runs each request on a thread of its own. With ``wait`` the
+    callback returns once the handler has, as the reader thread once did."""
     from plaid_client import services as svc_mod
     captured = {}
     reported = []
@@ -674,7 +677,44 @@ def _serve_with_capture(handler):
         messages = FakeMessages()
 
     reg = svc_mod.serve(FakeClient(), 'p1', {'service_id': 's1', 'service_name': 'S'}, handler)
-    return captured['on_event'], reported, reg
+    if not wait:
+        return captured['on_event'], reported, reg
+
+    def on_event(event_type, event_data):
+        result = captured['on_event'](event_type, event_data)
+        if event_type == 'service_request':
+            reg._workers[-1].join(5)
+        return result
+    return on_event, reported, reg
+
+
+def test_a_served_handler_sees_a_stop_while_it_runs():
+    # H2-11-2: the handler ran on the channel's reader thread, so the
+    # service_cancel behind its request was read only once the handler had
+    # finished, and a plain serve could never be stopped.
+    import time
+    steps = []
+
+    def handler(data, helper):
+        for i in range(200):
+            helper.progress(i, f'step {i}')
+            steps.append(i)
+            time.sleep(0.02)
+        helper.complete({'done': True})
+
+    on_event, reported, reg = _serve_with_capture(handler, wait=False)
+    try:
+        started = time.monotonic()
+        on_event('service_request', {'request_id': 'r1', 'data': {}})
+        assert time.monotonic() - started < 1, 'the channel is not held by the work'
+        time.sleep(0.1)
+        on_event('service_cancel', {'request_id': 'r1'})
+        reg._workers[-1].join(2)
+        assert not reg._workers[-1].is_alive(), 'the stop ended the work well before its 4 s'
+        assert reported[-1][2] == {'status': 'completed', 'data': {'stopped': True}}
+        assert len(steps) < 100
+    finally:
+        reg.stop()
 
 
 def test_served_request_sees_requester_and_cancel():
@@ -1558,6 +1598,8 @@ def _served(handler):
 
     def deliver(data=None):
         captured['on_event']('service_request', {'request_id': 'r1', 'data': data or {}})
+        for worker in list(registration._workers):
+            worker.join(5)
 
     return registration, deliver, events
 
