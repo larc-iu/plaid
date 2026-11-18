@@ -1739,6 +1739,13 @@ class Gone(Exception):
     """The document is gone."""
 
 
+class ProjectChanged(Exception):
+    """A layer the job read the document by is gone from the project (a
+    field deleted while a piece was in flight, S5-1): the document is walked
+    again at once with the project read afresh, what the piece staged not
+    written."""
+
+
 def first_request(e: BaseException) -> bool:
     """Whether a write that met core's passing trouble may be made again
     from its gate (D21): the trouble came before its first request went out
@@ -2480,6 +2487,10 @@ class IgtRunner:
         try:
             doc = ws.load_doc(document_id)
         except PlaidAPIError as e:
+            # A read core refuses 400 while the project no longer has every
+            # layer the job read it by: the project changed (S5-1).
+            if e.status == 400 and set(project.read_layer_ids()) - set(self.project().read_layer_ids()):
+                raise ProjectChanged(document_id) from e
             raise self.refused(e, document_id) from e
         self.names[document_id] = doc.name
         return doc
@@ -3511,9 +3522,17 @@ class IgtRunner:
         job.check()
         job.set(current_document=document_id)
 
-        def step():
+        def walk():
             try:
                 return self.walk(document_id)
+            except ProjectChanged:
+                # Walked again once, with the project as it now is (S5-1).
+                logger.warning('Job %s: the project changed under document %s: walked again', job.id, document_id)
+                return self.walk(document_id)
+
+        def step():
+            try:
+                return walk()
             except Deferred as e:
                 # By a person, or by core not answering for a write inside
                 # the walk (REV-JR1-7). A lock lost whose renewal met core's
