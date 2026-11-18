@@ -315,7 +315,7 @@ export const JobPage = ({ project, projectId, jobId, client }) => {
       )}
       <div className="mb-6 border-b">
         <Tabs value={view} onValueChange={setView}>
-          <TabsList className="border-b-0">
+          <TabsList className="border-b-0" aria-label="Sections">
             {sections.map((s) => (
               <TabsTrigger key={s.key} value={s.key} to={viewHref(at, s.key)}>
                 {s.label}
