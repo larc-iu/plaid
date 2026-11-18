@@ -45,11 +45,11 @@ export const blankSums = (report) => {
 };
 
 // A count of what a target holds blank, in the unit Left blank lists.
-export const unitCount = (n, unit) => `${n.toLocaleString()} ${plural(n, unit)}`;
+const unitCount = (n, unit) => `${n.toLocaleString()} ${plural(n, unit)}`;
 
 // Rows `{field, id, values, inAnalyses?, outside?}` summed by the target's id (each row
 // carries it, REV-SUFIX-2), named as the first row names it.
-export const sumById = (rows, into = new Map()) => {
+const sumById = (rows, into = new Map()) => {
   rows.forEach((f) => {
     const s = into.get(f.id) ?? { field: f.field, id: f.id, values: 0 };
     s.values += f.values ?? 0;
@@ -64,7 +64,7 @@ export const sumById = (rows, into = new Map()) => {
 // `outside` rows, decided by id where it was written: values of a field, a
 // translation or an orthography, and segmentation, one per word or morpheme,
 // REV-SUFIX-1): the totals', or the documents' summed by id.
-export const outsideRows = (report) => [
+const outsideRows = (report) => [
   ...sumById(
     report.totals?.outside ?? (report.documents || []).flatMap((d) => d.counts?.outside || []),
   ).values(),
@@ -76,7 +76,7 @@ export const outsideRows = (report) => [
 // A target written outside the setup reads the count of its `outside` row,
 // which also holds the values an analysis carries and a translation, so each
 // such target has a row and those rows sum to the total.
-export const fieldSums = (report) => {
+const fieldSums = (report) => {
   const sums = report.totals?.fields
     ? sumById(report.totals.fields)
     : sumById((report.documents || []).flatMap((d) => d.counts?.fields || []));
@@ -88,17 +88,17 @@ export const fieldSums = (report) => {
 
 // What the job's changes are, by kind (the worker's `changes_parts`): the
 // totals', or, when they hold none (core's own report), the documents' summed.
-export const changeParts = (report) =>
+const changeParts = (report) =>
   report.totals?.changesParts ??
   sumParts((report.documents || []).map((d) => d.counts?.changesParts));
 
 // How many values the job wrote outside its setup: the sum of its rows.
-export const outsideSum = (report) => outsideRows(report).reduce((n, f) => n + f.values, 0);
+const outsideSum = (report) => outsideRows(report).reduce((n, f) => n + f.values, 0);
 
 // Each row of the totals is in one of two groups: what the job wrote, and
 // what it did not (documents and sentences it did not work, what is still
 // blank, what it proposed, skipped or left out, and how long it waited).
-export const WRITTEN = 'written';
+const WRITTEN = 'written';
 export const NOT_WRITTEN = 'not-written';
 
 // One "label: value" row of the totals, left out when it is an optional row

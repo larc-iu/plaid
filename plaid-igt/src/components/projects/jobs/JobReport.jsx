@@ -44,7 +44,7 @@ export const Heading = ({ section, children }) => (
   <h3 className={`${TYPE.card} mb-2 mt-6`}>{section ? SECTIONS[section] : children}</h3>
 );
 
-export const More = ({ n, noun }) =>
+const More = ({ n, noun }) =>
   n > 0 ? (
     <p className="mt-1 text-sm text-muted-foreground">
       And {n.toLocaleString()} more {plural(n, noun)}.
@@ -84,7 +84,7 @@ const EntryLine = ({ entry }) => {
 
 // A document of the report by its name, a link to what the job changed in it
 // (its History entry for the job's work there) where it wrote something.
-export const DocumentName = ({ projectId, d }) =>
+const DocumentName = ({ projectId, d }) =>
   d.name && changesGroup(d) ? (
     <Link
       className="font-medium underline"
@@ -185,7 +185,7 @@ export const Respelled = ({ report, projectId }) => {
 // person approves in a conversation with the assistant about the job. Then,
 // under a line of their own, the changes it applied whose write was cut short
 // and that were not written (`reason`). Hidden when there are none.
-export const ChangesTable = ({ list, projectId }) => (
+const ChangesTable = ({ list, projectId }) => (
   <table className="w-full text-sm">
     <thead className="text-left text-muted-foreground">
       <tr>
