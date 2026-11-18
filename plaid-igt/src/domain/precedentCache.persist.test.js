@@ -308,6 +308,43 @@ describe('precedent kept across reloads', () => {
     expect(gloss(precedentBase(again))).toEqual(new Map([['go', 1]]));
   });
 
+  // REV-CP-1: a count the server cut at its cap (`truncated`) is the answer
+  // the project gets until it changes. Kept like a whole one, it is not asked
+  // again on a reload, in a second tab, or on the five-minute check.
+  it('a count the server cut is kept, and not asked again until the project changes', async () => {
+    const srv = server({ a: [['kai', 'go']], b: [['kai', 'eat']] });
+    const cutting = (client) => {
+      const real = client.query.getMockImplementation();
+      client.query.mockImplementation(async (q) => {
+        const res = await real(q);
+        return q.where[0][2].doc ? res : { ...res, truncated: true };
+      });
+      return client;
+    };
+    const now = vi.spyOn(Date, 'now').mockReturnValue(3_000_000);
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const first = cutting(tab(srv));
+    const a = docOf(first, 'a');
+    await openPrecedent(a);
+    expect(projectQueries(first)).toHaveLength(1);
+    now.mockReturnValue(3_000_000 + 5 * 60_000 + 1_000);
+    await openPrecedent(a);
+    expect(projectQueries(first)).toHaveLength(1);
+    expect(first.projects.listDocuments.mock.calls.length).toBeGreaterThan(2);
+    reload();
+    const second = cutting(tab(srv));
+    await openPrecedent(docOf(second, 'b'));
+    expect(projectQueries(second)).toHaveLength(0);
+    srv.glossByDoc.a = [['kai', 'went']];
+    srv.versions.a = 2;
+    reload();
+    const third = cutting(tab(srv));
+    await openPrecedent(docOf(third, 'b'));
+    expect(projectQueries(third)).toHaveLength(1);
+    now.mockRestore();
+    warn.mockRestore();
+  });
+
   it('another tab signing out empties the browser store and keeps this tab counting', async () => {
     const srv = server({ a: [['kai', 'go']], b: [['kai', 'go']] });
     const first = tab(srv);

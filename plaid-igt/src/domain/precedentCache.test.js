@@ -320,9 +320,10 @@ describe('precedentCache', () => {
   });
 
   // SCL3-2: an answer the server cut at its cap holds only the groups before
-  // the cut. Folded as if whole it would rank by part of the project, so it
-  // counts as no read, and is asked again only as often as a change is.
-  it('a count the server cut is no count, and is asked again only every few minutes', async () => {
+  // the cut. Folded as if whole it would rank by part of the project, so the
+  // document goes alone. The cut answer is kept (REV-CP-1): asked again only
+  // when the project changed.
+  it('a count the server cut is no count, and is asked again only after a change', async () => {
     const client = fakeClient({ a: [['kai', 'go']], b: [['kai', 'eat']] });
     const real = client.query.getMockImplementation();
     client.query.mockImplementation(async (q) => {
@@ -341,6 +342,14 @@ describe('precedentCache', () => {
     expect(client.query.mock.calls.length).toBe(calls);
     client.query.mockImplementation(real);
     now.mockReturnValue(2_000_000 + 5 * 60_000 + 1_000);
+    await openPrecedent(a);
+    expect(client.query.mock.calls.length).toBe(calls);
+    expect(precedentBase(a)).toBeNull();
+    client.projects.listDocuments.mockImplementation(async () => [
+      { id: 'a', version: 1 },
+      { id: 'b', version: 2 },
+    ]);
+    now.mockReturnValue(2_000_000 + 10 * 60_000 + 2_000);
     await openPrecedent(a);
     expect(gloss(editorTally(a))).toEqual(
       new Map([
