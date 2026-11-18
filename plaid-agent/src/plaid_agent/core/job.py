@@ -753,7 +753,8 @@ def run_job(job: Job, runner) -> Optional[Dict[str, Any]]:
         return None
 
 
-def through_core(job: Job, step: Callable[[], Any], gave_up: Optional[Callable[[], Any]] = None):
+def through_core(job: Job, step: Callable[[], Any], gave_up: Optional[Callable[[], Any]] = None,
+                 wait: Optional[Callable[[float], None]] = None):
     """THE way every call the worker makes to core is made (REV-J-B2 S3-4):
     ``step`` is a call, or a step of calls that is safe to make again from
     its start (each reads the documents and the job's record as they are,
@@ -764,7 +765,8 @@ def through_core(job: Job, step: Callable[[], Any], gave_up: Optional[Callable[[
     goes up. A token core refused 401 while a heartbeat renews it
     (:meth:`Job.renewed`) is the step made again at once. Anything else goes
     up at once, for :func:`run_job` to sort: the job no longer this
-    worker's, the starter's access gone, a fault."""
+    worker's, the starter's access gone, a fault. ``wait`` waits between
+    tries in place of ``job.sleep``, which stops at a stop."""
     for n in range(1, JOB_CORE_TRIES + 1):
         try:
             return step()
@@ -779,7 +781,7 @@ def through_core(job: Job, step: Callable[[], Any], gave_up: Optional[Callable[[
                 if gave_up is None:
                     raise
                 return gave_up()
-            job.sleep(JOB_CORE_WAIT_S * n)
+            (wait or job.sleep)(JOB_CORE_WAIT_S * n)
 
 
 def _stopped_parts(job: Job, runner, harmonize, entries):
@@ -838,7 +840,12 @@ def _finish(job: Job, state: str, runner, harmonize, entries, reason: Optional[s
         report.update(_findings(job, runner, report))
         fit_report(report)
     try:
-        return job.admin.jobs.finish(job.id, job.worker_id, state, report, reason=reason)
+        # Sent again while core is busy or out of reach, as every call is
+        # (D13): a finish dropped leaves the job running for another run to
+        # report again. A finish that landed and is sent again is refused
+        # 409, as below. The waits do not stop at a stop: this is the end.
+        return through_core(job, lambda: job.admin.jobs.finish(job.id, job.worker_id, state, report,
+                                                                reason=reason), wait=job._sleep)
     except PlaidAPIError as e:
         if state == 'done' and api_code(e) == 'job-state':
             # A stop came after the last check: the job ends as stopped, with
