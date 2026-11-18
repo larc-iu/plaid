@@ -388,6 +388,36 @@ describe('a zip the export made, imported again', () => {
   });
 });
 
+describe('a zip made by an operating system', () => {
+  // H3-5-8: Finder's __MACOSX copies and .DS_Store were imported as
+  // documents, each refused as not UTF-8: files the person never made.
+  it("skips the system's own files, and imports the rest", async () => {
+    const format = baseFormat();
+    const bytes = (t) => new TextEncoder().encode(t);
+    format.unzip = vi.fn(async () => [
+      { path: 'corpus/alpha.xy', bytes: bytes('a') },
+      { path: 'corpus/.DS_Store', bytes: new Uint8Array([0, 0, 0, 1, 0xff]) },
+      { path: '__MACOSX/corpus/._alpha.xy', bytes: new Uint8Array([0, 5, 0x16, 0x07, 0xff]) },
+      { path: 'corpus/beta.xy', bytes: bytes('b') },
+      { path: 'corpus/README.txt', bytes: bytes('read me') },
+    ]);
+    const seen = [];
+    format.prepareImport = vi.fn(async () => async ({ index, name, push }) => {
+      seen.push(name);
+      push({ key: `${index}`, name, status: 'imported', warnings: [] });
+    });
+    const view = await mount(format);
+    await drop(view, [file('corpus.zip', 'zip')]);
+    await view.step(async () => {
+      button(view.container, 'Import').click();
+      await settle();
+    });
+    expect(seen).toEqual(['alpha', 'beta', 'README']);
+    expect(view.container.textContent).toContain('Imported 3 of 3');
+    await view.unmount();
+  });
+});
+
 describe('a project the app has no layers in', () => {
   // Not set up is a plain fact, never drawn as if something were broken.
   it('offers a maintainer the way to set it up, as plain information', async () => {

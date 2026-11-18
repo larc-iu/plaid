@@ -31,6 +31,11 @@ import { FileDropzone } from './FileDropzone.jsx';
 import { countOf } from '../../lib/plural.js';
 
 const isZip = (file) => /\.zip$/i.test(file.name);
+// What an operating system puts in a zip beside the files: macOS's
+// `__MACOSX/` copies and dot-files such as `.DS_Store`. An export never names
+// an entry with a leading dot (sanitizeFilename), so none is a document.
+const isSystemEntry = (path) =>
+  /(^|\/)__MACOSX\//.test(path) || entryFileName(path).startsWith('.');
 
 /**
  * The dropped files as files to import, each with the document name its
@@ -67,7 +72,7 @@ const filesToImport = async (files, unzip) => {
       }
     }
     for (const e of entries) {
-      if (e === record) continue;
+      if (e === record || isSystemEntry(e.path)) continue;
       const name = entryFileName(e.path);
       out.push({
         file: new File([e.bytes], name, { lastModified: file.lastModified }),

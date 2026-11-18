@@ -104,6 +104,7 @@ A concept typed over by hand no longer follows its entry.
 **Import and export** takes `.umr` files in the UMR release format, one file per document.
 Drop the files or pick them, then click **Import**.
 A project's export zip can be dropped as it is, and each of its documents keeps its exact name.
+The files an operating system adds to a zip, such as `__MACOSX` folders and `.DS_Store`, are skipped.
 Each file becomes a document named after the file, with its sentences, words, graphs, alignments, gloss lines and document-level annotation.
 
 A file can also bring annotation to a document already in the project, such as one glossed in Plaid IGT.
