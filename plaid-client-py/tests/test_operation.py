@@ -92,6 +92,27 @@ def test_end_operation_tolerates_404():
     client.end_operation('y')  # must not raise
 
 
+@pytest.mark.parametrize('body,raises', [
+    ({'error': 'lacks access', 'unresolved': True}, False),
+    ({'error': 'lacks access'}, True),
+])
+def test_end_operation_403_unresolved_is_a_group_gone(body, raises):
+    # REV-CA-4: core answers a non-admin 403 ``unresolved`` for a group that
+    # does not exist. An operation that wrote and then had its group row
+    # dropped must not raise on its success path. A plain 403 still does.
+    client = _client()
+    client.session = recording_session([(200, {}), (403, body)])
+    client.begin_operation('Repair')
+    client.spans.set_metadata('S1', {'a': 1})
+    if raises:
+        with pytest.raises(PlaidAPIError) as e:
+            client.end_operation('Repaired nothing')
+        assert e.value.status == 403
+    else:
+        client.end_operation('Repaired nothing')
+    assert [c['method'] for c in client.session.sent] == ['PUT', 'PATCH']
+
+
 def test_nested_begin_flattens_into_outer():
     client = _client()
     calls = _stub_session(client)

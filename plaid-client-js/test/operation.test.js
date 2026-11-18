@@ -128,6 +128,35 @@ test('endOperation(message) tolerates a 404 (group never materialized)', async (
   await client.endOperation('y'); // must not throw
 });
 
+// REV-CA-4: core answers a non-admin 403 `unresolved` for a group that does
+// not exist, as for any id the caller cannot see. An operation that wrote and
+// then had its group row dropped (one that wrote nothing in the end) must not
+// throw on its success path. A 403 without `unresolved` is a real refusal.
+for (const [label, body, throws] of [
+  ['tolerates a 403 unresolved (group gone)', { error: 'lacks access', unresolved: true }, false],
+  ['still throws a plain 403', { error: 'lacks access' }, true],
+]) {
+  test(`endOperation(message) ${label}`, async () => {
+    const client = makeClient();
+    const calls = [];
+    globalThis.fetch = async (url, opts) => {
+      calls.push(opts.method);
+      const patch = opts.method === 'PATCH';
+      return {
+        ok: !patch, status: patch ? 403 : 200, statusText: patch ? 'Forbidden' : 'OK',
+        headers: { get: (n) => (String(n).toLowerCase() === 'content-type' ? 'application/json' : null) },
+        json: async () => (patch ? body : {}), text: async () => '',
+      };
+    };
+    client.beginOperation('Repair');
+    await client.spans.setMetadata('S1', { a: 1 });
+    const end = client.endOperation('Repaired nothing');
+    if (throws) await assert.rejects(end, (e) => e.status === 403);
+    else await end;
+    assert.deepStrictEqual(calls, ['PUT', 'PATCH']);
+  });
+}
+
 test('nested beginOperation flattens into the outer operation', async () => {
   const client = makeClient();
   const outer = client.beginOperation('outer');

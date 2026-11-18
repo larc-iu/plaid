@@ -129,8 +129,11 @@ export async function endOperation(client, message) {
       await client.operationGroups.update(group.id, refined);
     } catch (e) {
       // 404: the group never materialized server-side (every tagged write
-      // failed or a batch was aborted). Nothing to relabel — not an error.
-      if (e.status !== 404) throw e;
+      // failed or a batch was aborted), or was dropped because the operation
+      // wrote nothing in the end. Nothing to relabel — not an error. A
+      // non-admin hears that as 403 `unresolved`, as for any unknown id.
+      const gone = e.status === 404 || (e.status === 403 && e.responseData?.unresolved === true);
+      if (!gone) throw e;
     }
   }
 }

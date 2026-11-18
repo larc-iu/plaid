@@ -192,8 +192,14 @@ class _Operations:
                 self.operation_groups.update(group['id'], refined)
             except PlaidAPIError as e:
                 # 404: the group never materialized server-side (every tagged
-                # write failed or a batch was aborted). Nothing to relabel.
-                if e.status != 404:
+                # write failed or a batch was aborted), or was dropped because
+                # the operation wrote nothing in the end. Nothing to relabel.
+                # A non-admin hears that as 403 ``unresolved``, as for any
+                # unknown id.
+                gone = e.status == 404 or (
+                    e.status == 403 and isinstance(e.response_data, dict)
+                    and e.response_data.get('unresolved') is True)
+                if not gone:
                     raise
 
     @contextmanager
