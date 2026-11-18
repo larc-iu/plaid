@@ -102,6 +102,17 @@ export function useVocabEntries({
     }
   };
 
+  // The entries as stored now, once the writes queued here have landed, put
+  // on screen and answered. Throws when the read fails, and the screen keeps
+  // what it showed: a write planned on what it reads (a delete's repoints)
+  // goes only on a list read just before it.
+  const readNow = async () => {
+    const vocabularyData = await writes.readWhenIdle(() => readVocabulary(client, vocabularyId));
+    const fetched = vocabularyData?.items || [];
+    setItems(fetched);
+    return fetched;
+  };
+
   // One grouped aggregate query: links per item AND per token-layer role
   // across every readable project. The role splits each entry's uses into
   // words and morphemes (an entry may be linked from both). The `vocab-link`
@@ -289,6 +300,7 @@ export function useVocabEntries({
     readableProjects,
     vocabLinked,
     fetchItems,
+    readNow,
     fetchUsageCounts,
     bulkRepoint,
     metadataNow,

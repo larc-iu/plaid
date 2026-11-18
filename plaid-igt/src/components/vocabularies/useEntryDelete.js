@@ -32,6 +32,7 @@ export function useEntryDelete({
     setItems,
     vocabLinked,
     fetchUsageCounts,
+    readNow,
     bulkRepoint,
     metadataNow,
     foldPatches,
@@ -42,7 +43,8 @@ export function useEntryDelete({
 
   // What deleting the open entry would touch besides itself: the senses under
   // it (which become entries) and the fields that name it (cleared), all in
-  // the same operation as the delete.
+  // the same operation as the delete. Said in the question. The delete plans
+  // them again on the entries read at Delete (`confirmDelete`).
   const deleteRefPatches = useMemo(
     () => (selectedItem ? planDeleteRefs(items, fields, [selectedItem.id]) : []),
     [items, fields, selectedItem],
@@ -77,6 +79,7 @@ export function useEntryDelete({
   const LOST_TYPES =
     'Morphemes in projects you cannot write that took their type from it will have none.';
   const [deleteLinksChanged, setDeleteLinksChanged] = useState(false);
+  const [deleteRefsChanged, setDeleteRefsChanged] = useState(false);
   const [deleteHidden, setDeleteHidden] = useState(null); // { id, total, hidden } | null
   const dialogRef = useRef(dialog);
   dialogRef.current = dialog;
@@ -109,6 +112,7 @@ export function useEntryDelete({
     const id = selectedItem?.id;
     deleteCountRef.current = null;
     setDeleteLinksChanged(false);
+    setDeleteRefsChanged(false);
     if (deleteHidden?.id !== id) setDeleteHidden(null);
     dispatch({ type: 'dialog/open', kind: 'delete' });
     if (!id) return;
@@ -128,10 +132,28 @@ export function useEntryDelete({
     const deletedId = selectedItem.id;
     const opened = await deleteCountRef.current;
     const seen = await countLinks(deletedId);
-    if (opened?.id === deletedId && opened.n != null && seen != null && seen !== opened.n) {
-      deleteCountRef.current = Promise.resolve({ id: deletedId, n: seen });
-      setDeleteLinksChanged(true);
-      fetchUsageCounts();
+    // What refers to it is cleared as the entries are stored now, not as this
+    // page read them: another person may have added a sense under it, pointed
+    // a field at it, or changed an entry that does (H2-2-1). The question
+    // stays open when more entries refer to it than it said.
+    let stored;
+    try {
+      stored = await readNow();
+    } catch (err) {
+      notifyError(err, 'Failed to delete the entry');
+      return;
+    }
+    const patches = planDeleteRefs(stored, fields, [settledId(deletedId)]);
+    const linksChanged =
+      opened?.id === deletedId && opened.n != null && seen != null && seen !== opened.n;
+    const refsGrew = patches.length > deleteRefPatches.length;
+    if (linksChanged || refsGrew) {
+      if (linksChanged) {
+        deleteCountRef.current = Promise.resolve({ id: deletedId, n: seen });
+        setDeleteLinksChanged(true);
+        fetchUsageCounts();
+      }
+      if (refsGrew) setDeleteRefsChanged(true);
       return;
     }
     const refused = refusedDeleteRef.current.get(deletedId);
@@ -140,8 +162,7 @@ export function useEntryDelete({
     // A headword with many senses, or a root with many variants, is one
     // repoint per referring entry: the same walk the load-time repair does,
     // so the same bulk write.
-    const patches = deleteRefPatches;
-    const before = metadataNow(items);
+    const before = metadataNow(stored);
     const deletedItem = selectedItem;
     const deletedType = morphTypeOf(tree, deletedId);
     const deletedFrom = vocabularyId;
@@ -240,6 +261,7 @@ export function useEntryDelete({
     deleteRefPatches,
     deleteFreesSenses,
     deleteLinksChanged,
+    deleteRefsChanged,
     deleteHidden,
     deleteTypesLost,
     openDelete,

@@ -26,6 +26,10 @@ export const EntryDialogs = ({
   // The entry's links changed while the dialog was open. Delete then keeps
   // it open, on the new count.
   deleteLinksChanged = false,
+  // More entries refer to it than the dialog said when it opened (another
+  // person added a sense under it or pointed a field at it). Delete then
+  // keeps it open, on the new count.
+  deleteRefsChanged = false,
   // The count the server gave when it refused the delete for its count:
   // { total, hidden }, `hidden` the links in projects this person cannot
   // open. Null until then, when the count is the one this screen reads.
@@ -53,8 +57,10 @@ export const EntryDialogs = ({
   // would stay on Delete entry, where Enter was pressed.
   const cancelRef = useRef(null);
   useEffect(() => {
-    if (open && (deleteHidden || deleteLinksChanged)) cancelRef.current?.focus();
-  }, [open, deleteHidden, deleteLinksChanged]);
+    if (open && (deleteHidden || deleteLinksChanged || deleteRefsChanged)) {
+      cancelRef.current?.focus();
+    }
+  }, [open, deleteHidden, deleteLinksChanged, deleteRefsChanged]);
   // What had focus when the dialog opened. A refusal reopens the question
   // after the Delete button that opened it went with the entry, and Radix
   // would put focus back on that detached button, which is the body.
@@ -88,6 +94,11 @@ export const EntryDialogs = ({
                 {deleteLinksChanged && (
                   <p className="mt-1 font-medium text-foreground">
                     Its links changed while this was open.
+                  </p>
+                )}
+                {deleteRefsChanged && (
+                  <p className="mt-1 font-medium text-foreground">
+                    The entries that refer to it changed while this was open.
                   </p>
                 )}
                 <p className="mt-1 text-muted-foreground">

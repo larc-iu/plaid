@@ -430,3 +430,111 @@ describe('deleting a typed entry while a linked document is held', () => {
     await view.unmount();
   });
 });
+
+// H2-2-1: the entry is deleted from a page opened before another person
+// changed what refers to it. What refers to it is read again at Delete and
+// cleared as it is stored then, and the question stays open when more entries
+// refer to it than it said.
+describe('deleting an entry from a page read before others changed what refers to it', () => {
+  const SEE = [
+    { name: 'gloss', type: 'text' },
+    { name: 'seeAlso', type: 'item', many: true },
+  ];
+  const GATO = { id: 'gato', form: 'gato', metadata: { gloss: 'cat' } };
+  const CAT = { id: 'cat', form: 'cat', metadata: { gloss: 'CAT' } };
+  // The vocabulary as this page read it, then as stored when Delete is
+  // pressed.
+  const server = (first, then) => {
+    const { client, calls } = stub();
+    let items = first;
+    client.vocabLayers.get = async () => ({ id: 'v1', name: 'Lexicon', config: {}, items });
+    // Another person's change, once this page has read the vocabulary.
+    client.later = () => {
+      items = then;
+    };
+    return { client, calls };
+  };
+  const open = async (client) => {
+    auth.client = client;
+    const view = await renderComponent(
+      <MemoryRouter initialEntries={['/vocabularies/v1?item=gato']}>
+        <VocabularyItems
+          vocabularyId="v1"
+          vocabulary={{ id: 'v1' }}
+          client={client}
+          fields={SEE}
+          writes={new WriteQueue()}
+        />
+      </MemoryRouter>,
+    );
+    for (let i = 0; i < 4; i++) await view.step(async () => {});
+    return view;
+  };
+  const settle = async (view) => {
+    for (let i = 0; i < 4; i++)
+      await view.step(async () => {
+        await new Promise((r) => setTimeout(r, 0));
+      });
+  };
+  const askAndConfirm = async (view, client) => {
+    await view.step(() => byText('button', 'Delete').click());
+    await settle(view);
+    client.later();
+    await view.step(() => byText('button', 'Delete entry').click());
+    await settle(view);
+  };
+  const updated = (calls) => calls.bulkUpdate.flat();
+
+  it('keeps a reference another person added beside the one it clears', async () => {
+    const dog = (see) => ({ id: 'dog', form: 'dog', metadata: { gloss: 'DOG', seeAlso: see } });
+    const { client, calls } = server([GATO, CAT, dog(['gato'])], [GATO, CAT, dog(['gato', 'cat'])]);
+    const view = await open(client);
+    await askAndConfirm(view, client);
+    expect(calls.deleted).toEqual(['gato']);
+    const ups = updated(calls);
+    expect(ups.map((u) => u.id)).toEqual(['dog']);
+    expect(JSON.stringify(ups[0].metadata)).toContain('"cat"');
+    expect(JSON.stringify(ups[0].metadata)).not.toContain('"delete"');
+    await view.unmount();
+  });
+
+  it('leaves a sense another person moved to another headword where it is', async () => {
+    const sense = (parent) => ({ id: 's1', form: 'gato', metadata: { gloss: 'tomcat', parent } });
+    const { client, calls } = server([GATO, CAT, sense('gato')], [GATO, CAT, sense('cat')]);
+    const view = await open(client);
+    await askAndConfirm(view, client);
+    expect(calls.deleted).toEqual(['gato']);
+    expect(updated(calls)).toEqual([]);
+    await view.unmount();
+  });
+
+  it('stays open on the new count when a sense was added under it, and then frees it', async () => {
+    const sense = { id: 's1', form: 'gato', metadata: { gloss: 'tomcat', parent: 'gato' } };
+    const { client, calls } = server([GATO, CAT], [GATO, CAT, sense]);
+    const view = await open(client);
+    await askAndConfirm(view, client);
+    expect(calls.deleted).toEqual([]);
+    expect(document.body.textContent).toContain(
+      'The entries that refer to it changed while this was open.',
+    );
+    expect(document.body.textContent).toContain('1 entry refers to it.');
+    await view.step(() => byText('button', 'Delete entry').click());
+    await settle(view);
+    expect(calls.deleted).toEqual(['gato']);
+    expect(updated(calls).map((u) => u.id)).toEqual(['s1']);
+    await view.unmount();
+  });
+
+  it('stays open when a field was pointed at it, and then clears it', async () => {
+    const dog = { id: 'dog', form: 'dog', metadata: { gloss: 'DOG', seeAlso: ['gato'] } };
+    const { client, calls } = server([GATO, CAT], [GATO, CAT, dog]);
+    const view = await open(client);
+    await askAndConfirm(view, client);
+    expect(calls.deleted).toEqual([]);
+    await view.step(() => byText('button', 'Delete entry').click());
+    await settle(view);
+    expect(calls.deleted).toEqual(['gato']);
+    expect(updated(calls).map((u) => u.id)).toEqual(['dog']);
+    await view.unmount();
+  });
+});

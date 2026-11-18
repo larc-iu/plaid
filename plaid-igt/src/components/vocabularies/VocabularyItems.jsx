@@ -917,6 +917,7 @@ export const VocabularyItems = ({
     deleteRefPatches,
     deleteFreesSenses,
     deleteLinksChanged,
+    deleteRefsChanged,
     deleteHidden,
     deleteTypesLost,
     openDelete,
@@ -1367,6 +1368,7 @@ export const VocabularyItems = ({
         deleteRefPatches={deleteRefPatches}
         deleteFreesSenses={deleteFreesSenses}
         deleteLinksChanged={deleteLinksChanged}
+        deleteRefsChanged={deleteRefsChanged}
         deleteHidden={deleteHidden?.id === selectedItem?.id ? deleteHidden : null}
         deleteTypesLost={deleteTypesLost}
         onConfirmDelete={confirmDelete}
