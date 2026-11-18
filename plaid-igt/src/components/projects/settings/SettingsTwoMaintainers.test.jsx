@@ -195,6 +195,64 @@ describe('Special characters, two maintainers', () => {
     await ben.view.unmount();
   });
 
+  // REV-G2-3: one maintainer deletes a code the other edits.
+  const del = (page, code) =>
+    page.view.step(async () => {
+      rowOf(page, code).querySelector(`button[aria-label="Delete code ${code}"]`).click();
+      await settle();
+    });
+  // The second box: a project code's Character, a built-in code's Note.
+  const note = (page, code) => rowOf(page, code).querySelectorAll('input')[1];
+
+  it('a code deleted elsewhere and edited here stays, marked deleted elsewhere', async () => {
+    const { server, client } = makeServer();
+    seedKK(server);
+    const ana = await openPage(ComposeSettings, server, client);
+    const ben = await openPage(ComposeSettings, server, client);
+    await del(ana, 'kk');
+    await press(ana, /^Save$/);
+    await ben.view.step(() => type(note(ben, 'kk'), 'q'));
+    await press(ben, /^Save$/);
+    expect(note(ben, 'kk').value).toBe('q');
+    expect(rowOf(ben, 'kk').textContent).toContain('Deleted elsewhere.');
+    await ana.view.unmount();
+    await ben.view.unmount();
+  });
+
+  it('a code deleted here and changed elsewhere is shown with what is stored, the delete held', async () => {
+    const { server, client } = makeServer();
+    seedKK(server);
+    const ana = await openPage(ComposeSettings, server, client);
+    const ben = await openPage(ComposeSettings, server, client);
+    await ana.view.step(() => type(note(ana, 'kk'), 'K'));
+    await press(ana, /^Save$/);
+    await del(ben, 'kk');
+    await press(ben, /^Save$/);
+    expect(rowOf(ben, 'kk').textContent).toContain('Deleted on save. Changed elsewhere to K.');
+    await press(ben, /^Save$/);
+    expect(server.config.igt.compose.codes).toEqual([]);
+    await ana.view.unmount();
+    await ben.view.unmount();
+  });
+
+  it('a built-in code deleted here and changed elsewhere is shown, the delete held', async () => {
+    const { server, client } = makeServer();
+    const code = Object.keys(BUILT_IN_TABLE)[0];
+    const ana = await openPage(ComposeSettings, server, client);
+    const ben = await openPage(ComposeSettings, server, client);
+    await ana.view.step(() => type(note(ana, code), 'by Ana'));
+    await press(ana, /^Save$/);
+    await del(ben, code);
+    await press(ben, /^Save$/);
+    expect(rowOf(ben, code).textContent).toContain(
+      `Deleted on save. Changed elsewhere to ${BUILT_IN_TABLE[code]} (by Ana).`,
+    );
+    await press(ben, /^Save$/);
+    expect(server.config.igt.compose.removed).toEqual([code]);
+    await ana.view.unmount();
+    await ben.view.unmount();
+  });
+
   it('a code deleted on this page stays deleted when the list is read again', async () => {
     const { server, client } = makeServer();
     server.config.igt.compose = {

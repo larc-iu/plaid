@@ -53,10 +53,12 @@ const withUid = (row) => ({
 // What a list of rows says, without the row identities or the order rows
 // were added in, so two lists that would store the same thing compare equal.
 // The time a row was changed is left out: a save sets it, so the list just
-// saved and the list read back after it still compare equal.
+// saved and the list read back after it still compare equal. A project's own
+// code deleted here is not stored at all.
 const rowsKey = (rows) =>
   JSON.stringify(
     rows
+      .filter((r) => r.origin !== 'removed' || isBuiltInCode(r.code))
       .map(({ uid: _uid, was: _was, modified: _modified, elsewhere: _elsewhere, ...row }) => row)
       .sort(byCode),
   );
@@ -70,7 +72,8 @@ const sameRow = (a, b) =>
 // The list read again (`now`) with this page's own edits on it. A row the
 // page did not change shows what is stored now. A row it changed keeps what
 // was typed, with what is stored now as `elsewhere` when someone else changed
-// it too. A row the page added stays, and one it deleted stays deleted.
+// it too, a delete here included. A row the page added stays, and one it
+// changed that was deleted elsewhere stays, marked deleted elsewhere.
 // `before` is the list the edits were made on, and `ours` says `now` is what
 // this page itself stored (so nobody else changed a row).
 const rebase = (draft, before, now, ours) => {
@@ -93,8 +96,9 @@ const rebase = (draft, before, now, ours) => {
   }
   // A row changed here whose code is stored no more stays, as a new one.
   for (const d of mine.values()) {
-    if (!sameRow(d, d.was) && !now.some((n) => n.code === d.was.code))
-      added.push({ ...d, was: null });
+    if (d.origin === 'removed' || sameRow(d, d.was)) continue;
+    if (now.some((n) => n.code === d.was.code)) continue;
+    added.push({ ...d, was: null, elsewhere: ours ? null : { origin: 'removed' } });
   }
   return [...added, ...rows];
 };
@@ -126,12 +130,15 @@ const clashText = (other) => {
   return `${DUPLICATE_CODE.slice(0, -1)}: \\${other.code}${what}.`;
 };
 
-// "Changed elsewhere to ʔ (by Ana)." under a row someone else changed too.
-const elsewhereText = (r) => {
+// "Changed elsewhere to ʔ (by Ana)." under a row someone else changed too,
+// `row.elsewhere` being the row as stored now.
+const elsewhereText = (row) => {
+  const r = row.elsewhere;
   if (r.origin === 'removed') return 'Deleted elsewhere.';
   const note = r.description || '';
   const cut = note.length > NOTE_SHOWN ? `${note.slice(0, NOTE_SHOWN)}…` : note;
-  return `Changed elsewhere to ${r.char}${cut ? ` (${cut})` : ''}.`;
+  const changed = `Changed elsewhere to ${r.char}${cut ? ` (${cut})` : ''}.`;
+  return row.origin === 'removed' ? `Deleted on save. ${changed}` : changed;
 };
 
 const edited = (r) =>
@@ -191,9 +198,10 @@ export const ComposeSettings = ({ project, projectId, client, onProjectUpdate })
   );
 
   // A deleted built-in code is stored as removed and shown nowhere.
-  const live = useMemo(() => draft.filter((r) => r.origin !== 'removed'), [draft]);
-  const anyRemoved = live.length < draft.length;
-  const changedCount = live.filter((r) => r.origin !== 'built-in').length;
+  // A row deleted here that someone else changed is shown, with that change.
+  const live = useMemo(() => draft.filter((r) => r.origin !== 'removed' || r.elsewhere), [draft]);
+  const anyRemoved = draft.some((r) => r.origin === 'removed' && isBuiltInRow(r));
+  const changedCount = live.filter((r) => r.origin === 'changed' || r.origin === 'added').length;
 
   const matches = useMemo(() => {
     const needle = q.trim().toLowerCase();
@@ -273,8 +281,10 @@ export const ComposeSettings = ({ project, projectId, client, onProjectUpdate })
     patch(row, { ...next, origin });
   };
 
+  // A stored row is kept, marked deleted, so a read of the list again knows
+  // it was deleted here. A row added since goes.
   const removeRow = (row) => {
-    if (isBuiltInRow(row)) patch(row, { origin: 'removed' });
+    if (row.was) patch(row, { origin: 'removed', elsewhere: null });
     else setDraft((rows) => rows.filter((r) => r !== row));
   };
 
@@ -288,11 +298,10 @@ export const ComposeSettings = ({ project, projectId, client, onProjectUpdate })
   const restoreBuiltIns = () =>
     setDraft((rows) => {
       const used = new Set(rows.filter((r) => r.origin !== 'removed').map((r) => r.code));
+      const restored = (r) => r.origin === 'removed' && isBuiltInRow(r);
       return rows
-        .filter((r) => r.origin !== 'removed' || !used.has(r.code))
-        .map((r) =>
-          r.origin === 'removed' ? { ...r, ...builtInRow(r.code), origin: 'built-in' } : r,
-        );
+        .filter((r) => !restored(r) || !used.has(r.code))
+        .map((r) => (restored(r) ? { ...r, ...builtInRow(r.code), origin: 'built-in' } : r));
     });
 
   const addRow = () => {
@@ -472,9 +481,7 @@ export const ComposeSettings = ({ project, projectId, client, onProjectUpdate })
                     </div>
                   </div>
                   {row.elsewhere && (
-                    <p className="px-3 pt-1 text-xs text-muted-foreground">
-                      {elsewhereText(row.elsewhere)}
-                    </p>
+                    <p className="px-3 pt-1 text-xs text-muted-foreground">{elsewhereText(row)}</p>
                   )}
                   {problems.map((p) => {
                     const other = p === DUPLICATE_CODE ? clashOf(row) : null;
