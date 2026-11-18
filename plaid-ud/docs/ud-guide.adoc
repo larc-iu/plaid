@@ -355,7 +355,7 @@ One plan makes at most 20,000 changes in at most 500 documents.
 
 Conversations are private to you and kept per project, though your server's administrator can read them.
 A reply arrives even if you close the tab, and is there when you open the conversation again.
-**Stop** ends a turn early, even while the model is still working on its answer, and **Retry** asks the question again.
+**Stop** ends a turn early, even while the model is still working on its answer, and **Retry** asks the question again. After a turn that failed, Retry continues from the steps that turn had done.
 
 A conversation can be downloaded or copied as Markdown, or saved with **Download as web page** as one HTML file that opens in any browser.
 The pencil beside a conversation in the list renames it, and deleting one asks first and cannot be undone.

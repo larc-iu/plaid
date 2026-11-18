@@ -561,8 +561,9 @@ def error_item(text: str, stopped: bool = False, model: Optional[str] = None,
     :data:`PARTIAL_MAX_CHARS` (`clipped`). A stopped turn's messages leave
     the model transcript, so the item is the only record of them in the
     conversation. A failed turn's calls and results stay in it after the
-    question, marked :data:`FAILED_TURN`, and Retry takes them off
-    (`rewind_for_retry`), so they are never sent twice.
+    question, marked :data:`FAILED_TURN`, and Retry asks the question again
+    after them (`rewind_for_retry`), so they are sent once and never run
+    twice.
     ``reply_round`` names the round that keeps the reasoning of the model
     call under way (`agent.turn_reply_round`), as an answer's does."""
     item: Dict[str, Any] = {'kind': 'error', 'text': text, 'created_at': now_iso()}
@@ -1237,8 +1238,9 @@ LOST_LINE = 'No answer came back for this message.'
 CONNECTION_LOST_LINE = 'The connection to the assistant was lost before it finished. Nothing was changed.'
 
 #: The key that marks the messages a failed turn left in the model transcript
-#: (`agent.failed_turn_messages`), which Retry takes off with the question
-#: (`rewind_for_retry`). The model is never sent it (`agent._clean_transcript`).
+#: (`agent.failed_turn_messages`), which Retry keeps and asks the question
+#: again after (`rewind_for_retry`). The model is never sent it
+#: (`agent._clean_transcript`).
 FAILED_TURN = 'failed_turn'
 
 
@@ -1249,11 +1251,15 @@ def rewind_for_retry(conv: Dict[str, Any]) -> Optional[Tuple[Dict[str, Any], Dic
 
     The attempt that failed stays in the record: the question and the line
     saying how it ended (a turn that got no answer at all is given
-    :data:`LOST_LINE`). Only the model transcript goes back to before that
-    question, so the model reads it once, and a note written after it (a plan
-    decided since) stays. What the failed turn left after its question (its
-    calls, their results and its note, marked :data:`FAILED_TURN`) goes with
-    it. ``question`` is the display item asked again, with
+    :data:`LOST_LINE`). A failed turn that left its calls, their results and
+    its note after its question (marked :data:`FAILED_TURN`) keeps them, and
+    the model transcript is left as it is: the question is asked again after
+    them, so the retried turn carries on from the steps already done, as
+    "continue" would (the owner's ruling 2026-11-18). Otherwise (a stop, a
+    lost connection, a failure before any call, a record from before the
+    kept steps) the model transcript goes back to before that question, so
+    the model reads it once, and a note written after it (a plan decided
+    since) stays. ``question`` is the display item asked again, with
     its files, the projects it read and where it was asked from. The page's
     ``rewindForRetry`` made this before the service was the record's only
     writer."""
@@ -1266,8 +1272,9 @@ def rewind_for_retry(conv: Dict[str, Any]) -> Optional[Tuple[Dict[str, Any], Dic
     text = asked.get('text') or ''
     messages = list(conv.get('messages') or [])
     last = next((k for k in range(len(messages) - 1, -1, -1) if _is_message(messages[k], text)), -1)
-    after = [m for m in messages[last + 1:] if not (isinstance(m, dict) and m.get(FAILED_TURN))]
-    if last >= 0 and all(isinstance(m, dict) and m.get('role') == 'user' for m in after):
+    after = messages[last + 1:]
+    kept = any(isinstance(m, dict) and m.get(FAILED_TURN) for m in after)
+    if last >= 0 and not kept and all(isinstance(m, dict) and m.get('role') == 'user' for m in after):
         messages = messages[:last] + after
     if i == len(display) - 1:
         display.append({'kind': 'error', 'lost': True, 'text': LOST_LINE, 'created_at': now_iso()})

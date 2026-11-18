@@ -159,7 +159,8 @@ That try is one more deadline for a timeout, not two, and keeps the waits for
 a busy or down provider. A second failure ends the turn. A failed turn's calls
 and results stay in the model transcript with a note that no reply followed and
 nothing it staged, drafted or saved was kept, so the next message reads what it
-did, and Retry takes them off with the question. `--max-output-tokens N` caps
+did. Retry keeps them too and asks the question again after them, so the
+retried turn continues from the steps already done. `--max-output-tokens N` caps
 what one model call may write, its reasoning included (default 32768, or less
 for a model litellm knows to write less). A call that reaches the cap ends the
 turn with a message asking the user to ask about less at a time, and what the

@@ -247,14 +247,16 @@ class Turn:
             self._release(ws)
             ws.keeper.discard()
             traceback.print_exc()
-            line = self.turn_failure_line(e)
-            steps, partial = turn_trace(e)
             # The user's message stays in the model transcript whatever the
             # model call did, as on a stop, and so do the calls the turn made
             # and their results, with a note that no reply followed: the next
             # message ("continue") is read with what the turn already did
-            # (survey 2026-11-17 item 1). Retry takes them off with the
-            # question (`rewind_for_retry`).
+            # (survey 2026-11-17 item 1), and so is Retry, which asks the
+            # question again after them (`rewind_for_retry`, the owner's
+            # ruling 2026-11-18).
+            kept = failed_turn_messages(e)
+            line = self.turn_failure_line(e, kept=bool(kept))
+            steps, partial = turn_trace(e)
             item = error_item(line, model=model, version=self.version, service=self.service_id, steps=steps,
                               partial=partial, reply_round=turn_reply_round(e))
             # Its tool results stay for the next message, so what it read of
@@ -263,7 +265,7 @@ class Turn:
             read = ws.reads_kept()
             if read:
                 item['read'] = read
-            self._write(store, conv_id, turn_ending(conv, transcript, item, failed_turn_messages(e), fit=fit),
+            self._write(store, conv_id, turn_ending(conv, transcript, item, kept, fit=fit),
                         request_id, model)
             response_helper.error(line)
             return
@@ -374,18 +376,20 @@ class Turn:
         measure = token_counter(model)
         return int(window * TRANSCRIPT_WINDOW_SHARE) - measure(overhead), measure
 
-    def turn_failure_line(self, e: BaseException, ended: bool = True) -> str:
+    def turn_failure_line(self, e: BaseException, ended: bool = True, kept: bool = False) -> str:
         """What the reader is told when a turn fails: one plain line. The
         exception itself went to the operator's log. A provider's error is
         never quoted (it names the library and can carry the endpoint, the
         request and the key), and anything else passes through
         ``requester_message``, which strips URLs and secrets. ``ended``: the
         turn has no answer, so a provider's failure says too that nothing was
-        changed and what Retry does (`agent.ended_line`). Beside a kept plan
-        the line is the fact alone, as the card is the turn's answer."""
+        changed and what Retry does (`agent.ended_line`): with ``kept``, the
+        turn's steps stay in the transcript and Retry continues from them.
+        Beside a kept plan the line is the fact alone, as the card is the
+        turn's answer."""
         if isinstance(e, TurnFailed):
             return str(e)
-        line = ended_line(e, self.cfg.timeout) if ended else model_failure_line(e, self.cfg.timeout)
+        line = ended_line(e, self.cfg.timeout, kept) if ended else model_failure_line(e, self.cfg.timeout)
         return line or f'The assistant could not answer: {requester_message(e, secrets=self.REQUEST_SECRETS)}'
 
 

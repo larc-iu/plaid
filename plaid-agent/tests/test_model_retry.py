@@ -12,7 +12,7 @@ after 35 s to 4.5 min of tool work, all of it thrown away).
 - The line of a turn that ends this way says the fact, and never quotes the
   provider.
 - The steps of a failed turn stay in the model transcript, so "continue"
-  reads what the turn did, and Retry takes them off with the question.
+  reads what the turn did, and so does Retry (test_retry_keeps_steps.py).
 """
 
 from types import SimpleNamespace
@@ -193,6 +193,16 @@ def test_an_ended_turns_line_says_nothing_changed_and_the_message_can_be_sent_ag
         'The model service refused the request. Nothing was changed.'
     # Beside a kept plan the fact alone: the card is the turn's answer.
     assert svc.turn_failure_line(errors['server'], ended=False) == 'The model service did not answer.'
+    # A turn that kept its steps: Retry continues from them.
+    assert svc.turn_failure_line(errors['server'], kept=True) == \
+        'The model service did not answer. Nothing was changed. Retry to continue from the steps already done.'
+    assert svc.turn_failure_line(errors['timeout'], kept=True) == \
+        ('The model service did not answer within 120 seconds. Nothing was changed. '
+         'Retry to continue from the steps already done.')
+    assert svc.turn_failure_line(errors['busy'], kept=True) == \
+        'The model is busy. Nothing was changed. Try again in a minute.'
+    assert svc.turn_failure_line(_refusals()['bad request'], kept=True) == \
+        'The model service refused the request. Nothing was changed.'
 
 
 def test_the_output_limit_line_names_a_narrower_ask():
@@ -226,7 +236,7 @@ def _cut():
     (litellm.InternalServerError('x', model='x', llm_provider='openai'), ': the model service did not answer.'),
     (_cut(), ': the model reached its output limit.'),
     (RuntimeError('a bug'), '.')])
-def test_a_failed_turns_steps_stay_for_the_next_turn_and_retry_takes_them_off(monkeypatch, error, why):
+def test_a_failed_turns_steps_stay_for_the_next_turn_and_for_retry(monkeypatch, error, why):
     from fixtures import FakeClient
     from test_service_flow import Helper, _request, _seed, _service
     client = FakeClient()
@@ -241,10 +251,11 @@ def test_a_failed_turns_steps_stay_for_the_next_turn_and_retry_takes_them_off(mo
     assert all(m.get('failed_turn') for m in msgs[1:])
     # What the model is sent of them: the tag stays out.
     assert all('failed_turn' not in m for m in agent._clean_transcript(msgs))
-    # Retry sends the question again, without the failed turn's steps.
+    # Retry asks the question again after the failed turn's steps
+    # (test_retry_keeps_steps.py), which stay where they are.
     conv['messages'].append({'role': 'user', 'content': '(note) The plan was discarded.'})
     rewound, question = rewind_for_retry(conv)
-    assert rewound['messages'] == [{'role': 'user', 'content': '(note) The plan was discarded.'}]
+    assert rewound['messages'] == conv['messages']
     assert question['text'] == 'Count the verbs.'
 
 

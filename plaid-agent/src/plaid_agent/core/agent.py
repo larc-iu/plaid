@@ -870,6 +870,9 @@ except ImportError:  # pragma: no cover - litellm depends on openai
 #: What an ended turn's line adds: what the turn left, and what Retry does.
 NOTHING_CHANGED = 'Nothing was changed.'
 SEND_AGAIN = 'Retry to send the same message.'
+#: What Retry does after a turn that kept its steps (`failed_turn_messages`):
+#: the question is asked again after them (`conversation.rewind_for_retry`).
+CARRY_ON = 'Retry to continue from the steps already done.'
 
 
 def model_failure_line(e: BaseException, timeout: Optional[float] = None) -> Optional[str]:
@@ -896,12 +899,14 @@ def model_failure_line(e: BaseException, timeout: Optional[float] = None) -> Opt
     return None
 
 
-def ended_line(e: BaseException, timeout: Optional[float] = None) -> Optional[str]:
+def ended_line(e: BaseException, timeout: Optional[float] = None, kept: bool = False) -> Optional[str]:
     """The line of a turn that ``e`` ended with no answer, when the provider
-    failed: :func:`model_failure_line`, that nothing was changed, and that
-    Retry sends the same message where the model service did not answer (a
-    busy one says when itself, a refused request would be refused again).
-    None when the failure is not the provider's."""
+    failed: :func:`model_failure_line`, that nothing was changed, and what
+    Retry does where the model service did not answer (a busy one says when
+    itself, a refused request would be refused again): it continues from the
+    steps the turn kept (``kept``, :func:`failed_turn_messages`), or sends
+    the same message when there are none. None when the failure is not the
+    provider's."""
     line = model_failure_line(e, timeout)
     if line is None or line == TOO_LONG_LINE:
         return line
@@ -911,7 +916,7 @@ def ended_line(e: BaseException, timeout: Optional[float] = None) -> Optional[st
         fact, _, advice = line.partition('. ')
         return f'{fact}. {NOTHING_CHANGED} {advice}'
     if passes_again(e):
-        return f'{line} {NOTHING_CHANGED} {SEND_AGAIN}'
+        return f'{line} {NOTHING_CHANGED} {CARRY_ON if kept else SEND_AGAIN}'
     return f'{line} {NOTHING_CHANGED}'
 
 
