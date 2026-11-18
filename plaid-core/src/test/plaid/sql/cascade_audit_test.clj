@@ -113,8 +113,15 @@
           _    (is (some? op) "user/deactivate op recorded")
           _    (is (= "admin@example.com" (str (:user_id op)))
                    "op is attributed to the acting admin, not nil")
+          ;; Each project's removal is an operation of its own under that
+          ;; project, nested in the deactivation (ACL6-1).
+          removal (psc/q1 db {:select [:*] :from [:operations]
+                              :where [:and [:= :op_type "project/remove-reader"]
+                                      [:= :project_id (str proj)]]})
+          _    (is (some? removal) "the project's removal is filed under the project")
+          _    (is (= "admin@example.com" (str (:user_id removal))))
           writes (psc/q db {:select [:*] :from [:audit_writes]
-                            :where [:= :op_id (:id op)]
+                            :where [:in :op_id [(:id op) (:id removal)]]
                             :order-by [:seq]})]
       ;; Junction rows really were removed.
       (is (zero? (count (psc/q db {:select [:*] :from [:project_users]
