@@ -946,6 +946,33 @@ describe('runNativeImport (full archive)', () => {
     expect(byLayer['new-sl'][0].metadata).toEqual({ speaker: 'A' });
   });
 
+  it("sends a long document's words and morphemes in chunks, its sentences whole (SCL5-1)", async () => {
+    const archive = buildArchive();
+    const data = archive.documents[0].data;
+    const extra = (layer, n) =>
+      Array.from({ length: n }, (_, i) => ({ id: `${layer}-x${i}`, layer, begin: 0, end: 1 }));
+    data.orphanTokens = [
+      ...(data.orphanTokens || []),
+      ...extra('word', CHUNK),
+      ...extra('morpheme', CHUNK),
+    ];
+    const client = stubClient();
+    await runNativeImport({ client, projectId: 'newp', archive });
+    const sizes = callsOf(client, 'tokens.bulkCreate').map((c) => [
+      c[1][0].tokenLayerId,
+      c[1].length,
+    ]);
+    expect(sizes.filter(([l]) => l === 'new-sl')).toEqual([['new-sl', 1]]);
+    expect(sizes.filter(([l]) => l === 'new-wl')).toEqual([
+      ['new-wl', CHUNK],
+      ['new-wl', 3],
+    ]);
+    expect(sizes.filter(([l]) => l === 'new-ml')).toEqual([
+      ['new-ml', CHUNK],
+      ['new-ml', 4],
+    ]);
+  });
+
   it('recreates spans deduped by span id, with provenance, plus extraSpans', async () => {
     const { client } = await run();
     const allSpans = callsOf(client, 'spans.bulkCreate').flatMap((c) => c[1]);

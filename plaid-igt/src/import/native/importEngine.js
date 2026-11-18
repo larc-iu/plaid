@@ -34,7 +34,7 @@ import {
 import { sameConfig } from '../../../../plaid-ui/src/domain/configCells.js';
 import { documentProgress } from '../progress.js';
 import { ImportCancelled } from '../stamps.js';
-import { CHUNK } from '../../domain/bulk.js';
+import { CHUNK, bulkInChunks } from '../../domain/bulk.js';
 import { metadataPatchTo } from '@/domain/metadataPatch';
 import { attributedBody } from './commentAttribution.js';
 import { proposeEntryRole } from '../../domain/entryRole.js';
@@ -478,11 +478,15 @@ async function importNativeDocument({
   const sentences = docData.sentences || [];
   const words = sentences.flatMap((s) => s.words || []);
   const orphansBy = (layer) => (docData.orphanTokens || []).filter((t) => t.layer === layer);
-  const bulkTokens = async (specs, oldIds) => {
+  // A layer's tokens go in CHUNK-sized requests, so no one request holds the
+  // write lock for a whole long document (SCL5-1). The partition alone goes
+  // whole: a partitioning layer refuses one made a piece at a time.
+  const bulkTokens = async (specs, oldIds, { partition = false } = {}) => {
     if (!specs.length) return [];
+    const send = (part) => client.tokens.bulkCreate(part);
     const ids =
       (await refs.create('token', specs, async (sent) =>
-        createdIds(await client.tokens.bulkCreate(sent)),
+        partition ? createdIds(await send(sent)) : bulkInChunks(sent, check, send),
       )) ?? [];
     oldIds.forEach((oldId, i) => {
       if (oldId != null && ids[i]) tokenIdMap.set(oldId, ids[i]);
@@ -527,6 +531,7 @@ async function importNativeDocument({
       bulkTokens(
         specs,
         sentenceNodes.map((s) => s.id),
+        { partition: true },
       ),
     progress,
     check,

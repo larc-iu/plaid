@@ -228,12 +228,13 @@
   ([tx entity-type entity-id m {:keys [skip-parent-audit?]}]
    (when (seq m)
      (validate-metadata-keys! m)
-     (when-not skip-parent-audit? (ensure-parent-recorded! tx entity-type entity-id))
-     (let [pre (get-metadata tx entity-type entity-id)]
+     (if skip-parent-audit?
+       ;; the metadata as it was is read for the audit row alone
        (raw-insert-metadata! tx entity-type entity-id m)
-       (when-not skip-parent-audit?
-         (let [post (get-metadata tx entity-type entity-id)]
-           (emit-parent-audit! tx entity-type entity-id pre post)))))))
+       (do (ensure-parent-recorded! tx entity-type entity-id)
+           (let [pre (get-metadata tx entity-type entity-id)]
+             (raw-insert-metadata! tx entity-type entity-id m)
+             (emit-parent-audit! tx entity-type entity-id pre (get-metadata tx entity-type entity-id))))))))
 
 (defn insert-metadata-rows!
   "Bulk, UNAUDITED insert of metadata for many entities of one type:

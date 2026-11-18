@@ -521,9 +521,9 @@
                            {:image (fn [post]
                                      (let [m (clojure.core/get metadata-of (:id post))]
                                        (cond-> post (seq m) (assoc :metadata m))))})
-        (doseq [t records]
-          (metadata/insert-metadata! tx "token" (:token/id t) (clojure.core/get metadata-of (:token/id t))
-                                     {:skip-parent-audit? true}))
+        ;; Folded into the :insert rows above, so written unaudited, in
+        ;; multi-row INSERTs rather than one statement per token (SCL5-1).
+        (metadata/insert-metadata-rows! tx "token" metadata-of)
         (mapv :token/id records)))))
 
 (defn create
