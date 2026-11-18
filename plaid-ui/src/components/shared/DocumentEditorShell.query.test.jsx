@@ -20,23 +20,27 @@ vi.mock('../../contexts/useAuth.js', () => ({ useAuth: () => auth }));
 vi.mock('../../domain/useDocumentModel.js', () => ({ useDocumentModel: () => 0 }));
 // The strip as data: which tab it marks, whether it is inert, and each tab's
 // address.
+const stripProps = vi.hoisted(() => ({ onPick: null }));
 vi.mock('./DocumentTabStrip.jsx', () => ({
-  DocumentTabStrip: ({ tabs, active, disabled, project, failed, status }) => (
-    <div
-      data-testid="strip"
-      data-active={active}
-      data-disabled={String(disabled)}
-      data-project={project?.name ?? ''}
-      data-failed={String(!!failed)}
-      data-status={String(!!status)}
-    >
-      {tabs.map((t) => (
-        <a key={t.value} data-testid={`to-${t.value}`} href={t.to}>
-          {t.label}
-        </a>
-      ))}
-    </div>
-  ),
+  DocumentTabStrip: ({ tabs, active, disabled, project, failed, status, onPick }) => {
+    stripProps.onPick = onPick;
+    return (
+      <div
+        data-testid="strip"
+        data-active={active}
+        data-disabled={String(disabled)}
+        data-project={project?.name ?? ''}
+        data-failed={String(!!failed)}
+        data-status={String(!!status)}
+      >
+        {tabs.map((t) => (
+          <a key={t.value} data-testid={`to-${t.value}`} href={t.to}>
+            {t.label}
+          </a>
+        ))}
+      </div>
+    );
+  },
 }));
 const stores = vi.hoisted(() => ({ made: 0 }));
 vi.mock('../../domain/CommentStore', () => ({
@@ -243,6 +247,41 @@ describe('a document whose tab is in the query', () => {
     });
     expect(body()).toBe('details');
     expect(seen.search).toBe('?tab=details');
+    await view.unmount();
+  });
+
+  // A click on the tab already showing (the fallback, while the document
+  // loads) changes nothing, so it names nothing in the address. It is still
+  // the reader's pick, and the landing used to move them off it (FLK1-2). So
+  // is a click whose address the router has not committed when the document
+  // arrives (FLK3-6, FLK4-6).
+  it('does not land after the reader pressed in the tab row while the document loaded', async () => {
+    let arrive;
+    const loaded = new Promise((resolve) => {
+      arrive = resolve;
+    });
+    const slow = app({
+      loadDocument: async ({ documentId }) => {
+        await loaded;
+        return {
+          raw: { id: documentId, name: 'Doc' },
+          sentences: tokenized,
+          hold: () => () => {},
+          reload: () => Promise.resolve(),
+        };
+      },
+    });
+    await mount(['/p/p1/d/d1'], { config: slow });
+    expect(strip().dataset.active).toBe('baseline');
+    await view.step(() => stripProps.onPick());
+    await view.step(async () => {
+      arrive();
+      await Promise.resolve();
+      await Promise.resolve();
+      await new Promise((r) => setTimeout(r, 0));
+    });
+    expect(body()).toBe('baseline');
+    expect(seen.search).toBe('');
     await view.unmount();
   });
 

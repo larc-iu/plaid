@@ -425,7 +425,9 @@ const DocumentEditor = ({ app, documentClient }) => {
   // the reader has picked a tab. Replace, not push: the reader did not ask for
   // this tab, so Back leaves the document instead of undoing the landing.
   // A tab picked while the document loads names itself in the address, and
-  // the landing leaves it alone.
+  // the landing leaves it alone. So does a press in the tab row (`onPick`),
+  // which may name nothing yet: a click on the tab already showing, or one
+  // whose address the router has not committed when the document arrives.
   const landedRef = useRef(!query || searchParams.has('tab'));
   const picked = searchParams.has('tab');
   useEffect(() => {
@@ -612,6 +614,9 @@ const DocumentEditor = ({ app, documentClient }) => {
           count: t.value === 'comments' ? (comments?.count ?? 0) : 0,
         }))}
         active={tab}
+        onPick={() => {
+          landedRef.current = true;
+        }}
         disabled={chromeBusy}
         status={doc && !app.ownSaveStatus?.includes(tab) ? <SaveStatus doc={doc} /> : null}
         sticky

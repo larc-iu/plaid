@@ -207,6 +207,23 @@ describe('DocumentTabStrip', () => {
     const tabs = all(view.container, '[role="tab"]');
     expect(tabs.every((t) => t.tagName === 'BUTTON' && t.disabled)).toBe(true);
   });
+
+  // A press on the tab already showing changes no tab, and it is still the
+  // reader's pick (FLK1-2): the shell hears it through `onPick`.
+  it('says a tab was pressed, the one showing too, and a key in the row', async () => {
+    const picks = [];
+    await mount({ document: { name: 'One' }, onPick: (e) => picks.push(e.type) });
+    const showing = all(view.container, '[role="tab"]').find(
+      (t) => t.getAttribute('data-state') === 'active',
+    );
+    await view.step(() =>
+      showing.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, button: 0 })),
+    );
+    await view.step(() =>
+      showing.dispatchEvent(new KeyboardEvent('keydown', { bubbles: true, key: 'ArrowLeft' })),
+    );
+    expect(picks).toEqual(['pointerdown', 'keydown']);
+  });
 });
 
 describe('the pinned row, once the heading has scrolled away', () => {

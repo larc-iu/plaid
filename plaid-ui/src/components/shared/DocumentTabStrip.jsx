@@ -34,6 +34,10 @@ import { TYPE } from '../../lib/typeScale.js';
  * breadcrumb names the project as far as it is known, and there is no
  * heading, since the document's name is not known, and no tab row.
  *
+ * `onPick` is called when the reader presses a tab, or a key in the tab row,
+ * before any tab changes. A press on the tab already showing changes nothing,
+ * and it is still a pick: the shell's landing tab stands down for it.
+ *
  * `status` is drawn at the end of the breadcrumb row: the document's save
  * status (SaveStatus). `actions` is drawn at the end of the tab row: History,
  * which is about the document on every tab rather than about one of them.
@@ -68,6 +72,7 @@ export const DocumentTabStrip = ({
   actions = null,
   sticky = false,
   inset = '',
+  onPick = undefined,
 }) => {
   const location = useLocation();
   const navigate = useNavigate();
@@ -196,6 +201,8 @@ export const DocumentTabStrip = ({
             value={active}
             onValueChange={(v) => !disabled && navigate(to[v])}
             guard={guard}
+            onPointerDown={onPick}
+            onKeyDown={onPick}
             className="min-w-0"
           >
             {/* Pinned, the row's own rule is the tabs' rule: a second one under
