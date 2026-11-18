@@ -4876,11 +4876,14 @@ class IgtRunner:
             # date): whether a try of it landed (REV-JR1-3).
             if not hasattr(e, 'wrote_any'):
                 e.wrote_any = bool(w.done)
-            # Tries of it landed before a later one failed, whatever way:
-            # what they did to the text is recorded, then the failure goes
-            # up (D4, REV-JR1-4). One :meth:`write` puts off (out of date, a
-            # 409, a 423, something gone) goes up as the put-off.
-            if not w.done or not isinstance(e, Exception):
+            # A try of it may have landed (an earlier one did, or the failing
+            # one's answer was lost, its first or only one included), and it
+            # failed whatever way: what landed is recorded, by the document
+            # before and after under this lock, which records nothing when
+            # nothing landed, then the failure goes up (D4, REV-JR1-4,
+            # REV-JR1-R2-3). One :meth:`write` puts off (out of date, a 409, a
+            # 423, something gone, the lock lost) goes up as the put-off.
+            if not e.wrote_any or not isinstance(e, Exception):
                 raise
             if isinstance(e, Deferred) or _lock_lost(e) \
                     or (isinstance(e, PlanError) and (_status(e) in (409, 423) or _gone_now(e))):
