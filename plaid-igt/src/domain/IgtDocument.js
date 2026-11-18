@@ -524,6 +524,16 @@ export class IgtDocument extends DocumentModel {
     });
   }
 
+  // Every read of the document counted (`_reads`): a transcript row write
+  // planned before the last one is counted again before it goes, since the
+  // version that read learned lets it past the check that would refuse it
+  // (REV-G1-1, alignment.js `_sendOverSegmentText`).
+  async _fetch() {
+    const raw = await super._fetch();
+    this._reads = (this._reads ?? 0) + 1;
+    return raw;
+  }
+
   // A reload refreshes the project and its vocabularies with the document, at
   // the same snapshot. The document itself is kept even when the vocabularies
   // cannot be: the user is told the links may be stale rather than shown old

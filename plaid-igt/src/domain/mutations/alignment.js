@@ -578,7 +578,14 @@ export const alignmentMutations = {
   // its id, and the words inside keep what the text rules keep of them. The
   // times and the speaker are written only where they differ from the
   // segment's, with the writer's stamp.
-  async editAlignment(existingAlignmentId, { text, timeBegin, timeEnd, speaker, edits = null }) {
+  //
+  // `asked`, the loss the row asked about and was answered Save anyway for
+  // (or the loss it found and asked nothing about): the write goes only while
+  // it deletes no more than that (REV-G1-1).
+  async editAlignment(
+    existingAlignmentId,
+    { text, timeBegin, timeEnd, speaker, edits = null, asked = null },
+  ) {
     // composed, as the server stores it, so the segment is measured on it
     const trimmed = composeText((text || '').trim()).text;
     if (!trimmed) {
@@ -640,7 +647,8 @@ export const alignmentMutations = {
     // page, where the question before it was asked (someone annotated the
     // words it deletes meanwhile, H2-1-2): refused, the row asks again.
     const seen = recordingOf(this._raw);
-    const seenLoss = lossSize(this.segmentEditLoss(existingAlignmentId, { text, edits }).loss);
+    const pageLoss = this.segmentEditLoss(existingAlignmentId, { text, edits }).loss;
+    const seenLoss = lossSize(asked ?? pageLoss);
     const timed = setsTimes(rowPatch(mine, was));
     const replan = (fresh, updated) => {
       const refusal = timed ? this._recordingRefusal(seen, updated, 'Segment edit') : null;
@@ -677,6 +685,9 @@ export const alignmentMutations = {
       speaker,
       replan,
       recheck: timed ? this._sameRecording(seen, 'Segment edit') : null,
+      // The page was read while the question was open, and holds more now:
+      // counted again on a read before it goes.
+      recount: lossSize(pageLoss) > seenLoss,
     });
   },
 
@@ -809,7 +820,9 @@ export const alignmentMutations = {
   // is swallowed, keeping ONE separator when text survives on both sides so
   // the neighbours do not run together. Either way the document is patched
   // before the request goes out, so the row leaves at once; a failure reloads.
-  async deleteAlignment(alignmentId, { deleteText = false } = {}) {
+  // `asked`, the loss the trash asked about (or found and asked nothing
+  // about), as for `editAlignment`.
+  async deleteAlignment(alignmentId, { deleteText = false, asked = null } = {}) {
     const info = this.layerInfo;
     const primaryTextLayer = info.primaryTextLayer;
     const alignmentTokenLayer = info.alignmentTokenLayer;
@@ -840,8 +853,9 @@ export const alignmentMutations = {
     const textOps = planDeleteText(this.body, existingAlignment);
     // What the delete takes, for the entity rule when it is refused.
     const over = cpSlice(this.body, existingAlignment.begin, existingAlignment.end);
-    // What it deletes besides, as this page counted it for its question.
-    const seenLoss = lossSize(this.segmentDeleteLoss(alignmentId));
+    // What it deletes besides, as the person was asked about it.
+    const pageLoss = this.segmentDeleteLoss(alignmentId);
+    const seenLoss = lossSize(asked ?? pageLoss);
     const planned = this._plannedText();
 
     // The segment is deleted in its own right, then its text. It used to go
@@ -862,7 +876,11 @@ export const alignmentMutations = {
         if (ops.length) b.texts.update(textId, ops, undefined, { base });
       });
     // What is sent, kept outside the send (see `_sendOverSegmentText`).
-    const state = { planned, send: (base) => send(alignmentId, textOps, base) };
+    const state = {
+      planned,
+      send: (base) => send(alignmentId, textOps, base),
+      recount: lossSize(pageLoss) > seenLoss,
+    };
     return this._queueWrite(label, async () => {
       if (!textOps.length) {
         await this._client.tokens.delete(settledId(alignmentId));
@@ -1441,7 +1459,19 @@ export const alignmentMutations = {
   // is `recheck`.
   _showRowEdit(
     label,
-    { textId, segmentId, gaps, extent, typed, seedLength, patch, speaker, replan, recheck = null },
+    {
+      textId,
+      segmentId,
+      gaps,
+      extent,
+      typed,
+      seedLength,
+      patch,
+      speaker,
+      replan,
+      recheck = null,
+      recount = false,
+    },
   ) {
     if (!this._canWrite(label)) return false;
     const info = this.layerInfo;
@@ -1514,6 +1544,7 @@ export const alignmentMutations = {
     const state = {
       planned,
       send: (base) => send(sent, base),
+      recount,
     };
     const write = async () => {
       const results = await this._sendOverSegmentText(state, {
@@ -1673,9 +1704,10 @@ export const alignmentMutations = {
   // the digest the server gave for exactly that body. The digest is null when
   // an edit made here since changed the body (textEdits.js), until the
   // server's answer to it gives the new one (`_heardText`).
+  // `reads`, how many times the page had read the document by then.
   _plannedText() {
     const text = this.layerInfo.primaryTextLayer?.text;
-    return { body: text?.body ?? '', digest: text?.digest ?? null };
+    return { body: text?.body ?? '', digest: text?.digest ?? null, reads: this._reads ?? 0 };
   },
 
   // The `base` for a write planned on `planned`, at the moment it is sent:
@@ -1735,7 +1767,12 @@ export const alignmentMutations = {
   // the batch's results, null when it was found stored.
   async _sendOverSegmentText(state, { replan, landed = null, readOnRefusal = false }) {
     if (!state.keys) {
-      state.base = this._segmentBase(state.planned);
+      // Planned before the page last read the document, or asked about less
+      // than it now deletes (`recount`): not sent as planned, but read and
+      // made again, where what it deletes is counted (REV-G1-1). The version
+      // the read learned would otherwise let it past the server's check.
+      const stale = state.recount || state.planned.reads !== (this._reads ?? 0);
+      state.base = stale ? null : this._segmentBase(state.planned);
       state.keys = this._client.keySeed?.() ?? null;
     } else {
       state.again = true;

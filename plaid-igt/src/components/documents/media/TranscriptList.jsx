@@ -556,7 +556,7 @@ const SegmentRow = memo(function SegmentRow({
                 aria-label="Delete segment"
                 onClick={() => {
                   const loss = lossFor(token);
-                  if (!hasLoss(loss)) onDelete(token.id, { deleteText: true });
+                  if (!hasLoss(loss)) onDelete(token.id, { deleteText: true, asked: loss });
                   else setAskText(loss);
                 }}
               >
@@ -581,7 +581,7 @@ const SegmentRow = memo(function SegmentRow({
                   variant="destructive"
                   onClick={() => {
                     setAskText(null);
-                    onDelete(token.id, { deleteText: true });
+                    onDelete(token.id, { deleteText: true, asked: askText });
                   }}
                 >
                   Delete text
@@ -1193,6 +1193,11 @@ export function TranscriptList({
           answered.current.set(id, { text, loss });
           storedText = cpSlice(doc.body || '', token.begin, token.end);
         }
+        // What the person agreed to lose: the answer that covers this text,
+        // or what was found and asked nothing about. The write goes only
+        // while it deletes no more than that (REV-G1-1).
+        const answer = answered.current.get(id);
+        const asked = answer?.text === text ? answer.loss : loss;
         const before = doc.dataVersion;
         const outcome = doc.cellWrite(
           () =>
@@ -1202,6 +1207,7 @@ export function TranscriptList({
               timeEnd: timeEndOf(token),
               speaker,
               edits,
+              asked,
             }),
           { engine: true },
         );

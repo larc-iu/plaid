@@ -1205,8 +1205,8 @@ export const useMediaOperations = () => {
   // utterance, and the row asks first only when annotations are built on that
   // text (see SegmentRow). Keeping the text is the row's other answer.
   const handleDeleteAlignment = useCallback(
-    async (alignmentId, { deleteText = true } = {}) => {
-      const ok = await doc.deleteAlignment(alignmentId, { deleteText });
+    async (alignmentId, { deleteText = true, asked = null } = {}) => {
+      const ok = await doc.deleteAlignment(alignmentId, { deleteText, asked });
       if (ok && deleteText) notifySuccess('Segment and its text deleted', 'Deleted');
       return ok;
     },

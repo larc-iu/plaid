@@ -326,6 +326,8 @@ describe('TranscriptList', () => {
       timeEnd: 1.5,
       speaker: 'Ana',
       edits: { over: 'the', gaps: expect.any(Array) },
+      // What it was found to delete, and so asked nothing about.
+      asked: { annotations: 0, links: 0, shortened: { annotations: 0, links: 0 } },
     });
     // The edits typed, over the stored text.
     const { gaps } = doc.editAlignment.mock.calls[0][1].edits;
@@ -765,7 +767,10 @@ describe('TranscriptList', () => {
       const r = await renderComponent(element(doc, ops));
       click(trashOf(r.container, 'a'));
       await settle();
-      expect(ops.handleDeleteAlignment).toHaveBeenCalledWith('a', { deleteText: true });
+      expect(ops.handleDeleteAlignment).toHaveBeenCalledWith('a', {
+        deleteText: true,
+        asked: expect.objectContaining({ annotations: 0, links: 0 }),
+      });
       expect(document.querySelector('[role="dialog"]')).toBeNull();
       await r.unmount();
     });

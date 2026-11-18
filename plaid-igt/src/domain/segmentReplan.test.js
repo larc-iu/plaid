@@ -454,3 +454,98 @@ describe('a row write after the document was deleted elsewhere', () => {
     expect(said.map(([title]) => title)).toContain('Read-only');
   });
 });
+
+// REV-G1-1: a row write planned before the page last read the document is
+// counted again on what was read before it goes, against the loss the person
+// was asked about (or none, when nothing was asked).
+describe('a row write planned before the page read the document again', () => {
+  const glossed = () =>
+    segmentServer(
+      buildRawDoc({
+        body: 'uno dos tres',
+        words: [
+          { id: 'w-1', begin: 0, end: 3 },
+          { id: 'w-2', begin: 4, end: 7 },
+          { id: 'w-3', begin: 8, end: 12 },
+        ],
+        alignmentTokens: [seg('a-1', 0, 3, 0, 1), seg('a-2', 4, 7, 1, 2), seg('a-3', 8, 12, 2, 3)],
+      }),
+    );
+  const spans = (server) =>
+    server.stored.textLayers[0].tokenLayers.flatMap((l) =>
+      (l.spanLayers || []).flatMap((sl) => sl.spans.map((x) => x.value)),
+    );
+  const none = { annotations: 0, links: 0, shortened: { annotations: 0, links: 0 } };
+  const retypeDos = (doc, asked) =>
+    doc.cellWrite(() => doc.editAlignment('a-2', { text: 'xyz', timeBegin: 1, timeEnd: 2, asked }));
+
+  it('queued behind a row edit that met the 409 first', async () => {
+    const server = glossed();
+    const doc = open(server);
+    server.otherGlosses('m-2', 'two');
+    server.otherGlosses('w-2', 'two.w');
+    const w1 = doc.cellWrite(() =>
+      doc.editAlignment('a-1', { text: 'una', timeBegin: 0, timeEnd: 1 }),
+    );
+    const w2 = retypeDos(doc, none);
+    const [o1, o2] = await Promise.all([w1, w2]);
+    await idle(doc);
+    expect(o1.landed).toBe(true);
+    expect(o2.landed).toBe(false);
+    expect(server.body).toBe('una dos tres');
+    expect(spans(server)).toEqual(['two.w', 'two']);
+  });
+
+  it('queued behind a trash with its text', async () => {
+    const server = glossed();
+    const doc = open(server);
+    server.otherGlosses('m-2', 'two');
+    const w1 = doc.deleteAlignment('a-1', { deleteText: true });
+    const w2 = retypeDos(doc, none);
+    const [, o2] = await Promise.all([w1, w2]);
+    await idle(doc);
+    expect(o2.landed).toBe(false);
+    expect(spans(server)).toContain('two');
+  });
+
+  it('queued behind a speaker change', async () => {
+    const server = glossed();
+    const doc = open(server);
+    server.otherGlosses('m-2', 'two');
+    const w1 = doc.updateAlignmentSpeaker('a-1', 'Ana');
+    const w2 = retypeDos(doc, none);
+    const [, o2] = await Promise.all([w1, w2]);
+    await idle(doc);
+    expect(o2.landed).toBe(false);
+    expect(spans(server)).toContain('two');
+  });
+
+  it('asked about on the page before it was read again', async () => {
+    const server = glossed();
+    const doc = open(server);
+    server.otherGlosses('m-2', 'two');
+    // Read while the row's question was open: the page and its version are
+    // fresh, the answer is not.
+    await doc.reload();
+    const o = await retypeDos(doc, none);
+    await idle(doc);
+    expect(o.landed).toBe(false);
+    expect(spans(server)).toEqual(['two']);
+    // Asked about what is there now, it is saved.
+    const again = await retypeDos(doc, doc.segmentEditLoss('a-2', { text: 'xyz' }).loss);
+    await idle(doc);
+    expect(again.landed).toBe(true);
+    expect(server.body).toBe('uno xyz tres');
+  });
+
+  it('a trash asked about before the page was read again', async () => {
+    const server = glossed();
+    const doc = open(server);
+    server.otherGlosses('m-2', 'two');
+    await doc.reload();
+    expect(await doc.deleteAlignment('a-2', { deleteText: true, asked: none })).toBe(false);
+    await idle(doc);
+    expect(server.body).toBe('uno dos tres');
+    expect(spans(server)).toEqual(['two']);
+  });
+});
