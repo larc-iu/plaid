@@ -50,6 +50,10 @@ CASES = [
      'documents_not_all_read': 1},
     {'documents_in_one_step': 3, 'documents_in_job': 6, 'documents_changed_in_one_step': 0},
     {'documents_in_one_step': 45, 'documents_in_job': 45, 'documents_changed_in_one_step': 24},
+    # REV-RW-1: a big piece of a plan that fills nothing ended without finishing.
+    {'documents_ran_out': 1},
+    {'documents_ran_out': 3, 'documents_in_one_step': 3, 'documents_changed_in_one_step': 1},
+    {'documents_ran_out': 1234, 'peoples_values_changed': 2},
 ]
 
 
@@ -101,3 +105,10 @@ def test_the_counts_name_the_jobs_documents_beside_those_the_step_ended():
             {'state': 'gone', 'counts': {}}]
     assert one_step_totals(docs) == {'documents_in_one_step': 2, 'documents_in_job': 3,
                                      'documents_changed_in_one_step': 1, 'documents_not_all_read': 0}
+
+
+def test_the_top_line_says_a_big_piece_of_a_check_ended_before_its_work_was_done():
+    """REV-RW-1."""
+    assert notice({'documents_ran_out': 3}) == (
+        '3 documents ended before the job had done its work there: what it had staged was written, and the rest was '
+        'not done.')

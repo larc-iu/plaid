@@ -1032,7 +1032,17 @@ def notice(totals: Dict[str, Any], nouns: Optional[Tuple[str, str]] = None) -> O
         k = totals.get('documents_changed_in_one_step') or 0
         out.append(one_step_line(one, k, totals.get('documents_in_job') or one) + (' It did not read every sentence.'
                                             if totals.get('documents_not_all_read') else ''))
+    ran_out = totals.get('documents_ran_out') or 0
+    if ran_out:
+        out.append(ran_out_line(ran_out))
     return ' '.join(out) or None
+
+
+def ran_out_line(n: int) -> str:
+    """The top line's sentence for the documents whose big piece ended
+    without finishing under a plan that fills nothing (REV-RW-1)."""
+    return (f'{n:,} {"document" if n == 1 else "documents"} ended before the job had done its work there: what it '
+            'had staged was written, and the rest was not done.')
 
 
 def one_step_totals(documents: List[Dict[str, Any]]) -> Dict[str, int]:
@@ -1151,6 +1161,12 @@ def build_report(job: Job, state: str, reason: Optional[str], documents: List[Di
     # app's ``counts.one_step``), those of them it changed, and those it was
     # not shown all of (``counts.not_all_read``), for the top line.
     totals.update(one_step_totals(documents))
+    # The documents whose big piece ended without finishing under a plan
+    # that fills nothing, nothing walked after it (an app's ``counts.ran_out``,
+    # REV-RW-1), for the top line.
+    ran_out = sum(1 for d in documents if (d.get('counts') or {}).get('ran_out') is True)
+    if ran_out:
+        totals['documents_ran_out'] = ran_out
     changed, changed_more = cut(harmonize.get('changed') or [])
     left, left_more = cut(harmonize.get('left') or [])
     lists = {}

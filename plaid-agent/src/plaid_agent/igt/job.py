@@ -170,6 +170,10 @@ SENTENCES, DOCUMENT, SELECTION = 'sentences', 'document', 'selection'
 #: worked for want of reading or for what is empty (the lead's ruling after
 #: RP4-5, replacing RPF3-A's walk where empty). Its row is ``done``.
 ONE_STEP = 'one_step'
+#: A row's count: its whole-document or selection piece ended without
+#: finishing under a plan that fills nothing, and nothing was walked after it
+#: (REV-RW-1): the report's top line says the rest was not done.
+RAN_OUT = 'ran_out'
 #: ... and true beside it when that step was not shown every sentence of the
 #: document (it read part of it, or none, or wrote in it by reference).
 NOT_ALL_READ = 'not_all_read'
@@ -1406,6 +1410,8 @@ class JobWorkspace(Workspace):
         self.ended: Optional[str] = None
         #: the sentences of such a piece it did not get to (``unreached``)
         self.unreached: List[Sentence] = []
+        #: a piece of the whole document
+        self.whole = False
         #: a piece of a plan in sentences, offered the short list of tools
         self.in_sentences = False
         #: the job's plan says it may change the text (plan_work's
@@ -2307,6 +2313,13 @@ class IgtRunner:
         #: covered in this run: what remains of them is worked in stretches,
         #: never as the whole document again (BRIEF RW B1)
         self.whole_taken: set = set()
+        #: documents whose whole-document or selection piece ended without
+        #: finishing under a plan that fills nothing: nothing is walked after
+        #: it, and the report says the rest was not done (REV-RW-1)
+        self.ran_out: set = set()
+        #: document id -> the first sentence a write must leave the cursor
+        #: before (:meth:`go_on`, :meth:`record`)
+        self.hold_cursor: Dict[str, str] = {}
 
     # --- reading ---------------------------------------------------------------
 
@@ -2816,9 +2829,12 @@ class IgtRunner:
         # (the lead's ruling after RP4-5). The value: whether the step was
         # not shown all of it.
         ending: Dict[str, bool] = {}
+        left_of = self.selection_unreached(project, ws, live, nothing) if ws.ended is not None else {}
         for d in live:
             job.check()
-            shown = ws.shown.get(d) or set()
+            # What a piece that ended without finishing did not get to here is
+            # not written as worked: the walk takes it in stretches (REV-RW-1).
+            shown = (ws.shown.get(d) or set()) - {s.id for s in left_of.get(d, ())}
             carried = loose if d in ws._docs else []
             if d not in ws._docs or not (shown or by_doc.get(d) or carried):
                 # The piece never read it and wrote nothing there.
@@ -2826,6 +2842,9 @@ class IgtRunner:
                 continue
             job.set(current_document=d)
             self.unsummed[key]['parts'][d] = set(shown)
+            if d in left_of:
+                # The fallback row and the held cursor before the write.
+                self.go_on(d, ws._docs[d], left_of[d])
             try:
                 if self.write_piece(project, d, ws, ws._docs[d], by_doc.get(d, []) + carried, note, shown, key):
                     loose = []
@@ -2843,6 +2862,8 @@ class IgtRunner:
                 done = core_job.through_core(job, self.loose_landed)
                 loose = [op for op in loose if op[LOOSE] not in done]
                 continue
+            finally:
+                self.hold_cursor.pop(d, None)
             # What a read printed to the model is what it read, never what a
             # tool loaded (REV-JG3-1): the step was not shown all of the
             # document when one of its sentences was never printed to it.
@@ -2866,10 +2887,36 @@ class IgtRunner:
         self.whole_taken.update(live)
         for d, unread in ending.items():
             job.check()
-            core_job.through_core(job, lambda: self.one_step(project, d, unread))
+            core_job.through_core(job, lambda: self.one_step(project, d, unread, left_of.get(d, ())))
         return True
 
-    def one_step(self, project: IgtProject, document_id: str, unread: bool) -> None:
+    def selection_unreached(self, project: IgtProject, ws: JobWorkspace, live: List[str],
+                            nothing: bool) -> Dict[str, List[Sentence]]:
+        """After a selection's piece that ended without finishing: per
+        document, what it did not get to (:meth:`unreached`, the whole
+        document's rule over every sentence not finished yet). Under a plan
+        that fills nothing, none, and every document is marked ran out: its
+        documents end in the one step and the report says the rest of the
+        work was not done."""
+        if nothing:
+            self.ran_out.update(live)
+            return {}
+        out: Dict[str, List[Sentence]] = {}
+        for d in live:
+            try:
+                doc = ws._docs.get(d) or core_job.through_core(self.job, lambda: self.read(project, d))
+            except Gone:
+                continue
+            done = self.excluded(d)
+            part = [s for s in doc.sentences if s.id not in done]
+            st = Stretch(doc, project, part, self.job.id, self.known_words(d), self.written(d),
+                         self.targets(project), only=self.only_new(project))
+            left = self.unreached(ws, doc, part, st, True)
+            if left:
+                out[d] = left
+        return out
+
+    def one_step(self, project: IgtProject, document_id: str, unread: bool, leave=()) -> None:
         """A document the whole-selection piece covered, ended with it: every
         sentence of it not finished yet is recorded as the piece's own, as a
         write that sends nothing records its sentences, so it is finished
@@ -2878,7 +2925,10 @@ class IgtRunner:
         :data:`NOT_ALL_READ` when ``unread``). What stays to work is what the
         rules not about reading leave: a sentence a person changed during the
         piece is taken again by the walk (:meth:`record`), and the document
-        then ends with it. One put off, deferred or gone is not here."""
+        then ends with it. ``leave``: what a piece that ended without
+        finishing did not get to there (:meth:`go_on`), left to the walk in
+        stretches, the document not ended. One put off, deferred or gone is
+        not here."""
         state = (self.job.rows.get(document_id) or {}).get('state')
         if state in ROW_FINAL or state == 'deferred':
             return
@@ -2889,10 +2939,17 @@ class IgtRunner:
             return
         out = self.excluded(document_id)
         again = {sid for sid, n in self.changed.items() if n == 1} | self.retake.get(document_id, set())
-        part = [s for s in doc.sentences if s.id not in out and s.id not in again]
+        left = {s.id for s in leave}
+        part = [s for s in doc.sentences if s.id not in out and s.id not in again and s.id not in left]
         if part:
             st = Stretch(doc, project, part, self.job.id, targets=[])
             self.manifest(Write(document_id, SELECTION_TAG, st, [s.id for s in part], [], Counter(), doc))
+        if left:
+            self.go_on(document_id, doc, [s for s in doc.sentences if s.id in left])
+            self.hold_cursor.pop(document_id, None)
+            self.job.update_row(document_id, **self.tally(document_id, (self.job.rows.get(document_id) or {}).get(
+                'skipped')))
+            return
         self.one_stepped[document_id] = unread
         if any(s.id in again for s in doc.sentences):
             # Taken again by the walk, which then ends the document.
@@ -3442,30 +3499,80 @@ class IgtRunner:
                 raise StretchFailed(kind, str(e)) from e
         if staged is not None:
             *staged, key = staged
-            self.write(project, document_id, *staged, summary=key)
+            # What a piece that ended without finishing did not get to is
+            # settled BEFORE its write, so a worker that dies between the two
+            # passes no sentence uncounted (REV-SP-10, REV-RW-2).
             self.unfinished(document_id, staged[0], staged[1])
+            try:
+                self.write(project, document_id, *staged, summary=key)
+            finally:
+                self.hold_cursor.pop(document_id, None)
             self.end_summary(key)
             self.after_text(project, document_id)
 
     def unreached(self, ws: JobWorkspace, doc, part: List[Sentence], st: Stretch, whole: bool) -> List[Sentence]:
         """The sentences of a piece that ended without finishing that it did
         not get to (THE rule after such a piece, CONTRACT "Added by RW"): in
-        a stretch, each sentence it staged nothing in."""
-        if whole:
-            return []
+        a stretch, each sentence it staged nothing in. In a whole document
+        (and in each document of a selection, :meth:`selection`), each
+        sentence it staged nothing in that still holds something the plan
+        fills and is empty (``st``, the one empty rule of igt/targets.py):
+        none under a plan that fills nothing."""
         from .jobapply import sentence_of
         staged = {getattr(sentence_of(op, doc), 'id', None) for op in ws.ops}
-        return [s for s in part if s.id not in staged]
+        if not whole:
+            return [s for s in part if s.id not in staged]
+        empty = {st.where[w].id for w in st.words if w in st.where} | set(st.fields)
+        return [s for s in part if s.id not in staged and s.id in empty]
 
     def unfinished(self, document_id: str, ws: JobWorkspace, doc) -> None:
-        """After the write of a piece that ended without finishing: in a
+        """Before the write of a piece that ended without finishing: in a
         stretch, each sentence it did not get to is skipped as failed with
-        what ended it, so it is counted, never passed as worked, and the
-        cursor passes no sentence left uncounted (REV-RW-2)."""
+        what ended it (the cursor not moved), so it is counted, never passed
+        as worked (REV-RW-2). In a whole document, :meth:`go_on`."""
         if ws.ended is None:
             return
-        for s in ws.unreached:
-            self.skip(document_id, doc, s.id, 'failed', ws.ended)
+        if not ws.whole:
+            for s in ws.unreached:
+                self.skip(document_id, doc, s.id, 'failed', ws.ended, cursor=False)
+            return
+        self.go_on(document_id, doc, ws.unreached)
+
+    def go_on(self, document_id: str, doc, unreached: List[Sentence]) -> None:
+        """A document whose whole-document or selection piece ended without
+        finishing, once what it staged is written: what it did not get to
+        (``unreached``) is worked in stretches, with a fallback row
+        ``ran-out``, the cursor put back before the first of it, so no
+        sentence is passed. With none, under a plan that fills nothing, the
+        document ends as it is, and the report says the rest of the work
+        was not done (``counts.ran_out``). With none otherwise: nothing is
+        left."""
+        if not unreached:
+            if self.fills_nothing():
+                self.ran_out.add(document_id)
+            return
+        # The fallback row first, then the write holds the cursor before
+        # the first of them (``hold_cursor``, read by :meth:`record`), so
+        # neither a crash nor a resume passes one.
+        core_job.through_core(self.job, lambda: self.fall_back(document_id, 'ran-out'))
+        self.hold_cursor[document_id] = min(unreached, key=lambda s: s.index).id
+        self.rewind(document_id, doc, unreached)
+
+    def rewind(self, document_id: str, doc, sentences: List[Sentence]) -> None:
+        """Put the document's cursor back before the first of ``sentences``
+        when it stands at or past it (as ``record`` does for a sentence taken
+        again): the walk then takes them, and passes every sentence a write
+        finished."""
+        ids = [s.id for s in doc.sentences]
+        at = [ids.index(s.id) for s in sentences if s.id in ids]
+        if not at:
+            return
+        before = ids[min(at) - 1] if min(at) > 0 else None
+        row = self.job.rows.get(document_id) or {}
+        if row.get('last_sentence') == before:
+            return
+        if before is None or not self._after_cursor(row, doc, before):
+            self.job.update_row(document_id, last_sentence=before)
 
     def after_text(self, project: IgtProject, document_id: str) -> None:
         """The piece after a text edit (RPF3-B): the sentences whose text the
@@ -3608,6 +3715,7 @@ class IgtRunner:
         # A piece of a plan in sentences is offered the short list of tools
         # (toolkit.sentences_piece_tools).
         ws.in_sentences = self.in_sentences() and not whole
+        ws.whole = whole
         # Every sentence's print, not only the piece's: an op the model
         # stages anywhere in the document is checked against the sentence
         # as the model read it.
@@ -5226,6 +5334,16 @@ class IgtRunner:
                 fields['last_sentence'] = before
         elif last is not None and self._after_cursor(row, doc, last):
             fields['last_sentence'] = last
+        hold = self.hold_cursor.get(document_id)
+        if hold is not None:
+            # A piece that ended without finishing left sentences to the walk
+            # (:meth:`go_on`): the cursor stays before the first of them.
+            ids = [x.id for x in doc.sentences]
+            if hold in ids:
+                before = ids[ids.index(hold) - 1] if ids.index(hold) > 0 else None
+                cur = fields.get('last_sentence', row.get('last_sentence'))
+                if cur in ids and (before is None or ids.index(cur) > ids.index(before)):
+                    fields['last_sentence'] = before
         if len(skipped) != len(row.get('skipped') or []):
             fields['skipped'] = skipped
         self.commit(document_id, records)
@@ -5302,6 +5420,8 @@ class IgtRunner:
             # Its changes by kind, summing to ``changes`` (RPF-A3).
             counts['changes_parts'] = sums['changes_parts']
         row = self.job.rows.get(document_id) or {}
+        if document_id in self.ran_out or (row.get('counts') or {}).get(RAN_OUT) is True:
+            counts[RAN_OUT] = True
         if document_id in self.one_stepped or (row.get('counts') or {}).get(ONE_STEP) is True:
             # Ended in the whole-selection piece's one step.
             counts[ONE_STEP] = True

@@ -212,6 +212,14 @@ export const noticeText = (totals) => {
     }
     out.push(did + (t.documentsNotAllRead ? ' It did not read every sentence.' : ''));
   }
+  // A big piece of a plan that fills nothing ended without finishing, and
+  // nothing was worked after it (the worker's `ran_out`, REV-RW-1).
+  const ranOut = t.documentsRanOut || 0;
+  if (ranOut) {
+    out.push(
+      `${countOf(ranOut, 'document')} ended before the job had done its work there: what it had staged was written, and the rest was not done.`,
+    );
+  }
   return out.join(' ') || null;
 };
 
@@ -226,6 +234,9 @@ export const noticeCounts = (report) => {
     wordsAdded: sum('wordsAdded'),
     tokensChanged: sum('tokensChanged'),
     textChanges: sum('textChanges'),
+    documentsRanOut:
+      t.documentsRanOut ??
+      (report?.documents || []).filter((d) => d.counts?.ranOut === true).length,
     // Core's own report: the whole-selection step's documents from their rows.
     ...(t.documentsInOneStep !== undefined
       ? {
