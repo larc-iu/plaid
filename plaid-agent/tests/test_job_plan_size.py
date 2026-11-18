@@ -100,9 +100,9 @@ def test_the_rules_steer_filling_word_by_word_to_sentences():
     text from nothing because a piece in sentences has "no search or code"
     (plan round 7 of the measured run): the rules now say what a sentences
     piece is handed instead, and where word-by-word filling goes."""
-    from plaid_agent.core.limits import JOB_STRETCH_MAX_ROUNDS
     rules = JOB_PLAN_RULES.replace('\n', ' ')
     assert ('no search or code: each piece is handed how its words\' forms were analysed before and the lexicon '
             'entries spelled in them.') in rules, rules
-    assert (f'- To fill what is empty word by word, plan "sentences": a piece makes at most {JOB_STRETCH_MAX_ROUNDS} '
-            'model calls, too few for a whole text.') in rules, rules
+    # No number: a piece's calls are 20 and a closing one (REV-RW-8).
+    assert ('- To fill what is empty word by word, plan "sentences": a piece has a fixed number of model calls, too '
+            'few for a whole text.') in rules, rules

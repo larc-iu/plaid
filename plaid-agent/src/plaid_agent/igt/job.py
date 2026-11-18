@@ -58,7 +58,7 @@ from ..core.limits import (JOB_ANALYSIS_MAX_CHARS, JOB_CHANGE_VALUE_CHARS, JOB_C
                            JOB_EVIDENCE_CHARS, JOB_SENTENCE_MAX_CHARS, JOB_SENTENCE_MAX_WORDS,
                            JOB_PIECE_OUTPUT_TOKENS, JOB_SKIPPED_PER_DOCUMENT, JOB_STRETCH_SENTENCES)
 from ..core.plan import JOB_DETAIL_KEY, ONE_REQUEST, PlanError, TooBig, held_changes
-from ..core.prompt import (JOB_ANSWER_AGAIN, JOB_LEAVE_IT, JOB_PLAN_WRITTEN_CALL_NEXT, JOB_TEXT_THEN_FILL,
+from ..core.prompt import (JOB_ANSWER_AGAIN, JOB_LEAVE_IT, JOB_PLAN_WRITTEN_CALL_NEXT, JOB_TEXT_NOW, JOB_TEXT_THEN_FILL,
                            JOB_WRITTEN_CALL_NEXT)
 from ..core.provenance import Requester
 from ..core.tools import Refusal, ToolError
@@ -5919,7 +5919,10 @@ class IgtRunner:
             kit = Toolkit(tools_for=lambda w: [], call_tool=lambda w, name, args: '', tracer=TRACER)
             self.trace(ws, system, kit, 'summary')
             try:
-                result = self.turn(ws, kit, system, [{'role': 'user', 'content': message}])
+                # Its own line past the decide-now size: it is no piece and
+                # has no tool (REV-RW-8).
+                result = self.turn(ws, kit, system, [{'role': 'user', 'content': message}],
+                                   pace=self.pace(line=JOB_TEXT_NOW))
                 return _cut((result.text or '').strip(), JOB_SUMMARY_MAX_CHARS) or None
             except TurnCancelled:
                 job.check()
@@ -6142,7 +6145,8 @@ class IgtRunner:
             kit = Toolkit(tools_for=lambda w: [], call_tool=lambda w, name, args: '', tracer=TRACER)
             self.trace(ws, system, kit, 'findings')
             try:
-                result = self.turn(ws, kit, system, [{'role': 'user', 'content': message}])
+                result = self.turn(ws, kit, system, [{'role': 'user', 'content': message}],
+                                   pace=self.pace(line=JOB_TEXT_NOW))
                 return findings_text(result.text) or None
             except TurnCancelled:
                 job.check()

@@ -95,3 +95,29 @@ def test_the_round_that_carried_the_line_keeps_it_in_the_trace(monkeypatch, tmp_
     assert told == [15], [(r['n'], r.get('asked')) for r in rounds]
     assert 'Your piece: s1.' in rounds[0]['asked']
     assert not any(r.get('asked') for r in rounds if r['n'] not in (1, 15))
+
+
+def test_the_summary_is_never_told_reading_is_over_for_a_piece(monkeypatch):
+    """REV-RW-8: the report's prose has no tool and is no piece. Past the
+    decide-now size it is sent a line of its own."""
+    from plaid_agent.core.job import run_job
+    from plaid_agent.core.prompt import JOB_TEXT_NOW
+    client = JobClient({'d1': document('d1', 'Story', blank(1))})
+    job = start(client, id=J, plan='sentences')
+    r = runner(job, write_summary=True)
+    r.count = lambda value: 50000 if isinstance(value, list) and value and isinstance(value[0], dict) \
+        and value[0].get('role') == 'system' else 10
+    calls = []
+
+    def answer(asked, n, kwargs):
+        calls.append(kwargs)
+        if 'Your piece: s' in asked:
+            return reply(calls=[call(1, 'set_analysis', {'document': 'Story', 'ref': 's1.w1', 'morphemes': [
+                {'form': 'ka', 'type': 'stem', 'fields': {'Morph Gloss': 'go'}}]})]) if n == 1 else reply('Done.')
+        return reply('The job glossed the story.')
+    use(monkeypatch, Model(answer))
+    run_job(job, r)
+    summary = [k for k in calls if not k.get('tools')]
+    assert summary, 'the summary was written'
+    sent = [m.get('content') for k in summary for m in k['messages']]
+    assert JOB_DECIDE_NOW not in sent and JOB_TEXT_NOW in sent

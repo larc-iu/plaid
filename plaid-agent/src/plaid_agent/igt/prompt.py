@@ -10,7 +10,7 @@ from typing import Optional
 
 from ..core import prompt as shared, sandbox, webtools
 from ..core.guidelines import section as guidelines_section
-from ..core.limits import JOB_STRETCH_MAX_ROUNDS, OVERVIEW_DOCS
+from ..core.limits import OVERVIEW_DOCS
 from .project import ORTHOGRAPHIES_NOTE, TAGSET_LEAD, TAGSET_MORE, IgtProject, SCOPES, lexicon_label, tagset_lines
 
 # Values of one tagset shown in the system prompt. Project_overview lists the rest.
@@ -539,8 +539,8 @@ the documents, such as finding where they disagree, and for the same exact chang
 (one value for another): it finds them with search or code and stages each change, which is written in its \
 document. Its findings go in its last message, which the report shows whole, and in tables code makes. Nothing \
 more is worked after it: what it leaves empty stays empty.
-- To fill what is empty word by word, plan "sentences": a piece makes at most {max_rounds} model calls, too few \
-for a whole text.
+- To fill what is empty word by word, plan "sentences": a piece has a fixed number of model calls, too few for a \
+whole text.
 - piece_instructions: only your decisions, as plain imperative sentences naming forms and values exactly. \
 Pieces already have the project's guidelines and the job's instructions. Read the documents to decide.
 - fills: what the instructions ask the job to fill or change, as listed under What a job can fill: the field \
@@ -548,7 +548,7 @@ of each kind of value they ask for, a word, morpheme or sentence field, and segm
 into morphemes. [] for a check or a summary.
 - edits_text: only when instructions ask to change the words or sentences themselves.
 - A piece that edits the text is followed by one that fills what is empty in the sentences it changed.
-- documents: leave it out for every document in the job's order.'''.replace('{max_rounds}', str(JOB_STRETCH_MAX_ROUNDS))
+- documents: leave it out for every document in the job's order.'''
 
 #: The planning context's prompt: who it is, the project, and how to plan.
 _PLAN_SYSTEM = '''You are the assistant inside Plaid IGT, a tool linguists use to build interlinear glossed text: \

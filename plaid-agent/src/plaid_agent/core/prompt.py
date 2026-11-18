@@ -439,6 +439,10 @@ JOB_EXAMPLE = '''- A WHOLE PIECE, FOR EXAMPLE. {did} Then you ended with the not
 #: B3: a model not told called its reading tools to the end).
 JOB_DECIDE_NOW = ('(system) Decide now with what you have: reading is over for this piece, and only the tools that '
                   'stage changes are left. Stage your work and end with your note.')
+#: The decide-now line of a job's context that writes text and has no tool
+#: (the report's prose, the findings of a job that fills nothing): it is no
+#: piece and reads nothing (REV-RW-8).
+JOB_TEXT_NOW = '(system) Write it now with what you have.'
 #: A piece's refusal of a tool it was offered until the decide-now line.
 JOB_READING_OVER = 'Reading is over for this piece: stage what you have and end.'
 #: The line of a piece's closing call (BRIEF RW B2): a budget ran out while
