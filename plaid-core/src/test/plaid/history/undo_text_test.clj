@@ -651,6 +651,53 @@
         (is (some? (psc/fetch-by-id db :tokens right)))))))
 
 ;; ============================================================
+;; S7-1: a sentence split, nobody writing since, is undone exactly
+;; ============================================================
+
+(defn- sentence-at
+  "The sentence of `w` over [b e) in `text` now."
+  [{:keys [sentences]} text b e]
+  (word-at sentences text b e))
+
+(deftest a-sentence-split-is-undone-whatever-words-lie-in-its-halves
+  (doseq [[what opts person]
+          [["nobody wrote since" {} nil]
+           ["with morphemes under the words" {:morphs true} nil]
+           ["a person's value on a word of the new half, which is no token on it"
+            {} (fn [{:keys [pos] :as w} text] (create-span user1-request pos [(word-of w text "pele")] "N"))]]]
+    (testing what
+      (let [{:keys [doc text] :as w} (world! story opts)
+            then (snapshot [doc])
+            g (str (random-uuid))
+            r (in-group admin-request g)
+            s1 (sentence-at w text 0 (cps "kai pele "))
+            _ (assert-done (split-token r s1 (at text "pele")))
+            made (sentence-at w text (at text "pele") (cps "kai pele "))
+            _ (is (some? made) "the split made the second half")
+            _ (when person (assert-done (person w text)))
+            real (undo-checked! [doc] then #(undo-entry admin-request g :dry-run %))]
+        (is (empty? (:skipped real)) (pr-str (:skipped real)))
+        (is (nil? (psc/fetch-by-id db :tokens made)) "the new half is gone")
+        (is (= [0 (cps "kai pele ")] ((juxt :begin :end_) (psc/fetch-by-id db :tokens s1)))
+            "the first half covers the whole sentence again")))))
+
+(deftest a-sentence-split-and-a-retype-of-another-sentence-are-undone-together
+  ;; S7-1's job: s1 split, then s3 retyped with a word added, given a value.
+  (let [{:keys [doc text pos words] :as w} (world! story {})
+        then (snapshot [doc])
+        g (str (random-uuid))
+        r (in-group admin-request g)
+        s1 (sentence-at w text 0 (cps "kai pele "))
+        _ (assert-done (split-token r s1 (at text "pele")))
+        _ (edit! r w text [(insert-op (+ (at text "sa") 2) " ika")])
+        ika (word-of w text "ika")
+        _ (assert-done (create-span r pos [ika] "NEW"))
+        real (undo-checked! [doc] then #(undo-entry admin-request g :dry-run %))]
+    (is (empty? (:skipped real)) (pr-str (:skipped real)))
+    (is (= (body text) (str/join " " story)) "the text is back")
+    (is (= then (state [doc])) "the document is as it was")))
+
+;; ============================================================
 ;; REV-UT2-2: token rows of the unit that traded characters go back together
 ;; ============================================================
 

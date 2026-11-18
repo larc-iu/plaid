@@ -547,6 +547,16 @@
                    (cond
                      (= "comments" (first dk)) true
                      (and d (applied? d)) (and (not inside?) (not= :delete (:op d)) (mentions? (:before d) (:id i)))
+                     ;; a child token the entry did not write, in a document
+                     ;; where nobody else wrote a token or a text since: it
+                     ;; was there before the entry, which only took it inside
+                     ;; the token it made (a sentence split's second half),
+                     ;; and the entry's own rows that go back cover it again
+                     ;; (S7-1). A row left so is caught by the final checks.
+                     (and inside? (nil? d) (not (contains? (get foreign (:doc i)) "tokens"))
+                          (not (contains? (get foreign (:doc i)) "texts"))
+                          (not (contains? texts-since (:text_id (:after i)))))
+                     false
                      :else true)))]
     (case op
       :delete

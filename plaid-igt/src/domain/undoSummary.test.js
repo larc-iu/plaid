@@ -4,6 +4,7 @@ import {
   jobUndoError,
   leftCounts,
   leftGroups,
+  leftLine,
   notUndoneLines,
   undoError,
   undoneLine,
@@ -136,6 +137,13 @@ describe('undoneLine', () => {
         tokens: 'with-text',
       }),
     ).toBe('1 value removed and the text with its words and sentences put back as it was');
+    // S7-1: with no text undone, its tokens may be sentences as well as words.
+    expect(undoneLine(summary({ tokens: counts(2) }), { tokens: 'with-text' })).toBe(
+      '2 words or sentences put back as they were',
+    );
+    expect(leftLine([{ kind: 'token', id: 't1' }], { tokens: 'with-text' })).toBe(
+      '1 word or sentence',
+    );
     // An import undone.
     expect(
       undoneLine(
