@@ -1191,7 +1191,7 @@ A banner at the top of the document shows the run on every tab: its progress, wh
 Its button spins until the run ends.
 A run also outlives the page that started it: reopen the document and the run is picked up where it got to.
 **Stop** on the banner ends a run, and whatever it wrote stays.
-A Tokenize service run that is stopped or fails says **Nothing was written.** when the document is as it was, or **The document changed during the run.** when it is not.
+A Tokenize service run that is stopped or fails says **Nothing was written.** when the document is as it was, or **The document changed during the run.** when it is not. A run the server stops because the document was changed elsewhere says **Changed elsewhere during the run.**
 Speech detection writes nothing, so it can run while you work, and its dialog shows its progress and **Stop** instead of the banner.
 A run that asks a model about each sentence stops early when the model gives no answer for two sentences in a row.
 

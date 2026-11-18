@@ -1,6 +1,6 @@
 import { useState, useCallback, useRef } from 'react';
 import { notifySuccess, notifyError, notifyInfo, notifyWarning } from '../lib/notify.js';
-import { humanizeError } from '../lib/errors.js';
+import { CHANGED_ELSEWHERE, humanizeError } from '../lib/errors.js';
 import { showRunNotice } from '../lib/runNotice.js';
 import { discoverServices as readServices } from '../lib/discoverServices.js';
 import { uuidv4 } from '../../../plaid-client-js/src/ids.js';
@@ -161,6 +161,17 @@ export const useServiceRequest = (client) => {
     const said = error?.notLive
       ? `${copy.serviceName || 'The service'} is not running on this project.`
       : humanizeError(error, copy.errorMessage);
+    // A run the server stopped because the document changed under it
+    // (H3-10-4): no edit of the person's to redo, and maybe nothing written.
+    if (said === CHANGED_ELSEWHERE) {
+      const conflict = 'Changed elsewhere during the run.';
+      setProgressMessage(conflict);
+      notifyError(
+        copy.runName ? `${conflict} Run ${copy.runName} again.` : conflict,
+        copy.errorTitle,
+      );
+      return;
+    }
     setProgressMessage(said);
     // A run that never reached its service wrote nothing, and says so as it
     // is (`notLive`). Any other failure says what became of the document.

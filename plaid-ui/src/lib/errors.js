@@ -9,6 +9,10 @@
 // is reached from plain node, and that module imports nothing of the page.
 import { violationsOf } from '../../../plaid-client-js/src/constraints.js';
 
+// A write refused because the document moved on since it was read.
+export const CHANGED_ELSEWHERE =
+  'Changed elsewhere. Now showing the latest version. Redo your edit.';
+
 // Pull an HTTP status off an error object or its message ("HTTP 423 …").
 export const statusOf = (error) => {
   if (error && typeof error.status === 'number') return error.status;
@@ -260,7 +264,7 @@ export const humanizeError = (error, fallback = 'Something went wrong.') => {
     case 409:
       // Both apps resync a document after a conflict, so the user is never
       // told to reload by hand.
-      return 'Changed elsewhere. Now showing the latest version. Redo your edit.';
+      return CHANGED_ELSEWHERE;
     case 413:
       // Over the server's cap on a request's body. A document that long is
       // to be split (the huge-documents ruling), not sent in pieces.

@@ -632,7 +632,7 @@ While a run writes to a document, the document is read-only, and a banner at the
 A run keeps going if you leave the document or close the tab, and reopening the document picks it up.
 Closing or reloading the tab asks first.
 **Stop** on the banner ends a run, and whatever it wrote stays. A parse that stops partway can be run again to finish.
-A run that is stopped or fails says **Nothing was written.** when the document is as it was, or **The document changed during the run.** when it is not.
+A run that is stopped or fails says **Nothing was written.** when the document is as it was, or **The document changed during the run.** when it is not. A run the server stops because the document was changed elsewhere says **Changed elsewhere during the run.**
 
 Everything a service produces is marked in violet until a person confirms it (see <<_machine_vs_human_annotations>>).
 A run that changed nothing says so.

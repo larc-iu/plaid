@@ -458,3 +458,23 @@ describe('a stopped run that reads the version', () => {
     await r.unmount();
   });
 });
+
+// H3-10-4: a run the server stopped at a version mismatch said "Redo your
+// edit." to a person who had made none, and "Run Parse again to finish." of a
+// parse that had written nothing.
+describe('a run stopped because the document changed elsewhere', () => {
+  it('names the change and the run, and asks for no edit to be redone', async () => {
+    const err = new Error('HTTP 409 Document version mismatch');
+    const client = {
+      ...fakeClient(() => err),
+      documents: {
+        get: vi.fn().mockResolvedValueOnce({ version: 3 }).mockResolvedValue({ version: 4 }),
+      },
+    };
+    const r = await mount(client);
+    await run(r, { ...COPY, runName: 'Parse' });
+    const [said] = notify.notifyError.mock.calls[0];
+    expect(said).toBe('Changed elsewhere during the run. Run Parse again.');
+    await r.unmount();
+  });
+});
