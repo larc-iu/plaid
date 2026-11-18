@@ -5284,9 +5284,12 @@ class IgtRunner:
                     new = ([{'seed': uuid7(), 'ops': others}] if others else []) + (
                         [{'seed': uuid7(), 'ops': [d, *carried(d)]} for d in dels] if len(dels) > 1 else [])
                     if len(dels) == 1:
-                        self.record_changes([{**self.describe_loose(dels[0]), 'label': _cut(
-                            f'{dels[0].get("label") or "Delete entry"}: not deleted, the entry is linked where '
-                            'the job cannot read', JOB_CHANGE_VALUE_CHARS)}])
+                        # Its name cut, never the reason, and no count of
+                        # links removed beside a delete that was not done
+                        # (REV-SJ2-8).
+                        why = ': not deleted, the entry is linked where the job cannot read'
+                        name = _cut(dels[0].get('name') or 'an entry', JOB_CHANGE_VALUE_CHARS - len(why) - 13)
+                        self.record_changes([{**self.describe_loose(dels[0]), 'label': f'Delete entry {name}{why}'}])
                     self.keep_rows(w, [r for n in new for r in w.rows(n['seed'], n['ops'], replaces=seed)]
                                    or [w.marker(seed)])
                     queue[0:0] = new

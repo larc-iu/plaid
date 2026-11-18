@@ -56,7 +56,8 @@ def test_a_delete_refused_for_links_the_job_cannot_see_is_listed_once(monkeypatc
     assert sum(1 for a in asked if '"Alpha"' in a and 'Your piece' in a) == 1, 'the piece is not run again'
     proposed = finished['report'].get('proposed') or []
     (deleted,) = [p for p in proposed if p['kind'] == 'delete_entry']
-    assert 'linked where the job cannot read' in deleted['label'], deleted
+    assert deleted['label'].endswith(': not deleted, the entry is linked where the job cannot read'), deleted
+    assert 'removed' not in deleted['label'] and deleted['label'].startswith('Delete entry '), deleted
     assert not deleted.get('reason'), deleted
     assert 'go-JOB' in str(client.payloads('spans.create'))
     assert 'someone was editing' not in (finished['report'].get('notice') or '')
