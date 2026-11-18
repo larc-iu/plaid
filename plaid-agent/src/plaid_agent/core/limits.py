@@ -306,12 +306,16 @@ JOB_PLAN_SEARCH_PATTERN_MAX_CHARS = 200
 # 2026-11-13, fixer JG). Every part a model context is given has a budget.
 #: The largest document worked as one piece, as its message renders it, in
 #: the tokens the piece's budget counts (D23: in characters, a document in a
-#: script of several tokens a letter passed and then failed before any call).
-#: 10,000 is what the old gate of 40,000 characters let through of Latin
-#: text (about 4 characters a token), so Latin documents are worked whole
-#: exactly as before (REV-JR1-1). A larger one is worked in stretches of
-#: sentences, and the report says so.
-JOB_DOCUMENT_PIECE_MAX_TOKENS = 10000
+#: script of several tokens a letter passed and then failed before any call):
+#: a quarter of JOB_CALL_MAX_PROMPT_TOKENS, which leaves room for the prompt,
+#: the tool list and the reads. Measured on the rendered text with the prod
+#: model's counter (REV-JR1-R2-1): glossed Latin IGT is about 2.7 characters
+#: a token, so this lets through what the old gate of 40,000 characters did
+#: (about 43,000 characters). Unglossed orthography with apostrophes is
+#: about 1.7 (about 28,000 characters), CJK 1.6, Arabic 1.5, Devanagari 1.4,
+#: Meitei Mayek and IPA with diacritics 0.9. A larger one is worked in
+#: stretches of sentences, and the report says so.
+JOB_DOCUMENT_PIECE_MAX_TOKENS = JOB_CALL_MAX_PROMPT_TOKENS // 4
 #: The documents the planning context is told of, one line each.
 JOB_PLAN_DOCUMENT_LINES = 200
 #: The most targets a planning message's document line names as holding

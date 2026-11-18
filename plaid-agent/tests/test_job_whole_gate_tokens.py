@@ -48,3 +48,37 @@ def test_the_plans_size_counts_a_document_over_the_token_cap_in_stretches():
         {'id': 'd1', 'sentences': 12, 'tokens': 100},
         {'id': 'd2', 'sentences': 10, 'tokens': JOB_DOCUMENT_PIECE_MAX_TOKENS + 1}], False)
     assert sizes.startswith('This plan is 3 pieces over 2 documents'), sizes
+
+
+def _glossed(n_sentences):
+    words = [('kaniwa', [('kani', 'go'), ('-wa', 'PST')], 'human'), ('tolom', [('tolom', 'house')], 'human'),
+             ('sideka', [('side', 'eat'), ('-ka', '3SG')], 'human'), ('mu', [('mu', 'and')], 'human')]
+    return document('d1', 'Story', [{'words': words * 3} for _ in range(n_sentences)])
+
+
+def _rendered(r, project, doc):
+    from plaid_agent.igt.project import render_sentence
+    return len('\n'.join(render_sentence(s, project) for s in doc.sentences))
+
+
+def test_glossed_latin_text_goes_whole_as_under_the_old_40000_characters():
+    """REV-JR1-R2-1: by the model's own counter (no counter injected, as the
+    real worker builds the runner), a glossed Latin document of about 38,000
+    rendered characters is still one piece, and one of about 45,000 is not."""
+    from plaid_agent.igt.job import runner_factory
+    for target, whole in ((38000, True), (45000, False)):
+        n = 1
+        while True:
+            client = JobClient({'d1': _glossed(n)})
+            job = start(client, plan='document')
+            r = runner_factory(ModelConfig(model='openai/qwen3.8-27b', stream=False, max_steps=1000),
+                               count=None)(job)
+            r.plan(job)
+            project = r.project()
+            doc = r.read(project, 'd1')
+            size = _rendered(r, project, doc)
+            if size >= target:
+                break
+            n = max(n + 1, int(n * target / max(size, 1)))
+        assert abs(size - target) < 2000, size
+        assert r.whole_document(project, doc) is whole, (size, r.document_tokens(doc, project))
