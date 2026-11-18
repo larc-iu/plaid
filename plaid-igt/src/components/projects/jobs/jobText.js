@@ -684,6 +684,8 @@ const REFUSED_TEXT = {
   // under onlynew (REV-RPF3B-5). Named by where, as it was never made
   // (REV-RPF3B-10).
   outside: 'Outside the part’s own sentences',
+  // A change in a sentence too long for a job (S8-1).
+  'too-long': 'Change in a sentence too long for a job',
 };
 export const refusedText = (code) => REFUSED_TEXT[code] ?? 'Refused';
 

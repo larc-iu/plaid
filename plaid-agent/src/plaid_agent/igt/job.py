@@ -151,7 +151,9 @@ FILLING_TOOLS = frozenset({'set_analysis', 'analyze_sentence', 'set_field', 'set
 FILL_REF = re.compile(r'^s(\d+)(?:\.w(\d+)(?:-w?(\d+))?(?:\.m\d+)?)?(?:\s+"([^"]*)")?$')
 #: A value, an analysis or a link outside the piece's own sentences (RP3-2).
 OUTSIDE = 'outside'
-LEFT_CODES = ('text', 'shape', 'entry-new', 'entry-gone', 'expression', 'not-added', RETYPED, OUTSIDE)
+#: A change in a sentence the checks skipped as too long for a job (S8-1).
+TOO_LONG = 'too-long'
+LEFT_CODES = ('text', 'shape', 'entry-new', 'entry-gone', 'expression', 'not-added', RETYPED, OUTSIDE, TOO_LONG)
 #: What a refusal the job could not follow left (``JobWorkspace.leave_it``).
 REFUSED_FORM = ' refused '
 TABLE_FORM = ' table '
@@ -1451,6 +1453,26 @@ def outside_piece_text(op: Dict[str, Any]) -> str:
     return f'{op.get("label") or op.get("kind")}: this sentence is not one of your piece\'s: a piece writes only in its own.'
 
 
+def too_long_text(op: Dict[str, Any]) -> str:
+    """What a change in a sentence too long for a job says, to the piece
+    and in the report's refused list (S8-1)."""
+    return (f'{op.get("label") or op.get("kind")}: this sentence is too long for a job (over '
+            f'{JOB_SENTENCE_MAX_WORDS:,} words or {JOB_SENTENCE_MAX_CHARS:,} characters), and a job writes nothing in it.')
+
+
+def in_too_long(op: Dict[str, Any], too_long: set, docs: Iterable[Any]) -> Optional[str]:
+    """The id of the sentence among ``too_long`` that ``op`` writes in
+    (:func:`jobapply.sentence_of` in any of ``docs``), else None."""
+    if not too_long:
+        return None
+    from .jobapply import sentence_of
+    for d in docs:
+        s = sentence_of(op, d)
+        if s is not None:
+            return s.id if s.id in too_long else None
+    return None
+
+
 def not_added_text(op: Dict[str, Any]) -> str:
     """What a value refused by :func:`not_added` says, to the piece and in
     the report's refused list."""
@@ -1516,6 +1538,9 @@ class JobWorkspace(Workspace):
         #: the words and sentences its text edits added, ``(words,
         #: sentences)``, and the setup's target ids; None for any other job
         self.only_new: Optional[Tuple[set, set]] = None
+        #: the sentences the checks skipped as too long for a job, where
+        #: nothing is staged (``refuse_too_long``, S8-1)
+        self.too_long: set = set()
 
     def leave_it(self, fact: str, sentence_id: Optional[str] = None, code: Optional[str] = None) -> str:
         """A refusal whose chat advice a job cannot follow (a later turn,
@@ -1605,7 +1630,17 @@ class JobWorkspace(Workspace):
             self.fit_guard(op)
         self.refuse_outside(op)
         self.refuse_not_added(op)
+        self.refuse_too_long(op)
         super().guard_op(op, replacing=replacing)
+
+    def refuse_too_long(self, op: Dict[str, Any]) -> None:
+        """A change in a sentence the checks skipped as too long for a job
+        is refused, whatever path staged it: its writing row could not name
+        its words (REV-B4-1), and the report lists it skipped (S8-1)."""
+        out = in_too_long(op, self.too_long, self._docs.values())
+        if out is not None:
+            raise ToolError(too_long_text(op), kind='not-allowed', code=TOO_LONG,
+                            advice='Leave that sentence.', sentence_id=out)
 
     def refuse_outside(self, op: Dict[str, Any]) -> None:
         """Under a setup that fills only the words the job adds: a value, an
@@ -3288,6 +3323,7 @@ class IgtRunner:
         job = self.job
         job.check()
         ws = JobWorkspace(job.client(), project)
+        ws.too_long = set().union(*(self.too_long_ids(d) for d in documents))
         names = []
         for d in documents:
             row = job.rows.get(d) or {}
@@ -4123,6 +4159,7 @@ class IgtRunner:
         # (toolkit.sentences_piece_tools).
         ws.in_sentences = self.in_sentences() and not whole
         ws.whole = whole
+        ws.too_long = self.too_long_ids(document_id)
         # Every sentence's print, not only the piece's: an op the model
         # stages anywhere in the document is checked against the sentence
         # as the model read it.
@@ -4335,7 +4372,8 @@ class IgtRunner:
         is empty in them, how their blank forms were analysed before, the
         job's instructions and the plan's."""
         if whole:
-            context, shown = [], [s.index for s in doc.sentences]
+            # Never a sentence too long for a job: nothing is written there (S8-1).
+            context, shown = [], [s.index for s in doc.sentences if s.id not in ws.too_long]
         else:
             mine = {s.index for s in part}
             near = {i for s in part for i in range(s.index - JOB_CONTEXT_SENTENCES, s.index)}
@@ -4359,6 +4397,9 @@ class IgtRunner:
             # A sentence the walk takes with nothing empty (every sentence
             # is walked unless the plan skips filled ones) says so (BRIEF EW).
             lines.append(f'Nothing empty in {", ".join(full)} of what this job fills.')
+        hidden = [f's{s.index}' for s in doc.sentences if whole and s.id in ws.too_long]
+        if hidden:
+            lines.append(f'Too long for a job, not shown, and nothing is written there: {", ".join(hidden)}.')
         if self.only_new(project) is not None:
             lines.append(ONLY_NEW_TEXT_LINE if self.edits_text() and not self.following else ONLY_NEW_LINE)
         # A piece of a plan in sentences is handed the evidence its model
@@ -4836,6 +4877,13 @@ class IgtRunner:
                 out += [{**c, 'reason': INTERRUPTED} for c in r.get('ops') or [] if canonical(c) not in made]
                 more += r.get('more') or 0
         return out, more
+
+    def too_long_ids(self, document_id: str) -> set:
+        """The sentences of a document the checks skipped as too long for a
+        job: listed on its row, or counted past the list (S8-1)."""
+        row = self.job.rows.get(document_id) or {}
+        return {s.get('sentence_id') for s in row.get('skipped') or [] if s.get('reason') == 'too-long'} | (
+            self.too_long.get(document_id) or set())
 
     def excluded(self, document_id: str) -> set:
         """The sentences of a document no piece works: skipped, or written
@@ -5339,6 +5387,12 @@ class IgtRunner:
             if out is not None:
                 ws.leave_it(outside_piece_text(op), out[0], code=OUTSIDE)
                 refused.append({'sentence_id': out[0], 'what': outside_piece_text(op), 'code': OUTSIDE})
+                continue
+            # Nor in a sentence the checks skipped as too long (S8-1).
+            out = in_too_long(op, self.too_long_ids(fresh.id), [fresh])
+            if out is not None:
+                ws.leave_it(too_long_text(op), out, code=TOO_LONG)
+                refused.append({'sentence_id': out, 'what': too_long_text(op), 'code': TOO_LONG})
                 continue
             live.append(op)
         if refused:

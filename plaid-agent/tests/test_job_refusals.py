@@ -224,7 +224,8 @@ def test_what_a_refusal_left_says_what_kind_of_refusal_it_was(scenario):
     w, _ = _said(SCENARIOS[scenario])
     assert w.left_by_refusal and {e['code'] for e in w.left_by_refusal} == {CODES.get(scenario, 'text')}, \
         w.left_by_refusal
-    assert set(LEFT_CODES) == {'text', 'shape', 'entry-new', 'entry-gone', 'expression', 'not-added', 'retyped', 'outside'}
+    assert set(LEFT_CODES) == {'text', 'shape', 'entry-new', 'entry-gone', 'expression', 'not-added', 'retyped', 'outside',
+                               'too-long'}
 
 
 def test_leave_it_keeps_its_docstring_and_takes_any_code():
