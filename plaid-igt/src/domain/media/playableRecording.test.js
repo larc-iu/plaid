@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { convertedNote, prepareRecording, prepareRecordings } from './playableRecording.js';
+import { emptyWav } from './mixdown.js';
 
 const fixture = (name, as = name) =>
   new File(
@@ -37,6 +38,15 @@ describe('prepareRecording', () => {
     expect(ready.convertedFrom).toBe('IMA ADPCM');
     await prepareRecording(fixture('pcm.wav'), { onConvert: (name) => told.push(name) });
     expect(told).toEqual(['talk.WAV']);
+  });
+
+  it('refuses a WAV with no audio in it, and takes one with a frame (H2-3-3)', async () => {
+    const wav = (frames, channels = 3) =>
+      new File([emptyWav(channels, frames, 48000)], 'mix.wav', { type: 'audio/wav' });
+    expect(await prepareRecording(wav(0))).toEqual({ refused: 'mix.wav has no audio.' });
+    expect(await prepareRecording(wav(0, 1))).toEqual({ refused: 'mix.wav has no audio.' });
+    const one = wav(1);
+    expect(await prepareRecording(one)).toEqual({ file: one, convertedFrom: null });
   });
 
   it('refuses a WAV coding it cannot decode, by file name and coding', async () => {

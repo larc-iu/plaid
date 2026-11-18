@@ -129,6 +129,18 @@ describe('MixRecordingsDialog', () => {
     expect(onUpload).toHaveBeenCalledWith(mixed, { channelSpeakers: ['Ana', 'Ben'] });
   });
 
+  it('refuses a mix whose offsets trim away every file (H2-3-3)', async () => {
+    const onUpload = vi.fn();
+    await mount({ onUpload });
+    await type(field('ana.wav offset in seconds'), '-10');
+    await type(field('ben.wav offset in seconds'), '-12');
+    expect(text()).toContain('The offsets trim away every file.');
+    expect(button('Upload').disabled).toBe(true);
+    await type(field('ben.wav offset in seconds'), '-7');
+    expect(text()).not.toContain('The offsets trim away every file.');
+    expect(button('Upload').disabled).toBe(false);
+  });
+
   it('an offset changes the size it says', async () => {
     await mount();
     await type(field('ben.wav offset in seconds'), '5');

@@ -13,7 +13,7 @@ import { Progress } from '@ui/components/ui/progress';
 import { formatBytes } from '@/utils/formatBytes';
 import { notifyError } from '@/utils/feedback';
 import { readTrack, mixTracks } from '@/domain/media/mixRecordings';
-import { mixBytes, mixRate, startingQuality, trackNote } from '@/domain/media/mixdown';
+import { mixBytes, mixRate, mixSeconds, startingQuality, trackNote } from '@/domain/media/mixdown';
 import { formatTime } from './formatTime.js';
 import { QualityChoice } from './QualityChoice.jsx';
 
@@ -95,13 +95,15 @@ export function MixRecordingsDialog({
   const quality = chosen ?? startingQuality(bytesOf, maxBytes);
   const bytes = bytesOf(quality);
   const overLimit = maxBytes != null && bytes != null && bytes > maxBytes;
+  // Offsets that trim every file to nothing leave a mix with no sound (H2-3-3).
+  const empty = !!plan && mixSeconds(plan) <= 0;
 
   const setTrack = (i, patch) =>
     setTracks((prev) => prev.map((t, k) => (k === i ? { ...t, ...patch } : t)));
   const removeTrack = (i) => setTracks((prev) => prev.filter((_, k) => k !== i));
 
   const upload = async () => {
-    if (!ready || overLimit || mixing) return;
+    if (!ready || overLimit || empty || mixing) return;
     setMixing({ index: 0, total: tracks.length });
     const abort = new AbortController();
     mixAbort.current = abort;
@@ -228,6 +230,11 @@ export function MixRecordingsDialog({
             disabled={!!mixing}
           />
 
+          {empty && (
+            <p className="text-xs font-medium text-destructive">
+              The offsets trim away every file.
+            </p>
+          )}
           {overLimit && (
             <p className="text-xs font-medium text-destructive">
               This server accepts {formatBytes(maxBytes, { against: bytes })}. The mix is{' '}
@@ -251,7 +258,7 @@ export function MixRecordingsDialog({
           <Button variant="outline" onClick={() => (mixing ? stopMix() : onOpenChange(false))}>
             Cancel
           </Button>
-          <Button onClick={upload} disabled={!ready || failed || overLimit || !!mixing}>
+          <Button onClick={upload} disabled={!ready || failed || overLimit || empty || !!mixing}>
             Upload
           </Button>
         </DialogFooter>

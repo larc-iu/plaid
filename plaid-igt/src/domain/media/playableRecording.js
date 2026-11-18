@@ -86,6 +86,9 @@ export async function prepareRecording(file, { canPlay = browserCanPlay, onConve
   const name = file.name || 'recording';
   const info = await readWavInfo(fileReader(file), file.size).catch(() => null);
   if (info) {
+    // A WAV of no frames stores and then only fails to play (H2-3-3).
+    if (!(info.dataSize >= Math.max(1, info.blockAlign)))
+      return { refused: `${name} has no audio.` };
     const verdict = wavVerdict(info);
     if (verdict === 'play') return { file, convertedFrom: null };
     if (verdict === 'convert') {
