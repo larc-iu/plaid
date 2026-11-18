@@ -3026,6 +3026,11 @@ class IgtRunner:
         # hands them to the next (REV-JH-2).
         loose = [{**op, LOOSE: i} for i, op in enumerate(by_doc.pop(None, []))]
         self.try_loose = {}
+        # Whether the job's own changes of no document have landed: the
+        # documents written after are then compared with what they read
+        # now, so the links its own lexicon change moved there are not a
+        # change during the job (S2-1).
+        moved = False
         read = [d for d in live if d in ws._docs]
         # What the piece staged in a document the job does not write in (one
         # outside the job, or one of its own it has finished) is a proposed
@@ -3063,7 +3068,9 @@ class IgtRunner:
                 # The fallback row and the held cursor before the write.
                 self.go_on(d, ws._docs[d], left_of[d])
             try:
-                if self.write_piece(project, d, ws, ws._docs[d], by_doc.get(d, []) + carried, note, shown, key):
+                if self.write_piece(project, d, ws, ws._docs[d], by_doc.get(d, []) + carried, note, shown, key,
+                                    reread=moved):
+                    moved = moved or bool(loose)
                     loose = []
             except Deferred as e:
                 # Its writes were dropped: it is worked again in stretches
@@ -3075,11 +3082,13 @@ class IgtRunner:
                 # What a landed try of it wrote is never sent again nor
                 # listed: the rest goes with the next write.
                 done = core_job.through_core(job, self.loose_landed)
+                moved = moved or any(op[LOOSE] in done for op in loose)
                 loose = [op for op in loose if op[LOOSE] not in done]
                 continue
             except Gone:
                 core_job.through_core(job, lambda: job.update_row(d, state='gone'))
                 done = core_job.through_core(job, self.loose_landed)
+                moved = moved or any(op[LOOSE] in done for op in loose)
                 loose = [op for op in loose if op[LOOSE] not in done]
                 continue
             finally:
@@ -3245,7 +3254,8 @@ class IgtRunner:
                             **self.tally(document_id, (self.job.rows.get(document_id) or {}).get('skipped')))
 
     def write_piece(self, project: IgtProject, document_id: str, ws: JobWorkspace, doc,
-                    ops: List[Dict[str, Any]], note: str, shown=frozenset(), summary: Optional[str] = None) -> bool:
+                    ops: List[Dict[str, Any]], note: str, shown=frozenset(), summary: Optional[str] = None,
+                    reread: bool = False) -> bool:
         """A selection's write in one of the documents its piece read: THE
         write (:meth:`write`), its piece the sentences of the document a read
         printed to the model (``shown``, sentence ids, REV-JG3-1: the gate
@@ -3255,10 +3265,15 @@ class IgtRunner:
         as any op of the document. Tried again from the gate after core's
         passing trouble, and put off (:class:`Deferred`) when the trouble
         outlasts the tries, as a stretch's document is (REV-JG-4). Whether
-        the write landed (:meth:`write`)."""
+        the write landed (:meth:`write`). With ``reread``, after the
+        selection's own changes of no document landed (a lexicon change that
+        moved links here), the prints are of the document as it is now: the
+        look inside the write still puts it off when anyone else wrote there
+        since the piece's mark (REV-HFA-2, S2-1)."""
         def step():
             part = [s for s in doc.sentences if s.id in shown]
-            prints = {s.id: ws.sentence_print(doc, s) for s in doc.sentences}
+            now = self.read(project, document_id) if reread else doc
+            prints = {s.id: ws.sentence_print(now, s) for s in now.sentences}
             return self.write(project, document_id, ws, doc, part, prints, ops, note, SELECTION_TAG, selection=True,
                               summary=summary)
         return self.off_on_trouble(document_id, step)
