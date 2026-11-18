@@ -4675,8 +4675,15 @@ class IgtRunner:
                         # Someone wrote after the piece's look (REV-HFA-1,
                         # -2): nothing is sent, the document is put off.
                         raise Deferred(document_id)
-                    w, changed, after, vouched, proposed = self.write_held(
-                        project, document_id, client, ws, st, prints, ops, group, piece, repeated, undone, summary)
+                    try:
+                        w, changed, after, vouched, proposed, put_off = self.write_held(
+                            project, document_id, client, ws, st, prints, ops, group, piece, repeated, undone,
+                            summary)
+                    except BaseException:
+                        # Tries of it may have landed: the document is
+                        # settled again from what core holds (D4).
+                        self.settled.discard(document_id)
+                        raise
                 finally:
                     lock.__exit__(None, None, None)
             except DocumentLockLost as e:
@@ -4716,11 +4723,15 @@ class IgtRunner:
         # piece's proposed changes, never before (REV-J-B2 S4). A call core
         # fails here leaves the document to be settled again, which keeps
         # them from the write's rows (REV-JG3-2).
+        # Each record tried again on its own after core's passing trouble,
+        # never the write (D4). A write put off after tries of it landed
+        # records what they did to the text, and is settled again from
+        # what core holds when the walk comes back.
         try:
             if any(jobapply.edits_text(o) for o in w.ops):
                 if self.only_new(project) is not None:
-                    self.record_added(document_id, w.fresh, after)
-                self.record_respelled(document_id, w.fresh, after)
+                    core_job.through_core(job, lambda: self.record_added(document_id, w.fresh, after))
+                core_job.through_core(job, lambda: self.record_respelled(document_id, w.fresh, after))
                 if not self.following:
                     # The sentences whose text or words this write changed,
                     # by id in the document it left (a sentence a split made
@@ -4732,7 +4743,13 @@ class IgtRunner:
                     had = {s.id: shape(s) for s in w.fresh.sentences}
                     self.text_edited.setdefault(document_id, set()).update(
                         s.id for s in after.sentences if had.get(s.id) != shape(s))
-            self.record_changes(proposed, note)
+            if put_off is not None:
+                self.settled.discard(document_id)
+                raise put_off
+            core_job.through_core(job, lambda: self.record_changes(proposed, note))
+            # Not tried again on its own: it counts sentences changed during
+            # the piece as it goes. A call core fails here leaves the
+            # document to be settled again from what core holds.
             self.record(project, document_id, after, part, st, changed, vouched,
                         self.made_entries(ws, after, st, w.ops))
         except BaseException:
@@ -4790,14 +4807,31 @@ class IgtRunner:
         if summary in self.unsummed:
             # Before the first request: a write cut short is counted by what of it landed.
             self.unsummed[summary]['writes'].add(w.id)
-        self.send(client, project, document_id, group, w)
+        put_off = None
+        try:
+            self.send(client, project, document_id, group, w)
+        except (Deferred, PlanError) as e:
+            # Tries of it landed before it was put off (a later try out of
+            # date, or refused as :meth:`write` puts a write off): what they
+            # did to the text is recorded before it goes (D4).
+            if not w.done or (isinstance(e, PlanError) and not (_status(e) in (409, 423) or _gone_now(e))):
+                raise
+            put_off = e if isinstance(e, Deferred) else Deferred(document_id)
+            put_off.__cause__ = put_off.__cause__ or e
         known = client.document_versions.get(document_id)
-        after = self.read(project, document_id, client)
+        # Read again as any read is while core is busy: a landed write's
+        # records need it (D4). Trouble that outlasts the tries leaves the
+        # write as one that landed.
+        try:
+            after = core_job.through_core(job, lambda: self.read(project, document_id, client))
+        except BaseException as e:
+            e.wrote_any = True
+            raise
         exact = known is not None and str(after.version) == str(known)
         if not exact:
             logger.info('Job %s: %s moved during the write (version %s, read %s): its words are not vouched for',
                         job.id, document_id, known, after.version)
-        return w, changed, after, frozenset(blank) if exact else frozenset(), proposed
+        return w, changed, after, frozenset(blank) if exact else frozenset(), proposed, put_off
 
     def send(self, client, project: IgtProject, document_id: str, group: str, w: Write) -> None:
         """Send a write as TRIES (:meth:`Write.cut`), each one request, in
