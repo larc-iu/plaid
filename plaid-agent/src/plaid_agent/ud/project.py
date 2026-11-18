@@ -131,9 +131,16 @@ def space_refusal(field: str, value) -> Optional[str]:
     the next step, or None. plaid-ud's ``spaceRefusal`` (REV-HFU-3): a lemma
     or a form may hold a space, and no other field is refused here."""
     named = _SPACE_FREE.get(field)
-    if not named or not isinstance(value, str) or not re.search(r'\s', value):
+    if not named or not isinstance(value, str):
         return None
-    return f'"{value}": {named[0]} cannot contain spaces. {named[1]}'
+    if re.search(r'\s', value):
+        return f'"{value}": {named[0]} cannot contain spaces. {named[1]}'
+    # An empty part ('nmod:', 'obl::', ':poss'), which a closed list, reading
+    # only the part before the first colon, let through (H3-1-3).
+    if field == 'deprel' and re.search(r'^:|:$|::', value):
+        return (f'"{value}": A dependency relation cannot start or end with a colon, or hold two in a '
+                f'row. {named[1]}')
+    return None
 
 
 

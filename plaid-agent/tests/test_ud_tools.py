@@ -270,6 +270,17 @@ def test_a_space_inside_upos_xpos_or_a_relation_is_refused(ws):
     assert 'A dependency relation cannot contain spaces.' in out and len(ws.ops) == 1
 
 
+def test_a_relation_with_an_empty_part_between_colons_is_refused(ws):
+    """H3-1-3: ``nmod:``, ``obl::`` and ``:poss`` are no relation, open list or
+    closed, as plaid-ud's ``spaceRefusal`` says."""
+    for label in ('nmod:', 'obl::', ':poss'):
+        out = run(ws, 'set_head', document='Viaje', ref='s1.w2', head=1, deprel=label)
+        assert 'A dependency relation cannot start or end with a colon' in out and not ws.ops, out
+    _engine_rows(ws, [('r-3', 'obl', 'ud1', 'uw-4')])
+    out = run(ws, 'replace_in_field', field='deprel', pattern='obl', replacement='obl:')
+    assert 'cannot start or end with a colon' in out and len(ws.ops) == 0, out
+
+
 def test_a_head_that_would_close_a_cycle_is_refused():
     """R1-DEBT-CORE-4: a basic tree holds no cycle (plaid-ud declares it on
     the layer), and an approved plan with one failed whole."""

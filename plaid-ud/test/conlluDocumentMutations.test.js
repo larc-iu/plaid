@@ -346,6 +346,32 @@ test('a stored value with a space is not refused when it is not being changed', 
   assert.match(doc.error, /UPOS value cannot contain spaces/);
 });
 
+// H3-1-3: a relation with an empty part ('nmod:', 'obl::', ':poss') was
+// stored on an open list and a closed one alike, since the closed list reads
+// only the part before the first colon, and exported as DEPREL `nmod:`.
+test('a relation with an empty part between colons is not written', async () => {
+  const raw = rawDocFromConllu(INPUT, 'mut-doc');
+  const client = provClient();
+  const doc = new ConlluDocument({ raw, client: withOps(client) });
+  const lemmaOf = (v) => doc.layerInfo.lemmaLayer.spans.find((s) => s.value === v).id;
+  const rel = doc.layerInfo.relationLayer.relations.find((r) => r.value === 'det');
+  for (const label of ['nmod:', 'obl::', ':poss', 'nmod::poss']) {
+    for (const write of [
+      () => doc.updateRelation(rel.id, label),
+      () => doc.createRelation(lemmaOf('perro'), lemmaOf('de'), label),
+      () => doc.createEnhancedRelation(lemmaOf('perro'), lemmaOf('de'), label),
+    ]) {
+      doc.clearError();
+      assert.equal(await write(), false, label);
+      assert.match(doc.error, /relation cannot start or end with a colon/);
+    }
+  }
+  assert.deepEqual(client.calls, []);
+  assert.equal(rel.value, 'det');
+  // A subtype with a part on each side of every colon is fine.
+  assert.equal(await doc.updateRelation(rel.id, 'det:poss'), true);
+});
+
 test('typing a feature the word does not have creates a span and confirms nothing', async () => {
   const raw = rawDocFromConllu(INPUT, 'mut-doc');
   const client = provClient();

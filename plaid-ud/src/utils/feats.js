@@ -66,4 +66,8 @@ const SPACE_FREE = {
 export const spaceRefusal = (field, value) =>
   SPACE_FREE[field] && typeof value === 'string' && /\s/.test(value)
     ? `${SPACE_FREE[field]} cannot contain spaces.`
-    : null;
+    : field === 'deprel' && typeof value === 'string' && /^:|:$|::/.test(value)
+      ? // An empty part ('nmod:', 'obl::', ':poss'), which a closed list,
+        // reading only the part before the first colon, let through (H3-1-3).
+        'A dependency relation cannot start or end with a colon, or hold two in a row.'
+      : null;
