@@ -437,7 +437,7 @@ describe('the job page’s list of its work', () => {
   it('labels the pieces’ notes as the assistant’s, not checked', async () => {
     const v = await mount(clientOf([jobOf()], [page([FIRST])]));
     const section = v.container.querySelector(
-      'section[aria-label="Work so far"], section[aria-label="Work, in order"]',
+      'section[aria-label="Work so far"], section[aria-label="Notes"]',
     );
     expect(text(section)).toContain(
       'Notes written by the assistant, not checked against the counts.',
