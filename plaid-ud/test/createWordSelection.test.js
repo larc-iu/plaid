@@ -57,3 +57,39 @@ test('a selection is trimmed to what is not whitespace, and one of whitespace ma
     ],
   );
 });
+
+// H3-3-2: a token made before the first Tokenize made one sentence over the
+// whole text, which Tokenize then kept: three lines became one sentence.
+test('a token made in a text with no sentences makes one sentence per line, as Tokenize does', async () => {
+  const body = 'Él vino ayer.\nNew York is big.\nShe left.';
+  const { doc, sent } = untokenized(body);
+  assert.equal(await doc.createWord(14, 22, body), true);
+  assert.deepEqual(
+    sent().filter(([layer]) => layer === 'sentence'),
+    [
+      ['sentence', 0, 14],
+      ['sentence', 14, 31],
+      ['sentence', 31, 40],
+    ],
+  );
+  assert.deepEqual(
+    [...doc.layerInfo.sentenceTokenLayer.tokens]
+      .map((t) => [t.begin, t.end])
+      .sort((a, b) => a[0] - b[0]),
+    [
+      [0, 14],
+      [14, 31],
+      [31, 40],
+    ],
+  );
+});
+
+test('a selection across lines in a text with no sentences makes one sentence over the text', async () => {
+  const body = 'one\ntwo';
+  const { doc, sent } = untokenized(body);
+  assert.equal(await doc.createWord(0, 7, body), true);
+  assert.deepEqual(
+    sent().filter(([layer]) => layer === 'sentence'),
+    [['sentence', 0, 7]],
+  );
+});

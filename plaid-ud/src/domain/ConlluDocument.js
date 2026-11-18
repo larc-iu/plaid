@@ -1162,7 +1162,9 @@ export class ConlluDocument extends DocumentModel {
     // layer). If sentences already tile the doc but the selection falls
     // outside every one, refuse — adding a new sentence into an already-
     // tiled doc would break partitioning. Only when no sentences exist yet
-    // do we transparently create one covering the whole text.
+    // do we transparently create them: one per run of lines, as Tokenize
+    // makes them (newlineSentenceRanges), else, for a selection across a
+    // line, one covering the whole text.
     const selRange = { begin, end };
     if (sentenceTokens.length > 0 && !sentenceTokens.some((s) => containsToken(s, selRange))) {
       this.refuse('Selection must be inside an existing sentence.');
@@ -1174,8 +1176,13 @@ export class ConlluDocument extends DocumentModel {
     // Token offsets are code points; .length is UTF-16 units and overshoots
     // on astral characters.
     const fullLen = cpLength(textContent);
-    const sentence =
-      sentenceTokens.length === 0 ? { id: pendingId(), begin: 0, end: fullLen } : null;
+    const lines = sentenceTokens.length === 0 ? newlineSentenceRanges(textContent) : [];
+    const acrossLines = lines.length > 0 && !lines.some(([b, e]) => b <= begin && end <= e);
+    const sentences = (acrossLines ? [[0, fullLen]] : lines).map(([b, e]) => ({
+      id: pendingId(),
+      begin: b,
+      end: e,
+    }));
     const wordRow = { id: pendingId(), begin, end };
     const { word: morpheme, lemma } = newUdWord(
       { begin, end },
@@ -1189,7 +1196,9 @@ export class ConlluDocument extends DocumentModel {
         if (!Array.isArray(layer[key])) layer[key] = [];
         layer[key].push(row);
       };
-      if (sentence) push(infoNext.sentenceTokenLayer, 'tokens', { ...sentence });
+      for (const sentence of sentences) {
+        push(infoNext.sentenceTokenLayer, 'tokens', { ...sentence });
+      }
       push(infoNext.wordTokenLayer, 'tokens', { ...wordRow });
       push(infoNext.morphemeTokenLayer, 'tokens', { ...morpheme });
       if (lemma) push(infoNext.lemmaLayer, 'spans', { ...lemma, tokens: [...lemma.tokens] });
@@ -1199,16 +1208,16 @@ export class ConlluDocument extends DocumentModel {
     // the id this page minted.
     return this._queueWrite(label, async () => {
       await this._client.batched(async (b) => {
-        if (sentence) {
-          b.tokens.bulkCreate([
-            {
+        if (sentences.length) {
+          b.tokens.bulkCreate(
+            sentences.map((sentence) => ({
               id: sentence.id,
               tokenLayerId: sentenceTokenLayer.id,
               text: text.id,
-              begin: 0,
-              end: fullLen,
-            },
-          ]);
+              begin: sentence.begin,
+              end: sentence.end,
+            })),
+          );
         }
         b.tokens.bulkCreate([
           { id: wordRow.id, tokenLayerId: wordTokenLayer.id, text: text.id, begin, end },
@@ -1228,9 +1237,7 @@ export class ConlluDocument extends DocumentModel {
           ]);
         }
       });
-      this._settle(
-        madeAsMinted(sentence ? [sentence] : [], [wordRow, morpheme], lemma ? [lemma] : []),
-      );
+      this._settle(madeAsMinted(sentences, [wordRow, morpheme], lemma ? [lemma] : []));
     });
   }
 
