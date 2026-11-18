@@ -223,10 +223,10 @@ export const CHECK_KINDS = {
   partway: 'Stopped partway',
   skipped: 'Skipped',
   left: 'Left blank',
-  untouched: 'Blank, not changed',
+  untouched: 'Not changed',
   people: 'People’s values',
   refused: 'Refused',
-  unread: 'Not read',
+  unread: 'Could not be read',
   text: 'Text changed',
 };
 

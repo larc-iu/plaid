@@ -13,6 +13,7 @@ vi.mock('../../../contexts/AuthContext', () => ({ useAuth: () => auth }));
 vi.mock('@/utils/feedback', () => ({ notifyError: vi.fn() }));
 const { JobPage } = await import('./JobPage.jsx');
 const { JOB_POLL_MS } = await import('@ui/domain/jobs.js');
+const { CHECK_KINDS } = await import('./jobOverview.js');
 
 const PROJECT = { id: 'p1', maintainers: ['m'], writers: ['w'], readers: [], vocabs: [] };
 
@@ -417,6 +418,14 @@ describe('the lists of an ended job', () => {
     const y = await mount(clientOf(ENDED), '?view=documents&filter=bogus');
     expect(at).toBe('/projects/p1/jobs/j1?view=documents');
     await y.unmount();
+    // Each reason's label in its row's words, one phrase (REV-RP-R2-4).
+    const z = await mount(clientOf(ENDED), '?view=documents&filter=untouched');
+    expect(all(z.container, 'button[aria-pressed="true"]').map(text)).toEqual([
+      `Not changed${N - 1}`,
+    ]);
+    await z.unmount();
+    expect(CHECK_KINDS.unread).toBe('Could not be read');
+    expect(Object.values(CHECK_KINDS).filter((l) => l.includes(','))).toEqual([]);
   });
 
   // REV-RP-10: the forms past the report's cut are said once, under the list.
