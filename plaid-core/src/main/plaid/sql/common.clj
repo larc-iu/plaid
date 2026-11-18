@@ -344,8 +344,11 @@
   DerivedCoreProperties: the combining grapheme joiner, the Hangul fillers,
   the Khmer inherent vowels, the Mongolian and other variation selectors, and
   the reserved default-ignorables (U+2065, U+FFF0 to U+FFF8, U+E0000 to
-  U+E0FFF, which also holds the tag characters)."
-  #"[\p{IsWhite_Space}\p{Cc}\p{Cf}\x{034F}\x{115F}\x{1160}\x{17B4}\x{17B5}\x{180B}-\x{180D}\x{180F}\x{2065}\x{3164}\x{FE00}-\x{FE0F}\x{FFA0}\x{FFF0}-\x{FFF8}\x{E0000}-\x{E0FFF}]*")
+  U+E0FFF, which also holds the tag characters). Less the prepended
+  concatenation marks, which are Cf but drawn and so not default-ignorable:
+  U+0600 to U+0605, U+06DD, U+070F, U+0890, U+0891, U+08E2, U+110BD and
+  U+110CD. A name of one of those alone is visible."
+  #"[\p{IsWhite_Space}\p{Cc}\p{Cf}\x{034F}\x{115F}\x{1160}\x{17B4}\x{17B5}\x{180B}-\x{180D}\x{180F}\x{2065}\x{3164}\x{FE00}-\x{FE0F}\x{FFA0}\x{FFF0}-\x{FFF8}\x{E0000}-\x{E0FFF}&&[^\x{0600}-\x{0605}\x{06DD}\x{070F}\x{0890}\x{0891}\x{08E2}\x{110BD}\x{110CD}]]*")
 
 (defn visible?
   "True when `s` holds at least one character that is not whitespace, a

@@ -49,12 +49,21 @@
   ["a" (s 0x0915 0x094D 0x200D) (s 0x200B 0x61) (s 0x61 0x200C 0x62) (s 0x2800)
    (s 0x1F44D 0x1F3FD) (s 0x0301) "x y"])
 
+(def ^:private concatenation-marks
+  "The prepended concatenation marks: Cf, but drawn, so not default-ignorable.
+  A name of one alone is visible (REV-RL2-3)."
+  [0x0600 0x0601 0x0602 0x0603 0x0604 0x0605 0x06DD 0x070F 0x0890 0x0891 0x08E2 0x110BD 0x110CD])
+
 (deftest the-predicate
   (doseq [[label n] invisible-names]
     (testing label (is (not (psc/visible? n)))))
   (is (not (psc/visible? "")))
   (doseq [n visible-names]
-    (testing (pr-str n) (is (psc/visible? n)))))
+    (testing (pr-str n) (is (psc/visible? n))))
+  (doseq [cp concatenation-marks]
+    (testing (format "U+%04X" cp) (is (psc/visible? (s cp)))))
+  (testing "beside spaces too"
+    (is (psc/visible? (s 0x20 0x06DD 0x20)))))
 
 (defn- call [method path body]
   (api-call admin-request {:method method :path path :body body}))
