@@ -199,7 +199,7 @@ test('the snapshot the reader clicked past is never shown', async ({ page }) => 
   await setGloss('Change the gloss to LATEST', 'LATEST');
   // The heal is slowed too, so that a stale commit would be on screen for long
   // enough to be seen rather than passing between two samples.
-  await delaySnapshot(page, await entryTime('Seed the original gloss'), 3000);
+  await delaySnapshot(page, await entryTime('Seed the original gloss'), 8000);
   await delaySnapshot(page, await entryTime('Change the gloss to MIDDLE'), 500);
 
   await seedAuth(page);
@@ -216,7 +216,7 @@ test('the snapshot the reader clicked past is never shown', async ({ page }) => 
   await expect(glossCell(page)).toHaveValue('MIDDLE', { timeout: 15_000 });
   await expect(page.getByText('Change the gloss to MIDDLE').last()).toBeVisible();
   // Long enough for the abandoned read to land and for a heal to follow it.
-  await page.waitForTimeout(6000);
+  await page.waitForTimeout(11_000);
   await expect(glossCell(page)).toHaveValue('MIDDLE');
   expect(await page.evaluate(() => window.__glossSeq)).toEqual(['LATEST', 'MIDDLE']);
 });
