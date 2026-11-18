@@ -24,6 +24,7 @@ import threading
 import time
 import unicodedata
 import uuid
+import weakref
 from datetime import datetime, timezone
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
@@ -421,6 +422,9 @@ class Job:
         self.paused = {'people': 0.0, 'model': 0.0, 'edits': 0.0}
         self.started_at = self.job.get('started_at')
         self._beat_lock = threading.Lock()
+        #: every client :meth:`client` handed out, each given the token of
+        #: every heartbeat (D6)
+        self._clients: 'weakref.WeakSet' = weakref.WeakSet()
         self._stop = threading.Event()
         self._thread: Optional[threading.Thread] = None
 
@@ -469,6 +473,8 @@ class Job:
             if isinstance(answer, dict):
                 self.state = answer.get('state') or self.state
                 self.token = answer.get('token') or self.token
+                for c in list(self._clients):
+                    c.token = self.token
 
     def ended(self) -> JobStopped:
         """Core refused a write (:func:`no_longer_mine`): the job ended or
@@ -541,8 +547,13 @@ class Job:
             self._sleep(min(0.5, left))
 
     def client(self):
-        """A client that writes as the starter, with the latest token."""
-        return self.client_for(self.token)
+        """A client that writes as the starter. It sends the token of the
+        latest heartbeat for as long as it is used: a piece or the planning
+        that outlasts the token's hour, or a starter's logout, never leaves it
+        with a token core no longer takes (D6)."""
+        c = self.client_for(self.token)
+        self._clients.add(c)
+        return c
 
     # --- waits ---------------------------------------------------------------
 
