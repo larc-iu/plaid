@@ -185,9 +185,9 @@ describe('what to check', () => {
   it('has a row per kind with a count, in the page’s words, each with the section that lists it', () => {
     const rows = toCheckRows({ state: 'done', report: reportOf() });
     expect(rows.map((r) => [r.text, r.view, r.filter ?? null])).toEqual([
-      ['1 document in use, not worked', 'documents', 'check'],
-      ['1 document not reached', 'documents', 'check'],
-      ['1 document stopped partway', 'documents', 'check'],
+      ['1 document in use, not worked', 'documents', 'in-use'],
+      ['1 document not reached', 'documents', 'not-reached'],
+      ['1 document stopped partway', 'documents', 'partway'],
       ['5 sentences skipped, too long', 'skipped', null],
       ['1 sentence skipped, no answer from the assistant', 'skipped', null],
       [
@@ -206,7 +206,7 @@ describe('what to check', () => {
       [
         '33 values, morphemes or links people wrote, changed or removed, in 1 document',
         'documents',
-        'check',
+        'people',
       ],
       ['3 words respelled, analysis kept', 'respelled', null],
       ['3 changes proposed, not applied', 'proposed', null],
@@ -301,15 +301,19 @@ describe('what to check', () => {
 describe('a document’s reasons to check it', () => {
   it('says each reason in a few words', () => {
     const report = reportOf();
-    expect(documentChecks(report.documents[0])).toEqual([
+    const said = (d, r) => documentChecks(d, r).map((c) => c.text);
+    const kinds = (d, r) => documentChecks(d, r).map((c) => c.kind);
+    expect(said(report.documents[0])).toEqual([
       '6 morphemes left blank',
       'Translation blank in 150 sentences the job did not change',
       '33 values, morphemes or links people wrote, changed',
       '2 changes refused',
     ]);
-    expect(documentChecks(report.documents[2])).toEqual(['In use, not worked']);
-    expect(documentChecks(report.documents[3])).toEqual(['Not reached']);
-    expect(documentChecks(report.documents[4])).toEqual(['Stopped partway']);
+    expect(kinds(report.documents[0])).toEqual(['left', 'untouched', 'people', 'refused']);
+    expect(said(report.documents[2])).toEqual(['In use, not worked']);
+    expect(kinds(report.documents[2])).toEqual(['in-use']);
+    expect(kinds(report.documents[3])).toEqual(['not-reached']);
+    expect(kinds(report.documents[4])).toEqual(['partway']);
   });
 
   it('reads the report’s row of the document, and has none for a document with nothing to check', () => {
@@ -322,7 +326,10 @@ describe('a document’s reasons to check it', () => {
         counts: { skippedMore: 2, blank: [], leftUnits: [] },
         leftUnread: true,
       }),
-    ).toEqual(['3 sentences skipped', 'Could not be read']);
+    ).toEqual([
+      { kind: 'skipped', text: '3 sentences skipped' },
+      { kind: 'unread', text: 'Could not be read' },
+    ]);
   });
 });
 

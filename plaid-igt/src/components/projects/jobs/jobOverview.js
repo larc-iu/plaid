@@ -84,7 +84,8 @@ export const toCheckRows = (job) => {
   const rows = [];
   const add = (key, n, text, view, filter) =>
     n > 0 && rows.push({ key, text, view, ...(filter ? { filter } : {}) });
-  const check = (key, n, text) => add(key, n, text, 'documents', 'check');
+  // A row of documents opens the Documents table filtered to its reason.
+  const check = (key, n, text) => add(key, n, text, 'documents', key);
 
   const inUse = docs.filter((d) => d.state === 'in-use').length;
   check('in-use', inUse, `${countOf(inUse, 'document')} in use, not worked`);
@@ -187,28 +188,50 @@ export const toCheckRows = (job) => {
   return rows;
 };
 
-// Why one document of an ended job needs a person, in a few words each, or
-// none: the Documents table's To check column and filter. `d` is the job's
-// row, `reported` the report's row of it where there is one.
+// The reasons a document of an ended job needs a person, each a Documents
+// filter of its own (`?filter=<kind>`, `check` for all of them), with the
+// filter's label.
+export const CHECK_KINDS = {
+  'in-use': 'In use',
+  'not-reached': 'Not reached',
+  partway: 'Stopped partway',
+  skipped: 'Skipped',
+  left: 'Left blank',
+  untouched: 'Blank, not changed',
+  people: 'People’s values',
+  refused: 'Refused',
+  unread: 'Not read',
+};
+
+// Why one document of an ended job needs a person, each `{kind, text}` in a
+// few words, or none: the Documents table's To check column and filters. `d`
+// is the job's row, `reported` the report's row of it where there is one.
 export const documentChecks = (d, reported = null) => {
   const r = reported ?? d;
   const out = [];
-  if (d.state === 'in-use') out.push('In use, not worked');
-  if (d.state === 'not-reached') out.push(stoppedPartway(d) ? 'Stopped partway' : 'Not reached');
+  const add = (kind, text) => out.push({ kind, text });
+  if (d.state === 'in-use') add('in-use', 'In use, not worked');
+  if (d.state === 'not-reached') {
+    if (stoppedPartway(d)) add('partway', 'Stopped partway');
+    else add('not-reached', 'Not reached');
+  }
   const skipped = (r.skipped?.length ?? 0) + (r.counts?.skippedMore ?? 0);
-  if (skipped > 0) out.push(`${countOf(skipped, 'sentence')} skipped`);
+  if (skipped > 0) add('skipped', `${countOf(skipped, 'sentence')} skipped`);
   const left = leftText(r);
-  if (left !== null && left !== '0') out.push(`${left} left blank`);
+  if (left !== null && left !== '0') add('left', `${left} left blank`);
   (r.counts?.blank || [])
     .filter((b) => b.untouched > 0)
     .forEach((b) =>
-      out.push(`${b.target} blank in ${countOf(b.untouched, b.unit)} the job did not change`),
+      add(
+        'untouched',
+        `${b.target} blank in ${countOf(b.untouched, b.unit)} the job did not change`,
+      ),
     );
   const people = r.counts?.peoplesValuesChanged ?? d.counts?.peoplesValuesChanged ?? 0;
-  if (people > 0) out.push(`${countOf(people, ...VALUES_PEOPLE_WROTE)} people wrote, changed`);
+  if (people > 0) add('people', `${countOf(people, ...VALUES_PEOPLE_WROTE)} people wrote, changed`);
   const refused = (r.refused?.length ?? 0) + (r.refusedMore ?? 0);
-  if (refused > 0) out.push(`${countOf(refused, 'change')} refused`);
-  if (r.leftUnread) out.push('Could not be read');
+  if (refused > 0) add('refused', `${countOf(refused, 'change')} refused`);
+  if (r.leftUnread) add('unread', 'Could not be read');
   return out;
 };
 

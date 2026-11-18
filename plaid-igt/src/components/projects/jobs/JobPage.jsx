@@ -44,7 +44,7 @@ import { assistantTabPath } from '../assistant/adapter.js';
 import { JobActivity } from './JobActivity.jsx';
 import { PIECES_MAX, pageOfParam, useJobPieces } from './jobPieces.js';
 import { ReportOverview, ReportSection } from './JobSections.jsx';
-import { documentChecks, jobSections } from './jobOverview.js';
+import { CHECK_KINDS, documentChecks, jobSections } from './jobOverview.js';
 import { FillsNames } from './jobLines.jsx';
 import {
   aheadText,
@@ -652,7 +652,8 @@ const count = (row, key) => (row.counts?.[key] ?? 0).toLocaleString();
 // has a report, how many places each document's Left blank lists stands
 // beside its sentences, so "8 of 8" never reads as nothing left
 // (REV-DAY-P-4), why it needs a person (To check), and a filter to those
-// that do, in the address (`?filter=check`).
+// that do, in the address: `?filter=check` for every reason, or one reason
+// (`CHECK_KINDS`), which a To check row of the Overview opens.
 // `plan`: the report's, or while there is none the plan row's.
 const JobDocuments = ({ job, projectId, plan }) => {
   const [params, setParams] = useSearchParams();
@@ -666,7 +667,19 @@ const JobDocuments = ({ job, projectId, plan }) => {
     ]),
   );
   const toCheck = (job.documents || []).filter((d) => checks.get(d.documentId).length > 0);
-  const filter = ended && params.get('filter') === 'check' ? 'check' : 'all';
+  const asked = params.get('filter');
+  const ofKind = (kind) =>
+    toCheck.filter((d) => checks.get(d.documentId).some((c) => c.kind === kind));
+  // A reason no document has shows them all.
+  const filter = !ended
+    ? 'all'
+    : asked === 'check'
+      ? 'check'
+      : CHECK_KINDS[asked] && ofKind(asked).length
+        ? asked
+        : 'all';
+  const shown =
+    filter === 'all' ? job.documents || [] : filter === 'check' ? toCheck : ofKind(filter);
   const stateOf = (d) =>
     leftOut.has(d.documentId)
       ? 'Left out by the plan'
@@ -760,14 +773,18 @@ const JobDocuments = ({ job, projectId, plan }) => {
       label: 'To check',
       // Wide enough that a row stays a line or two where the table scrolls.
       className: 'min-w-[18rem]',
-      render: (d) => checks.get(d.documentId).join('; '),
+      render: (d) =>
+        checks
+          .get(d.documentId)
+          .map((c) => c.text)
+          .join('; '),
     });
   }
   const setFilter = (value) =>
     setParams((prev) => {
       const out = new URLSearchParams(prev);
-      if (value === 'check') out.set('filter', value);
-      else out.delete('filter');
+      if (value === 'all') out.delete('filter');
+      else out.set('filter', value);
       out.delete('page');
       return out;
     });
@@ -775,7 +792,7 @@ const JobDocuments = ({ job, projectId, plan }) => {
     <DataTable
       id="job-documents"
       scope={projectId}
-      rows={filter === 'check' ? toCheck : rows}
+      rows={shown}
       rowKey={(d) => d.documentId}
       columns={columns}
       defaultSort={{ key: 'name', dir: 'asc' }}
@@ -795,6 +812,15 @@ const JobDocuments = ({ job, projectId, plan }) => {
             options={[
               { value: 'all', label: 'All', count: rows.length.toLocaleString() },
               { value: 'check', label: 'To check', count: toCheck.length.toLocaleString() },
+              ...(CHECK_KINDS[filter]
+                ? [
+                    {
+                      value: filter,
+                      label: CHECK_KINDS[filter],
+                      count: ofKind(filter).length.toLocaleString(),
+                    },
+                  ]
+                : []),
             ]}
           />
         )

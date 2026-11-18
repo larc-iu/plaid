@@ -212,7 +212,7 @@ describe('the Overview of an ended job', () => {
       li.querySelector('a')?.getAttribute('href') ?? null,
     ]);
     expect(rows).toEqual([
-      ['1 document in use, not worked', '/projects/p1/jobs/j1?view=documents&filter=check'],
+      ['1 document in use, not worked', '/projects/p1/jobs/j1?view=documents&filter=in-use'],
       ['1 sentence skipped, too long', '/projects/p1/jobs/j1?view=skipped'],
       [
         `${N - 1} sentences with Translation blank in sentences the job did not change, in ${N - 1} documents`,
@@ -346,6 +346,28 @@ describe('the lists of an ended job', () => {
     await w.step(() => byText(w.container, 'button', 'To check').click());
     expect(at).toBe('/projects/p1/jobs/j1?view=documents&filter=check');
     await w.unmount();
+  });
+
+  // REV-RP-2: a To check row's Show opens exactly the documents it counts.
+  it('filters the documents to one reason, from a To check row, To check still meaning all', async () => {
+    const v = await mount(clientOf(ENDED));
+    const show = byText(v.container, 'a', 'Show');
+    expect(show.getAttribute('aria-label')).toBe('Show: 1 document in use, not worked');
+    await v.unmount();
+    const w = await mount(clientOf(ENDED), '?view=documents&filter=in-use');
+    const rows = all(w.container, 'tbody tr');
+    expect(rows.map((r) => text(r.querySelector('td')))).toEqual(['Story 01']);
+    // The reason is the filter's third choice, chosen.
+    const chosen = all(w.container, 'button[aria-pressed="true"]').map(text);
+    expect(chosen).toEqual(['In use1']);
+    await w.step(() => byText(w.container, 'button', 'To check').click());
+    expect(at).toBe('/projects/p1/jobs/j1?view=documents&filter=check');
+    expect(all(w.container, 'tbody tr')).toHaveLength(N);
+    await w.unmount();
+    // A reason no document has opens All.
+    const x = await mount(clientOf(ENDED), '?view=documents&filter=refused');
+    expect(all(x.container, 'tbody tr')).toHaveLength(N);
+    await x.unmount();
   });
 
   it('pages Left blank at 25 documents, the page in the address', async () => {
