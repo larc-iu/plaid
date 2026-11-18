@@ -1090,7 +1090,7 @@ Then comes the job's own line where the job changed what people wrote or the tex
 * **The job worked on all 45 documents in one step and changed 24 of them.**
 
 An entry the job deleted or merged takes or moves every link to it, in any document.
-The links people made count under People's work, and the line says how many of them are outside the job's documents, such as **1 of them outside the job's documents**.
+The links people made in this project's documents count under People's work, each in the row of its document, and the line says how many of them are outside the job's documents, such as **1 of them outside the job's documents**.
 
 **To check** lists what needs a person, a row for each kind with how many there are, and **Show** opens exactly what the row counts: documents in use and not worked, not reached, stopped partway, left out by the plan or not worked because the server did not answer, sentences skipped by why, those skipped and not listed and those too long and not listed, places left blank, values people wrote that the job changed or removed, documents whose text the job changed, changes refused, words respelled, changes proposed or not written, forms left inconsistent and entries with no links.
 A job that core ended before its report was written lists only the documents in use, not reached, stopped partway or not worked because the server did not answer.
