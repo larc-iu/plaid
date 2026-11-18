@@ -179,16 +179,16 @@ export function fileNumbersItsSentences(parsedSentences) {
 /**
  * Whether the document goes by the sentence numbers its file stored rather
  * than by position: its import marked its records so
- * (`fileNumbersItsSentences`), or the first stored `# :: snt` number is not
- * 1, as in a released excerpt starting at snt5. Its variables are left as
- * the file named them (umrReconcile.js `planRenumber`) and its export writes
- * the stored numbers. Every other document is numbered by position, a stored
- * number included, once IGT has added or removed a sentence.
+ * (`fileNumbersItsSentences`), as it marks a released excerpt starting at
+ * snt5. Its variables are left as the file named them (umrReconcile.js
+ * `planRenumber`) and its export writes the stored numbers. Every other
+ * document is numbered by position, a stored number included, once IGT has
+ * added or removed a sentence, its first included (H3-9-1: a first stored
+ * number other than 1 no longer counts, since an in-order file whose first
+ * sentence IGT deleted has one).
  */
 export function numberedByFile(sentences) {
-  if ((sentences || []).some((s) => s.fileNumbered)) return true;
-  const first = (sentences || []).find((s) => s.snt != null);
-  return !!first && String(first.snt) !== '1';
+  return (sentences || []).some((s) => s.fileNumbered);
 }
 
 // A record can stand over new text typed in before its sentence, when an

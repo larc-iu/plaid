@@ -1,9 +1,10 @@
 // Three limits on what reconcile on open and Text mode do after IGT changes
 // the sentences (the defaults adopted with the rulings of 2026-09-28):
 //
-// - Renumbering leaves alone a document whose first stored `snt` number is
-//   not 1: a released excerpt starting at `# :: snt5` keeps its names. A
-//   sentence deleted later in an imported file does not stop it.
+// - Renumbering leaves alone a document whose file numbers its own sentences
+//   (the import marks it): a released excerpt starting at `# :: snt5` keeps
+//   its names. A sentence deleted in an imported in-order file, the first
+//   included, does not stop it.
 // - Mending a graph kept as text accepts that graph's own names even when IGT
 //   has shifted the sentences since. The next open renumbers them.
 // - A sentence with no words at all (IGT's "Clear tokens", before it tokenizes
@@ -136,7 +137,10 @@ test('numbers that skip one, as a sentence deleted in IGT leaves them, still ren
   );
 });
 
-test('a file whose first sentence was deleted in IGT reads as an excerpt, and keeps its names', () => {
+// H3-9-1: it read as an excerpt, so its variables kept their numbers and its
+// export wrote snt2 first. The import marks an excerpt (`fileNumbered`), and
+// an in-order file is not one whatever IGT deletes.
+test('a file whose first sentence was deleted in IGT is renumbered from 1', () => {
   const raw = fromText(`${block(1)}\n${block(2)}`);
   const first = role(raw, 'sentence').tokens[0];
   role(raw, 'sentence').tokens.splice(0, 1);
@@ -154,7 +158,13 @@ test('a file whose first sentence was deleted in IGT reads as an excerpt, and ke
   });
   const { doc } = open(raw);
   assert.deepEqual(vars(doc), ['s2a', 's2g']);
-  assert.deepEqual(planRenumber(doc.graph), []);
+  assert.deepEqual(
+    planRenumber(doc.graph).map((m) => [m.from, m.to]),
+    [
+      ['s2a', 's1a'],
+      ['s2g', 's1g'],
+    ],
+  );
 });
 
 // ----- 2. a kept graph mended after IGT shifted the sentences -----

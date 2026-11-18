@@ -843,3 +843,15 @@ def test_a_joined_sentence_reads_its_first_record_in_text_order_however_the_toke
     node_layer['tokens'].reverse()
     s1 = _read(raw).sentences[0]
     assert (s1.snt, s1.record_token, s1.other_records) == (1, 'r1', ['r9'])
+
+
+def test_an_in_order_file_whose_first_sentence_was_deleted_is_numbered_by_position():
+    """H3-9-1, as numberedByFile: only the import's mark makes a document go
+    by its file's numbers. An in-order file whose first sentence IGT deleted
+    stores snt 2 first, and read as an excerpt it exported snt2, snt3."""
+    from plaid_client.workflows.umr.graph import Sentence, file_numbers
+    s = [Sentence(id=f's{i}', index=i, begin=0, end=0, text='', snt=str(i + 1)) for i in (1, 2)]
+    assert file_numbers(s) == [1, 2]
+    marked = [Sentence(id=f's{i}', index=i, begin=0, end=0, text='', snt=str(i + 4), file_numbered=True)
+              for i in (1, 2)]
+    assert file_numbers(marked) == ['5', '6']

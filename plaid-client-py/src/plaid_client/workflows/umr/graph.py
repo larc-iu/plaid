@@ -562,13 +562,10 @@ def _variable_number(sentence: Sentence) -> Optional[int]:
 
 def _numbered_by_file(sentences: List[Sentence]) -> bool:
     """Whether the document goes by the ``# :: snt`` numbers its file stored:
-    its import marked its records so, or the first stored one is not 1, as in
-    a released excerpt starting at snt5. Every other document is numbered by
-    position (``numberedByFile``)."""
-    if any(s.file_numbered for s in sentences):
-        return True
-    first = next((s for s in sentences if s.snt is not None), None)
-    return first is not None and str(first.snt) != '1'
+    its import marked its records so, as it marks a released excerpt starting
+    at snt5. Every other document is numbered by position, an in-order file
+    whose first sentence IGT deleted included (``numberedByFile``, H3-9-1)."""
+    return any(s.file_numbered for s in sentences)
 
 
 def file_numbers(sentences: List[Sentence]) -> List[Any]:
