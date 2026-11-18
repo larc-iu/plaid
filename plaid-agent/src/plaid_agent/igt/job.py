@@ -2198,16 +2198,29 @@ class Write:
         sentences (``jobapply.TEXT_KINDS``). From the worker's own ops,
         never from words (REV-DAY-S-3)."""
         doc = self.fresh if self.fresh is not None else self.st.doc
-        # The links people made that a deleted or merged entry takes or
-        # moves, in any document, and of those the ones outside the job's
-        # documents (S6-2).
-        taken = [self.people_links[i] for o in ops for i in entry_link_ids(o) if i in self.people_links]
-        outside = 0 if self.inside is None else sum(1 for d in taken if d not in self.inside)
+        # The links people made in this document that a deleted or merged
+        # entry takes or moves, and those outside the job's documents (S6-2).
+        # Those in the job's other documents count in their rows
+        # (:meth:`taken_elsewhere`, REV-SJ3-4).
+        taken = self.taken_by_document(ops)
         return Counter({'peoples_values_changed': sum(replaces_people(o, doc, self.st.project) for o in ops)
                         + sum(removes_people(o, doc) for o in ops if o.get('kind') in jobapply.TEXT_KINDS)
-                        + len(taken),
-                        'peoples_outside': outside,
+                        + taken.pop(self.document_id, 0),
+                        'peoples_outside': sum(n for d, n in taken.items()
+                                               if self.inside is not None and d not in self.inside),
                         'text_changes': sum(1 for o in ops if o.get('kind') in jobapply.TEXT_KINDS)})
+
+    def taken_by_document(self, ops: List[Dict[str, Any]]) -> Counter:
+        """How many links people made a deleted or merged entry of ``ops``
+        takes or moves, by the document each lies in (:attr:`people_links`)."""
+        return Counter(self.people_links[i] for o in ops for i in entry_link_ids(o) if i in self.people_links)
+
+    def taken_elsewhere(self, ops: List[Dict[str, Any]]) -> Dict[str, int]:
+        """Of :meth:`taken_by_document`, those in the job's other documents,
+        each counted in a row of its own document (REV-SJ3-4)."""
+        if self.inside is None:
+            return {}
+        return {d: n for d, n in self.taken_by_document(ops).items() if d != self.document_id and d in self.inside}
 
     def words_of(self, ops: List[Dict[str, Any]]) -> List[str]:
         """The tags of the words whose segmentation ``ops`` write
@@ -2377,6 +2390,12 @@ class Write:
                 # listed here.
                 'ops': [self.describe(o, False) for o in loose if o.get('kind') not in IGNORED_KINDS
                         and o.get(LOOSE) is None]}))
+        for d, n in sorted(self.taken_elsewhere(loose).items()):
+            # People's links in another of the job's documents that this
+            # try's entry delete or merge takes, counted in that document's
+            # row when the try lands (REV-SJ3-4).
+            out.append((d, {'write': self.id, 'try': seed, 'piece': self.piece, 'loose': True,
+                            'counts': {'peoples_values_changed': n}}))
         if replaces:
             for _, row in out:
                 row['of'] = replaces
@@ -5429,12 +5448,15 @@ class IgtRunner:
         decisions = []
         for sid, row in rows:
             text = writing_text(row)
+            # A row of the changes of no sentence is its document's: the
+            # write's own, or another of the job's documents (REV-SJ3-4).
             decisions.append({'form': writing_form(sid), 'key': analysis_key(text), 'analysis': text, 'count': 1,
-                              'document_id': w.document_id, 'sentence_id': None if row.get('loose') else sid})
+                              'document_id': sid if row.get('loose') else w.document_id,
+                              'sentence_id': None if row.get('loose') else sid})
         for i in range(0, len(decisions), JOB_DECISIONS_PER_CALL):
             self.job.add_decisions(decisions[i:i + JOB_DECISIONS_PER_CALL])
-        self.writing_rows(w.document_id).extend({**json.loads(d['analysis']), 'sentence': sid}
-                                                for d, (sid, _) in zip(decisions, rows))
+        for d, (sid, _) in zip(decisions, rows):
+            self.writing_rows(d['document_id']).append({**json.loads(d['analysis']), 'sentence': sid})
 
     def sending(self, w: Write, seed: str) -> None:
         """A try's request is about to go out (``ONE_REQUEST``): its rows are

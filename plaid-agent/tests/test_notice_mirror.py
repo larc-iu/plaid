@@ -140,7 +140,8 @@ REPORTS = [
      'documents': [{'state': 'done', 'counts': {'words_added': 25, 'tokens_changed': 2, 'text_changes': 3}}]},
     {'totals': {}, 'documents': [{'state': 'done', 'counts': {'words_added': 1, 'peoples_values_changed': 2}},
                                  {'state': 'done', 'counts': {'tokens_changed': 4, 'ran_out': 'written'}}]},
-    # S6-2: core's own report, people's links outside the job on the rows only.
+    # S6-2: core's own report, people's links outside the job on the rows only,
+    # part of the whole (REV-SJ3-4).
     {'totals': {}, 'documents': [{'state': 'done', 'counts': {'peoples_values_changed': 3, 'peoples_outside': 2}}]},
     # Each of RW's ``ran_out`` values by its own total (JOIN18, REV-JR2-7).
     {'totals': {}, 'documents': [{'state': 'done', 'counts': {'ran_out': 'put-off'}},
@@ -173,3 +174,13 @@ def test_read_job_counts_cores_own_report_as_the_page_does(page_reports):
     for report, line in zip(REPORTS, page_reports):
         assert notice(notice_counts(report), IgtRunner.PEOPLE_NOUNS) == line, report
     assert page_reports[0] == 'Text: 25 words added, 2 existing words or punctuation marks changed or removed.'
+
+
+def test_core_own_report_counts_peoples_work_outside_the_job_in_the_whole():
+    """REV-SJ3-4: a row's outside count is in no row's own count."""
+    from plaid_agent.igt.jobread import notice_counts
+    report = {'totals': {}, 'documents': [{'state': 'done', 'counts': {'peoples_values_changed': 3,
+                                                                       'peoples_outside': 2}}]}
+    assert notice(notice_counts(report)).startswith(
+        "People's work: 5 values or links people wrote were changed or removed, 2 of them outside the job's "
+        "documents."), notice(notice_counts(report))

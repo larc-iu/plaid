@@ -1412,9 +1412,11 @@ def build_report(job: Job, state: str, reason: Optional[str], documents: List[Di
         totals['outside'] = field_counts(outside)
     elsewhere = sum((d.get('counts') or {}).get('peoples_outside') or 0 for d in documents)
     if elsewhere:
-        # Of ``peoples_values_changed``, those in documents outside the job
-        # (an app's ``counts.peoples_outside``, S6-2).
+        # People's work in documents outside the job (an app's
+        # ``counts.peoples_outside``, S6-2), no document's row: counted in
+        # ``peoples_values_changed`` too, of which it is a part (REV-SJ3-4).
         totals['peoples_outside'] = elsewhere
+        totals['peoples_values_changed'] += elsewhere
     if parts:
         # The changes by kind, summing to ``changes``, in CHANGE_KINDS'
         # order (an app's ``counts.changes_parts``, RPF-A3).

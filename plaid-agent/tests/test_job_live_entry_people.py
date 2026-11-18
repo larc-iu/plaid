@@ -81,8 +81,45 @@ def test_an_entry_taken_or_merged_counts_peoples_links_and_those_outside_the_job
         totals = finished['report']['totals']
         assert totals['peoples_values_changed'] == 2, totals
         assert totals['peoples_outside'] == 1, totals
+        # REV-SJ3-4: Long story's own link in its row, Second's only outside.
+        rows = {d['name']: d['counts'] for d in finished['report']['documents']}
+        assert rows['Long story'].get('peoples_values_changed') == 1, rows
         assert finished['report']['notice'].startswith(
             "People's work: 2 values, morphemes or links people wrote were changed or removed, 1 of them outside "
             "the job's documents."), finished['report']['notice']
+    finally:
+        s.delete()
+
+
+@pytest.mark.parametrize('how', ['delete', 'merge'])
+def test_people_links_an_entry_takes_count_in_the_row_of_the_document_they_are_in(monkeypatch, how):
+    """REV-SJ3-4: a job on both documents. Long story's piece deletes or
+    merges kai, linked by a person in each. Each document's row counts its
+    own link, none is outside the job."""
+    admin = _admin()
+    s = _seed(admin)
+    try:
+        starter = _maintainer(admin, s)
+        kai, ka = s.ids['e-kai'], s.ids['e-ka']
+        step = (call(1, 'delete_entry', {'entry_id': kai}) if how == 'delete'
+                else call(1, 'merge_entries', {'keep_id': ka, 'remove_id': kai}))
+
+        def answer(asked, n, kwargs):
+            if 'Instructions from' in asked and '"Long story"' in asked and n == 1:
+                return reply(calls=[step])
+            return reply('Done.')
+        use(monkeypatch, Model(answer))
+        job = _job(admin, starter, s, 'Clean the lexicon.', [s.ids['dA'], s.ids['dB']])
+        finished = run_job(job, IgtRunner(job, ModelConfig(model='fake/m', stream=False, max_steps=1000),
+                                          count=count_chars, write_summary=False))
+        assert finished['state'] == 'done', (finished.get('reason'), job.status.get('message'))
+        report = finished['report']
+        rows = {d['name']: d['counts'] for d in report['documents']}
+        assert rows['Long story'].get('peoples_values_changed') == 1, rows
+        assert rows['Second'].get('peoples_values_changed') == 1, rows
+        assert report['totals']['peoples_values_changed'] == 2, report['totals']
+        assert not report['totals'].get('peoples_outside'), report['totals']
+        assert report['notice'].startswith(
+            "People's work: 2 values, morphemes or links people wrote were changed or removed. "), report['notice']
     finally:
         s.delete()

@@ -304,7 +304,10 @@ export const noticeCounts = (report) => {
   const sum = (k) =>
     t[k] ?? (report?.documents || []).reduce((n, d) => n + (d.counts?.[k] ?? 0), 0);
   return {
-    peoplesValuesChanged: sum('peoplesValuesChanged'),
+    // People's work outside the job's documents is in no row's own count,
+    // and part of the whole (REV-SJ3-4, the worker's `build_report`).
+    peoplesValuesChanged:
+      t.peoplesValuesChanged ?? sum('peoplesValuesChanged') + sum('peoplesOutside'),
     peoplesOutside: sum('peoplesOutside'),
     wordsAdded: sum('wordsAdded'),
     tokensChanged: sum('tokensChanged'),

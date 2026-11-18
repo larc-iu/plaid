@@ -320,6 +320,10 @@ def notice_counts(report: Dict[str, Any]) -> Dict[str, Any]:
     docs = report.get('documents') or []
     out: Dict[str, Any] = {k: t[k] if t.get(k) is not None else
                            sum((d.get('counts') or {}).get(k) or 0 for d in docs) for k in _NOTICE_KEYS}
+    if t.get('peoples_values_changed') is None:
+        # People's work outside the job's documents is in no row's own
+        # count, and part of the whole (REV-SJ3-4, ``build_report``).
+        out['peoples_values_changed'] += out['peoples_outside']
     # Each of RW's totals by its ``counts.ran_out`` value, as ``build_report``
     # and the page count them (REV-JR2-7).
     for value, key in RAN_OUT_TOTALS:
