@@ -101,9 +101,13 @@ describe('the Arabic frame file', () => {
 
   it('offers every roleset for its lemma typed bare, a lemma--NN one after the plain', () => {
     const lemma = (id) => id.replace(/-\d+$/, '').replace(/-$/, '');
-    const missed = Object.keys(arabic).filter(
-      (id) => !sensesFor(arabic, lemma(id)).some((s) => s.id === id),
-    );
+    // One lookup per lemma, not per id: each scans the whole file, and once
+    // per id this took seconds and timed out on a busy machine.
+    const byLemma = Map.groupBy(Object.keys(arabic), lemma);
+    const missed = [...byLemma].flatMap(([word, ids]) => {
+      const offered = new Set(sensesFor(arabic, word).map((s) => s.id));
+      return ids.filter((id) => !offered.has(id));
+    });
     expect(missed).toEqual([]);
     const ids = sensesFor(arabic, '\u0623\u062b\u0631').map((s) => s.id); // أثر
     expect(ids.slice(0, 4)).toEqual([
