@@ -137,13 +137,12 @@ describe('undoneLine', () => {
         tokens: 'with-text',
       }),
     ).toBe('1 value removed and the text with its words and sentences put back as it was');
-    // S7-1: with no text undone, its tokens may be sentences as well as words.
+    // S7-1, REV-SJ3-7: with no text undone, its tokens may be sentences, words
+    // or morphemes (a job that edits the text may segment too): tokens.
     expect(undoneLine(summary({ tokens: counts(2) }), { tokens: 'with-text' })).toBe(
-      '2 words or sentences put back as they were',
+      '2 tokens put back as they were',
     );
-    expect(leftLine([{ kind: 'token', id: 't1' }], { tokens: 'with-text' })).toBe(
-      '1 word or sentence',
-    );
+    expect(leftLine([{ kind: 'token', id: 't1' }], { tokens: 'with-text' })).toBe('1 token');
     // An import undone.
     expect(
       undoneLine(

@@ -44,8 +44,6 @@ const byWhatHappens = (c, noun) =>
 const counted = (words) => (k) => countOf(k, ...words);
 
 const TOKEN_WORDS = ['token', 'tokens'];
-// A token of a job that edited the text, a word or a sentence (S7-1).
-const TEXT_TOKEN_WORDS = ['word or sentence', 'words or sentences'];
 
 const ROLE_ORDER = Object.keys(TOKEN_ROLE_WORDS);
 
@@ -131,9 +129,10 @@ export const undoneLine = (summary, { tokenRows, tokens } = {}) => {
     }
     const roles = tokensByRole(summary, tokenRows);
     if (!roles && withText) {
-      // Said with the text, or, with no text undone, as words or sentences:
-      // a text edit's tokens are either (S7-1).
-      if (!sum(summary?.undone?.texts)) parts.push(...byWhatHappens(c, counted(TEXT_TOKEN_WORDS)));
+      // Said with the text, or, with no text undone, as tokens: a text
+      // edit's are sentences or words, and the job may segment too
+      // (S7-1, REV-SJ3-7).
+      if (!sum(summary?.undone?.texts)) parts.push(...byWhatHappens(c, counted(TOKEN_WORDS)));
       continue;
     }
     parts.push(
@@ -240,11 +239,7 @@ export const leftLine = (rows, { tokenRows, tokens } = {}, more = 0) => {
   const roles = new Map((tokenRows || []).map((r) => [r.id, r.role]));
   const tokenWords = (id) =>
     TOKEN_ROLE_WORDS[roles.get(id)] ??
-    (tokens === 'morphemes'
-      ? ['morpheme', 'morphemes']
-      : tokens === 'with-text'
-        ? TEXT_TOKEN_WORDS
-        : TOKEN_WORDS);
+    (tokens === 'morphemes' ? ['morpheme', 'morphemes'] : TOKEN_WORDS);
   const counts = new Map();
   const add = (key, words) => {
     const c = counts.get(key) ?? { n: 0, words };
