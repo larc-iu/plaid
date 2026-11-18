@@ -349,14 +349,15 @@ async function importDocument(client, projectId, name, conlluText, precomputedLa
       if (featuresLayer && Array.isArray(row.feats)) {
         // Through the one reader, so an off-spec `Gender = Fem` in the file
         // lands under the same name a typed one does. A pair the reader cannot
-        // complete (`Gender=`, or an empty entry from `A=1||B=2`) is nothing to
-        // store, and is counted. What the file says otherwise stands: an import
-        // records a corpus, and the Validation tab is where what it recorded is
-        // judged.
+        // complete (`Gender=`, `Polite`) is nothing to store, and is counted.
+        // An empty column or the empty entry of `A=1||B=2` held nothing, so it
+        // is skipped and not counted. What the file says otherwise stands: an
+        // import records a corpus, and the Validation tab is where what it
+        // recorded is judged.
         row.feats.forEach((f) => {
           const feature = normalizeFeature(f);
           if (!feature) {
-            unreadableFeats += 1;
+            if (String(f).trim()) unreadableFeats += 1;
             return;
           }
           featOps.push({

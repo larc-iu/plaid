@@ -264,3 +264,12 @@ test('FEATS entries that cannot be read are dropped aloud', async () => {
   const one = await importOf(['# text = a', '1\ta\t_\tNUM\t_\tPolite\t0\troot\t_\t_']);
   assert.deepEqual(one.warnings, ['1 FEATS entry could not be read and was dropped.']);
 });
+
+// REV-U2-1: an empty FEATS column, or an empty entry between two bars, holds
+// nothing to drop, so it is not counted as an entry that could not be read.
+test('an empty FEATS column or an empty entry between bars imports in silence', async () => {
+  const column = await importOf(['# text = a', '1\ta\t_\tNUM\t_\t\t0\troot\t_\t_']);
+  assert.deepEqual(column.warnings, []);
+  const entry = await importOf(['# text = a', '1\ta\t_\tNUM\t_\tA=1||B=2\t0\troot\t_\t_']);
+  assert.deepEqual(entry.warnings, []);
+});
