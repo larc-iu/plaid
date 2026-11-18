@@ -2916,7 +2916,7 @@ class IgtRunner:
             part = [s for s in doc.sentences if s.id not in done]
             st = Stretch(doc, project, part, self.job.id, self.known_words(d), self.written(d),
                          self.targets(project), only=self.only_new(project))
-            left = self.unreached(ws, doc, part, st, True)
+            left = self.unreached(ws, doc, part, st, True, selection=True)
             if left:
                 out[d] = left
         return out
@@ -3522,20 +3522,30 @@ class IgtRunner:
             self.end_summary(key)
             self.after_text(project, document_id)
 
-    def unreached(self, ws: JobWorkspace, doc, part: List[Sentence], st: Stretch, whole: bool) -> List[Sentence]:
+    def unreached(self, ws: JobWorkspace, doc, part: List[Sentence], st: Stretch, whole: bool,
+                  selection: bool = False) -> List[Sentence]:
         """The sentences of a piece that ended without finishing that it did
-        not get to (THE rule after such a piece, CONTRACT "Added by RW"): in
-        a stretch, each sentence it staged nothing in. In a whole document
-        (and in each document of a selection, :meth:`selection`), each
-        sentence it staged nothing in that still holds something the plan
-        fills and is empty (``st``, the one empty rule of igt/targets.py):
-        none under a plan that fills nothing."""
+        not get to (THE rule after such a piece, CONTRACT "Added by RW"):
+        among the sentences it staged nothing in, those the ordinary walk
+        would take for this plan. In a stretch, all of them. In a whole
+        document, all of them when the plan takes every sentence
+        (:meth:`every_sentence`: a job that revises filled sentences), else
+        those holding something the plan fills that is empty (``st``, the
+        empty rule of igt/targets.py), and none under a plan that fills
+        nothing, which walks nothing after its big piece. In a document of a
+        selection (``selection``), RPF3's rule after a selection: those holding
+        something empty."""
         from .jobapply import sentence_of
         staged = {getattr(sentence_of(op, doc), 'id', None) for op in ws.ops}
+        unstaged = [s for s in part if s.id not in staged]
         if not whole:
-            return [s for s in part if s.id not in staged]
+            return unstaged
+        if self.fills_nothing():
+            return []
+        if not selection and self.every_sentence():
+            return unstaged
         empty = {st.where[w].id for w in st.words if w in st.where} | set(st.fields)
-        return [s for s in part if s.id not in staged and s.id in empty]
+        return [s for s in unstaged if s.id in empty]
 
     def unfinished(self, document_id: str, ws: JobWorkspace, doc) -> None:
         """Before the write of a piece that ended without finishing: in a
