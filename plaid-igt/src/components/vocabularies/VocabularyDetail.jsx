@@ -722,13 +722,16 @@ export const VocabularyDetail = () => {
     }
 
     const proposed = proposeEntryRole(trimmedName);
-    await saveFields([
+    // A save refused (another maintainer changed the fields meanwhile) keeps
+    // the name typed, for Add field on the list read again (H2-2-2).
+    const saved = await saveFields([
       ...fields,
       {
         ...newVocabField(trimmedName),
         role: statusKey && proposed === ENTRY_ROLES.STATUS ? null : proposed,
       },
     ]);
+    if (!saved) return;
     setNewFieldName('');
   };
 

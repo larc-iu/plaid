@@ -527,6 +527,31 @@ describe('the vocabulary schema written from a stale page', () => {
     await view.unmount();
   });
 
+  // H2-2-2: Add field refused over another maintainer's change keeps the
+  // name typed, and one more click adds it to the list read again.
+  it('keeps the field name typed when Add field is refused, and adds it on the next click', async () => {
+    const { server, client } = casServer();
+    const view = await mount(client, '/vocabularies/A?tab=settings');
+    server.config.igt.fields = { ...server.config.igt.fields, remark: { inline: true } };
+    const box = () => document.querySelector('input[placeholder="New field name"]');
+    await view.step(() => setValue(box(), 'Notes'));
+    await view.step(async () => {
+      button('Add field').click();
+      await settle(5);
+    });
+    expect(Object.keys(server.config.igt.fields)).toEqual(['gloss', 'pos', 'remark']);
+    expect(box().value).toBe('Notes');
+    expect(document.body.textContent).toContain('Remark');
+    await view.step(async () => {
+      button('Add field').click();
+      await settle(5);
+    });
+    expect(Object.keys(server.config.igt.fields)).toContain('remark');
+    expect(Object.keys(server.config.igt.fields)).toContain('Notes');
+    expect(box().value).toBe('');
+    await view.unmount();
+  });
+
   it('refuses a tagsets save over another maintainer’s, and the editor learns it', async () => {
     const { server, client } = casServer();
     const view = await mount(client, '/vocabularies/A?tab=settings');
