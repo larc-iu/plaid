@@ -507,8 +507,9 @@ const NOT_AGAIN = {
 
 // How a piece that did not finish ended and what followed it, each line
 // true whatever happened after (the worker's `failed`, `ended` and `rest`,
-// BRIEF RW, REV-RW-7). `states`: each document's state by id.
-export const pieceEndLines = (piece, states = new Map()) => {
+// BRIEF RW, REV-RW-7). `states`: each document's state by id. `active`: the
+// job still runs.
+export const pieceEndLines = (piece, states = new Map(), active = false) => {
   const out = [];
   if (piece.failed) {
     out.push(
@@ -525,31 +526,25 @@ export const pieceEndLines = (piece, states = new Map()) => {
         : `${what}: what it had staged was not written.`,
     );
   }
-  // Its documents then worked in stretches: after a failure, or for what
-  // an unfinished piece left (`rest`, how many documents).
-  if (piece.failed || piece.rest) {
+  // Its documents then worked in stretches (`rest`, how many, and
+  // `restDocuments`, which), said once the job has ended and only of those
+  // documents (REV-RW-R2-6): while it runs that work is still to come.
+  if (piece.rest > 0 && !active) {
+    const listed = piece.restDocuments || [];
+    const going =
+      listed.filter((d) => !NOT_AGAIN[states.get(d)]).length +
+      Math.max(0, piece.rest - listed.length);
+    const what = piece.failed ? 'Worked again' : 'The rest worked';
     if (piece.document) {
-      const state = states.get(piece.document);
-      out.push(
-        NOT_AGAIN[state] ??
-          (piece.failed
-            ? 'Worked again in stretches of sentences.'
-            : 'The rest worked in stretches of sentences.'),
-      );
+      out.push(NOT_AGAIN[states.get(piece.document)] ?? `${what} in stretches of sentences.`);
+    } else if (going === 0) {
+      out.push('Not worked again.');
+    } else if (going === piece.rest) {
+      out.push(`${what} in stretches of sentences in ${countOf(going, 'document')}.`);
     } else {
-      const all = [...states.values()];
-      const going = all.filter((s) => !NOT_AGAIN[s]).length;
-      const of = piece.failed ? all.length : Math.min(piece.rest, all.length);
-      const n = Math.min(going, of);
-      if (n > 0) {
-        out.push(
-          piece.failed
-            ? n === all.length
-              ? 'Worked again in stretches of sentences.'
-              : `${countOf(n, 'document')} of ${all.length.toLocaleString()} worked again in stretches of sentences.`
-            : `The rest worked in stretches of sentences in ${countOf(n, 'document')}.`,
-        );
-      } else out.push('Not worked again.');
+      out.push(
+        `${what} in stretches of sentences in ${countOf(going, 'document')} of ${piece.rest.toLocaleString()}.`,
+      );
     }
   }
   return out;

@@ -174,6 +174,9 @@ ONE_STEP = 'one_step'
 #: finishing under a plan that fills nothing, and nothing was walked after it
 #: (REV-RW-1): the report's top line says the rest was not done.
 RAN_OUT = 'ran_out'
+#: The most document ids a piece's summary lists of those its rest went to
+#: stretches in (``rest_documents``), within the row's cap.
+REST_LISTED = 50
 #: ... and true beside it when that step was not shown every sentence of the
 #: document (it read part of it, or none, or wrote in it by reference).
 NOT_ALL_READ = 'not_all_read'
@@ -2842,7 +2845,7 @@ class IgtRunner:
         left_of = self.selection_unreached(project, ws, live, nothing) if ws.ended is not None else {}
         if left_of:
             # Its row says how many documents the rest went to stretches in.
-            self.unsummed[key]['rest'] = len(left_of)
+            self.unsummed[key]['rest'] = [d for d in live if d in left_of]
         for d in live:
             job.check()
             # What a piece that ended without finishing did not get to here is
@@ -3831,7 +3834,7 @@ class IgtRunner:
             ws.unreached = self.unreached(ws, doc, part, st, whole)
             if whole and ws.unreached:
                 # Its row says the rest went to stretches (REV-RW-7).
-                self.unsummed[key]['rest'] = 1
+                self.unsummed[key]['rest'] = [document_id]
             gone = {s.id for s in ws.unreached}
             part = [s for s in part if s.id not in gone]
         # The piece as its writing rows name it: a whole document's is the
@@ -5304,7 +5307,10 @@ class IgtRunner:
                  **({'findings': p['findings']} if p.get('findings') else {}),
                  **({'after_text': p['after_text']} if p.get('after_text') else {}),
                  **({'ended': p['ended']} if p.get('ended') else {}),
-                 **({'rest': p['rest']} if p.get('rest') else {}),
+                 # How many documents its rest went to stretches in, and the
+                 # first of them by id, which the page counts among (REV-RW-R2-6).
+                 **({'rest': len(p['rest']), 'rest_documents': list(p['rest'])[:REST_LISTED]} if p.get('rest')
+                    else {}),
                  **({'failed': p['failed']} if p.get('failed') else {}),
                  **({'matching': p['matching']} if p.get('matching') else {})}
         row = self.summary_row(p['seq'], value, p['document'], p['first_id'])
@@ -5341,7 +5347,7 @@ class IgtRunner:
         self.begin_summary(key, document_id, name, part if document_id else [], True, '', [],
                            failed=kind or BUDGET)
         if rest:
-            self.unsummed[key]['rest'] = len(rest)
+            self.unsummed[key]['rest'] = list(rest)
         self.end_summary(key)
 
     def fallen_back(self) -> Dict[str, str]:

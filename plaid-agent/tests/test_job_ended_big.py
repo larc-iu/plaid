@@ -196,3 +196,4 @@ def test_the_row_of_a_big_piece_that_ended_says_how_many_documents_the_rest_went
     run_job(job, runner(job))
     first = _summaries(client)[0]
     assert first['ended'] == 'budget' and first['rest'] == (3 if plan == 'selection' else 1), first
+    assert first['rest-documents'] == (['d3', 'd1', 'd2'] if plan == 'selection' else ['d1']), first

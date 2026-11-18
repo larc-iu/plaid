@@ -242,68 +242,110 @@ describe('the job page’s list of its work', () => {
     await v.unmount();
   });
 
-  // BRIEF RW B5, REV-RW-7: a piece that did not finish says how it ended and
-  // what followed it, true whatever happened after.
+  // BRIEF RW B5, REV-RW-7, REV-RW-R2-6: a piece that did not finish says how
+  // it ended and, once the job has ended, what followed it among the
+  // documents it sent to stretches.
+  const whole = { ...FIRST.piece, first: null, last: null, firstId: null, whole: true, fields: [] };
+  const ends = (root) =>
+    rows(root).map((r) => all(r, '[data-testid="piece-end"]').map((p) => text(p)));
+  const ended = (documents) =>
+    jobOf({ state: 'done', finishedAt: '2026-11-12T11:00:00Z', documents });
+  const doc = (id, state) => ({ ...jobOf().documents[0], documentId: id, name: id, state });
+
   it('says how a piece that did not finish ended and what followed it', async () => {
-    const whole = {
-      ...FIRST.piece,
-      first: null,
-      last: null,
-      firstId: null,
-      whole: true,
-      fields: [],
-    };
     const at = (seq, piece) => ({ seq, piece: { ...piece, piece: `k${seq}` } });
     const v = await mount(
       clientOf(
-        [jobOf()],
+        [ended([doc('d1', 'done'), doc('d2', 'gone')])],
         [
           page([
-            at('000010', { ...whole, counts: {}, note: '', failed: 'budget' }),
-            at('000011', { ...whole, counts: {}, note: '', failed: 'no-answer' }),
+            at('000010', {
+              ...whole,
+              counts: {},
+              note: '',
+              failed: 'budget',
+              rest: 1,
+              restDocuments: ['d1'],
+            }),
+            at('000011', {
+              ...whole,
+              counts: {},
+              note: '',
+              failed: 'no-answer',
+              rest: 1,
+              restDocuments: ['d1'],
+            }),
             at('000012', { ...FIRST.piece, ended: 'budget' }),
             at('000013', { ...FIRST.piece, counts: {}, fields: [], ended: 'budget' }),
-            at('000014', { ...whole, ended: 'output', rest: 1 }),
-            at('000015', { ...whole, document: null, counts: {}, note: '', failed: 'budget' }),
+            at('000014', { ...whole, ended: 'output', rest: 1, restDocuments: ['d1'] }),
+            at('000015', {
+              ...whole,
+              document: null,
+              counts: {},
+              note: '',
+              failed: 'budget',
+              rest: 2,
+              restDocuments: ['d1', 'd2'],
+            }),
+            // A check whose failed piece is followed by no walk.
+            at('000016', { ...whole, counts: {}, note: '', failed: 'budget' }),
           ]),
         ],
       ),
     );
-    const lines = rows(v.container).map((r) =>
-      all(r, '[data-testid="piece-end"]').map((p) => text(p)),
-    );
-    expect(lines).toEqual([
+    expect(ends(v.container)).toEqual([
       ['Failed: over budget.', 'Worked again in stretches of sentences.'],
       ['No answer from the assistant.', 'Worked again in stretches of sentences.'],
       ['Steps used up: written as staged.'],
       ['Steps used up: what it had staged was not written.'],
       ['Answer too long: written as staged.', 'The rest worked in stretches of sentences.'],
-      // d2 of the job's two documents is deleted.
-      ['Failed: over budget.', '1 document of 2 worked again in stretches of sentences.'],
+      // d2 is deleted.
+      ['Failed: over budget.', 'Worked again in stretches of sentences in 1 document of 2.'],
+      ['Failed: over budget.'],
     ]);
     await v.unmount();
   });
 
-  it('says a document that then ended in use or deleted was not worked again', async () => {
-    const whole = {
-      ...FIRST.piece,
-      first: null,
-      last: null,
-      firstId: null,
-      whole: true,
-      fields: [],
+  it('counts only among the documents the rest went to, and says nothing of them while the job runs', async () => {
+    // The reviewer's case: rest d1 and d2, d1 in use, d3 done in the one step.
+    const piece = {
+      ...whole,
+      document: null,
+      ended: 'budget',
+      rest: 2,
+      restDocuments: ['d1', 'd2'],
     };
-    const job = jobOf({
-      documents: [{ ...jobOf().documents[0], state: 'in-use' }, jobOf().documents[1]],
-    });
+    const states = [doc('d1', 'in-use'), doc('d2', 'done'), doc('d3', 'done')];
+    let v = await mount(clientOf([ended(states)], [page([{ seq: '000030', piece }])]));
+    expect(ends(v.container)).toEqual([
+      [
+        'Steps used up: written as staged.',
+        'The rest worked in stretches of sentences in 1 document of 2.',
+      ],
+    ]);
+    await v.unmount();
+    v = await mount(clientOf([jobOf({ documents: states })], [page([{ seq: '000030', piece }])]));
+    expect(ends(v.container)).toEqual([['Steps used up: written as staged.']]);
+    await v.unmount();
+  });
+
+  it('says a document that then ended in use or deleted was not worked again', async () => {
     const v = await mount(
       clientOf(
-        [job],
+        [ended([doc('d1', 'in-use'), doc('d2', 'gone')])],
         [
           page([
             {
               seq: '000020',
-              piece: { ...whole, piece: 'k20', counts: {}, note: '', failed: 'budget' },
+              piece: {
+                ...whole,
+                piece: 'k20',
+                counts: {},
+                note: '',
+                failed: 'budget',
+                rest: 1,
+                restDocuments: ['d1'],
+              },
             },
             {
               seq: '000021',
@@ -314,16 +356,15 @@ describe('the job page’s list of its work', () => {
                 counts: {},
                 note: '',
                 failed: 'output',
+                rest: 1,
+                restDocuments: ['d2'],
               },
             },
           ]),
         ],
       ),
     );
-    const lines = rows(v.container).map((r) =>
-      all(r, '[data-testid="piece-end"]').map((p) => text(p)),
-    );
-    expect(lines).toEqual([
+    expect(ends(v.container)).toEqual([
       ['Failed: over budget.', 'Not worked again: in use.'],
       ['Failed: answer too long.', 'Not worked again: deleted.'],
     ]);

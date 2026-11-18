@@ -93,6 +93,7 @@ export const JobActivity = ({ client, job, projectId, readAt, onPlan = () => {} 
               projectId={projectId}
               names={names}
               states={states}
+              active={active}
               findingsShown={reportHoldsFindings(job?.report)}
             />
           </li>
@@ -208,7 +209,7 @@ const PieceFindings = ({ findings }) => {
 const reportHoldsFindings = (report) =>
   typeof report?.findings === 'string' && report.findings !== '' && !(report.findingsCut > 0);
 
-const PieceRow = ({ piece, projectId, names, states, findingsShown = false }) => {
+const PieceRow = ({ piece, projectId, names, states, active = false, findingsShown = false }) => {
   const skipped = piece.skipped || [];
   const refused = piece.refused || [];
   return (
@@ -220,7 +221,7 @@ const PieceRow = ({ piece, projectId, names, states, findingsShown = false }) =>
       <p>{pieceWrittenText(piece)}</p>
       {/* How a piece that did not finish ended, and what followed it
           (the worker's `failed`, `ended` and `rest`, BRIEF RW). */}
-      {pieceEndLines(piece, states).map((line) => (
+      {pieceEndLines(piece, states, active).map((line) => (
         <p key={line} data-testid="piece-end">
           {line}
         </p>
