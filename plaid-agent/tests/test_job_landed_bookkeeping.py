@@ -24,7 +24,8 @@ def _setup():
             'text': True, 'conversation': 'c1', 'onlynew': True}
 
 
-@pytest.mark.parametrize('where', ['added-row', 'read-after', 'later-try-put-off', 'record-blip', 'update-blip'])
+@pytest.mark.parametrize('where', ['added-row', 'read-after', 'later-try-put-off', 'record-blip', 'update-blip',
+                                   'later-try-502', 'later-try-500', 'later-try-401', 'lock-lost'])
 def test_the_word_a_landed_text_edit_added_is_filled_whatever_core_does_after_the_send(monkeypatch, where):
     text_edits(monkeypatch)
     client = JobClient({'d1': document('d1', 'Story', [{'words': ['sc', 'tqmc']}, {'words': ['pa', 'ro']}])})
@@ -41,6 +42,16 @@ def test_the_word_a_landed_text_edit_added_is_filled_whatever_core_does_after_th
             words[2]['id'], words[3]['id'], words[4]['id'] = 'd1-zz', 'd1-s2w1', 'd1-s2w2'
             client._holder('d1')['documents']['d1'] = raw
             state['edited'] = True
+        elif where.startswith('later-try-') and where != 'later-try-put-off' and state['edited'] \
+                and not state['failed'] and any(o['kind'] == 'delete_sentence' for o in ops):
+            # REV-JR1-4: the later try fails any other way (core's trouble
+            # past the client's resends, a fault, a token refused).
+            state['failed'] = True
+            status = int(where.rsplit('-', 1)[1])
+            try:
+                raise PlaidAPIError(f'HTTP {status}', status=status)
+            except PlaidAPIError as e:
+                raise PlanError('moved', 0, len(ops)) from e
         elif where == 'later-try-put-off' and state['edited'] and not state['failed'] \
                 and any(o['kind'] == 'delete_sentence' for o in ops):
             # A person's browser wrote between the tries: the later try is
@@ -71,6 +82,21 @@ def test_the_word_a_landed_text_edit_added_is_filled_whatever_core_does_after_th
             return real_get(document_id, **kw)
         client.documents.get = get
 
+    if where == 'lock-lost':
+        # REV-JR1-4: the lock lapsed as the landed write ended.
+        import contextlib
+        from plaid_client import DocumentLockLost
+        locked = client.documents.locked
+
+        @contextlib.contextmanager
+        def losing(document_id, **kwargs):
+            with locked(document_id, **kwargs) as held:
+                yield held
+            if state['edited'] and not state['failed']:
+                state['failed'] = True
+                raise DocumentLockLost('The lock on document d1 lapsed.', document_id='d1',
+                                       cause=PlaidAPIError('HTTP 423', status=423))
+        client.documents.locked = losing
     seen = []
     if where in ('record-blip', 'update-blip'):
         # REV-JR1-3: one 502 in record() after the write landed, or in its
@@ -101,7 +127,7 @@ def test_the_word_a_landed_text_edit_added_is_filled_whatever_core_does_after_th
             return reply(calls=[call(5, 'set_analysis', {'document': 'Story', 'ref': 's2.w1 "zz"', 'morphemes': [
                 {'form': 'zz', 'fields': {'Morph Gloss': 'he'}}]})])
         calls = [call(1, 'retype_sentence', {'document': 'Story', 'ref': 's2', 'text': 'zz pa ro.'})]
-        if where == 'later-try-put-off':
+        if where.startswith('later-try-'):
             calls.append(call(2, 'delete_sentence', {'document': 'Story', 'refs': ['s1']}))
         return reply(calls=calls)
     use(monkeypatch, Model(answer))

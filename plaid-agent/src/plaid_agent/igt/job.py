@@ -4705,6 +4705,7 @@ class IgtRunner:
             job.update_row(document_id, gloss_group=group)
         for tries in range(2):
             client = job.client()
+            held = None
             lock = self.hold(client, document_id)
             try:
                 try:
@@ -4713,9 +4714,9 @@ class IgtRunner:
                         # -2): nothing is sent, the document is put off.
                         raise Deferred(document_id)
                     try:
-                        w, changed, after, vouched, proposed, put_off = self.write_held(
-                            project, document_id, client, ws, st, prints, ops, group, piece, repeated, undone,
-                            summary)
+                        held = self.write_held(project, document_id, client, ws, st, prints, ops, group, piece,
+                                               repeated, undone, summary)
+                        w, changed, after, vouched, proposed, put_off = held
                     except BaseException:
                         # Tries of it may have landed: the document is
                         # settled again from what core holds (D4).
@@ -4726,7 +4727,12 @@ class IgtRunner:
             except DocumentLockLost as e:
                 # The lock lapsed as the write ended (REV-J-B3 B3-4): put off
                 # as any lock conflict, what landed known when it comes back.
-                raise Deferred(document_id) from e
+                # A write that had returned records what it did to the text
+                # first, and is settled again (REV-JR1-4).
+                if held is None:
+                    raise Deferred(document_id) from e
+                put_off = Deferred(document_id)
+                put_off.__cause__ = e
             except PlanError as e:
                 wrote = getattr(e, 'wrote_any', True)
                 # The starter's own browser wrote between the read under the
@@ -4857,15 +4863,17 @@ class IgtRunner:
             # date): whether a try of it landed (REV-JR1-3).
             if not hasattr(e, 'wrote_any'):
                 e.wrote_any = bool(w.done)
-            if not isinstance(e, (Deferred, PlanError)):
+            # Tries of it landed before a later one failed, whatever way:
+            # what they did to the text is recorded, then the failure goes
+            # up (D4, REV-JR1-4). One :meth:`write` puts off (out of date, a
+            # 409, a 423, something gone) goes up as the put-off.
+            if not w.done or not isinstance(e, Exception):
                 raise
-            # Tries of it landed before it was put off (a later try out of
-            # date, or refused as :meth:`write` puts a write off): what they
-            # did to the text is recorded before it goes (D4).
-            if not w.done or (isinstance(e, PlanError) and not (_status(e) in (409, 423) or _gone_now(e))):
-                raise
-            put_off = e if isinstance(e, Deferred) else Deferred(document_id)
-            put_off.__cause__ = put_off.__cause__ or e
+            if isinstance(e, Deferred) or (isinstance(e, PlanError) and (_status(e) in (409, 423) or _gone_now(e))):
+                put_off = e if isinstance(e, Deferred) else Deferred(document_id)
+                put_off.__cause__ = put_off.__cause__ or e
+            else:
+                put_off = e
         known = client.document_versions.get(document_id)
         # Read again as any read is while core is busy: a landed write's
         # records need it (D4). Trouble that outlasts the tries leaves the
