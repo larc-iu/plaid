@@ -3106,8 +3106,9 @@ class IgtRunner:
 
     @staticmethod
     def ops_by_document(ws: JobWorkspace, documents: List[str]) -> Dict[Optional[str], List[Dict[str, Any]]]:
-        """A piece's ops by the document each writes in (by the token it
-        names, among the documents the piece read), None for an op of no
+        """A piece's ops by the document each writes in (the document it
+        names, else by the token it names, among the documents the piece
+        read), None for an op of no
         document: an entry of its own, a guideline, a setting. A create is
         put with every document whose ops link it: the first written creates
         it, and the others find it there (:meth:`entries_that_fit`), so one
@@ -3130,7 +3131,9 @@ class IgtRunner:
             token = token_of(op)
             if token and is_virtual(token):
                 token = token.split(':', 1)[1]
-            d = op.get('document_id') or where.get(token)
+            # The document it names first, as the apply rule places it
+            # (``jobapply.place``): a respell names its own by ``doc`` (D1).
+            d = op.get('document_id') or op.get('doc') or where.get(token)
             out.setdefault(d, []).append(op)
             key = op.get('new_entry_key')
             if key in creates and (d, key) not in placed:
