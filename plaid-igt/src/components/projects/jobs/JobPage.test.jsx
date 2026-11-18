@@ -1359,6 +1359,17 @@ describe('the job page', () => {
           left: [],
           leftMore: 0,
         },
+        // In use all the job long (S8-3): its blanks are not reached, not left.
+        {
+          documentId: 'd5',
+          name: 'Busy',
+          state: 'in-use',
+          done: 0,
+          counts: { blank: blank(0, 6) },
+          skipped: [],
+          left: [],
+          leftMore: 0,
+        },
       ],
     };
     const job = jobOf({
@@ -1369,6 +1380,7 @@ describe('the job page', () => {
         row('d2', 'Never', 'not-reached', 0),
         row('d3', null, 'gone', null),
         row('d4', 'Partway', 'not-reached', 2),
+        row('d5', 'Busy', 'in-use', 0),
       ],
       report,
     });
@@ -1377,7 +1389,7 @@ describe('the job page', () => {
     const at = headers.indexOf('Left blank');
     expect(at).toBeGreaterThan(-1);
     const cells = documentRows(v.container, job).map((tr) => all(tr, 'td')[at]?.textContent);
-    expect(cells).toEqual(['2 words', '', '', '0']);
+    expect(cells).toEqual(['2 words', '', '', '0', '']);
     await v.unmount();
     // A job that fills nothing has no Left blank column at all.
     const none = {

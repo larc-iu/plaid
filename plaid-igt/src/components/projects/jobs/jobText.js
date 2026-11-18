@@ -569,11 +569,11 @@ export const documentCounts = (report) => {
 // How many places a document's Left blank lists, by unit, those cut from the
 // list included ("4 words, 1 sentence", REV-DF-S N-2), or null when nothing
 // was counted there: a job that fills nothing, a document deleted, one that
-// could not be read, one the job never reached, core's own report
-// (REV-DF-S-2).
+// could not be read, one the job worked none of (not reached, or in use all
+// along, S8-3), core's own report (REV-DF-S-2).
 export const leftText = (d) => {
-  if (!d?.counts?.blank || d.leftUnread || (d.state === 'not-reached' && !(d.done > 0)))
-    return null;
+  const never = (d?.state === 'not-reached' || d?.state === 'in-use') && !(d.done > 0);
+  if (!d?.counts?.blank || d.leftUnread || never) return null;
   const units = d.counts.leftUnits || [];
   if (!units.length) return '0';
   return units.map((u) => `${u.left.toLocaleString()} ${plural(u.left, u.unit)}`).join(', ');
