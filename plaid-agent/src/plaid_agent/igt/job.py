@@ -57,7 +57,7 @@ from ..core.limits import (JOB_ANALYSIS_MAX_CHARS, JOB_CHANGE_VALUE_CHARS, JOB_C
                            JOB_LOCK_TRIES, JOB_LOCK_WAIT_S, JOB_PERSON_QUIET_S, JOB_PRECEDENT_CHARS,
                            JOB_EVIDENCE_CHARS, JOB_SENTENCE_MAX_CHARS, JOB_SENTENCE_MAX_WORDS,
                            JOB_PIECE_OUTPUT_TOKENS, JOB_SKIPPED_PER_DOCUMENT, JOB_STRETCH_SENTENCES)
-from ..core.plan import JOB_DETAIL_KEY, ONE_REQUEST, PlanError, TooBig, held_changes
+from ..core.plan import JOB_DETAIL_KEY, ONE_REQUEST, PlanError, TooBig, held_changes, plan_changes
 from ..core.prompt import (JOB_ANSWER_AGAIN, JOB_LEAVE_IT, JOB_PLAN_WRITTEN_CALL_NEXT, JOB_TEXT_NOW, JOB_TEXT_THEN_FILL,
                            JOB_WRITTEN_CALL_NEXT)
 from ..core.provenance import Requester
@@ -1573,11 +1573,22 @@ class JobWorkspace(Workspace):
         return JOB_PLAN_WRITTEN_CALL_NEXT if self.mode == self.PLAN else JOB_WRITTEN_CALL_NEXT
 
     def staged_count(self) -> int:
-        return held_changes(self)
+        """The staged changes the job applies when the piece ends."""
+        return held_changes(self) - self.proposed_count()
+
+    def proposed_count(self) -> int:
+        """The staged changes a job only lists in its report as proposed
+        (``jobapply.PROPOSED_KINDS``: a rule over many documents, project
+        setup), counted apart from those it applies (REV D8)."""
+        return plan_changes([op for op in self.plan_view() if op.get('kind') in jobapply.PROPOSED_KINDS])
 
     def planned_note(self, n: int, what: Optional[str] = None) -> str:
-        held = self.staged_count()
-        return (f'Staged {what or _n(n, "change")}. {_n(held, "change")}{STAGED_TAIL}' + self.superseded_note())
+        held, proposed = self.staged_count(), self.proposed_count()
+        return (f'Staged {what or _n(n, "change")}.'
+                + (f' {_n(proposed, "proposed change")} in all, listed in the report and never applied.'
+                   if proposed else '')
+                + (f' {_n(held, "change")}{STAGED_TAIL}' if held or not proposed else '')
+                + self.superseded_note())
 
     def garbled(self, args):
         """The garble guard of a call (``core.garble``), less its
@@ -1588,7 +1599,9 @@ class JobWorkspace(Workspace):
         return super().garbled(args)
 
     def result_line(self) -> str:
-        held = self.staged_count()
+        held, proposed = self.staged_count(), self.proposed_count()
+        if proposed:
+            return f'[Staged: {_n(held, "change")} to apply, {_n(proposed, "proposed change")} only listed in the report.]'
         return f'[Staged: {_n(held, "change")}.]' if held else '[Staged: nothing yet.]'
 
     def unknown_new_entry(self, entry_id: str) -> str:

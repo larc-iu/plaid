@@ -30,6 +30,7 @@ from plaid_client.ids import drawn_uuid7
 from plaid_client.service import locked_for_writes
 
 from .keep import is_keep, kept_value
+from .tools import next_step
 from . import opkind as ok
 from .opkind import MEMBER, ROW
 from plaid_client.services import UNKNOWN_OUTCOME, requester_message
@@ -1380,8 +1381,10 @@ def plan_status(ws) -> str:
                 f'{"it is" if kept == 1 else "they are"}, and approval writes nothing. Its entries:')
     else:
         entries = '' if n == held + kept else f' in {_n(n, "numbered entry", "numbered entries")}'
-        top = (f'{held_phrase(ops)}{entries} (nothing is written until the user approves them as one '
-                'plan):')
+        # A job's piece has no one who approves (REV D8): its result line
+        # says what is applied and what is only proposed.
+        top = f'{held_phrase(ops)}{entries}' + next_step(
+            ws, ' (nothing is written until the user approves them as one plan):', ':')
     out = [top] + _numbered([op.get('label') + (f' ({op["ref"]})' if op.get('ref') else '') for op in ops])
     if waiting:
         out.append(f'This plan replaces {waiting_phrase(waiting)}: only what is listed here can be approved. '

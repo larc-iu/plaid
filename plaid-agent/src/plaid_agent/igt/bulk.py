@@ -21,7 +21,7 @@ from ..core.replace import replacer as _replacer
 from ..core.provenance import unmark
 from .plan import KIND, REFS_READ, REPAIR_OF, SENSES_READ, SCOPES, analysed_morphemes, move_phrase, removed_entries, settle_merges
 from .project import join_morphemes, word_ref
-from ..core.tools import ADVICE, ToolError
+from ..core.tools import ADVICE, ToolError, next_step
 from .lexicon import _meta_patch, _refuse_doomed_entry, _refuse_removing_survivor
 from .tools import (parse_analysis, analysis_op, ANALYSIS_OF, confirm_hint, entries_note, take_back, holds_nothing, in_place, in_place_back, in_place_form, plan_retypes, value_op, surface_misfit, stage_equals, no_scope_reaches, refuse_shape_and_analysis,
                     edit_planned_morpheme, left_for_analysis, _planned_place)
@@ -413,21 +413,25 @@ def _stage_rule(ws: Workspace, tool: str, args: Dict[str, Any], unit, *, change:
     changes = rules.transition_lines(op[CARD].get(rules.TRANSITIONS) or [],
                                      op[CARD].get(rules.TRANSITIONS_MORE) or [0, 0], unit)
     settled = [o for o in kept if not writes_stored(ws, o)]
-    return (ws.planned_note(n, f'{rules.count_line(n, unit, len(op.get("documents") or []))}, as one row on the card')
-            + (f' {accepted} of them replace work a person made or accepted, and the card says so.'
-               if accepted else '')
+    # A job has no card and no one who approves: it lists a rule in its
+    # report as a proposed change (jobapply.UNAPPLIED_KINDS, REV D8).
+    return (ws.planned_note(n, rules.count_line(n, unit, len(op.get("documents") or []))
+                            + next_step(ws, ', as one row on the card', ''))
+            + (f' {accepted} of them replace work a person made or accepted'
+               + next_step(ws, ', and the card says so.', '.') if accepted else '')
             + (f' {undone} {unit[0] if undone == 1 else unit[1]} it matches '
                f'{"goes" if undone == 1 else "go"} back to what is stored, so approval writes nothing there.'
                if undone else '')
             + moved
             + (f'\n{_partial_note(op, unit)}' if op.get('partial') else '')
             + (f'\nMatches {mode}.' if mode else '')
-            + (('\nEvery distinct change it makes, the card lists the same:\n  ' + '\n  '.join(changes))
+            + (('\nEvery distinct change it makes' + next_step(ws, ', the card lists the same', '') + ':\n  '
+                + '\n  '.join(changes))
                if changes else '')
             + _by_document(ws, settled)
             + (('\nFor example:\n  ' + '\n  '.join(sample)) if sample else '')
             + (f'\n  … {n - len(sample)} more' if n > len(sample) else '')
-            + '\nStored as a rule, found again when the user approves.'
+            + next_step(ws, '\nStored as a rule, found again when the user approves.', '')
             # A value kept out of it (core.keep) is named with what it holds.
             + (' To leave one value out, set_field it to what it holds now.'
                if set(op.get('counts') or {}) <= {'set_span'} else '')
