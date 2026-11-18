@@ -75,6 +75,21 @@ it('documentPlacer places a row gone since at the sentence its image names', () 
   expect(place({ kind: 'span', id: 'gone-both' })).toBeNull();
 });
 
+// REV-G4-5: a job's link on an unsegmented word makes its morpheme in the
+// same batch, so Undo job removes both. The link is placed by where the
+// morpheme's own token row was.
+it('documentPlacer places a link whose morpheme the same undo removed by that morpheme’s offset', () => {
+  const place = documentPlacer(twoSentences(), {
+    projectId: 'p1',
+    documentId: 'd1',
+    rows: [
+      { kind: 'vocab-link', id: 'gone-link', before: { id: 'gone-link', tokens: ['m-gone'] } },
+      { kind: 'token', id: 'm-gone', before: { id: 'm-gone', begin: 8, end: 11, text: 'text-1' } },
+    ],
+  });
+  expect(place({ kind: 'vocab-link', id: 'gone-link' })?.label).toBe('Sentence 2');
+});
+
 describe('vocabularyPlacer', () => {
   const place = vocabularyPlacer({
     vocabularyId: 'v1',

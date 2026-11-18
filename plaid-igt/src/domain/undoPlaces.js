@@ -13,8 +13,9 @@ const idOf = (t) => (t && typeof t === 'object' ? t.id : t);
  * link into the grid. The text and the document's own row are placed at the
  * tabs that show them. A row not in the document now (deleted since) is
  * placed by the tokens its image in `rows` (the entry's change rows, `{kind,
- * id, before, after}`) names, while one of them is still in a sentence
- * (H2-5-4), and else not placed.
+ * id, before, after}`) names (H2-5-4): at the sentence of one still there, or,
+ * for one the same entry removed, at the sentence that holds the offset its
+ * own row began at (REV-G4-5). Else it is not placed.
  */
 export const documentPlacer = (doc, { projectId, documentId, rows = [] }) => {
   const tokens = new Map();
@@ -47,6 +48,11 @@ export const documentPlacer = (doc, { projectId, documentId, rows = [] }) => {
   const imageTokens = (kind, id) => (images.get(`${kind}:${id}`)?.tokens || []).map(idOf);
   const spanTokensOf = (id) => spanTokens.get(id) ?? imageTokens('span', id);
 
+  const sentenceAt = (begin) =>
+    typeof begin === 'number'
+      ? sentences.find((s) => s.begin <= begin && begin < s.end)
+      : undefined;
+
   const tokensOf = (row) => {
     if (row.kind === 'token') return [row.id];
     if (row.kind === 'span') return spanTokensOf(row.id);
@@ -66,7 +72,14 @@ export const documentPlacer = (doc, { projectId, documentId, rows = [] }) => {
       return { key: 'document', label: 'Name and fields', to: `${base}?tab=details` };
     }
     for (const id of tokensOf(row) || []) {
-      const s = number.has(id) ? { id } : doc?.findSentenceForToken?.(tokens.get(id));
+      const live = tokens.get(id);
+      // A token the same undo removed (a job's morpheme made with its link) is
+      // placed by the offset its own row began at (REV-G4-5).
+      const s = number.has(id)
+        ? { id }
+        : live
+          ? doc?.findSentenceForToken?.(live)
+          : sentenceAt(images.get(`token:${id}`)?.begin);
       if (s && number.has(s.id)) {
         return {
           key: s.id,
