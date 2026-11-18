@@ -374,6 +374,12 @@ def summary(job: Dict[str, Any], note_chars: Optional[int] = JOB_SUMMARY_NOTE_CH
         # and of the text (RPF-A4, the owner's R4), and what its one step over
         # all the documents did.
         lines.append(f'The report\'s top line{whose}: "{top}"')
+    if report.get('stopped') == 'without-worker':
+        # Core's report counts the rows its worker last recorded: History may
+        # hold more (S3-1, the page's own line).
+        lines.append('Stopped with no worker running.' + (
+            ' The counts are what its worker recorded before it stopped, and History holds every change it wrote.'
+            if job.get('wrote') else ''))
     planned = plan_line(report)
     if planned:
         lines.append(planned)

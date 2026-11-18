@@ -487,3 +487,16 @@ def test_the_totals_say_what_is_still_blank_of_each_thing_the_job_fills():
                                        'sentence (2 more in sentences not reached)')
     by_documents = {'totals': {'changes': 4}, 'documents': [{'counts': {'blank': blank}}, {'counts': {'blank': blank}}]}
     assert 'segmentation left blank 6 words' in jobread._totals(by_documents)
+
+
+def test_a_job_stopped_with_no_worker_says_its_counts_may_be_short_when_history_holds_its_writes():
+    """S3-1: core's report of a job stopped while its worker was dead counts
+    what the worker last recorded. read_job says so, as the page does."""
+    job = {'id': 'j1', 'state': 'cancelled', 'reason': 'cancelled', 'started_by_name': 'Wren',
+           'documents': [], 'instructions': 'Gloss.',
+           'report': {'stopped': 'without-worker', 'totals': {'changes': 0}, 'documents': []}}
+    said = '\n'.join(jobread.summary({**job, 'wrote': True}))
+    assert 'Stopped with no worker running. The counts are what its worker recorded before it stopped, and ' \
+           'History holds every change it wrote.' in said
+    said = '\n'.join(jobread.summary({**job, 'wrote': False}))
+    assert 'Stopped with no worker running.' in said and 'History holds' not in said
