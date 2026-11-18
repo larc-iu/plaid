@@ -269,8 +269,8 @@ It runs in the browser and needs no service.
 A proposal is a stretch of time with no text, dashed on the timeline and in the transcript.
 Type into one and it becomes an ordinary segment with those times.
 The **×** on its row discards it, and **Discard** in the detection dialog discards them all.
-Proposals are kept with the document and shown again to anyone who opens it while the method that made them is chosen in the detection dialog.
-A service's proposals show only while that service is chosen and running.
+Proposals are kept with the document, so they can be transcribed another day or by someone else, whatever method is chosen and whether or not the service that made them is running.
+The detection dialog names the method that made them, and **Detect** replaces them.
 
 The built-in detector's options change what is proposed:
 

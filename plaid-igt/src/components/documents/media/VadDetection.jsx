@@ -36,11 +36,14 @@ export function VadDetection({ mediaOps, readOnly = false, disabled = false }) {
   const stopDetection = detectSpot.service ? cancelRequest : vad.cancel;
   const channels = useChosenChannels(channelSpeakers, channelCount);
 
+  // Kept proposals show whatever method is chosen, so the one that made them
+  // is named.
+  const by = vad.madeBy?.name ? ` from “${vad.madeBy.name}”` : '';
   const summary =
     count > 0
       ? count === 1
-        ? '1 proposed segment'
-        : `${count} proposed segments`
+        ? `1 proposed segment${by}`
+        : `${count} proposed segments${by}`
       : foundCount === 0
         ? 'No speech found'
         : 'No proposals left';

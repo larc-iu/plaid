@@ -564,6 +564,7 @@ export const useMediaOperations = () => {
     alignmentTokens,
     params: detectSpot.params.coercedValues,
     methodKey: detectSpot.selection,
+    methodName: detectSpot.options.find((o) => o.value === detectSpot.selection)?.label ?? null,
     saved: doc.storedMetadata[VAD_METADATA_KEY] ?? null,
     onPersist: canWrite ? persistCuts : null,
   });

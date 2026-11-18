@@ -19,13 +19,22 @@ const REGIONS = [
   { timeBegin: 3.8, timeEnd: 7.55 },
 ];
 
-function Probe({ saved, onPersist, tokens = [], blob = BLOB, method = 'builtin', onReady }) {
+function Probe({
+  saved,
+  onPersist,
+  tokens = [],
+  blob = BLOB,
+  method = 'builtin',
+  methodName = null,
+  onReady,
+}) {
   const vad = useVadProposals({
     mediaBlob: blob,
     mediaKey: blob ? `blob:${blob.id}` : null,
     alignmentTokens: tokens,
     params: {},
     methodKey: method,
+    methodName,
     saved,
     onPersist,
   });
@@ -60,13 +69,10 @@ describe('useVadProposals persistence', () => {
     await r.unmount();
   });
 
-  it('ignores cuts measured from a different recording or method', async () => {
+  it('ignores cuts measured from a different recording', async () => {
     const other = await renderComponent(<Probe saved={{ ...kept(REGIONS), media: 'print:x' }} />);
     expect(shown(other)).toBe('');
     await other.unmount();
-    const swapped = await renderComponent(<Probe saved={kept(REGIONS)} method="some-service" />);
-    expect(shown(swapped)).toBe('');
-    await swapped.unmount();
   });
 
   it('does not bring back cuts on a replacement recording of the same length', async () => {
@@ -316,6 +322,78 @@ describe('useVadProposals over segments', () => {
     const tokens = [seg('a', 0, 1, 'Ben')];
     const r = await renderComponent(<Probe saved={kept(REGIONS)} tokens={tokens} />);
     expect(shown(r)).toBe('vad-3.800-7.550');
+    await r.unmount();
+  });
+});
+
+// The owner's ruling of 2026-11-18 (H2-3-1): kept proposals show whatever
+// method is chosen, under the method that made them, until a new run.
+describe('useVadProposals: kept proposals under another method', () => {
+  afterEach(() => vi.useRealTimers());
+
+  const bySvc = (dismissed = []) => ({
+    media: 'print:take-1',
+    method: 'service:h3:detect',
+    methodName: 'Scripted detector',
+    regions: REGIONS.flatMap((r) => [r.timeBegin, r.timeEnd]),
+    dismissed,
+  });
+
+  it("shows a service's proposals with the built-in chosen, as with the service offline or another browser's choice", async () => {
+    vi.useFakeTimers();
+    const onPersist = vi.fn();
+    let api = null;
+    const r = await renderComponent(
+      <Probe
+        saved={bySvc()}
+        method="builtin:silero"
+        methodName="Default"
+        onPersist={onPersist}
+        onReady={(v) => (api = v)}
+      />,
+    );
+    expect(shown(r)).toBe('vad-0.420-3.100 vad-3.800-7.550');
+    expect(api.madeBy).toEqual({ key: 'service:h3:detect', name: 'Scripted detector' });
+    // Shown is not rewritten, and a discard keeps them under their own method.
+    await r.step(() => vi.advanceTimersByTime(5000));
+    expect(onPersist).not.toHaveBeenCalled();
+    await r.step(() => api.dismiss('vad-0.420-3.100'));
+    await r.step(() => vi.advanceTimersByTime(2000));
+    expect(onPersist).toHaveBeenCalledWith(bySvc(['vad-0.420-3.100']));
+    await r.unmount();
+  });
+
+  it('keeps showing them when the method is changed', async () => {
+    const r = await renderComponent(<Probe saved={bySvc()} method="service:h3:detect" />);
+    await r.rerender(<Probe saved={bySvc()} method="builtin:silero" />);
+    expect(shown(r)).toBe('vad-0.420-3.100 vad-3.800-7.550');
+    await r.unmount();
+  });
+
+  it('a new run replaces them, under the method that ran', async () => {
+    vi.useFakeTimers();
+    const onPersist = vi.fn();
+    let api = null;
+    const r = await renderComponent(
+      <Probe
+        saved={bySvc()}
+        method="service:other"
+        methodName="Other detector"
+        onPersist={onPersist}
+        onReady={(v) => (api = v)}
+      />,
+    );
+    await r.step(() => api.acceptServiceRegions([{ timeBegin: 9, timeEnd: 10 }]));
+    expect(shown(r)).toBe('vad-9.000-10.000');
+    expect(api.madeBy).toEqual({ key: 'service:other', name: 'Other detector' });
+    await r.step(() => vi.advanceTimersByTime(2000));
+    expect(onPersist).toHaveBeenCalledWith({
+      media: 'print:take-1',
+      method: 'service:other',
+      methodName: 'Other detector',
+      regions: [9, 10],
+      dismissed: [],
+    });
     await r.unmount();
   });
 });

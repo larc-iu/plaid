@@ -95,11 +95,14 @@ const unpackRegions = (kept) => {
   return out.length ? out : null;
 };
 
-const payloadOf = (media, methodKey, regions, dismissed) =>
+// `madeBy` is the method that made the regions, `{ key, name }`: its name is
+// kept so it can be said while the method is not on offer (a service offline).
+const payloadOf = (media, madeBy, regions, dismissed) =>
   media && regions && regions.length
     ? {
         media,
-        method: methodKey ?? null,
+        method: madeBy?.key ?? null,
+        ...(madeBy?.name ? { methodName: madeBy.name } : {}),
         ...packRegions(regions),
         dismissed: [...dismissed].sort(),
       }
@@ -110,8 +113,9 @@ const payloadOf = (media, methodKey, regions, dismissed) =>
  * @param {string|null} mediaKey    changes when the recording does, to drop the analysis
  * @param {Array} alignmentTokens   existing segments, which proposals never overlap
  * @param {Object} params           the built-in detector's coerced options
- * @param {string} methodKey        the chosen method, so a switch drops what
- *                                  the previous one proposed
+ * @param {string} methodKey        the chosen method, which a new run's
+ *                                  proposals are kept under
+ * @param {string} methodName       its name, kept with them
  * @param {Object|null} saved       what an earlier session left on the document
  * @param {Function} onPersist      given the payload to keep, or null to drop it
  */
@@ -121,6 +125,7 @@ export function useVadProposals({
   alignmentTokens,
   params,
   methodKey,
+  methodName = null,
   saved = null,
   onPersist = null,
 }) {
@@ -135,6 +140,10 @@ export function useVadProposals({
   const [step, setStep] = useState(null);
   const [error, setError] = useState(null);
   const [dismissed, setDismissed] = useState(() => new Set());
+  // The method that made what is shown, `{ key, name }`, or null.
+  const [madeBy, setMadeBy] = useState(null);
+  const methodRef = useRef(null);
+  methodRef.current = { key: methodKey ?? null, name: methodName || null };
   const abortRef = useRef(null);
   // The print of the recording on screen, once read, with the blob it was
   // read from so a print of the one before is never taken for it.
@@ -172,24 +181,26 @@ export function useVadProposals({
     persistRef.current?.(next.payload);
   }, []);
 
-  // A replaced recording invalidates everything measured from the old one, and
-  // so does a change of method: a proposal belongs to whatever produced it, and
-  // leaving the last method's cuts under this one's controls would be a lie.
-  // What the document kept for THIS recording and method is restored instead.
+  // A replaced recording invalidates everything measured from the old one.
+  // What the document kept for THIS recording is restored instead, whatever
+  // method is chosen now, under the method that made it, until a new run
+  // replaces it (the owner's ruling of 2026-11-18: a service's proposals show
+  // with the service offline, and to someone whose browser chose another).
   useEffect(() => {
     const kept = savedRef.current;
-    const mine =
-      kept && media && kept.media === media && kept.method === (methodKey ?? null) ? kept : null;
+    const mine = kept && media && kept.media === media ? kept : null;
     const restored = mine ? unpackRegions(mine) : null;
+    const by = mine ? { key: mine.method ?? null, name: mine.methodName || null } : null;
     setAnalysis(null);
     setServiceRegions(restored);
+    setMadeBy(by);
     setStatus(restored ? 'ready' : 'idle');
     setError(null);
     setDismissed(new Set(mine?.dismissed ?? []));
     writtenRef.current = JSON.stringify(
-      payloadOf(media, methodKey, restored, new Set(mine?.dismissed ?? [])),
+      payloadOf(media, by, restored, new Set(mine?.dismissed ?? [])),
     );
-  }, [mediaKey, methodKey, mediaBlob, media]);
+  }, [mediaKey, mediaBlob, media]);
 
   useEffect(() => () => abortRef.current?.abort(), []);
 
@@ -237,6 +248,7 @@ export function useVadProposals({
           results.push({ ...result, channel: run.channel, speaker: run.speaker || undefined });
         }
         setAnalysis(results);
+        setMadeBy(methodRef.current);
         setStatus('ready');
       } catch (e) {
         console.error('Speech detection failed:', e);
@@ -276,6 +288,7 @@ export function useVadProposals({
     setAnalysis(null);
     setDismissed(new Set());
     setServiceRegions(regions);
+    setMadeBy(methodRef.current);
     setStatus('ready');
     setError(null);
   }, []);
@@ -309,6 +322,7 @@ export function useVadProposals({
     abortRef.current?.abort();
     setAnalysis(null);
     setServiceRegions(null);
+    setMadeBy(null);
     setStatus('idle');
     setError(null);
     setDismissed(new Set());
@@ -326,7 +340,11 @@ export function useVadProposals({
   // not, and a slider drag fires a change per pointer move. Deferring the
   // parameters the derivation reads keeps the control itself at full speed and
   // lets React abandon a list render the next move has already superseded.
-  const derivedFrom = useDeferredValue(params);
+  // The built-in's options re-derive its proposals only while it is the
+  // method chosen: another method's options are not its own.
+  const ownParamsRef = useRef(params);
+  if (!madeBy || madeBy.key === (methodKey ?? null)) ownParamsRef.current = params;
+  const derivedFrom = useDeferredValue(ownParamsRef.current);
 
   const { proposals, foundCount, discardedCount, regions } = useMemo(() => {
     const found =
@@ -379,7 +397,7 @@ export function useVadProposals({
       pendingRef.current = null;
       return undefined;
     }
-    const payload = payloadOf(media, methodKey, regions, dismissed);
+    const payload = payloadOf(media, madeBy, regions, dismissed);
     const encoded = JSON.stringify(payload);
     if (encoded === writtenRef.current) {
       pendingRef.current = null;
@@ -390,7 +408,7 @@ export function useVadProposals({
     return () => clearTimeout(timer);
     // persistRef and writtenRef are refs; onPersist is read only for its presence.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [regions, dismissed, methodKey, media, !!onPersist, flush]);
+  }, [regions, dismissed, madeBy, media, !!onPersist, flush]);
 
   // Leaving the tab is exactly the moment the cuts used to be lost, so a write
   // still inside its delay goes out on the way rather than being cancelled.
@@ -403,6 +421,8 @@ export function useVadProposals({
     foundCount,
     discardedCount,
     hasAnalysis: !!analysis || !!serviceRegions,
+    // The method that made what is shown, `{ key, name }`, or null.
+    madeBy,
     status,
     progress,
     step,

@@ -53,4 +53,17 @@ describe('the Speech detection dialog', () => {
     const none = await footer({ foundCount: 2, hasAnalysis: true, discardedCount: 0 });
     expect(none.text).not.toContain('discarded');
   });
+
+  it('names the method that made the proposals (H2-3-1)', async () => {
+    const { text } = await footer({
+      proposals: [
+        { id: 'vad-1', timeBegin: 1, timeEnd: 2 },
+        { id: 'vad-2', timeBegin: 3, timeEnd: 4 },
+      ],
+      foundCount: 2,
+      hasAnalysis: true,
+      madeBy: { key: 'service:h3:detect', name: 'Scripted detector' },
+    });
+    expect(text).toContain('2 proposed segments from “Scripted detector”');
+  });
 });
