@@ -859,6 +859,39 @@ describe('entryChanges', () => {
     expect(got[1].changedSince).toBe(true);
   });
 
+  // H2-5-3: provenance is Plaid's own bookkeeping, not a field of the entry.
+  it('lists no provenance key of a machine-made entry as a field', () => {
+    const prov = {
+      prov: 'inferred',
+      provSource: 'service:igt:job:x',
+      provDetail: { job: 'j1' },
+      provProb: 0.9,
+    };
+    const [added, confirmed] = entryChanges(
+      [
+        {
+          kind: 'vocab-item',
+          id: 'i4',
+          vocabLayer: 'v1',
+          after: { id: 'i4', form: 'pele', metadata: { gloss: 'bird', ...prov } },
+        },
+        {
+          kind: 'vocab-item',
+          id: 'i1',
+          vocabLayer: 'v1',
+          before: { id: 'i1', form: 'kai', metadata: { gloss: 'go', ...prov } },
+          after: { id: 'i1', form: 'kai', metadata: { gloss: 'go', ...prov, provConfirmed: true } },
+        },
+      ],
+      vocabularies,
+    );
+    expect(added.fields).toEqual([
+      { label: 'Form', before: '', after: 'pele' },
+      { label: 'Gloss', before: '', after: 'bird' },
+    ]);
+    expect(confirmed.fields).toEqual([]);
+  });
+
   it('says a deleted entry whose links went to another was merged into it', () => {
     const got = entryChanges(
       [

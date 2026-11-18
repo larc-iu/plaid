@@ -25,7 +25,7 @@
 // shifted, a token and the spans on it), so a part of them puts back a
 // before beside an after it does not belong with.
 
-import { PROV_STATES, provState } from '@larc-iu/plaid-client';
+import { PROVENANCE_KEYS, PROV_STATES, provState } from '@larc-iu/plaid-client';
 import { deriveSentences } from './derive.js';
 import { getIgtLayerInfo } from './layerInfo.js';
 import { morphFormOf, wordCells } from './igtExport.js';
@@ -724,7 +724,11 @@ export function entryChanges(rows, vocabularies) {
     const keys = [
       ...fieldList.map((f) => f.name),
       ...[...new Set([...Object.keys(b), ...Object.keys(a)])].filter(
-        (k) => !byName.has(k) && (!RESERVED_ITEM_KEYS.has(k) || k === 'parent'),
+        // Provenance is Plaid's own bookkeeping, never a field (H2-5-3).
+        (k) =>
+          !byName.has(k) &&
+          !PROVENANCE_KEYS.includes(k) &&
+          (!RESERVED_ITEM_KEYS.has(k) || k === 'parent'),
       ),
     ];
     const fields = [];
