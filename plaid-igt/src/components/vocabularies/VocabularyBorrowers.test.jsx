@@ -202,9 +202,10 @@ describe('the projects that use a vocabulary', () => {
 
   it('offers no Unlink to someone who does not maintain its project', async () => {
     const client = server({ borrowers: [{ id: 'B', name: 'Beeworth' }] });
-    await mount(client, { id: 'A', maintainers: [], writers: ['u'], readers: [] });
+    const view = await mount(client, { id: 'A', maintainers: [], writers: ['u'], readers: [] });
     expect(rows()).toEqual(['Beeworth']);
     expect(unlinkOf('Unlink from Beeworth')).toBeUndefined();
+    await view.unmount();
   });
 });
 
