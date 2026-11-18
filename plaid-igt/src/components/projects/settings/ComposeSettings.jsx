@@ -324,9 +324,12 @@ export const ComposeSettings = ({ project, projectId, client, onProjectUpdate })
         undefined,
         expectStored(project, IGT_NAMESPACE, 'compose'),
       );
-      wrote.current = rowsKey(
-        composeRows(withStoredConfig(project, IGT_NAMESPACE, 'compose', value).config),
-      );
+      // What the edits made after this save are made on.
+      const written = composeRows(
+        withStoredConfig(project, IGT_NAMESPACE, 'compose', value).config,
+      ).map(withUid);
+      prevSaved.current = written;
+      wrote.current = rowsKey(written);
       // Save stays held until the project is read again, so a next save
       // expects what this one stored. The save has landed by now, so a read
       // that fails is not a failed save.

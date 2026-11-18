@@ -154,6 +154,47 @@ describe('Special characters, two maintainers', () => {
     await ben.view.unmount();
   });
 
+  // REV-G2-2: the page's own save read back while it types elsewhere.
+  const rowsOf = (page, code) =>
+    page.view.container.querySelectorAll(`[data-code-row="${code}"]`).length;
+  const seedKK = (server) => {
+    server.config.igt.compose = {
+      codes: [{ code: 'kk', char: 'k', modified: '2026-01-01T00:00:00Z' }],
+      removed: [],
+    };
+  };
+  const typeNoteLater = async (ben) => {
+    const code = Object.keys(BUILT_IN_TABLE)[0];
+    await ben.view.step(() => type(rowOf(ben, code).querySelectorAll('input')[1], 'later'));
+    ben.held.shift()();
+    await ben.view.step(settle);
+  };
+
+  it('a code added and saved is listed once when typing goes on while it is read back', async () => {
+    const { server, client } = makeServer();
+    const ben = await openPage(ComposeSettings, server, client);
+    ben.held = [];
+    await addCode(ben, 'zz', 'ɓ', 'by Ben');
+    await press(ben, /^Save$/);
+    await typeNoteLater(ben);
+    expect(rowsOf(ben, 'zz')).toBe(1);
+    expect(ben.view.container.textContent).not.toContain('already exists');
+    await ben.view.unmount();
+  });
+
+  it('a code renamed and saved is listed once when typing goes on while it is read back', async () => {
+    const { server, client } = makeServer();
+    seedKK(server);
+    const ben = await openPage(ComposeSettings, server, client);
+    ben.held = [];
+    await ben.view.step(() => type(rowOf(ben, 'kk').querySelectorAll('input')[0], 'kx'));
+    await press(ben, /^Save$/);
+    await typeNoteLater(ben);
+    expect(rowsOf(ben, 'kx')).toBe(1);
+    expect(ben.view.container.textContent).not.toContain('already exists');
+    await ben.view.unmount();
+  });
+
   it('a code deleted on this page stays deleted when the list is read again', async () => {
     const { server, client } = makeServer();
     server.config.igt.compose = {
