@@ -397,6 +397,8 @@ describe('the lists of an ended job', () => {
     expect(show.getAttribute('aria-label')).toBe('Show: 1 document in use, not worked');
     await v.unmount();
     const w = await mount(clientOf(ENDED), '?view=documents&filter=in-use');
+    // The filter's counts, and no second count beside them (REV-RP-14).
+    expect(text(w.container)).not.toContain(`${N} documents`);
     const rows = all(w.container, 'tbody tr');
     expect(rows.map((r) => text(all(r, 'td')[1]))).toEqual(['Story 01']);
     // The reason is the filter's third choice, chosen.

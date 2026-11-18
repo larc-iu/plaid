@@ -872,6 +872,8 @@ const JobDocuments = ({ job, projectId, plan }) => {
         match: (d, q) => textIncludes(d.name ?? '', q),
       }}
       noun="document"
+      // The filter says how many it shows once the job has ended.
+      showCount={!ended}
       empty="Nothing."
       actions={
         ended && (
