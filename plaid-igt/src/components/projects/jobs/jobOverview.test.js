@@ -217,6 +217,28 @@ describe('what to check', () => {
     ]);
   });
 
+  // REV-RP-6: the documents the plan did not work, and the text the job
+  // changed (the old page's notice), each a row. Values written outside the
+  // setup and changes not written as edited during the job stay totals rows,
+  // as they were.
+  it('has a row for the documents the plan left out and the text the job changed', () => {
+    const rows = toCheckRows({
+      state: 'done',
+      report: {
+        totals: { sentences: 2, changes: 3, textChanges: 1, changed: 2, outside: [] },
+        plan: { leftOut: [{ documentId: 'd3' }], leftOutMore: 1 },
+        documents: [
+          { documentId: 'd1', state: 'done', counts: { changes: 3, textChanges: 1 } },
+          { documentId: 'd2', state: 'done', counts: {} },
+        ],
+      },
+    });
+    expect(rows.map((r) => [r.text, r.view, r.filter ?? null])).toEqual([
+      ['2 documents left out by the plan', 'leftout', null],
+      ['1 document with text the job changed', 'documents', 'text'],
+    ]);
+  });
+
   it('has no row for a kind with nothing in it', () => {
     const rows = toCheckRows({
       state: 'done',

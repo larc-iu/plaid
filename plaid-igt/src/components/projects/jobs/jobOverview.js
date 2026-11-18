@@ -98,6 +98,11 @@ export const toCheckRows = (job) => {
   // documents' rows: nothing else is known (REV-RP-4).
   if (!report) return rows;
 
+  // The documents the plan chose not to work, of those the person chose.
+  const plan = report.plan || {};
+  const leftOut = (plan.leftOut?.length ?? 0) + (plan.leftOutMore ?? 0);
+  add('leftout', leftOut, `${countOf(leftOut, 'document')} left out by the plan`, 'leftout');
+
   const listed = docs.flatMap((d) => d.skipped || []);
   SKIPPED_KINDS.forEach(([reason, key, label]) => {
     const n = t[key] ?? listed.filter((s) => s.reason === reason).length;
@@ -155,6 +160,12 @@ export const toCheckRows = (job) => {
       `${countOf(touched, 'document')}`,
   );
 
+  // The text the job edited, which its notice says (R4). Values written
+  // outside the setup and changes not written as edited during the job stay
+  // totals rows, as the old page had them.
+  const texted = docs.filter((d) => (d.counts?.textChanges ?? 0) > 0).length;
+  check('text', texted, `${countOf(texted, 'document')} with text the job changed`);
+
   const respelled = (report.respelled?.length ?? 0) + (report.respelledMore ?? 0);
   add(
     'respelled',
@@ -204,6 +215,7 @@ export const CHECK_KINDS = {
   people: 'People’s values',
   refused: 'Refused',
   unread: 'Not read',
+  text: 'Text changed',
 };
 
 // Why one document of an ended job needs a person, each `{kind, text}` in a
@@ -235,6 +247,8 @@ export const documentChecks = (d, reported = null) => {
   const refused = (r.refused?.length ?? 0) + (r.refusedMore ?? 0);
   if (refused > 0) add('refused', `${countOf(refused, 'change')} refused`);
   if (r.leftUnread) add('unread', 'Could not be read');
+  const texted = r.counts?.textChanges ?? d.counts?.textChanges ?? 0;
+  if (texted > 0) add('text', `${countOf(texted, 'text edit')}`);
   return out;
 };
 
