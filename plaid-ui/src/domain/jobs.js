@@ -85,6 +85,8 @@ const REASON_WORDS = {
   'setup-unreadable': 'This job’s setup could not be read.',
   // The model's provider refused the job's key or model (S1-2).
   'model-refused': 'The model refused the job’s calls.',
+  // Core ended it after taking it up again too often (S3-3).
+  'worker-lost': 'Its worker stopped during it too many times.',
 };
 
 /**

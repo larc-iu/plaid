@@ -100,3 +100,44 @@ def test_a_job_given_up_after_it_wrote_reports_the_counts_core_holds(monkeypatch
     assert row['state'] == 'failed' and row['reason'] == 'worker-error'
     totals = row['report']['totals']
     assert totals['documents_done'] == 1 and totals['words'] == 1, totals
+
+
+def test_a_job_that_kills_its_worker_each_time_is_ended_and_frees_the_slot(monkeypatch):
+    """S3-3 of the stress campaign 2026-11-18: a crash at the same point on
+    every run (here in harmonize, as an out-of-memory kill would) is taken up
+    again a fixed number of times (core's resumes-max), then the next claim
+    ends it failed, worker-lost, and takes the next job."""
+    from plaid_client.testing import _JOB_RESUMES_MAX
+
+    class Killed(BaseException):
+        """The worker's process killed."""
+    client = JobClient({'d1': document('d1', 'Story', [{'words': ['w0']}])})
+    q = client.jobs.create('p1', 'igt', 'Gloss the words.')
+    clock = {'t': 1000.0}
+    client.jobs.now = lambda: clock['t']
+    use(monkeypatch, Model(planned(lambda asked, n, kw: reply('Done.'))))
+    cfg = ModelConfig(model='fake/m', stream=False, max_steps=1000)
+
+    class Crashing(IgtRunner):
+        def harmonize(self, job):
+            if job.id == q['id']:
+                raise Killed()
+            return super().harmonize(job)
+    worker = Worker(client, {'igt': lambda job: Crashing(job, cfg, count=lambda v: 1)}, 'fake/m',
+                    client_for=lambda token: client, now=lambda: clock['t'], sleep=lambda s: None,
+                    heartbeat_s=10 ** 6)
+    runs = 0
+    while True:
+        try:
+            claimed = worker.once()
+        except Killed:
+            runs += 1
+            clock['t'] += 1000  # restarted after the lease lapsed
+            continue
+        break
+    assert runs == _JOB_RESUMES_MAX + 1, runs
+    assert claimed is None, 'nothing is taken up again'
+    row = client.jobs.rows[q['id']]
+    assert row['state'] == 'failed' and row['reason'] == 'worker-lost'
+    p = client.jobs.create('p1', 'igt', 'Gloss these too.')
+    assert worker.once()['job']['id'] == p['id'], 'the slot is free'

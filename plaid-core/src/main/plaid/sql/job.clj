@@ -48,6 +48,15 @@
   "Seconds after its last heartbeat that a job's lease lapses."
   120)
 
+(def resumes-max
+  "How many times a job whose lease lapsed is taken up again. The next
+  claim of it ends it: `failed`, `worker-lost` (a `stopping` one
+  `cancelled`), with the report of its rows. A deploy or a restart of the
+  worker or of core lapses a job once, so an honest job outlives ten of
+  them, and a job that crashes its worker at the same point holds the one
+  slot for at most ten leases and its runs (S3-3)."
+  10)
+
 (def documents-max
   "The most documents one job takes."
   500)
@@ -541,6 +550,8 @@
 ;; ============================================================
 
 (defn- take-job!
+  "Give job `row` to the asking worker. A job taken up again after its lease
+  lapsed (`running` or `stopping`) counts one more resume."
   [tx row {:keys [worker-id worker-user model]} now]
   (psc/execute! tx {:update :jobs
                     :set (cond-> {:worker_id (str worker-id)
@@ -548,7 +559,8 @@
                                   :model model
                                   :heartbeat_at now
                                   :state (if (= "stopping" (:state row)) "stopping" "running")}
-                           (nil? (:started_at row)) (assoc :started_at now))
+                           (nil? (:started_at row)) (assoc :started_at now)
+                           (not= "waiting" (:state row)) (assoc :resumes (inc (or (:resumes row) 0))))
                     :where [:= :id (str (:id row))]}))
 
 (defn claim!
@@ -557,8 +569,10 @@
   stopping job whose lease has lapsed, then the oldest waiting job, among
   jobs of `apps` whose project is not being deleted. A candidate whose
   starter can no longer write the project is failed with `starter-access`
-  and the report of its rows, and the next one taken. `worker` is
-  `{:worker-id :worker-user :model :apps}`. Returns the job taken."
+  and the report of its rows, and the next one taken, as is a lapsed one
+  already taken up `resumes-max` times: failed `worker-lost` (a stopping one
+  cancelled). `worker` is `{:worker-id :worker-user :model :apps}`. Returns
+  the job taken."
   [db {:keys [apps] :as worker}]
   (psd/with-tx [tx db]
     (let [now (Instant/now)
@@ -575,11 +589,20 @@
                                          (filter #(= "waiting" (:state %)) rows)))]
           (loop [[row & more] candidates]
             (when row
-              (if (starter-writes? tx (:project_id row) (:started_by row))
-                (do (take-job! tx row worker (psc/instant->iso now))
-                    (get tx (:id row)))
+              (cond
+                (not (starter-writes? tx (:project_id row) (:started_by row)))
                 (do (settle! tx (:id row) "failed" "starter-access" nil {})
-                    (recur more))))))))))
+                    (recur more))
+
+                (and (not= "waiting" (:state row)) (>= (or (:resumes row) 0) resumes-max))
+                (do (if (= "stopping" (:state row))
+                      (settle! tx (:id row) "cancelled" "cancelled" "without-worker" {})
+                      (settle! tx (:id row) "failed" "worker-lost" nil {}))
+                    (recur more))
+
+                :else
+                (do (take-job! tx row worker (psc/instant->iso now))
+                    (get tx (:id row)))))))))))
 
 (defn- worker-row!
   "Job `job-id` for a write by worker `worker-id`, or a refusal: 404 for no

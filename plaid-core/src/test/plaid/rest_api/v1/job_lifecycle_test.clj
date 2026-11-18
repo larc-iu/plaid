@@ -11,6 +11,7 @@
             [plaid.rest-api.v1.job-helpers :as jh :refer [call start! job-id claim! heartbeat! finish! lapse!]]
             [plaid.server.project-removal :as removal]
             [plaid.sql.common :as psc]
+            [plaid.sql.job :as job]
             [plaid.test-helpers :as h]))
 
 (use-fixtures :once with-db with-mount-states with-rest-handler with-admin with-test-users)
@@ -293,6 +294,37 @@
     (is (= 200 (:status (finish! j jh/worker-b "cancelled"))))
     (is (= "cancelled" (:job/state (get-job j))))
     (is (= "cancelled" (:job/reason (get-job j))))))
+
+(deftest a-job-taken-up-again-too-often-ends-and-frees-the-slot
+  ;; S3-3: a job that crashes its worker at the same point is taken up again
+  ;; `resumes-max` times, then the next claim fails it and takes the next job.
+  (let [{:keys [p q st]} (jh/world!)
+        jp (job-id (start! st p))
+        jq (job-id (start! admin-request q))]
+    (is (= jp (-> (claim! jh/worker-a) :body :job :job/id)))
+    (dotimes [_ job/resumes-max]
+      (lapse! jp)
+      (is (= jp (-> (claim! jh/worker-a) :body :job :job/id)) "taken up again"))
+    (lapse! jp)
+    (is (= jq (-> (claim! jh/worker-a) :body :job :job/id)) "the next job is taken")
+    (let [failed (get-job jp)]
+      (is (= "failed" (:job/state failed)))
+      (is (= "worker-lost" (:job/reason failed)))
+      (is (nil? (:job/message failed)))
+      (is (= "failed" (-> failed :job/report :state)))
+      (is (every? #(= "not-reached" (:state %)) (:job/documents failed))))))
+
+(deftest a-stopping-job-taken-up-again-too-often-ends-cancelled
+  (let [{:keys [p st]} (jh/world!)
+        j (job-id (start! st p))]
+    (claim! jh/worker-a)
+    (dotimes [_ job/resumes-max]
+      (lapse! j)
+      (claim! jh/worker-a))
+    (fix/assert-ok (call st :post (str "/api/v1/jobs/" j "/cancel")))
+    (lapse! j)
+    (is (= 204 (:status (claim! jh/worker-a))))
+    (is (= ["cancelled" "cancelled"] ((juxt :job/state :job/reason) (get-job j))))))
 
 (deftest the-claim-fails-a-job-whose-starter-cannot-write
   (let [{:keys [p q st]} (jh/world!)

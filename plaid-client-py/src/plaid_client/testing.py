@@ -1945,6 +1945,8 @@ _JOB_APPS = ('igt',)
 _JOB_ACTIVE = ('waiting', 'running', 'stopping')
 _JOB_FINAL = ('done', 'cancelled', 'failed')
 _JOB_LEASE_S = 120
+#: core's ``resumes-max``: how many times a lapsed job is taken up again (S3-3)
+_JOB_RESUMES_MAX = 10
 _JOB_HEARTBEAT_S = 30
 _JOB_DOCUMENTS_MAX = 500
 _JOB_INSTRUCTIONS_MAX_CHARS = 2000
@@ -2042,7 +2044,7 @@ class _FakeJobs:
 
     def _shape(self, job, *, documents=True, report=True):
         out = {k: copy.deepcopy(v) for k, v in job.items()
-               if k not in ('documents', 'report', 'heartbeat_s_at', 'seq', 'core_failed',
+               if k not in ('documents', 'report', 'heartbeat_s_at', 'seq', 'core_failed', 'resumes',
                             'worker_id', 'worker_user')}
         out['lease_s'] = _JOB_LEASE_S
         out['lapsed'] = job['state'] in ('running', 'stopping') and not self._live_lease(job)
@@ -2313,7 +2315,16 @@ class _FakeJobs:
             if not self.can_write(job['started_by'], job['project']):
                 self._end(job, 'failed', 'starter-access', stopped=None)
                 continue
+            if job['state'] != 'waiting' and job.get('resumes', 0) >= _JOB_RESUMES_MAX:
+                # Taken up again too often (S3-3): ended as core ends it.
+                if job['state'] == 'stopping':
+                    self._end(job, 'cancelled', 'cancelled', stopped='without-worker')
+                else:
+                    self._end(job, 'failed', 'worker-lost', stopped=None)
+                continue
             break
+        if job['state'] != 'waiting':
+            job['resumes'] = job.get('resumes', 0) + 1
         if job['state'] != 'stopping':
             job['state'] = 'running'
         job.update(worker_id=worker_id, worker_user=self.user, model=model,
