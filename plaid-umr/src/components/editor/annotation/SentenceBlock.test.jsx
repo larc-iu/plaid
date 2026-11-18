@@ -2465,6 +2465,28 @@ describe('SentenceBlock a node started on a word', () => {
     await r.unmount();
   });
 
+  // H3-9-3: a box left open here is written when a double-click on a word of
+  // another sentence takes focus, and the new node then took the focus back
+  // from that sentence's box, whose own blur wrote the word as a node.
+  it('leaves focus in another box once the node a blur wrote is drawn', async () => {
+    const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+    const { r, doc } = await mount();
+    doc.createNode = vi.fn((args) => {
+      args.onShown?.({ nodeId: 'n1' });
+      return Promise.resolve(true);
+    });
+    const other = document.createElement('input');
+    document.body.appendChild(other);
+    await r.step(() => dblclick(word(r.container, 1)));
+    await typeOver(r, input(r.container), 'thething');
+    await r.step(() => other.focus());
+    await r.step(() => wait(50));
+    expect(doc.createNode).toHaveBeenCalledTimes(1);
+    expect(document.activeElement).toBe(other);
+    other.remove();
+    await r.unmount();
+  });
+
   it('starts over on the word double-clicked while a refused concept is open', async () => {
     const { r, doc } = await mount();
     await r.step(() => dblclick(word(r.container, 1)));

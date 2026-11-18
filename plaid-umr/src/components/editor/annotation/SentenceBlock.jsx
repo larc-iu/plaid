@@ -568,8 +568,14 @@ export const SentenceBlock = React.memo(function SentenceBlock({
   );
 
   // A node just made is in the document before React has drawn it, so its
-  // element exists only from the next frame.
-  const focusWhenDrawn = ({ nodeId }) => requestAnimationFrame(() => focusNode(nodeId));
+  // element exists only from the next frame. Not from a box the person has
+  // gone on to type in, another sentence's among them: its blur would write
+  // what it holds (H3-9-3).
+  const focusWhenDrawn = ({ nodeId }) =>
+    requestAnimationFrame(() => {
+      if (document.activeElement?.matches?.('input, textarea')) return;
+      focusNode(nodeId);
+    });
 
   const treeEdgeInto = (id) => {
     const node = nodesById.get(id);
