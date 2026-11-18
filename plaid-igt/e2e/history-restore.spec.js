@@ -31,7 +31,11 @@ const glossCell = (page) => page.locator(GLOSS_CELL).first();
 // A drawer row, by the operation message it was written under. The list is
 // above the footer in the DOM, so the first match is the row rather than the
 // footer's copy of the selected entry's label.
-const entryRow = (page, label) => page.getByText(label, { exact: true }).first();
+// The row whose whole label is `label`. Not a <bdi> of another row's label:
+// "Restore to … (after "Seed the original gloss")" draws its quoted entry in
+// one, and that element's own text is `label` too.
+const entryRow = (page, label) =>
+  page.getByText(label, { exact: true }).and(page.locator(':not(bdi)')).first();
 
 const setGloss = async (message, value) => {
   const c = client();
