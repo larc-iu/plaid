@@ -89,23 +89,29 @@ describe('UD General, Language', () => {
   });
 });
 
-// H3-7-4: `en_US` was saved without a word, and Tokenize then did nothing.
-// Both fields ask for a BCP-47 tag and refuse one that is not.
-describe('UD General, a tag that is not BCP-47', () => {
-  for (const [label, bundle, title] of [
-    ['Project language', 'projects', null],
-    ['Tokenizer locale', 'textLayers', 'Tokenizer locale not saved'],
+// H3-7-4 and REV-U3-1: any tag is stored as typed, one the browser cannot
+// read too. Tokenize then segments with the language-neutral locale.
+describe('UD General, any language tag', () => {
+  for (const [label, bundle, ns] of [
+    ['Project language', 'projects', 'p1'],
+    ['Tokenizer locale', 'textLayers', 't1'],
   ]) {
-    it(`is refused by ${label}, and says so`, async () => {
-      const view = await mount();
-      const field = view.container.querySelector(`[aria-label="${label}"]`);
-      await view.step(() => typeInto(field, 'en_US'));
-      await view.step(() => field.closest('form').querySelector('button').click());
-      expect(client.current[bundle].setConfig).not.toHaveBeenCalled();
-      const call = notify.notifyError.mock.calls[0];
-      expect(call[0]).toBe('"en_US" is not a BCP-47 language tag.');
-      if (title) expect(call[1]).toBe(title);
-      await view.unmount();
-    });
+    for (const tag of ['x-kukama', 'stan1293', 'en_US', 'zh-yue', 'de']) {
+      it(`${label} saves ${tag}`, async () => {
+        const view = await mount();
+        const field = view.container.querySelector(`[aria-label="${label}"]`);
+        await view.step(() => typeInto(field, tag));
+        await view.step(() => field.closest('form').querySelector('button').click());
+        expect(client.current[bundle].setConfig).toHaveBeenCalledTimes(1);
+        expect(client.current[bundle].setConfig.mock.calls[0].slice(0, 4)).toEqual([
+          ns,
+          'ud',
+          bundle === 'projects' ? 'language' : 'tokenizerLocale',
+          tag,
+        ]);
+        expect(notify.notifyError).not.toHaveBeenCalled();
+        await view.unmount();
+      });
+    }
   }
 });

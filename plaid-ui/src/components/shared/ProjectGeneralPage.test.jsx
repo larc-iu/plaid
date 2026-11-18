@@ -148,6 +148,33 @@ describe('ProjectGeneralPage', () => {
     });
   });
 
+  // REV-U3-1: the card stores any tag as typed, in every app's namespace.
+  // Private-use tags and Glottocodes are what an unlisted language has.
+  for (const namespace of ['ud', 'umr', 'igt']) {
+    it(`stores any tag in ${namespace}, one the browser cannot read too`, async () => {
+      await mount({
+        project: { id: 'p1', name: 'Texts', config: { [namespace]: { language: 'en' } } },
+        language: { namespace, saved: 'en', description: 'The language.' },
+      });
+      const field = view.container.querySelector('[aria-label="Project language"]');
+      const save = field.closest('form').querySelector('button');
+      for (const tag of ['x-kukama', 'stan1293', 'en_US', 'zh-yue', 'de']) {
+        client.projects.setConfig.mockClear();
+        await view.step(() => typeInto(field, tag));
+        await view.step(() => save.click());
+        expect(client.projects.setConfig).toHaveBeenCalledWith(
+          'p1',
+          namespace,
+          'language',
+          tag,
+          undefined,
+          { expected: 'en' },
+        );
+      }
+      expect(notify.notifyError).not.toHaveBeenCalled();
+    });
+  }
+
   it('says what the saved tag does, not the typed one', async () => {
     await mount({
       language: {

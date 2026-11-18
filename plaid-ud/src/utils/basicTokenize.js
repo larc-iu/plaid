@@ -26,12 +26,17 @@ import {
 } from '../../../plaid-ui/src/domain/igtWordBreaks.js';
 
 // One segmenter per locale: building one is the costly part, and a gap fill
-// asks for one per stretch of untokenized text.
+// asks for one per stretch of untokenized text. A tag the segmenter cannot
+// read (`x-kukama`, a Glottocode, `en_US`) gets the language-neutral one.
 const segmenters = new Map();
 const segmenterFor = (locale) => {
   let segmenter = segmenters.get(locale);
   if (!segmenter) {
-    segmenter = new Intl.Segmenter(locale, { granularity: 'word' });
+    try {
+      segmenter = new Intl.Segmenter(locale, { granularity: 'word' });
+    } catch {
+      segmenter = new Intl.Segmenter('und', { granularity: 'word' });
+    }
     segmenters.set(locale, segmenter);
   }
   return segmenter;

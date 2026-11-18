@@ -104,4 +104,35 @@ describe('LanguagesSettings', () => {
     expect(hasUnsavedDraft()).toBeNull();
     await view.unmount();
   });
+
+  // REV-U3-1: a writing system tag is stored as typed, one the browser
+  // cannot read too (a private-use tag, a Glottocode, `en_US`).
+  for (const tag of ['x-kukama', 'stan1293', 'en_US', 'zh-yue', 'lez']) {
+    it(`saves the writing system tag ${tag}`, async () => {
+      const setConfig = vi.fn(async () => {});
+      const project = { id: 'p-1', textLayers: [], config: { igt: {} } };
+      const view = await renderComponent(
+        <MemoryRouter>
+          <LanguagesSettings
+            project={project}
+            projectId="p-1"
+            client={{ projects: { setConfig } }}
+          />
+        </MemoryRouter>,
+      );
+      const field = view.container.querySelector('#obj-lang-tag');
+      await view.step(() => {
+        Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(field, tag);
+        field.dispatchEvent(new Event('input', { bubbles: true }));
+      });
+      await view.step(async () => {
+        [...view.container.querySelectorAll('button')]
+          .find((b) => b.textContent === 'Save')
+          .click();
+        for (let i = 0; i < 5; i++) await new Promise((r) => setTimeout(r, 0));
+      });
+      expect(setConfig.mock.calls[0][3].object.tag).toBe(tag);
+      await view.unmount();
+    });
+  }
 });

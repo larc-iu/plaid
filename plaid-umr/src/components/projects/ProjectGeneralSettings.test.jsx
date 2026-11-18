@@ -78,4 +78,24 @@ describe('UMR General, Language', () => {
     expect(client.current.projects.setConfig).not.toHaveBeenCalled();
     await view.unmount();
   });
+
+  // REV-U3-1: any tag is stored as typed. A project on an unlisted language
+  // records a private-use tag or a Glottocode.
+  for (const tag of ['x-kukama', 'stan1293', 'en_US', 'zh-yue', 'arp']) {
+    it(`saves ${tag}`, async () => {
+      const view = await mount();
+      const field = view.container.querySelector('[aria-label="Project language"]');
+      await view.step(() => typeInto(field, tag));
+      await view.step(() => languageSave(view.container).click());
+      expect(client.current.projects.setConfig).toHaveBeenCalledWith(
+        'p1',
+        'umr',
+        'language',
+        tag,
+        undefined,
+        { expected: 'en' },
+      );
+      await view.unmount();
+    });
+  }
 });

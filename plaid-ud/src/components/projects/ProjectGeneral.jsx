@@ -12,7 +12,6 @@ import { NOT_SET_UP } from '@ui/domain/setupGuard.js';
 import { useManagedProject } from '@ui/hooks/useManagedProject.js';
 import { expectStored, isConfigConflict } from '@ui/domain/configCells.js';
 import { ProjectGeneralPage } from '@ui/components/shared/ProjectGeneralPage.jsx';
-import { isLanguageTag } from '@ui/lib/languageTag.js';
 import { Loading } from '@ui/components/shared/Loading.jsx';
 import { Button } from '@ui/components/ui/button';
 import { Input } from '@ui/components/ui/input';
@@ -77,17 +76,12 @@ const TokenizerLocaleCard = ({ project, onSaved }) => {
   const handleSave = async (event) => {
     event.preventDefault();
     if (!changed || saving) return;
-    const loc = locale.trim();
-    // The segmenter cannot read one that is not (`en_US`), and Tokenize stops.
-    if (loc && !isLanguageTag(loc)) {
-      notifyError(`"${loc}" is not a BCP-47 language tag.`, 'Tokenizer locale not saved');
-      return;
-    }
     setSaving(true);
     try {
       const client = getClient();
       if (!client) throw new Error('Not authenticated');
       if (!info.textLayer) throw new Error(NOT_SET_UP);
+      const loc = locale.trim();
       const expected = expectStored(info.textLayer, UD_NAMESPACE, TOKENIZER_LOCALE_KEY);
       if (loc)
         await client.textLayers.setConfig(

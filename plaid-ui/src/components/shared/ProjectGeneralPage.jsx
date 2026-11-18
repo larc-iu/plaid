@@ -16,7 +16,6 @@ import { Card, CardContent, CardHeader, CardTitle } from '../ui/card';
 import { DeleteProjectCard } from './DeleteProjectCard.jsx';
 import { ProjectTartan } from './ProjectTartan.jsx';
 import { showsTartan } from '../../domain/projectTartan.js';
-import { isLanguageTag } from '../../lib/languageTag.js';
 
 /**
  * A project's General settings, the same page in every app: its name, the
@@ -139,13 +138,9 @@ const LanguageCard = ({ project, onSaved, namespace, saved, description, note })
   const handleSave = async (event) => {
     event.preventDefault();
     if (!changed || saving) return;
-    const next = tag.trim();
-    if (next && !isLanguageTag(next)) {
-      notifyError(`"${next}" is not a BCP-47 language tag.`);
-      return;
-    }
     setSaving(true);
     try {
+      const next = tag.trim();
       const client = getClient();
       const expected = expectStored(project, namespace, 'language');
       if (next)
