@@ -217,3 +217,37 @@ def test_a_too_long_sentence_cut_from_the_report_is_counted_as_one_more_too_long
     assert report['totals']['too_long_more'] == cut and not report['totals'].get('skipped_more')
     assert report['totals']['skipped_too_long'] == 40 - cut
     assert build_report.__doc__
+
+
+# --- D12: scattered sentences are named, never shown as a run ------------------------------------
+
+def test_a_part_of_scattered_sentences_is_named_one_by_one_on_the_line_and_the_work_list(monkeypatch):
+    """Only s3, s5 and s7 hold something empty: the heartbeat and the piece's
+    summary name those three, never "3 to 7"."""
+    from plaid_agent.core.job import run_job
+    filled = {'words': [('ka', [('ka', 'go')], 'human')]}
+    sents = [filled, filled, {'words': ['sa']}, filled, {'words': ['sa']}, filled, {'words': ['sa']}]
+    client = JobClient({'d1': document('d1', 'Story', sents), 'd2': document('d2', 'Other', [{'words': ['ta']}])})
+    job = start(client, 'Gloss what is empty.', id='JPN', only_empty=True)
+    lines = []
+
+    def answer(asked, n, kwargs):
+        if n == 1 and '"Story"' in asked:
+            lines.append(job.status.get('message'))
+        return reply('Nothing.')
+    use(monkeypatch, Model(answer))
+    r = runner(job)
+    run_job(job, r)
+    assert lines == ['Story: sentences 3, 5, 7 of 7.'], lines
+    import json
+    from plaid_agent.igt.job import PIECE_FORM
+    rows = [json.loads(x['analysis']) for x in job.lookup_decisions([PIECE_FORM])]
+    rows = [p for p in rows if p.get('document') == 'd1']
+    assert [(p['first'], p['last'], p.get('sentences')) for p in rows] == [('s3', 's7', ['s3', 's5', 's7'])], rows
+
+
+def test_a_run_of_sentences_keeps_its_range():
+    from plaid_agent.igt.job import sentences_text
+    assert sentences_text([3, 4, 5]) == 'sentences 3 to 5'
+    assert sentences_text([4]) == 'sentence 4'
+    assert sentences_text([3, 11, 19]) == 'sentences 3, 11, 19'

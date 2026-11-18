@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { allSkipped, documentCounts, documentSentencesText } from './jobText.js';
+import { allSkipped, documentCounts, documentSentencesText, pieceRangeText } from './jobText.js';
 
 // What the job page says of a report's documents, by the worker's rows
 // (job review 2026-11-18, lane JR2).
@@ -41,5 +41,21 @@ describe('a document with sentences too long for a job (D11)', () => {
       done: 1,
       skipped: 0,
     });
+  });
+});
+
+describe('the sentences a piece worked (D12)', () => {
+  it('names scattered sentences one by one, never as a run', () => {
+    expect(pieceRangeText({ first: 's3', last: 's7', sentences: ['s3', 's5', 's7'] })).toBe(
+      's3, s5, s7',
+    );
+  });
+
+  it('keeps a run, one sentence and a search as they were', () => {
+    expect(pieceRangeText({ first: 's3', last: 's7' })).toBe('s3 to s7');
+    expect(pieceRangeText({ first: 's3', last: 's3' })).toBe('s3');
+    expect(pieceRangeText({ first: 's3', last: 's9', matching: ['s3', 's9'] })).toBe(
+      's3, s9, matching the plan’s search',
+    );
   });
 });

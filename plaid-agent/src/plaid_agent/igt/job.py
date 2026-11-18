@@ -1077,6 +1077,22 @@ def document_counts(report: Dict[str, Any]) -> Dict[str, int]:
             else totals.get('documents_not_reached') or 0}
 
 
+def sentences_text(indexes: List[int]) -> str:
+    """A part's sentences by their own numbers: "sentence 4", "sentences 3
+    to 7" for a run, else each, "sentences 3, 11, 19" (D12: a part of
+    scattered sentences is never said as a run)."""
+    if len(indexes) == 1:
+        return f'sentence {indexes[0]}'
+    if is_run(indexes):
+        return f'sentences {indexes[0]} to {indexes[-1]}'
+    return 'sentences ' + ', '.join(str(i) for i in indexes)
+
+
+def is_run(indexes: List[int]) -> bool:
+    """Whether ``indexes`` follow each other with no gap."""
+    return all(b == a + 1 for a, b in zip(indexes, indexes[1:]))
+
+
 def word_ids_text(ids: List[str]) -> str:
     """A matched sentence's word ids as its search row keeps them: JSON, as
     many as fit under core's cap on a row (about 100 words of 36-character
@@ -3492,7 +3508,7 @@ class IgtRunner:
                     return 'done'
             part = pending if whole else pending[:JOB_STRETCH_SENTENCES]
             job.set(message=self.matching_line(doc, part) if self.searched() is not None else
-                    self.progress_line(doc.name, whole, part[0].index, part[-1].index, len(doc.sentences)))
+                    self.progress_line(doc.name, whole, [s.index for s in part], len(doc.sentences)))
             if whole:
                 # The whole document is asked once. A failure is never halved
                 # into the same whole document again (its halves would each be
@@ -3530,14 +3546,16 @@ class IgtRunner:
             halve([s.id for s in part], lambda ids: self.attempt(project, document_id, ids),
                   lambda sid, kind: self.failed_piece(document_id, doc, sid, kind))
 
-    def progress_line(self, name: str, whole: bool, first: int, last: int, total: int) -> str:
+    def progress_line(self, name: str, whole: bool, indexes: List[int], total: int) -> str:
         """The heartbeat's line for a piece of one document (RPF-A6): which
         sentences, or the whole document as one piece, after the document's
         name when the job has more than one, so the line never seems to go
-        back when the next document starts. ``first`` and ``last`` are the
-        sentences' own numbers and ``total`` the document's sentences, as the
-        work list names a piece "s3 to s7" (RP4-5 F4: one numbering)."""
-        said = 'the whole document as one part' if whole else f'sentences {first} to {last} of {total}'
+        back when the next document starts. ``indexes`` are the sentences'
+        own numbers and ``total`` the document's sentences, as the work list
+        names a piece "s3 to s7" (RP4-5 F4: one numbering), each named when
+        they are not a run (D12)."""
+        run = f'sentences {indexes[0]} to {indexes[-1]}' if is_run(indexes) else sentences_text(indexes)
+        said = 'the whole document as one part' if whole else f'{run} of {total}'
         return f'{name}: {said}.' if len(self.job.order) > 1 else said[0].upper() + said[1:] + '.'
 
     def matching_line(self, doc, part: List[Sentence]) -> str:
@@ -3874,8 +3892,7 @@ class IgtRunner:
         lines.insert(len(lines) - 1, AFTER_TEXT_LINE)
         piece = {'document': document_id, 'first': part[0].id, 'whole': False, 'after_text': True}
         key = analysis_key(canonical(piece))
-        first, last = part[0].index, part[-1].index
-        said = f'sentences {first} to {last}' if first != last else f'sentence {first}'
+        said = sentences_text([s.index for s in part])
         job.set(current_document=document_id, message=f'{doc.name}: {said}, {self.after_text_label()}.')
         self.following = True
         try:
@@ -5498,6 +5515,10 @@ class IgtRunner:
             # which are not a run (SF).
             **({'matching': [f's{s.index}' for s in part]}
                if ranged and not after_text and self.searched() is not None else {}),
+            # Any other part whose sentences are no run names them (D12).
+            **({'sentences': [f's{s.index}' for s in part]}
+               if ranged and (after_text or self.searched() is None) and not is_run([s.index for s in part])
+               else {}),
             'parts': {**(earlier.get('parts') or {}), **({document_id: {s.id for s in part}} if document_id else {})},
             'writes': set(earlier.get('writes') or ()), 'seq': earlier.get('seq'),
             'note': note, 'refused': refused, 'steps': (earlier.get('steps') or 0) + self.steps_now,
@@ -5566,7 +5587,8 @@ class IgtRunner:
                  **({'rest': len(p['rest']), 'rest_documents': list(p['rest'])[:REST_LISTED]} if p.get('rest')
                     else {}),
                  **({'failed': p['failed']} if p.get('failed') else {}),
-                 **({'matching': p['matching']} if p.get('matching') else {})}
+                 **({'matching': p['matching']} if p.get('matching') else {}),
+                 **({'sentences': p['sentences']} if p.get('sentences') else {})}
         row = self.summary_row(p['seq'], value, p['document'], p['first_id'])
         if row is None:
             logger.warning('Job %s: the summary of a piece is too large to keep', self.job.id)

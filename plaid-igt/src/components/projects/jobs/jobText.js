@@ -743,3 +743,15 @@ export const activeJobOf = (err) =>
   statusOf(err) === 409 && err.responseData?.code === 'job-active'
     ? (err.responseData.job ?? null)
     : null;
+
+// Which sentences a piece of one document worked, as its row on the work list
+// names them: those a plan's search matched (the worker's `matching`, SF),
+// any other part whose sentences are no run one by one (`sentences`, D12),
+// else its first and last.
+export const pieceRangeText = (piece) =>
+  piece.matching?.length
+    ? `${piece.matching.join(', ')}, matching the plan’s search`
+    : piece.sentences?.length
+      ? piece.sentences.join(', ')
+      : piece.first &&
+        (piece.first === piece.last ? piece.first : `${piece.first} to ${piece.last}`);
