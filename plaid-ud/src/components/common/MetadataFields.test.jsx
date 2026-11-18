@@ -79,4 +79,22 @@ describe('MetadataFields', () => {
     expect(container.textContent).not.toContain('speaker');
     await unmount();
   });
+
+  // H3-5-11: a bare comment line (`# checked`) is stored as `true` and showed
+  // as the value "true", which the file never said.
+  it('shows a bare comment line as an empty value, and leaving it writes nothing', async () => {
+    const onCommit = vi.fn();
+    const { container, step, unmount } = await renderComponent(
+      <MetadataFields
+        rows={[{ name: 'checked', declared: false }]}
+        values={{ checked: true }}
+        onCommit={onCommit}
+      />,
+    );
+    const input = all(container, 'input')[0];
+    expect(input.value).toBe('');
+    await step(async () => input.dispatchEvent(new FocusEvent('focusout', { bubbles: true })));
+    expect(onCommit).not.toHaveBeenCalled();
+    await unmount();
+  });
 });

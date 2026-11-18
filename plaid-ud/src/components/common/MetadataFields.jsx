@@ -8,14 +8,17 @@ import { Label } from '@ui/components/ui/label';
 // field is its own write, so a slow save on one never holds another up and
 // there is no Save button to forget.
 const Field = ({ name, declared, value, readOnly, onCommit, onRemove }) => {
-  const [draft, setDraft] = useState(value ?? '');
+  // A bare comment line (`# checked`) is stored as `true`: it has no value to
+  // show, and the box is empty.
+  const stored = value === true ? '' : (value ?? '');
+  const [draft, setDraft] = useState(stored);
 
   // Follow the stored value when it changes underneath (another tab, a reload,
   // a service run). Keyed on the value alone, so typing here is never stomped
   // by an unrelated emit, the same rule the annotation cells follow.
   useEffect(() => {
-    setDraft(value ?? '');
-  }, [value]);
+    setDraft(stored);
+  }, [stored]);
 
   // Escape blurs the input, and that blur fires synchronously inside the key
   // handler with the typed text still in `draft`, so without this the cancel
@@ -26,10 +29,10 @@ const Field = ({ name, declared, value, readOnly, onCommit, onRemove }) => {
   const commit = () => {
     if (cancelledRef.current) {
       cancelledRef.current = false;
-      setDraft(value ?? '');
+      setDraft(stored);
       return;
     }
-    if (draft === (value ?? '')) return;
+    if (draft === stored) return;
     onCommit(name, draft.trim());
   };
 
@@ -68,7 +71,7 @@ const Field = ({ name, declared, value, readOnly, onCommit, onRemove }) => {
               // leaving the event to bubble would take both in one keystroke.
               e.stopPropagation();
               cancelledRef.current = true;
-              setDraft(value ?? '');
+              setDraft(stored);
               e.currentTarget.blur();
             }
           }}
