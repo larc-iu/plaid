@@ -97,4 +97,19 @@ describe('MetadataFields', () => {
     expect(onCommit).not.toHaveBeenCalled();
     await unmount();
   });
+
+  // H3-3-4: a refused value (a sent_id another sentence has) stayed in the
+  // box as if it were saved.
+  it('shows the stored value again when the write is refused', async () => {
+    const onCommit = vi.fn(async () => false);
+    const { container, step, unmount } = await mount(onCommit);
+    const input = all(container, 'input')[0];
+
+    await step(async () => type(input, 'poetry'));
+    await step(async () => input.dispatchEvent(new FocusEvent('focusout', { bubbles: true })));
+
+    expect(onCommit).toHaveBeenCalledWith('genre', 'poetry');
+    expect(input.value).toBe('fiction');
+    await unmount();
+  });
 });

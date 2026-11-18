@@ -33,7 +33,11 @@ const Field = ({ name, declared, value, readOnly, onCommit, onRemove }) => {
       return;
     }
     if (draft === stored) return;
-    onCommit(name, draft.trim());
+    // A write the document refuses (it says why) leaves the stored value, and
+    // the box shows it again.
+    Promise.resolve(onCommit(name, draft.trim())).then((saved) => {
+      if (saved === false) setDraft(stored);
+    });
   };
 
   // A field nobody declared still holds a value and still exports, so it is

@@ -65,6 +65,7 @@ import { gapTokenize, newlineSentenceRanges } from '../utils/basicTokenize.js';
 import { normalizeFeature, featureRefusal, spaceRefusal } from '../utils/feats.js';
 import { fieldName } from '../utils/fieldNames.js';
 import { isProvKey } from '../utils/provenanceUi.js';
+import { SENT_ID } from '../utils/udMetadata.js';
 
 // The rows of an edit, each made under the id this page minted for it, as
 // `_settle` takes them.
@@ -188,6 +189,15 @@ export class ConlluDocument extends DocumentModel {
     if (!token) return false;
     const next = value == null || value === '' ? null : String(value);
     if ((token.metadata?.[key] ?? null) === next) return false;
+    // A sent_id names one sentence and holds no space, as UD's validator
+    // requires, and as the exporter keeps the ids it makes.
+    if (key === SENT_ID && next !== null) {
+      if (/\s/u.test(next)) return this.refuse('A sent_id cannot contain spaces.');
+      const others = (info.sentenceTokenLayer?.tokens || []).filter((t) => t.id !== token.id);
+      if (others.some((t) => t.metadata?.[SENT_ID] === next)) {
+        return this.refuse(`Another sentence has sent_id ${next}.`);
+      }
+    }
     const label = 'Failed to save sentence metadata';
     if (!this._canWrite(label)) return false;
     this._applyRawPatch((raw, infoNext) => {
