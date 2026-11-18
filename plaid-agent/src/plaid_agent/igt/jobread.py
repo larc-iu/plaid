@@ -242,7 +242,7 @@ _PIECES = {'sentences': 'stretches of sentences', 'document': 'one part per docu
 
 def search_part(plan: Dict[str, Any]) -> str:
     """What the plan line says of the sentences a plan in sentences takes,
-    as the job page says it (plaid-igt jobText.js ``planText``): those its
+    as the job page says it (plaid-igt jobText.js ``planParts``): those its
     search matched (SF), ", only the sentences matching Gloss "x": 33
     sentences in 24 documents", and those with something empty."""
     if plan.get('pieces') != 'sentences':

@@ -144,8 +144,8 @@ export const totalRows = (report) => {
   // One definition of a change, said in its parts (RP-3, RP-6).
   if (t.changes > 0) rows.push(['Changes written', changesText(t.changes, changeParts(report))]);
   optional('Deletions', t.deletions);
-  // Parts that ended without finishing, their steps used up or their answer
-  // too long, what they had staged written (the worker's `pieces_ended`,
+  // Parts that ended without finishing, their steps used up, their answer
+  // too long or the model repeating itself, what they had staged written (the worker's `pieces_ended`,
   // BRIEF RW, REV-RW-6).
   optional('Parts that ended unfinished', report.piecesEnded);
   // What the job changed of what people wrote, by provenance, and of the

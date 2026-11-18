@@ -135,7 +135,7 @@ describe('a job that stands undone', () => {
     const status = v.container.querySelector('[role="status"]');
     const note = status.querySelector('[data-testid="job-undone-history"]');
     expect(note.textContent).toBe(
-      'Work brought back from History is undone there, one document at a time.',
+      'To undo work brought back from History, undo it there, one document at a time.',
     );
     expect(status.querySelector('[data-testid="job-undone"]').nextElementSibling).toBe(note);
     await v.unmount();
