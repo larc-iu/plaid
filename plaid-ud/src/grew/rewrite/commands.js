@@ -75,7 +75,10 @@ function literalLabel(ctx, cmd, label) {
   if (label.type === 'features') {
     const mark = label.feats.filter((f) => f.key === 'enhanced');
     const parts = label.feats.filter((f) => f.key !== 'enhanced');
-    const plain = parts.length && parts.every((f) => /^[0-9]+$/.test(f.key) && !f.neg);
+    // The parts spelled out in full, 1 to n: `-[2=pass]->` names no one label.
+    const keys = parts.map((f) => f.key).sort((a, b) => Number(a) - Number(b));
+    const plain =
+      parts.length && parts.every((f) => !f.neg) && keys.every((k, i) => k === `${i + 1}`);
     if (plain && mark.every((f) => !f.neg && f.val === 'yes')) {
       const value = [...parts]
         .sort((a, b) => Number(a.key) - Number(b.key))

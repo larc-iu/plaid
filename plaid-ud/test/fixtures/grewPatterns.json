@@ -321,5 +321,8 @@
   "pattern { X [upos=VERB] } global { is_forest; is_not_cyclic }",
   "pattern { X [upos] } global { is_forest }",
   "pattern { X [] } global { is_not_forest }",
-  "pattern { X [upos=VERB] } without { X -[obj]-> Y } global { is_projective }"
+  "pattern { X [upos=VERB] } without { X -[obj]-> Y } global { is_projective }",
+  "pattern { X -[2=pass]-> Y }",
+  "pattern { X -[1=acl, 3=x]-> Y }",
+  "pattern { X -[0=nsubj]-> Y }"
 ]

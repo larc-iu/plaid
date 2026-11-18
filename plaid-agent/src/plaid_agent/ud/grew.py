@@ -25,6 +25,7 @@ Data-model mapping (see :mod:`.project`):
 """
 
 import json
+import re
 from dataclasses import dataclass, field, replace
 from typing import Any, Dict, List, Optional
 
@@ -144,10 +145,12 @@ def not_exactly_regex(val: str) -> str:
 
 
 def features_label_regex(feats: List[Dict[str, Any]]) -> str:
-    """The deprel regex for ``1=nsubj, 2=pass``: the values joined with ``:``
-    in key order, matched as a subtype prefix."""
-    joined = ':'.join(f['val'] for f in sorted(feats, key=lambda f: int(f['key'])))
-    return f'^{escape_regex(joined)}(:|$)'
+    """The deprel regex for ``1=nsubj, 2=pass``. Each number names a part of
+    the label by position (``nsubj:pass`` is 1=nsubj, 2=pass), so each feature
+    is a lookahead on its own part: ``2=pass`` finds "nsubj:pass" and not
+    "pass"."""
+    return '^' + ''.join(f"(?=(?:[^:]*:){{{int(f['key']) - 1}}}{escape_regex(f['val'])}(?::|$))"
+                         for f in feats)
 
 
 # --- the project's layers ----------------------------------------------------
@@ -923,7 +926,7 @@ class _Compiler:
         if t == 'regex':
             return {'regex': server_regex(label)}
         if t == 'features':
-            if not all(str(f['key']).isdigit() and str(f['key']).isascii() and not f.get('neg')
+            if not all(re.fullmatch(r'[1-9][0-9]*', str(f['key'])) and not f.get('neg')
                        for f in label['feats']):
                 raise GrewUnsupportedError(
                     'edge-feature', 'Only numbered edge features (1=, 2=, …) and `enhanced` are supported.')

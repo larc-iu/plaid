@@ -77,18 +77,13 @@ export const otherFeaturePairRegex = (pair) => `^(?!${literalRegex(pair)}$)${FEA
 // A deprel value that is NOT exactly one of `labels` (Grew `-[^a|b]->`).
 export const negatedLabelRegex = (labels) => `^(?!(?:${labels.map(literalRegex).join('|')})$)`;
 
-// A deprel value whose main type is `label`, matching the bare label and any
-// subtype: `nsubj` matches "nsubj" and "nsubj:pass" (Grew `-[1=nsubj]->`).
-const subtypeRegex = (label) => `^${literalRegex(label)}(:|$)`;
-
 // "value is not exactly `val`" for a single-valued span layer (upos<>VERB).
 export const notExactlyRegex = (val) => `^(?!${literalRegex(val)}$)`;
 
-// Build the deprel regex for an edge-feature label like `1=nsubj, 2=pass`.
-// Keys are joined in numeric order with ':' (UD subtype separator), then matched
-// as a subtype prefix. `!key` / non-numeric keys are unsupported (caller checks).
-export const featuresLabelRegex = (feats) => {
-  const ordered = [...feats].sort((a, b) => Number(a.key) - Number(b.key));
-  const joined = ordered.map((f) => f.val).join(':');
-  return subtypeRegex(joined);
-};
+// The deprel regex for an edge-feature label like `1=nsubj, 2=pass`. Each
+// number names a part of the label by position (`nsubj:pass` is 1=nsubj,
+// 2=pass), so each feature is a lookahead on its own part: `2=pass` finds
+// "nsubj:pass" and not "pass". Keys are 1, 2, … (the caller checks).
+export const featuresLabelRegex = (feats) =>
+  '^' +
+  feats.map((f) => `(?=(?:[^:]*:){${Number(f.key) - 1}}${literalRegex(f.val)}(?::|$))`).join('');

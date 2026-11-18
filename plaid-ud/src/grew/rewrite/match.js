@@ -468,17 +468,18 @@ function bareLabelMatches(label, actual) {
   }
   if (label.type === 'regex') return localMatches(label, actual);
   if (label.type === 'features') {
-    if (!label.feats.every((f) => /^[0-9]+$/.test(f.key) && !f.neg)) {
+    if (!label.feats.every((f) => /^[1-9][0-9]*$/.test(f.key) && !f.neg)) {
       throw new GrewUnsupportedError(
         'edge-feature',
         'Only numbered edge features (1=, 2=, …) and `enhanced` are supported.',
       );
     }
-    const joined = [...label.feats]
-      .sort((a, b) => Number(a.key) - Number(b.key))
-      .map((f) => f.val)
-      .join(':');
-    return actual === joined || actual.startsWith(joined + ':');
+    // Each number names a part by position: `2=pass` is the second part.
+    const parts = actual.split(':');
+    return label.feats.every((f) => {
+      const from = Number(f.key) - 1;
+      return parts.slice(from, from + f.val.split(':').length).join(':') === f.val;
+    });
   }
   return false;
 }

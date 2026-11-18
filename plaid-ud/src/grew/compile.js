@@ -1153,7 +1153,7 @@ class Compiler {
     }
     if (label.type === 'regex') return this.regexConstraint(label);
     if (label.type === 'features') {
-      if (!label.feats.every((f) => /^[0-9]+$/.test(f.key) && !f.neg)) {
+      if (!label.feats.every((f) => /^[1-9][0-9]*$/.test(f.key) && !f.neg)) {
         throw new GrewUnsupportedError(
           'edge-feature',
           'Only numbered edge features (1=, 2=, …) and `enhanced` are supported.',
