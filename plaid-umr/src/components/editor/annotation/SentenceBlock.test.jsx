@@ -140,6 +140,23 @@ describe('SentenceBlock', () => {
     expect(texts(r.container, '.umr-graph-empty')).toEqual([]);
     await r.unmount();
   });
+
+  // H3-8-1: once a node is made over it, the kept graph is not shown or
+  // exported, and the note went with no word.
+  it('says when a graph stored as text is left out because nodes were made', async () => {
+    const { sentence, nodesById } = fixture();
+    const r = await renderComponent(
+      <SentenceBlock
+        sentence={{ ...sentence, rawGraph: '(s1x / broken' }}
+        nodesById={nodesById}
+        dataVersion={1}
+      />,
+    );
+    expect(texts(r.container, '.umr-block-note')).toEqual([
+      'Unreadable graph stored as text, not exported',
+    ]);
+    await r.unmount();
+  });
 });
 
 // RTL. The words run right to left and the graph follows, because the nodes

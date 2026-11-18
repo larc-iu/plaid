@@ -115,6 +115,7 @@ A document that already has a graph refuses the file.
 The import report lists notes under each file, by sentence.
 A sentence whose graph cannot be read is kept as text, its header says so, and the export writes it back unchanged.
 **Text** on that sentence opens the kept text so it can be mended and applied.
+Once a node is made on that sentence, the kept text is not shown or exported, and its header reads **Unreadable graph stored as text, not exported**. Deleting every node of the sentence brings the kept text back.
 Applying an empty text clears it.
 
 == Exporting

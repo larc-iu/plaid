@@ -1691,8 +1691,14 @@ export const SentenceBlock = React.memo(function SentenceBlock({
             a sentence whose graph could not be READ looks just as empty, and
             that note is the only thing between an annotator and starting it
             again over the top of one that is already there. */}
-        {sentence.rawGraph && sentence.nodes.length === 0 && (
-          <span className="umr-block-note">Unreadable graph, stored as text</span>
+        {sentence.rawGraph && (
+          <span className="umr-block-note">
+            {/* With nodes made over it, the kept graph is not shown or
+                exported until they are deleted (H3-8-1). */}
+            {sentence.nodes.length === 0
+              ? 'Unreadable graph, stored as text'
+              : 'Unreadable graph stored as text, not exported'}
+          </span>
         )}
         {/* The sentence's actions, in the treatment every app's wear
             (plaid-ui's sentenceActions.js): Accept and Discard outlined, the
