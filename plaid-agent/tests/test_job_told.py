@@ -450,3 +450,18 @@ def test_a_one_sentence_stretch_reads_sentence_n_of_m():
     job = start(client)
     assert runner(job).progress_line('Story', False, [5], 7) == 'Story: sentence 5 of 7.'
 
+
+# --- REV-JR2-2: the work list's list of sentences is capped ---------------------------------------
+
+def test_a_piece_summary_lists_at_most_a_fixed_number_of_its_sentences():
+    from types import SimpleNamespace
+    from plaid_agent.igt.job import SENTENCES_LISTED
+    client = JobClient({'d1': document('d1', 'Story', [{'words': ['blank']}])})
+    job = start(client)
+    r = runner(job)
+    part = [SimpleNamespace(index=i, id=f'x{i}') for i in range(1, 600, 2)]
+    r.steps_now = 0
+    r.begin_summary('k', 'd1', 'Story', part, False, 'note', [], after_text='edited')
+    p = r.unsummed['k']
+    assert p['sentences'] == [f's{s.index}' for s in part[:SENTENCES_LISTED]]
+    assert p['sentences_more'] == len(part) - SENTENCES_LISTED

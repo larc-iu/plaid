@@ -1092,6 +1092,10 @@ def left_out_ids(report: Dict[str, Any]) -> set:
     return {d.get('document_id') for d in plan.get('left_out') or [] if isinstance(d, dict)}
 
 
+#: The most sentences a piece's summary lists (``sentences``), the rest
+#: counted in ``sentences_more``, so a summary row stays under core's cap
+#: (REV-JR2-2, as RW's REST_LISTED).
+SENTENCES_LISTED = 50
 #: The most sentences a line names one by one (REV-JR2-1): past it, the
 #: count and the span, so a heartbeat line stays far under core's cap.
 SENTENCES_NAMED = 8
@@ -5560,8 +5564,10 @@ class IgtRunner:
             # which are not a run (SF).
             **({'matching': [f's{s.index}' for s in part]}
                if ranged and not after_text and self.searched() is not None else {}),
-            # Any other part whose sentences are no run names them (D12).
-            **({'sentences': [f's{s.index}' for s in part]}
+            # Any other part whose sentences are no run names them (D12), at
+            # most SENTENCES_LISTED, the rest counted (REV-JR2-2).
+            **({'sentences': [f's{s.index}' for s in part[:SENTENCES_LISTED]],
+                **({'sentences_more': len(part) - SENTENCES_LISTED} if len(part) > SENTENCES_LISTED else {})}
                if ranged and (after_text or self.searched() is None) and not is_run([s.index for s in part])
                else {}),
             'parts': {**(earlier.get('parts') or {}), **({document_id: {s.id for s in part}} if document_id else {})},
@@ -5633,7 +5639,8 @@ class IgtRunner:
                     else {}),
                  **({'failed': p['failed']} if p.get('failed') else {}),
                  **({'matching': p['matching']} if p.get('matching') else {}),
-                 **({'sentences': p['sentences']} if p.get('sentences') else {})}
+                 **({'sentences': p['sentences']} if p.get('sentences') else {}),
+                 **({'sentences_more': p['sentences_more']} if p.get('sentences_more') else {})}
         row = self.summary_row(p['seq'], value, p['document'], p['first_id'])
         if row is None:
             logger.warning('Job %s: the summary of a piece is too large to keep', self.job.id)
