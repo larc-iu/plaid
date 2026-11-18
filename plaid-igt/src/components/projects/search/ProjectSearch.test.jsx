@@ -104,3 +104,35 @@ describe('ProjectSearch', () => {
     await view.unmount();
   });
 });
+
+// REV-G4-R2-1: a value copied from a hit's note line and pasted into the
+// Search box is searched as it is, with no invisible isolate character.
+describe('a value copied from a hit’s note line', () => {
+  it('is the value itself, drawn in a <bdi>, and searches as it is', async () => {
+    const value = '\u0630\u0647\u0628 Ahmed';
+    runHitsSearch.mockResolvedValue({
+      ...HITS,
+      groups: [
+        {
+          ...HITS.groups[0],
+          rows: [{ ...HITS.groups[0].rows[0], notes: [['Translation: ', { isolate: [value] }]] }],
+        },
+      ],
+    });
+    const view = await renderComponent(
+      <MemoryRouter>
+        <ProjectSearch project={{ id: 'p1', vocabs: [] }} projectId="p1" client={{}} />
+      </MemoryRouter>,
+    );
+    await search(view, 'Ahmed');
+    const line = [...view.container.querySelectorAll('p')].find((p) =>
+      p.textContent.startsWith('Translation: '),
+    );
+    expect(line.textContent).toBe(`Translation: ${value}`);
+    const copied = line.querySelector('bdi').textContent;
+    expect(copied).toBe(value);
+    await search(view, copied);
+    expect(runHitsSearch.mock.calls.at(-1)[4]).toBe(value);
+    await view.unmount();
+  });
+});

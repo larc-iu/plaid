@@ -94,16 +94,18 @@ describe('buildContextRows', () => {
     });
   });
 
-  // H2-8-1: a value in a note line reads in its own direction beside the
-  // field's name.
-  it('isolates the value in a hit’s note line', () => {
+  // H2-8-1, REV-G4-R2-1: a value in a note line reads in its own direction
+  // beside the field's name. The note is parts (a string drawn as it is,
+  // { isolate } in a <bdi>), so its text holds no isolate character.
+  it('gives a hit’s note line in parts, the value to isolate', () => {
     const layers = [layer('Note', 'note')];
     const row = buildContextRows(
       doc(layers, { Note: { id: 'n-1', value: 'ذهب Ahmed إلى' } }),
       domain,
       new Set(['n-1']),
     )[0];
-    expect(row.notes).toEqual(['Note: \u2068ذهب Ahmed إلى\u2069']);
+    expect(row.notes).toEqual([['Note: ', { isolate: ['ذهب Ahmed إلى'] }]]);
+    expect(JSON.stringify(row.notes)).not.toMatch(/[\u2066-\u2069]/);
   });
 
   it('takes the first translation field the sentence fills', () => {

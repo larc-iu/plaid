@@ -24,6 +24,7 @@ import { MarkedText } from '@ui/components/shared/MarkedText.jsx';
 import { hitTo, rememberCaret } from './hitLinks.js';
 import { countOf } from '@ui/lib/plural.js';
 import { isEnter } from '@ui/lib/chords.js';
+import { NoteLine } from './NoteLine.jsx';
 
 // A query as it was searched, in quotes: its spaces kept and shown, and its
 // own direction kept inside a line in the page's.
@@ -252,7 +253,7 @@ export const ProjectSearch = ({ project, projectId, client }) => {
                     </p>
                     {row.notes.length > 0 && (
                       <p className="mt-0.5 text-xs text-muted-foreground">
-                        {[...new Set(row.notes)].join(' · ')}
+                        <NoteLine notes={row.notes} />
                       </p>
                     )}
                     {row.translation && (

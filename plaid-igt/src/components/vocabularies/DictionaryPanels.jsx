@@ -17,6 +17,7 @@ import { ItemPicker } from './ItemPicker';
 import { FormLabel } from './FormLabel';
 import { MarkedText } from '@ui/components/shared/MarkedText.jsx';
 import { StackedSentence } from './StackedSentence';
+import { NoteLine } from '@/components/projects/search/NoteLine.jsx';
 
 // The dictionary panels of an entry: where it sits in its sense tree, what
 // refers to it, and its examples.
@@ -538,7 +539,7 @@ export const ContextRow = ({ row, to }) => {
       </p>
       {row.notes?.length > 0 && (
         <p className="mt-0.5 text-xs text-muted-foreground">
-          {[...new Set(row.notes)].join(' · ')}
+          <NoteLine notes={row.notes} />
         </p>
       )}
       {row.translation && (

@@ -8,7 +8,6 @@
 // hits in M more documents" accounting from the grouped-by-doc counts.
 
 import { cpSlice } from '@larc-iu/plaid-client';
-import { isolate } from '@ui/lib/bidi.js';
 import { morphemeGlossReading } from '@/domain/tagsets';
 import { translationFieldOf, translationFieldsOf } from '@/domain/sentenceRole';
 import { IgtDocument, loadProjectVocabularies, rebaseVocabLinks } from '@/domain/IgtDocument';
@@ -49,7 +48,11 @@ async function runAll(client, queries) {
 // ---- hits mode -------------------------------------------------------------
 
 // Locate hit entity ids inside one derived document. Returns sentence-grouped
-// rows: { sentenceId, sentenceIndex, marks: [{begin,end}], notes: [string] }.
+// rows: { sentenceId, sentenceIndex, marks: [{begin,end}], notes: [parts] }.
+// A note is parts as plaid-ui's labelParts gives them (a string drawn as it
+// is, { isolate } in a <bdi>), so a value reads in its own direction and its
+// copied text is the value itself (H2-8-1, REV-G4-R2-1). NoteLine.jsx draws
+// them.
 export function locateHits(doc, domain, hitIds) {
   const bySentence = new Map();
   const sentences = doc.sentences || [];
@@ -76,7 +79,7 @@ export function locateHits(doc, domain, hitIds) {
       const span = s.annotations?.[domain.field];
       if (span?.id && hitIds.has(span.id)) {
         const r = row(s, idx);
-        r.notes.push(`${domain.field}: ${isolate(span.value)}`);
+        r.notes.push([`${domain.field}: `, { isolate: [String(span.value ?? '')] }]);
       }
       return;
     }
@@ -89,21 +92,26 @@ export function locateHits(doc, domain, hitIds) {
         if (span?.id && hitIds.has(span.id)) {
           const r = row(s, idx);
           mark(r, t);
-          r.notes.push(`${domain.field}: ${isolate(span.value)}`);
+          r.notes.push([`${domain.field}: `, { isolate: [String(span.value ?? '')] }]);
         }
       }
       for (const m of t.morphemes || []) {
         if ((domain.kind === 'morpheme' || domain.kind === 'lexicon') && hitIds.has(m.id)) {
           const r = row(s, idx);
           mark(r, t, m);
-          if (domain.kind === 'morpheme') r.notes.push(`morpheme: ${isolate(morphFormOf(m))}`);
+          if (domain.kind === 'morpheme')
+            r.notes.push(['morpheme: ', { isolate: [morphFormOf(m)] }]);
         }
         if (domain.kind === 'span' && domain.scope === 'morpheme') {
           const span = m.annotations?.[domain.field];
           if (span?.id && hitIds.has(span.id)) {
             const r = row(s, idx);
             mark(r, t);
-            r.notes.push(`${isolate(morphFormOf(m))} · ${domain.field}: ${isolate(span.value)}`);
+            r.notes.push([
+              { isolate: [morphFormOf(m)] },
+              ` · ${domain.field}: `,
+              { isolate: [String(span.value ?? '')] },
+            ]);
           }
         }
       }
