@@ -146,6 +146,16 @@ def parser() -> argparse.ArgumentParser:
     return p
 
 
+def job_secrets(api_key, api_base):
+    """What no reader of a job is shown of an error's words (REV-SJ1-1): the
+    model's key, from ``--api-key`` or the environment litellm reads, and the
+    model's address and its host."""
+    from urllib.parse import urlsplit
+    from plaid_client.workflows.llm import provider_secrets
+    host = urlsplit(api_base).netloc if api_base else None
+    return provider_secrets(api_key) + tuple(v for v in (api_base, host) if v)
+
+
 def main(argv=None) -> int:
     logging.basicConfig(level=logging.INFO, format='%(asctime)s %(message)s')
     args = parser().parse_args(argv)
@@ -180,7 +190,7 @@ def main(argv=None) -> int:
     runners = {app: APPS[app](cfg, trace_dir=args.trace_dir, count=count,
                               piece_output_tokens=args.piece_output_tokens) for app in args.apps}
     worker = Worker(admin, runners, cfg.model, client_for=lambda token: PlaidClient(args.url, token),
-                    pool=args.model_pool, idle_s=JOB_IDLE_POLL_S)
+                    pool=args.model_pool, idle_s=JOB_IDLE_POLL_S, secrets=job_secrets(args.api_key, args.api_base))
     print(f'Worker {worker.worker_id} asking for jobs of {", ".join(args.apps)} every {JOB_IDLE_POLL_S} s.')
     if args.once:
         worker.once()

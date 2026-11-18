@@ -35,6 +35,8 @@ import json
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
+from plaid_client.services import requester_message
+
 from ..core.args import read_int
 from ..core.history import doc_label
 from ..core.job import blank_sums, blank_text, field_counts, fields_text
@@ -441,7 +443,8 @@ def job_place(ws, where: Dict[str, Any]) -> Optional[tuple]:
     except ToolError:
         return ('job', job_id, f'The user has open the page of {called}, which no longer exists in this project.')
     except Exception as e:  # noqa: BLE001 - the turn goes on without it
-        return ('job', job_id, f'The user has open the page of {called}, which could not be read now: {e}')
+        return ('job', job_id, f'The user has open the page of {called}, which could not be read now: '
+                               f'{requester_message(e)}')
     by_name = (f' Call it "{name}" to the user: its id is for read_job only.' if name else '')
     if job.get('state') not in ENDED:
         return ('job', job_id, f'The user has open the page of an assistant job of this project, {called}, which '

@@ -20,6 +20,7 @@ own work consistent, and its parts of the report.
 import json
 import logging
 import math
+import re
 import threading
 import time
 import unicodedata
@@ -30,7 +31,8 @@ from typing import Any, Callable, Dict, List, Optional, Tuple
 
 import litellm
 from plaid_client import DocumentLockLost, PlaidAPIError
-from plaid_client.workflows.llm import did_not_answer, is_busy, is_timeout, transient_errors
+from plaid_client.services import UNKNOWN_FAILURE, requester_message
+from plaid_client.workflows.llm import did_not_answer, is_busy, is_timeout, provider_secrets, transient_errors
 
 from .agent import REPEATING_LINE, TurnCancelled, TurnFailed, token_counter, too_long
 from .limits import (HARMONIZE_MAJORITY, JOB_CALL_DECIDE_AT_TOKENS, JOB_CORE_TRIES, JOB_CORE_WAIT_S,
@@ -105,10 +107,23 @@ def model_refused(e: BaseException) -> bool:
         and getattr(e, 'status_code', None) in (401, 403, 404)
 
 
-def model_refused_line(e: BaseException) -> str:
+#: A library's class names leading an error's text ("litellm.AuthenticationError:
+#: AuthenticationError: OpenAIException - "): never shown (REV-SJ1-11).
+_CLASS_NAMES = re.compile(r'^(?:[\w.]*(?:Error|Exception)\s*[:-]\s*)+')
+
+
+def shown_words(e: BaseException, secrets=()) -> str:
+    """The words of ``e`` a reader of the project may see: no URL, none of
+    ``secrets`` (the model's key, its address), no library class name
+    leading them (``requester_message``, REV-SJ1-1, REV-SJ1-5)."""
+    return _CLASS_NAMES.sub('', requester_message(e, secrets=secrets)).strip().rstrip('.') or UNKNOWN_FAILURE
+
+
+def model_refused_line(e: BaseException, secrets=()) -> str:
     """The job's message when :func:`model_refused`: the provider's own
-    words, cut to what core keeps."""
-    return fit_line(f'The model refused the job’s calls: {e}')
+    words as a reader may see them (:func:`shown_words`), cut to what core
+    keeps."""
+    return fit_line(f'The model’s provider refused the job’s calls: {shown_words(e, secrets)}.')
 
 
 def failure_kind(e: BaseException) -> Optional[str]:
@@ -411,12 +426,12 @@ def fit_line(text: Optional[str]) -> Optional[str]:
     return text + '…'
 
 
-def error_line(e: BaseException) -> str:
+def error_line(e: BaseException, secrets=()) -> str:
     """The job's message for an error the worker has no rule for, cut to
     what core keeps (:func:`fit_line`). The error's own words, never
     Python's class name (test_error_text): the worker's log has the
     traceback."""
-    return fit_line(f'The job worker met an error and stopped the job: {e}')
+    return fit_line(f'The job worker met an error and stopped the job: {requester_message(e, secrets=secrets)}')
 
 
 class Job:
@@ -432,8 +447,11 @@ class Job:
     def __init__(self, admin, claimed: Dict[str, Any], worker_id: str, *, client_for: Callable[[str], Any],
                  pool: Optional[str] = None, now: Callable[[], float] = time.time,
                  sleep: Callable[[float], None] = time.sleep, model: Optional[str] = None,
-                 heartbeat_s: float = JOB_HEARTBEAT_S):
+                 heartbeat_s: float = JOB_HEARTBEAT_S, secrets: Optional[Tuple[str, ...]] = None):
         self.admin = admin
+        #: what a reader of the project is never shown of an error's words:
+        #: the model's key, however it was given, and its address (REV-SJ1-1)
+        self.secrets = provider_secrets() if secrets is None else tuple(secrets)
         self.job = claimed['job']
         self.id = self.job['id']
         self.project_id = self.job['project']
@@ -821,13 +839,13 @@ def run_job(job: Job, runner) -> Optional[Dict[str, Any]]:
         if model_refused(e):
             # The model's provider refused the key or the model (S1-2).
             logger.warning('Job %s: the model refused its calls: %s', job.id, e)
-            job.set(message=model_refused_line(e))
+            job.set(message=model_refused_line(e, job.secrets))
             return _finish(job, 'failed', runner, harmonize, entries, reason=MODEL_REFUSED, said=True)
         if not isinstance(e, JobStopped) and not no_longer_mine(e):
             # No rule covers it: the job fails with what happened, rather
             # than being skipped past or taken again to fail the same way.
             logger.exception('Job %s: ended on an error', job.id)
-            job.set(message=error_line(e))
+            job.set(message=error_line(e, job.secrets))
             return _finish(job, 'failed', runner, harmonize, entries, reason=WORKER_ERROR, said=True)
         stop = e if isinstance(e, JobStopped) else job.ended()
         if stop.why == 'cancelled':
@@ -909,7 +927,7 @@ def _give_up(job: Job, e: BaseException) -> None:
     same way (REV-J-B S2-4). A refusal here too is logged and left to core."""
     if job.lost:
         return
-    job.set(message=error_line(e))
+    job.set(message=error_line(e, job.secrets))
     try:
         # Its documents as core holds their rows, as core's own report of a
         # job counts them (D16): what landed is counted, and the notice of
@@ -1419,8 +1437,11 @@ class Worker:
     def __init__(self, admin, runners: Dict[str, Callable[[Job], Any]], model: str, *,
                  client_for: Callable[[str], Any], pool: Optional[str] = None, idle_s: float = 30,
                  now: Callable[[], float] = time.time, sleep: Callable[[float], None] = time.sleep,
-                 heartbeat_s: float = JOB_HEARTBEAT_S, worker_id: Optional[str] = None):
+                 heartbeat_s: float = JOB_HEARTBEAT_S, worker_id: Optional[str] = None,
+                 secrets: Optional[Tuple[str, ...]] = None):
         self.admin = admin
+        #: the model's key and address, never shown (:attr:`Job.secrets`)
+        self.secrets = secrets
         self.runners = runners
         self.model = model
         self.client_for = client_for
@@ -1438,7 +1459,7 @@ class Worker:
         if not claimed:
             return None
         job = Job(self.admin, claimed, self.worker_id, client_for=self.client_for, pool=self.pool, now=self.now,
-                  sleep=self.sleep, model=self.model, heartbeat_s=self.heartbeat_s)
+                  sleep=self.sleep, model=self.model, heartbeat_s=self.heartbeat_s, secrets=self.secrets)
         logger.info('Claimed job %s on project %s', job.id, job.project_id)
         job.start()
         runner = None
