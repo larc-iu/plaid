@@ -166,11 +166,14 @@ export const useTokenOperations = () => {
   const cancelPendingStructural = () => setPendingStructural(null);
   const mergeSentence = (sentenceId) => run(() => doc.mergeSentence(sentenceId));
   // A sentence split deletes the relations a layer rule keeps inside one
-  // sentence that the new break cuts, whichever app made them. It asks
-  // first when there are any, and runs at once otherwise.
+  // sentence that the new break cuts, whichever app made them, and hides or
+  // cuts the multi-word expressions whose words it puts in two sentences
+  // (H6-2). It asks first when there are any, and runs at once otherwise.
   const splitSentence = async (charPos) => {
     const loss = doc.sentenceSplitLoss([charPos]);
-    if (loss.annotations + loss.links === 0) return run(() => doc.splitSentence(charPos));
+    if (loss.annotations + loss.links + (loss.hiddenMwes || 0) + (loss.partialMwes || 0) === 0) {
+      return run(() => doc.splitSentence(charPos));
+    }
     setPendingStructural({ kind: 'sentence-split', payload: { charPos }, ...loss });
     return false; // nothing changed yet, the dialog decides
   };

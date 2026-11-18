@@ -142,6 +142,24 @@ describe('a sentence split', () => {
     await view.unmount();
   });
 
+  // H6-2: a multi-word expression the split cuts is not deleted, but the
+  // split still asks.
+  it('asks first when it only cuts a multi-word expression', async () => {
+    const { doc, view, ops } = await mount();
+    doc.sentenceSplitLoss.mockReturnValue({
+      annotations: 0,
+      links: 0,
+      hiddenMwes: 0,
+      partialMwes: 1,
+    });
+    await view.step(() => ops().splitSentence(8));
+    expect(doc.splitSentence).not.toHaveBeenCalled();
+    expect(ops().pendingStructural).toMatchObject({ kind: 'sentence-split', partialMwes: 1 });
+    await view.step(() => ops().confirmPendingStructural());
+    expect(doc.splitSentence).toHaveBeenCalledWith(8);
+    await view.unmount();
+  });
+
   it('asks first when it deletes annotations, and splits on the answer', async () => {
     const { doc, view, ops } = await mount();
     doc.sentenceSplitLoss.mockReturnValue({ annotations: 2, links: 0 });

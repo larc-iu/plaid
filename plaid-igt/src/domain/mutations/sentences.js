@@ -21,6 +21,7 @@ import { pendingId, settledId } from '@ui/domain/pendingIds.js';
 import { notSetUp } from '@ui/domain/setupGuard.js';
 import { countSplitLoss, dropRelations } from '@ui/domain/annotationLoss.js';
 import { chunk } from '../bulk.js';
+import { collectMweLinks } from '../mwe.js';
 
 // The sentence spans a reset deletes: every value on one of `sentenceIds`.
 const sentenceSpanIds = (info, sentenceIds) =>
@@ -42,6 +43,20 @@ export const clearSentencesFits = (info) => {
   if (tokens.length <= 1) return true;
   const spans = sentenceSpanIds(info, new Set(tokens.map((t) => t.id)));
   return chunk(spans).length + tokens.length - 1 <= MAX_BATCH_OPS;
+};
+
+// How many of an MWE's words are drawn under `sentences`, as derive.js
+// attachMwes draws them: the words in the sentence of its first word, when
+// there are two or more, else none.
+const mweWordsDrawn = (tokenIds, beginOf, sentences) => {
+  const homes = tokenIds
+    .filter((id) => beginOf.has(id))
+    .map((id) => sentences.find((s) => s.begin <= beginOf.get(id) && beginOf.get(id) < s.end))
+    .filter(Boolean);
+  if (!homes.length) return 0;
+  const home = homes.reduce((a, s) => (s.begin < a.begin ? s : a));
+  const here = homes.filter((s) => s === home).length;
+  return here >= 2 ? here : 0;
 };
 
 export const TOO_MANY_SENTENCES =
@@ -116,15 +131,21 @@ export const sentenceMutations = {
   // puts in different sentences. Positions are taken as splitSentencesAt
   // takes them, each split seen by the next, so a relation two splits cut is
   // counted once. A position that splits nothing counts nothing.
-  // {annotations, links}.
+  // Also the multi-word expressions the splits show less of, which are not
+  // deleted: `hiddenMwes` are left with fewer than two words in the
+  // sentence of their first word and are not drawn, `partialMwes` are drawn
+  // over fewer words (derive.js attachMwes). Merging the sentences again
+  // shows them whole.
+  // {annotations, links, hiddenMwes, partialMwes}.
   sentenceSplitLoss(positions) {
     const info = this.layerInfo;
     const sentenceLayer = info.sentenceTokenLayer;
-    const total = { annotations: 0, links: 0 };
+    const total = { annotations: 0, links: 0, hiddenMwes: 0, partialMwes: 0 };
     if (!sentenceLayer?.id) return total;
     const layers = info.primaryTextLayer?.tokenLayers || [];
     const words = info.primaryTokenLayer?.tokens || [];
-    let sentences = [...(sentenceLayer.tokens || [])];
+    const before = [...(sentenceLayer.tokens || [])];
+    let sentences = before;
     for (const charPos of [...new Set(positions)].sort((a, b) => a - b)) {
       const containing = sentences.find((s) => s.begin < charPos && charPos < s.end);
       if (!containing || words.some((w) => w.begin < charPos && charPos < w.end)) continue;
@@ -140,6 +161,15 @@ export const sentenceMutations = {
           { ...containing, end: charPos },
           { id: `${containing.id}@${charPos}`, begin: charPos, end: containing.end },
         );
+    }
+    if (sentences === before) return total;
+    const beginOf = new Map(words.map((w) => [w.id, w.begin]));
+    for (const mwe of collectMweLinks(this.vocabularies)) {
+      const was = mweWordsDrawn(mwe.tokenIds, beginOf, before);
+      const is = mweWordsDrawn(mwe.tokenIds, beginOf, sentences);
+      if (is >= was) continue;
+      if (is === 0) total.hiddenMwes += 1;
+      else total.partialMwes += 1;
     }
     return total;
   },

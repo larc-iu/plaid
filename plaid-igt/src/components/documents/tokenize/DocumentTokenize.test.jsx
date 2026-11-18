@@ -2,7 +2,8 @@ import { describe, it, expect, vi, afterEach } from 'vitest';
 import { renderComponent } from '@ui/test/renderComponent.jsx';
 import { DocumentProvider } from '../contexts/DocumentContext.jsx';
 import { TooltipProvider } from '@ui/components/ui/tooltip';
-import { SentenceComponent, TokenComponent } from './DocumentTokenize.jsx';
+import { SentenceComponent, SentenceSplitWords, TokenComponent } from './DocumentTokenize.jsx';
+import { segmentSplitDescription } from '@/domain/segments.js';
 
 // Alt+click on a word here opens the same word on the Analyze tab. It used to
 // ask for the tab by dispatching a window event that the tab hook listens for,
@@ -210,5 +211,62 @@ describe("a sentence's merge-with-previous button", () => {
     expect(button.getAttribute('aria-label')).toBe('Merge with above');
     await view.unmount();
     vi.unstubAllGlobals();
+  });
+});
+
+// H6-2: a split that puts a multi-word expression's words in two sentences
+// says so in the split confirmation. The expression is not deleted, so the
+// line says what is shown, and nothing about deleting.
+describe('the sentence split confirmation', () => {
+  const none = { annotations: 0, links: 0, hiddenMwes: 0, partialMwes: 0 };
+  const render = (loss) =>
+    renderComponent(
+      <div>
+        <SentenceSplitWords loss={loss} />
+      </div>,
+    );
+  const lines = (view) => [...view.container.querySelectorAll('p')].map((p) => p.textContent);
+
+  it('names a multi-word expression it hides, when it deletes nothing', async () => {
+    const view = await render({ ...none, hiddenMwes: 1 });
+    expect(lines(view)).toEqual([
+      '1 multi-word expression will not be shown until the sentences are merged again.',
+    ]);
+    expect(view.container.querySelector('strong').textContent).toBe('1 multi-word expression');
+    await view.unmount();
+  });
+
+  it('names those it shows in part, after what it deletes', async () => {
+    const view = await render({ ...none, annotations: 2, hiddenMwes: 2, partialMwes: 1 });
+    expect(lines(view)).toEqual([
+      'Splitting the sentence here deletes 2 annotations that cross the new break.',
+      '2 multi-word expressions will not be shown until the sentences are merged again.',
+      '1 multi-word expression will be shown only in part until the sentences are merged again.',
+    ]);
+    await view.unmount();
+  });
+
+  it('says only what it deletes when it cuts no multi-word expression', async () => {
+    const view = await render({ ...none, links: 1 });
+    expect(lines(view)).toEqual([
+      'Splitting the sentence here deletes 1 vocabulary link that cross the new break.',
+    ]);
+    await view.unmount();
+  });
+
+  it('Split sentences at segments says it too', () => {
+    expect(segmentSplitDescription(2, 0, { ...none, hiddenMwes: 1 })).toBe(
+      '2 sentence breaks will be added where segments start.' +
+        ' 1 multi-word expression will not be shown until the sentences are merged again.',
+    );
+    expect(segmentSplitDescription(1, 1, { ...none, annotations: 1, partialMwes: 2 })).toBe(
+      '1 sentence break will be added where segments start.' +
+        ' 1 segment starts inside a word and is left alone.' +
+        ' Deletes 1 annotation that cross the new break.' +
+        ' 2 multi-word expressions will be shown only in part until the sentences are merged again.',
+    );
+    expect(segmentSplitDescription(3, 0, none)).toBe(
+      '3 sentence breaks will be added where segments start.',
+    );
   });
 });

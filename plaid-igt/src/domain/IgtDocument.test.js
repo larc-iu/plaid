@@ -1285,11 +1285,31 @@ describe('sentence boundary ops', () => {
       vocabs: [],
     });
     const doc = makeDoc({ raw });
-    expect(doc.sentenceSplitLoss([8])).toEqual({ annotations: 1, links: 0 });
-    expect(doc.sentenceSplitLoss([12, 8])).toEqual({ annotations: 2, links: 0 });
-    expect(doc.sentenceSplitLoss([16])).toEqual({ annotations: 1, links: 0 });
+    expect(doc.sentenceSplitLoss([8])).toEqual({
+      annotations: 1,
+      links: 0,
+      hiddenMwes: 0,
+      partialMwes: 0,
+    });
+    expect(doc.sentenceSplitLoss([12, 8])).toEqual({
+      annotations: 2,
+      links: 0,
+      hiddenMwes: 0,
+      partialMwes: 0,
+    });
+    expect(doc.sentenceSplitLoss([16])).toEqual({
+      annotations: 1,
+      links: 0,
+      hiddenMwes: 0,
+      partialMwes: 0,
+    });
     // Inside a word, at a sentence's start, or past the text: nothing splits.
-    expect(doc.sentenceSplitLoss([5, 0, 40])).toEqual({ annotations: 0, links: 0 });
+    expect(doc.sentenceSplitLoss([5, 0, 40])).toEqual({
+      annotations: 0,
+      links: 0,
+      hiddenMwes: 0,
+      partialMwes: 0,
+    });
     // The count changes nothing.
     expect(doc.client.calls).toEqual([]);
     expect(doc.sentences).toHaveLength(1);
@@ -3302,6 +3322,71 @@ describe('multi-word expressions', () => {
     expect(await doc.confirmVocabLink('w-1')).not.toBe(false);
     const begun = client.calls.filter((c) => c.kind === 'beginOperation').map((c) => c.args);
     expect(begun).toEqual([['Accept link', { kind: 'review' }]]);
+  });
+
+  // H6-2: a split that puts an MWE's words in two sentences is asked about.
+  // The MWE is drawn in the sentence of its first word, so it is hidden when
+  // fewer than two of its words are left there, and drawn in part otherwise.
+  it('sentenceSplitLoss counts the MWEs a split hides or cuts', () => {
+    const doc = makeDoc({
+      raw: raw(),
+      project,
+      vocabularies: vocabs([
+        { id: 'lk-1', tokens: ['w-3', 'w-4'], vocabItem: { id: 'i-sit', form: 'sit down' } },
+        { id: 'lk-2', tokens: ['w-1', 'w-2', 'w-3'], vocabItem: { id: 'i-alt', form: 'a' } },
+        { id: 'lk-w', tokens: ['w-2'], vocabItem: { id: 'i-cat', form: 'cat' } },
+      ]),
+    });
+    const none = { annotations: 0, links: 0, hiddenMwes: 0, partialMwes: 0 };
+    // "the cat sat | down": lk-1 keeps one word in its first sentence.
+    expect(doc.sentenceSplitLoss([12])).toEqual({ ...none, hiddenMwes: 1 });
+    // "the cat | sat down": lk-2 keeps two of its three words.
+    expect(doc.sentenceSplitLoss([8])).toEqual({ ...none, partialMwes: 1 });
+    // "the | cat sat down": lk-2 keeps one.
+    expect(doc.sentenceSplitLoss([4])).toEqual({ ...none, hiddenMwes: 1 });
+    // Two splits: each MWE counted once, by where it ends up.
+    expect(doc.sentenceSplitLoss([8, 12])).toEqual({ ...none, hiddenMwes: 1, partialMwes: 1 });
+    expect(doc.sentenceSplitLoss([4, 8])).toEqual({ ...none, hiddenMwes: 1 });
+    // Inside a word, at the start: nothing splits.
+    expect(doc.sentenceSplitLoss([5, 0])).toEqual(none);
+    expect(doc.sentences[0].mwes).toHaveLength(2);
+  });
+
+  it('an MWE already in two sentences is counted only when a split shows less of it', () => {
+    const r = raw();
+    const sentences = r.textLayers[0].tokenLayers.find((tl) => tl.id === 'sentL');
+    sentences.tokens = [
+      { id: 's-1', begin: 0, end: 4 },
+      { id: 's-2', begin: 4, end: 16 },
+    ];
+    const doc = makeDoc({
+      raw: r,
+      project,
+      vocabularies: vocabs([
+        // Hidden already: one word in its first sentence.
+        { id: 'lk-1', tokens: ['w-1', 'w-2', 'w-3'], vocabItem: { id: 'i-sit', form: 'a' } },
+      ]),
+    });
+    const none = { annotations: 0, links: 0, hiddenMwes: 0, partialMwes: 0 };
+    expect(doc.sentenceSplitLoss([8])).toEqual(none);
+  });
+
+  it('merging the sentences again shows the MWE a split hid', async () => {
+    const doc = makeDoc({
+      raw: raw(),
+      project,
+      vocabularies: vocabs([
+        { id: 'lk-1', tokens: ['w-3', 'w-4'], vocabItem: { id: 'i-sit', form: 'sit down' } },
+      ]),
+    });
+    expect(doc.sentences[0].mwes.map((e) => e.linkId)).toEqual(['lk-1']);
+    expect(await doc.splitSentence(12)).not.toBe(false);
+    expect(doc.sentences).toHaveLength(2);
+    expect(doc.sentences.flatMap((s) => s.mwes)).toEqual([]);
+    expect(await doc.mergeSentence(doc.sentences[1].id)).not.toBe(false);
+    expect(doc.sentences).toHaveLength(1);
+    expect(doc.sentences[0].mwes.map((e) => e.linkId)).toEqual(['lk-1']);
+    expect(doc.sentences[0].mwes[0].partial).toBe(false);
   });
 });
 

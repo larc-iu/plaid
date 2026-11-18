@@ -3,6 +3,9 @@
 // and where sentence breaks would go to make one sentence per segment.
 
 import { cpSlice } from '@larc-iu/plaid-client';
+import { lossPhrase } from '@ui/domain/annotationLoss.js';
+import { countOf, plural } from '@ui/lib/plural.js';
+import { mweSplitLines } from './mwe.js';
 
 /** A segment's own stretch of the baseline, trimmed. */
 export const segmentText = (body, token) => cpSlice(body ?? '', token.begin, token.end).trim();
@@ -46,3 +49,19 @@ export function splitPointsFromSegments({ sentences, words, alignments }) {
   }
   return { positions: [...positions].sort((a, b) => a - b), insideWord };
 }
+
+// The Split sentences at segments confirmation, for `n` breaks, `insideWord`
+// segments left alone and the split's `loss` (`sentenceSplitLoss`).
+export const segmentSplitDescription = (n, insideWord, loss) => {
+  const lost = lossPhrase(loss);
+  return (
+    `${countOf(n, 'sentence break')} will be added where segments start.` +
+    (insideWord
+      ? ` ${countOf(insideWord, 'segment')} ${insideWord === 1 ? 'starts' : 'start'} inside a word and ${insideWord === 1 ? 'is' : 'are'} left alone.`
+      : '') +
+    (lost ? ` Deletes ${lost} that cross the new ${plural(n, 'break')}.` : '') +
+    mweSplitLines(loss)
+      .map(([count, rest]) => ` ${count} ${rest}`)
+      .join('')
+  );
+};

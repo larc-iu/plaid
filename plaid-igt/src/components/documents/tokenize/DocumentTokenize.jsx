@@ -14,8 +14,9 @@ import { DELETE_BUTTON_CLASS } from '@ui/lib/destructive.js';
 import { useConfirm } from '@ui/components/shared/ConfirmProvider';
 import { lossPhrase } from '@ui/domain/annotationLoss.js';
 import { notifySuccess } from '@/utils/feedback';
-import { splitPointsFromSegments } from '@/domain/segments.js';
+import { segmentSplitDescription, splitPointsFromSegments } from '@/domain/segments.js';
 import { clearSentencesFits, TOO_MANY_SENTENCES } from '@/domain/mutations/sentences.js';
+import { mweSplitLines } from '@/domain/mwe.js';
 import { useDocumentCtx } from '../contexts/DocumentContext.jsx';
 import { useDocumentModel } from '@ui/domain/useDocumentModel.js';
 import { TokenizeDialog } from './TokenizeDialog.jsx';
@@ -99,17 +100,12 @@ export function DocumentTokenize() {
   const splitAtSegments = async () => {
     const { positions, insideWord } = segmentSplits;
     const n = positions.length;
-    const lost = lossPhrase(doc.sentenceSplitLoss(positions));
+    const loss = doc.sentenceSplitLoss(positions);
     const ok = await confirm({
       title: 'Split sentences at segments?',
-      description:
-        `${countOf(n, 'sentence break')} will be added where segments start.` +
-        (insideWord
-          ? ` ${countOf(insideWord, 'segment')} ${insideWord === 1 ? 'starts' : 'start'} inside a word and ${insideWord === 1 ? 'is' : 'are'} left alone.`
-          : '') +
-        (lost ? ` Deletes ${lost} that cross the new ${plural(n, 'break')}.` : ''),
+      description: segmentSplitDescription(n, insideWord, loss),
       confirmLabel: 'Split sentences',
-      destructive: Boolean(lost),
+      destructive: Boolean(lossPhrase(loss)),
     });
     if (!ok) return;
     if (await ops.splitSentencesAt(positions)) {
@@ -376,7 +372,7 @@ export function DocumentTokenize() {
           word(s) carry morpheme-scope annotations the op would destroy
           (split/merge delete the words' morphemes). Word-scope spans survive.
           A sentence split opens it when the new break cuts relations a layer
-          rule keeps inside one sentence. */}
+          rule keeps inside one sentence, or a multi-word expression. */}
       <ConfirmDeleteDialog
         open={!!ops.pendingStructural}
         onOpenChange={(o) => {
@@ -393,10 +389,7 @@ export function DocumentTokenize() {
         onConfirm={() => ops.confirmPendingStructural()}
       >
         {ops.pendingStructural?.kind === 'sentence-split' ? (
-          <p>
-            Splitting the sentence here deletes <strong>{lossPhrase(ops.pendingStructural)}</strong>{' '}
-            that cross the new break.
-          </p>
+          <SentenceSplitWords loss={ops.pendingStructural} />
         ) : (
           <p>
             {ops.pendingStructural?.kind === 'merge' ? 'Merging' : 'Splitting'}{' '}
@@ -482,6 +475,27 @@ function LossWords({ loss, under = null }) {
         </>
       ) : null}
       .
+    </>
+  );
+}
+
+// The body of the sentence split confirmation: what the split deletes, then
+// the multi-word expressions it hides or shows in part (H6-2), which it does
+// not delete.
+export function SentenceSplitWords({ loss }) {
+  const gone = lossPhrase(loss || {});
+  return (
+    <>
+      {gone ? (
+        <p>
+          Splitting the sentence here deletes <strong>{gone}</strong> that cross the new break.
+        </p>
+      ) : null}
+      {mweSplitLines(loss).map(([count, rest]) => (
+        <p key={rest}>
+          <strong>{count}</strong> {rest}
+        </p>
+      ))}
     </>
   );
 }
