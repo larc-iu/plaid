@@ -1087,6 +1087,10 @@ class TurnResult:
     # text that call had written, which the reader watched stream.
     failure: Optional[BaseException] = None
     partial: Optional[str] = None
+    # An unattended turn (one with a pace) stopped because the same tool
+    # call failed or was repeated REPEATED_FAILURES times: ``text`` is
+    # REPEAT_STOP, never the model's (D3).
+    repeat_stopped: bool = False
 
     @property
     def summary(self) -> str:
@@ -1865,8 +1869,10 @@ def _run_turn(cfg, kit, ws, system, transcript, on_progress, cancelled, on_text,
             _unstored(trace, rnd)
         live['round'] = None
         if pace is not None and failing['times'] >= REPEATED_FAILURES:
-            return done(REPEAT_STOP.format(how='was repeated' if failing['repeated'] else 'failed',
-                                           times=REPEATED_FAILURES))
+            stopped = done(REPEAT_STOP.format(how='was repeated' if failing['repeated'] else 'failed',
+                                              times=REPEATED_FAILURES))
+            stopped.repeat_stopped = True
+            return stopped
         if failing['times'] >= REPEATED_FAILURES:
             what = 'been repeated' if failing['repeated'] else 'failed'
             text, thinking = ask_for_the_reply(kwargs, f'(system) The same tool call has {what} '

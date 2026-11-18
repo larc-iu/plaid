@@ -3924,11 +3924,11 @@ class IgtRunner:
         # A budget spent while the piece holds staged work closes it with one
         # call, and what it staged is written (BRIEF RW B2).
         pace = self.pace(decided, piece=True, holds=lambda: bool(ws.ops or ws.tables), closing=closing)
-        result = self.turn(ws, kit, system, transcript, pace=pace)
+        result = self.repeat_stopped(ws, self.turn(ws, kit, system, transcript, pace=pace))
         job.check()
         if answered_nothing(ws, result.text):
             more = transcript + list(result.messages or []) + [{'role': 'user', 'content': JOB_ANSWER_AGAIN}]
-            result = self.turn(ws, kit, system, more, pace=pace)
+            result = self.repeat_stopped(ws, self.turn(ws, kit, system, more, pace=pace))
             job.check()
             ws.answered_nothing = answered_nothing(ws, result.text)
         # The whole reply, the findings of a job that fills nothing (RPF-A5),
@@ -3937,6 +3937,21 @@ class IgtRunner:
         if self.fills_nothing() and findings_text(ws.reply):
             return FINDINGS_NOTE
         return piece_note(result.text)
+
+    @staticmethod
+    def repeat_stopped(ws: JobWorkspace, result: TurnResult) -> TurnResult:
+        """A piece's turn stopped because the same tool call failed or was
+        repeated three times (``TurnResult.repeat_stopped``) is a model
+        fault, never finished work (D3): with nothing staged it fails
+        ``repeating`` as any model fault does, and with work staged it ends
+        without finishing (``ws.ended``), by THE rule after such a piece
+        (CONTRACT, "Added by RW"). Its text is the stop's line, never a note."""
+        if not result.repeat_stopped:
+            return result
+        if not (ws.ops or ws.tables):
+            raise StretchFailed(REPEATING, 'the same step failed three times')
+        ws.ended = REPEATING
+        return dataclasses.replace(result, text='')
 
     def pace(self, decided=lambda: None, line: Optional[str] = None, piece: bool = False,
              holds=lambda: False, closing=lambda: None) -> Pace:
