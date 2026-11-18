@@ -66,7 +66,7 @@ from ..core.provenance import Requester
 from ..core.tools import Refusal, ToolError
 from ..core.version import agent_version
 from . import evidence, jobapply, targets as tg, toolkit
-from .plan import LEXICON_MAINTAINER, PlanOutOfDate, check_entries, execute_plan
+from .plan import LEXICON_MAINTAINER, REPAIR_OF, PlanOutOfDate, check_entries, execute_plan
 from .project import IgtProject, Sentence, Word, is_virtual, load_project, render_sentence
 from .prompt import JOB_SYSTEM, build_job_prompt
 from .tools import trim_ignored_edges
@@ -5272,10 +5272,17 @@ class IgtRunner:
                     # written: never deleted by the job. One such delete is
                     # listed once, not applied, several are tried one by
                     # one, and the rest of the try is written (S9-2).
+                    # A delete goes with the repairs it carries (another
+                    # entry's reference cleared, a sense freed), which stand
+                    # only if it goes: never one without it (REV-SJ2-1).
                     self.looked.add(seed)
-                    others = [o for o in ops if not any(o is d for d in dels)]
+
+                    def carried(d):
+                        return [o for o in ops if o.get(REPAIR_OF) == d.get('item_id')]
+                    gone = {d.get('item_id') for d in dels}
+                    others = [o for o in ops if not any(o is d for d in dels) and o.get(REPAIR_OF) not in gone]
                     new = ([{'seed': uuid7(), 'ops': others}] if others else []) + (
-                        [{'seed': uuid7(), 'ops': [d]} for d in dels] if len(dels) > 1 else [])
+                        [{'seed': uuid7(), 'ops': [d, *carried(d)]} for d in dels] if len(dels) > 1 else [])
                     if len(dels) == 1:
                         self.record_changes([{**self.describe_loose(dels[0]), 'label': _cut(
                             f'{dels[0].get("label") or "Delete entry"}: not deleted, the entry is linked where '
