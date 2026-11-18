@@ -591,18 +591,27 @@ describe('SentenceBlock node menu, deleting nodes with document relations', () =
     return text;
   };
 
-  it('counts each relation once, and says nothing when there are none', async () => {
-    const t1 = { id: 't1', metadata: {} };
-    const t2 = { id: 't2', metadata: {} };
-    expect(await ask({ eatDoc: { docOut: [t1] }, personDoc: { docIn: [t1, t2] } })).toContain(
+  // A test per case: the three in one took seconds on a busy machine.
+  const t1 = { id: 't1', metadata: {} };
+  const t2 = { id: 't2', metadata: {} };
+  it.each([
+    [
+      'counts a relation two nodes share once',
+      { eatDoc: { docOut: [t1] }, personDoc: { docIn: [t1, t2] } },
       'eat-01, person. Also removes 2 document relations. Restorable from History.',
-    );
-    expect(await ask({ eatDoc: { docOut: [t1] }, personDoc: {} })).toContain(
+    ],
+    [
+      'counts one relation as one',
+      { eatDoc: { docOut: [t1] }, personDoc: {} },
       'eat-01, person. Also removes 1 document relation. Restorable from History.',
-    );
-    expect(await ask({ eatDoc: {}, personDoc: {} })).toContain(
+    ],
+    [
+      'says nothing when there are none',
+      { eatDoc: {}, personDoc: {} },
       'eat-01, person. Restorable from History.',
-    );
+    ],
+  ])('%s', async (_name, docs, said) => {
+    expect(await ask(docs)).toContain(said);
   });
 });
 

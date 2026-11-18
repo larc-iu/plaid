@@ -8,34 +8,70 @@
 import { act } from 'react';
 import { createRoot } from 'react-dom/client';
 
+// Every view still mounted, and every act() still running. A test that fails
+// or times out before its own unmount would otherwise leave its component in
+// document.body (a modal dialog holding focus and aria-hidden, rows a later
+// query reads). One that times out inside a step goes on running, and React
+// takes the next test's renders into that still-open act(), where they never
+// commit. Either way every later test in the file would fail.
+const mounted = new Set();
+const running = new Set();
+
+async function inAct(fn) {
+  const done = act(fn);
+  running.add(done);
+  try {
+    await done;
+  } finally {
+    running.delete(done);
+  }
+}
+
+async function unmountView(view) {
+  if (!mounted.delete(view)) return;
+  await inAct(async () => {
+    view.root.unmount();
+  });
+  view.container.remove();
+}
+
+// As @testing-library/react does: after each test of any file that mounts
+// through here, let a step still running finish, then unmount what the test
+// left. `afterEach` is a global (the apps' vitest configs set `globals: true`).
+if (typeof afterEach === 'function') {
+  afterEach(async () => {
+    while (running.size) await Promise.allSettled([...running]);
+    for (const view of [...mounted]) await unmountView(view);
+  });
+}
+
 /** Mount `element` and return the container plus helpers to drive it. */
 export async function renderComponent(element) {
   globalThis.IS_REACT_ACT_ENVIRONMENT = true;
   const container = document.createElement('div');
   document.body.appendChild(container);
   const root = createRoot(container);
-  await act(async () => {
+  const live = { root, container };
+  mounted.add(live);
+  await inAct(async () => {
     root.render(element);
   });
   return {
     container,
     /** Run something that updates state, then let React settle. */
     async step(fn) {
-      await act(async () => {
+      await inAct(async () => {
         await fn();
       });
     },
     /** Render a new element into the same root (new props, same instances). */
     async rerender(next) {
-      await act(async () => {
+      await inAct(async () => {
         root.render(next);
       });
     },
     async unmount() {
-      await act(async () => {
-        root.unmount();
-      });
-      container.remove();
+      await unmountView(live);
     },
   };
 }
