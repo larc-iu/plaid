@@ -3050,7 +3050,10 @@ class IgtRunner:
         if any(s.id in again for s in doc.sentences) or document_id in self.text_edited:
             # Taken again by the walk, which then ends the document: a
             # sentence a person changed during the piece, or a piece after a
-            # text edit that was put off, taken first by the walk (D19).
+            # text edit that was put off, taken first by the walk (D19). The
+            # cursor goes back before the first sentence taken again, which
+            # may stand before those the piece read (D27).
+            self.rewind(document_id, doc, [s for s in doc.sentences if s.id in again])
             self.job.update_row(document_id, **self.tally(document_id, (self.job.rows.get(document_id) or {}).get(
                 'skipped')))
             return
