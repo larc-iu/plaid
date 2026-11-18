@@ -98,6 +98,13 @@
                              :description (str "Create API token \"" name "\" for user " owner-user-id)
                              :user acting-user-id}]
                      (psc/assert-valid-name! name)
+                     ;; A deactivated account's tokens were revoked with it,
+                     ;; and reactivation restores none: a token minted now
+                     ;; would come alive on reactivation (ACL6-3).
+                     (when (some? (:deactivated_at (psc/fetch-by-id tx :users owner-user-id)))
+                       (throw (ex-info (str "User " owner-user-id " is deactivated. Reactivate them before "
+                                            "minting a token.")
+                                       {:code 400 :id owner-user-id})))
                      (let [id (psc/new-uuid)
                            row {:id         id
                                 :user_id    owner-user-id
