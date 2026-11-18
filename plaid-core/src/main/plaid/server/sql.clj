@@ -330,6 +330,38 @@
                 rs (.executeQuery stmt (str "SELECT 1 FROM " (str/replace target #";$" "") " LIMIT 1"))]
       (not (.next rs)))))
 
+(def ^:private sampled-analysis-limit
+  "The rows `ANALYZE` reads per index of a table it samples."
+  400)
+
+(def ^:private tables-analysed-whole
+  "The tables `ANALYZE` reads whole instead of sampling.
+
+   A sample is the FIRST rows of each index, so it describes the first
+   layer in id order, not the table. `idx_spans_layer_value` sampled that
+   way says one span per (layer, value) on most databases, since the
+   first layer's first values in sort order are mostly rare ones. SQLite
+   then plans a Grew pattern with two tagged nodes (`V [upos=VERB]; N
+   [upos=NOUN]; V -[nsubj]-> N`) as every VERB span against every NOUN
+   span before any relation narrows them, which passed the 30 s limit on
+   a 5,000-sentence treebank. Read whole, the statistic is the true
+   average (11 there), and the same query takes 0.2 s (SCL6-1, SCL7-1).
+   The whole spans table took 0.3 s to analyse on a database of 600,000
+   spans. Sampling more rows only moves the luck: 2,000 gave 2 there,
+   and gives 1 wherever the first layer holds unique values. The migration
+   20261118120000-spans-statistics-whole took the statistics of a database
+   analysed before once, since a refresh takes a table again only when it
+   has grown tenfold."
+  #{"spans"})
+
+(defn- analysis-limit
+  "`PRAGMA analysis_limit` for the `ANALYZE \"main\".\"t\"` statement
+   `analyze-sql`: 0 (no limit) for `tables-analysed-whole`."
+  [^String analyze-sql]
+  (if (some #(str/includes? analyze-sql (str "\"" % "\"")) tables-analysed-whole)
+    0
+    sampled-analysis-limit))
+
 (defn- analyze-tables!
   "ANALYZE the tables whose statistics are stale (`analyze-statements`),
    ONE TABLE PER STATEMENT, pausing between them.
@@ -351,13 +383,12 @@
     ;; write lock is dropped the moment it ends.
     (when-not (.getAutoCommit conn)
       (.setAutoCommit conn true))
-    (with-open [stmt (.createStatement conn)]
-      (.execute stmt "PRAGMA analysis_limit=400;"))
     (let [statements (vec (remove (partial empty-table? conn) (analyze-statements conn)))]
       (doseq [[i sql] (map-indexed vector statements)]
         (when (pos? i)
           (Thread/sleep analyze-pause-ms))
         (with-open [stmt (.createStatement conn)]
+          (.execute stmt (str "PRAGMA analysis_limit=" (analysis-limit sql) ";"))
           (.execute stmt sql)))
       ;; Last, and only once some table has been analysed, since that is
       ;; what creates `sqlite_stat1`. One DELETE over a table of a few

@@ -387,3 +387,37 @@
 ;; left every FK cascade planned as a scan until it ran.
 (deftest growth-is-checked-on-a-short-interval
   (is (<= @#'server-sql/planner-stats-interval-ms (* 5 60 1000))))
+
+;; SCL6-1, SCL7-1: a sample is the first rows of each index. Of
+;; `idx_spans_layer_value` those are the first layer's first values, here a
+;; layer of unique values, so a sample says one span per (layer, value) and
+;; SQLite plans two tagged Grew nodes as every span of one tag against every
+;; span of the other. The spans table is read whole: the true average.
+(deftest the-spans-table-is-analysed-whole
+  (let [db-path (temp-db-path)
+        ds (psd/build-datasource db-path)]
+    (try
+      (with-open [conn (jdbc/get-connection ds)]
+        (.setAutoCommit conn false)
+        (with-open [stmt (.createStatement conn)]
+          (.execute stmt "CREATE TABLE spans (id INTEGER PRIMARY KEY, span_layer_id TEXT, value TEXT)")
+          (.execute stmt "CREATE INDEX idx_spans_layer_value ON spans (span_layer_id, value)"))
+        (with-open [ps (.prepareStatement conn "INSERT INTO spans (span_layer_id, value) VALUES (?, ?)")]
+          ;; layer a: 1,000 unique values; layer b: 3,000 spans of 3 values
+          (dotimes [r 1000]
+            (.setString ps 1 "a") (.setString ps 2 (str "gloss-" r)) (.addBatch ps))
+          (dotimes [r 3000]
+            (.setString ps 1 "b") (.setString ps 2 (["NOUN" "VERB" "ADJ"] (mod r 3))) (.addBatch ps))
+          (.executeBatch ps))
+        (.commit conn))
+      (as-after-a-restart! ds)
+      (#'server-sql/analyze-tables! ds)
+      (is (= "4000 2000 4"
+             (:sqlite_stat1/stat (jdbc/execute-one! ds ["SELECT stat FROM sqlite_stat1 WHERE idx = 'idx_spans_layer_value'"])))
+          "4,000 spans, 2,000 per layer, 4 per (layer, value): 4,000 over 1,003 pairs")
+      (finally
+        (.close ds)
+        (doseq [suffix ["" "-wal" "-shm" ".lock"]]
+          (let [file (File. (str db-path suffix))]
+            (when (.exists file) (.delete file))))
+        (.delete (.getParentFile (File. db-path)))))))
