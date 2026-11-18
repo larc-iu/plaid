@@ -1,5 +1,6 @@
 import PlaidClient, { ROLES, cpLength, metadataOps } from '@larc-iu/plaid-client';
 import { test, expect, seedAuth, readToken, CORE } from './fixtures.js';
+import { isWrite } from '../../plaid-ui/e2e/writeDelay.js';
 import { getFixture, roleOf } from './fixtureProject.js';
 
 // TEST_PLAN B2 (ranking + search), B3 (keyboard), B4 (link/unlink/relink),
@@ -130,7 +131,7 @@ const linksTo = async (tokenId) => {
 const writes = (page) => {
   const seen = [];
   page.on('request', (r) => {
-    if (r.method() !== 'GET' && r.url().includes('/api/v1/'))
+    if (isWrite(r) && r.url().includes('/api/v1/'))
       seen.push(`${r.method()} ${new URL(r.url()).pathname}`);
   });
   return seen;

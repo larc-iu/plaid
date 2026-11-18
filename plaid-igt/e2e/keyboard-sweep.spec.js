@@ -1,5 +1,6 @@
 import PlaidClient, { ROLES, cpLength } from '@larc-iu/plaid-client';
 import { test, expect, seedAuth, readToken, CORE } from './fixtures.js';
+import { isWrite } from '../../plaid-ui/e2e/writeDelay.js';
 import { getFixture, roleOf } from './fixtureProject.js';
 
 // The chords that changed on 2026-08-31 (Ctrl+Enter accepts everything proposed
@@ -81,7 +82,7 @@ const focusedKey = (page) => page.evaluate(() => document.activeElement?.dataset
 const writes = (page) => {
   const seen = [];
   page.on('request', (r) => {
-    if (r.method() !== 'GET' && r.url().includes('/api/v1/'))
+    if (isWrite(r) && r.url().includes('/api/v1/'))
       seen.push(`${r.method()} ${new URL(r.url()).pathname}`);
   });
   return seen;

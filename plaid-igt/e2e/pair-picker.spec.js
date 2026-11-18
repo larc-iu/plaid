@@ -1,5 +1,6 @@
 import PlaidClient, { ROLES, cpLength } from '@larc-iu/plaid-client';
 import { test, expect, seedAuth, readToken, CORE } from './fixtures.js';
+import { isWrite } from '../../plaid-ui/e2e/writeDelay.js';
 import { getFixture, roleOf } from './fixtureProject.js';
 
 // The pair picker: a morpheme's link and gloss picked together, from Alt+Down
@@ -111,6 +112,19 @@ const stored = async (morphId) => {
   return { item: link?.vocabItem?.id ?? null, gloss: span?.value ?? null };
 };
 const saved = (page) => expect(page.locator('.igt-status[data-state="saving"]')).toHaveCount(0);
+
+// Tagset T, which the tests below set on the shared fixture, taken off it
+// again: T from the project's tagsets (any other spec's stay), and the Gloss
+// layer's tagset, which the fixture is seeded without. Never a copy read
+// before: a copy read while another run of this file had T set put T back for
+// good, and every later run on that core met a closed tagset (FLK3-1).
+const dropTagsetT = async (c, project, glossLayer) => {
+  const p = await c.projects.get(project);
+  const { T: _ours, ...others } = p.config?.igt?.tagsets || {};
+  if (Object.keys(others).length) await c.projects.setConfig(project, 'igt', 'tagsets', others);
+  else await c.projects.deleteConfig(project, 'igt', 'tagsets').catch(() => {});
+  await c.spanLayers.deleteConfig(glossLayer, 'igt', 'tagset').catch(() => {});
+};
 
 // Layout first, before a test below changes the first morpheme: its row is
 // the widest a list draws, with "current", "machine NN%", "unconfirmed",
@@ -230,12 +244,9 @@ test.describe('after review', () => {
   let head;
   let sense = {};
   let ids = {};
-  let userId;
 
   test.beforeAll(async () => {
-    const me = readToken();
-    client = new PlaidClient(CORE, me.token);
-    userId = me.userId;
+    client = new PlaidClient(CORE, readToken().token);
     ({ projectId } = await getFixture());
     const full = await client.projects.get(projectId);
     const textLayer = full.textLayers.find((l) => roleOf(l) === ROLES.BASELINE);
@@ -289,7 +300,6 @@ test.describe('after review', () => {
   });
 
   test.afterAll(async () => {
-    await client.userData.delete(userId, 'igt:keymap').catch(() => {});
     if (documentId) await client.documents.delete(documentId).catch(() => {});
     if (lex) await client.vocabLayers.delete(lex.id).catch(() => {});
   });
@@ -300,7 +310,7 @@ test.describe('after review', () => {
     await seedAuth(page);
     page.removeAllListeners('request');
     page.on('request', (r) => {
-      if (r.method() !== 'GET' && r.url().includes('/api/'))
+      if (isWrite(r) && r.url().includes('/api/'))
         writes.push(
           `${r.method()} ${r.url().replace(/^.*\/api\/v1/, '')} ${(r.postData() || '').slice(0, 400)}`,
         );
@@ -404,9 +414,27 @@ test.describe('after review', () => {
     });
 
     test('B5 rebound Alt+l, then Enter', async ({ page }) => {
-      await client.userData.put(userId, 'igt:keymap', {
-        metadata: { 'analyze.alternatives': ['Alt+l'] },
-      });
+      // The binding is answered to this page's read of the keymap, not stored
+      // on the shared e2e account, where it took Alt+Down from every spec
+      // running at the same time (FLK3-7).
+      await page.route(
+        (url) =>
+          /\/api\/v1\/users\/[^/]+\/data$/.test(url.pathname) &&
+          url.searchParams.get('prefix') === 'igt:keymap',
+        (route) =>
+          route.fulfill({
+            json: {
+              entries: [
+                {
+                  key: 'igt:keymap',
+                  value: { metadata: { 'analyze.alternatives': ['Alt+l'] } },
+                  version: 1,
+                },
+              ],
+              'next-cursor': null,
+            },
+          }),
+      );
       await openAnalyze(page);
       await cellOf(page, 6).click();
       await page.keyboard.press('Alt+ArrowDown');
@@ -420,12 +448,9 @@ test.describe('after review', () => {
       await page.waitForTimeout(500);
       const s = await show('B5 Alt+l Enter', ids.m[6]);
       expect.soft(s).toEqual({ item: sense.feline, gloss: 'feline' });
-      await client.userData.delete(userId, 'igt:keymap').catch(() => {});
     });
 
     test.describe('governed Gloss (tagset T on the morpheme Gloss layer)', () => {
-      let before;
-      let beforeTagsets;
       const setTagset = async (mode) => {
         await client.projects.setConfig(projectId, 'igt', 'tagsets', {
           T: {
@@ -436,22 +461,7 @@ test.describe('after review', () => {
         });
         await client.spanLayers.setConfig(gloss.id, 'igt', 'tagset', 'T');
       };
-      test.beforeAll(async () => {
-        const p = await client.projects.get(projectId);
-        beforeTagsets = p.config?.igt?.tagsets;
-        const g = p.textLayers
-          .flatMap((t) => t.tokenLayers)
-          .flatMap((t) => t.spanLayers || [])
-          .find((s) => s.id === gloss.id);
-        before = g.config?.igt?.tagset;
-      });
-      test.afterAll(async () => {
-        if (beforeTagsets)
-          await client.projects.setConfig(projectId, 'igt', 'tagsets', beforeTagsets);
-        else await client.projects.deleteConfig?.(projectId, 'igt', 'tagsets').catch(() => {});
-        if (before) await client.spanLayers.setConfig(gloss.id, 'igt', 'tagset', before);
-        else await client.spanLayers.deleteConfig?.(gloss.id, 'igt', 'tagset').catch(() => {});
-      });
+      test.afterAll(() => dropTagsetT(client, projectId, gloss.id));
 
       for (const mode of ['mixed', 'suggest', 'closed']) {
         test(`G-${mode}: untouched Enter on PL keeps PL, Alt+Down Enter on empty takes the row`, async ({
@@ -705,6 +715,9 @@ test.describe('after review', () => {
       console.log('RESULT C3', JSON.stringify(made.map((m) => m.metadata)));
       expect.soft(made.map((m) => m.metadata?.morphType)).toEqual(['enclitic']);
       console.log('C3 writes', JSON.stringify(writes).slice(0, 1500));
+      // The entry went into a lexicon of the shared fixture project, which
+      // outlives this file: it goes again (FLK3-8).
+      for (const m of made) await client.vocabItems.delete(m.id).catch(() => {});
     });
   });
 });
@@ -723,7 +736,6 @@ test.describe('a value list over a value it has no row for', () => {
   let documentId;
   let gloss;
   let ids = {};
-  let saved0 = {};
 
   test.beforeAll(async () => {
     client = new PlaidClient(CORE, readToken().token);
@@ -734,7 +746,6 @@ test.describe('a value list over a value it has no row for', () => {
     const WORD = layer(ROLES.WORD);
     const MORPH = layer(ROLES.MORPHEME);
     gloss = MORPH.spanLayers.find((s) => s.name === 'Gloss');
-    saved0 = { tagsets: full.config?.igt?.tagsets, gloss: gloss.config?.igt };
     documentId = (await client.documents.create(projectId, `rev55b ${NONCE}`)).id;
     await client.texts.create(textLayer.id, documentId, BODY);
     const raw = await client.documents.get(documentId, true);
@@ -761,14 +772,9 @@ test.describe('a value list over a value it has no row for', () => {
 
   test.afterAll(async () => {
     if (documentId) await client.documents.delete(documentId).catch(() => {});
-    if (saved0.gloss?.lexiconField)
-      await client.spanLayers.setConfig(gloss.id, 'igt', 'lexiconField', saved0.gloss.lexiconField);
-    if (saved0.gloss?.tagset)
-      await client.spanLayers.setConfig(gloss.id, 'igt', 'tagset', saved0.gloss.tagset);
-    else await client.spanLayers.deleteConfig(gloss.id, 'igt', 'tagset').catch(() => {});
-    if (saved0.tagsets)
-      await client.projects.setConfig(projectId, 'igt', 'tagsets', saved0.tagsets);
-    else await client.projects.deleteConfig(projectId, 'igt', 'tagsets').catch(() => {});
+    // Back as the fixture is seeded (fixtureProject.js), not as read before.
+    await client.spanLayers.setConfig(gloss.id, 'igt', 'lexiconField', 'gloss');
+    await dropTagsetT(client, projectId, gloss.id);
   });
 
   const values = async () => {
