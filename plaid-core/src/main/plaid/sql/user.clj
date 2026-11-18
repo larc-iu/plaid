@@ -469,26 +469,42 @@
   synthetic :projects audit so the membership transition is visible
   in `audit_writes` (vs. silently swept by FK ON DELETE CASCADE).
 
+  Each project's removal is an operation of its own under that project,
+  of the type a maintainer's removal of that role has
+  (`:project/remove-writer` and so on), nested in the deactivation and
+  committed with it, so the project's History and Activity say who left
+  it and when (ACL6-1). Filed under no project, the deactivation was in
+  the instance-wide log only.
+
   `requiring-resolve` dodges the project ↔ user namespace cycle (project
   already requires user; the reverse static require would be circular)."
-  [tx user-id]
+  [tx user-id acting-user-id]
   (let [snapshot (requiring-resolve 'plaid.sql.project/fetch-project-acl-snapshot)
         emit-audit (requiring-resolve 'plaid.sql.project/audit-project-acl-change!)
-        proj-ids (->> (psc/q tx {:select-distinct [:project_id]
-                                 :from [:project_users]
-                                 :where [:= :user_id user-id]})
-                      (mapv :project_id))]
-    (doseq [pid proj-ids]
-      (let [pre-acl (snapshot tx pid)]
-        ;; Explicit DELETE before the user row goes — keeps the FK
-        ;; CASCADE that fires on the user delete a no-op (the rows are
-        ;; already gone), and lets `audit-project-acl-change!` see the
-        ;; new post-state cleanly.
-        (psc/execute! tx {:delete-from :project_users
-                          :where [:and
-                                  [:= :project_id pid]
-                                  [:= :user_id user-id]]})
-        (emit-audit tx pid pre-acl)))))
+        memberships (psc/q tx {:select-distinct [:project_id :role]
+                               :from [:project_users]
+                               :where [:= :user_id user-id]})]
+    (doseq [[pid rows] (group-by :project_id memberships)]
+      (let [role (:role (first rows))
+            r (binding [op/*custom-description* nil]
+                (submit-operation! [inner tx {:type (keyword "project" (str "remove-" role))
+                                              :project pid
+                                              :document nil
+                                              :description (str "Remove " role " " user-id " from project " pid
+                                                                ": account deactivated")
+                                              :user acting-user-id}]
+                                   (let [pre-acl (snapshot inner pid)]
+                                     ;; Explicit DELETE before the user row goes — keeps the FK
+                                     ;; CASCADE that fires on the user delete a no-op (the rows are
+                                     ;; already gone), and lets `audit-project-acl-change!` see the
+                                     ;; new post-state cleanly.
+                                     (psc/execute! inner {:delete-from :project_users
+                                                          :where [:and
+                                                                  [:= :project_id pid]
+                                                                  [:= :user_id user-id]]})
+                                     (emit-audit inner pid pre-acl))))]
+        (when-not (:success r)
+          (throw (ex-info (:error r) {:code (:code r)})))))))
 
 (defn- projects-where-user-is-sole-maintainer
   "Return project ids for which `eid` is the ONLY user holding the
@@ -518,6 +534,8 @@
     (doseq [tid token-ids]
       (crud/update-by-id! tx :api_tokens tid {:revoked_at ts}))))
 
+(declare deactivate*)
+
 (defn deactivate
   "Deactivate a user by ID (the DELETE /users/:id semantics). Users are
   NEVER hard-deleted: `operations.user_id`/`operations.token_id` FKs
@@ -534,6 +552,19 @@
       are), so another account can run a service under it.
   The email address stays reserved. Reversible via `reactivate` (which does
   NOT restore memberships or tokens)."
+  [db eid acting-user-id]
+  ;; The per-project removals are operations nested in this one: their audit
+  ;; events wait for the commit, as `plaid.sql.project/remove-vocab`'s do.
+  (if op/*deferred-events*
+    (deactivate* db eid acting-user-id)
+    (let [events (atom [])
+          r (binding [op/*deferred-events* events]
+              (deactivate* db eid acting-user-id))]
+      (when (:success r)
+        (op/flush-deferred-events! @events))
+      r)))
+
+(defn- deactivate*
   [db eid acting-user-id]
   (submit-operation! [tx db {:type :user/deactivate
                              :project nil
@@ -571,7 +602,7 @@
                                           ": they are the only maintainer of "
                                           (clojure.string/join ", " names) ".")
                                      {:code 400 :id eid :projects orphan-projects})))))
-                       (audit-and-cascade-project-memberships! tx eid)
+                       (audit-and-cascade-project-memberships! tx eid acting-user-id)
                        (let [ts (:ts psaw/*op*)]
                          (revoke-all-api-tokens! tx eid ts)
                          (service-registry/release-all-of! tx eid)
