@@ -36,7 +36,7 @@ from ..core.plan import (run_plan, Minter, PlanError, Resolution, Stamps, Tracki
                          apply_add_comment, apply_restore_document, confirm_note, ConfirmRows,
                          docs_of_op, document_names, document_phrase, executed, executing, summarize_plan)
 from .project import feature_key, load_document, word_ref
-from .review import all_words, confirm_targets, discard_targets
+from .review import all_words, confirm_targets, discard_targets, drop_arcs
 from ..core.tools import ValueRefusal
 
 # `.shape` and `.sentences` are imported where they are used rather than here:
@@ -122,6 +122,12 @@ class Context:
         self._removals: Counter = Counter()
         for op in ops:
             self._removals.update(ok.removed_ids(KIND, [op], only_certain=True))
+        # The discarded lemmas deleted whole (``_lemma_drops``). Their arcs go
+        # with them, so the deletes of those arcs by id are left out.
+        self.dropped = _lemma_drops(ops)
+        for op in ops:
+            if id(op) in self.dropped:
+                self._removals.update(op['drop_arcs'])
 
     def removed_by_others(self, op, entity_id) -> bool:
         """Whether another op of the plan certainly removes ``entity_id``: a
@@ -129,6 +135,24 @@ class Context:
         delete of one of those by id is then a 404 that fails the batch."""
         mine = entity_id in ok.removed_ids(KIND, [op], only_certain=True)
         return self._removals[entity_id] > mine
+
+
+def _lemma_drops(ops) -> set:
+    """The discards of a lemma (``drop_arcs``, review.py) that delete its
+    span, by ``id(op)``: every arc on it is one this plan deletes, and no
+    other change of the plan names the word, the span or those arcs (a head
+    drawn on the word hangs off the span). Any other keeps the span in
+    place, valueless and the machine's."""
+    unheaded = ok.removed_ids(KIND, [o for o in ops if o.get('kind') == 'del_relation'], only_certain=True)
+    named: set = set()
+    for o in ops:
+        if o.get('kind') == 'del_relation' or o.get('discard'):
+            continue
+        named |= ok.written_to(KIND, o) | ok.removed_ids(KIND, [o])
+        named |= {o.get(k) for k in ('lemma_span_id', 'head_lemma_span_id', 'relation_id')}
+    return {id(o) for o in ops
+            if o.get('discard') and o.get('drop_arcs') is not None and set(o['drop_arcs']) <= unheaded
+            and not ({o.get('span_id'), o.get('token_id'), *o['drop_arcs']} & named)}
 
 
 # --- what each kind does -----------------------------------------------------------
@@ -194,9 +218,15 @@ def _apply_set_span(ctx: Context, op) -> int:
         # its null-valued span, exactly as the editor leaves it (ConlluDocument's
         # `updateAnnotation`) and as an unlemmatized import writes it. A
         # discard keeps the machine's stamp on it (H3-10-1): restamped, it was
-        # a verified empty value that Parse refused to replace.
-        ctx.b.update('spans', span_id, value=None,
-                     metadata=None if op.get('discard') else metadata_ops(ctx.restamp()))
+        # a verified empty value that Parse refused to replace. A discard
+        # whose every arc goes too deletes the span, as the grid's Discard
+        # predictions does (REV-U4-1): kept, the grid still counted it for
+        # review by its stamp, and Accept verified it empty.
+        if id(op) in ctx.dropped:
+            ctx.b.add(lambda batch, sid=span_id: batch.spans.delete(sid))
+        else:
+            ctx.b.update('spans', span_id, value=None,
+                         metadata=None if op.get('discard') else metadata_ops(ctx.restamp()))
     elif span_id and value == '':
         ctx.b.add(lambda batch, sid=span_id: batch.spans.delete(sid))
     elif span_id:
@@ -527,6 +557,7 @@ def _resolve_discard_scope(res: Resolution, op):
         else:
             yield {'kind': 'set_span', 'layer_id': span.layer_id, 'token_id': w.id,
                    'span_id': span.id, 'value': '', 'field': f, 'document_id': did, 'discard': True,
+                   **drop_arcs(sentence, w, f, targets),
                    'feature': feature_key(f, span.value),
                    'ref': ref, 'label': f'discard the unconfirmed {f} on {ref}',
                    rules.AS_FOUND: f'{f} {qv(span.value)}'}
@@ -619,7 +650,7 @@ KIND = ok.registry([
            target=_span_entity, token_keys=('token_id',),
            extra={'entity': _span_entity, 'anchors': _virtual_anchors},
            deletes=lambda op: ([op['span_id']] if op.get('span_id') and (op.get('value') or '') == '' else []),
-           compact_each=('token_id', 'span_id', 'ref', 'virtual_at'), compact_label=_set_span_label,
+           compact_each=('token_id', 'span_id', 'ref', 'virtual_at', 'drop_arcs'), compact_label=_set_span_label,
            summary=_set_span_summary),
     OpKind('set_head', _DEPENDENCY, replaces=_replaces_set_head, stage=IDS, apply=_apply_set_head,
            required=('word_id', 'head_id', 'lemma_layer_id', 'relation_layer_id', 'deprel'),

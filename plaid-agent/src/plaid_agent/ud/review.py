@@ -113,6 +113,21 @@ def discard_targets(words: List[Tuple[Sentence, Word]], fields) -> Tuple[List[tu
     return out, spared
 
 
+def drop_arcs(sentence: Sentence, w: Word, field: str, targets) -> Dict[str, List[str]]:
+    """What a discard of ``w``'s ``field`` carries when it is a lemma whose
+    every arc is a head this same discard (``targets``) deletes:
+    ``{'drop_arcs': those arcs}``, and the plan then deletes the span as the
+    grid's Discard predictions deletes it (ConlluDocument ``discardTokens``),
+    taking them with it. ``{}`` when an arc on it stays or a row of the
+    enhanced graph hangs on it: the span then keeps its place, valueless."""
+    if field != 'lemma' or w.extra_edges or any(h == w.index for o in sentence.words for h, _ in o.extra_edges):
+        return {}
+    arcs = [w.relation_id] if w.relation_id else []
+    arcs += [o.relation_id for o in sentence.words if o is not w and o.head == w.index and o.relation_id]
+    going = {t[4] for t in targets if t[2] == 'deprel'}
+    return {'drop_arcs': arcs} if set(arcs) <= going else {}
+
+
 def per_field(targets) -> Dict[str, int]:
     counts: Dict[str, int] = {}
     for t in targets:

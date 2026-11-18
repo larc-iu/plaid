@@ -29,7 +29,7 @@ from .plan import (RESHAPES_DOCUMENT, RESHAPES_TOKEN, REWRITES_DOCUMENT, contrib
 from .project import (FEATURES, Sentence, Token, UdDoc, Word, feats_order, feature_key,
                       feature_refusal, normalize_feature, resolve, space_refusal, word_ref,
                       words_listing)
-from .review import (REVIEW_FIELDS, all_words, confirm_targets, counts_phrase, discard_targets,
+from .review import (REVIEW_FIELDS, all_words, confirm_targets, counts_phrase, discard_targets, drop_arcs,
                      left_phrase, per_field)
 # The workspace lives in its own module, as igt's does. SPLITS_KEEP_WORDS is
 # read from here by .bulk.
@@ -997,7 +997,7 @@ def t_discard_predictions(ws: Workspace, document: str = None, refs=None, field:
             else:
                 staged.append({'kind': 'set_span', 'layer_id': span.layer_id, 'token_id': w.id,
                                'span_id': span.id, 'value': '', 'field': f, 'document_id': doc.id,
-                               'discard': True,
+                               'discard': True, **drop_arcs(sentence, w, f, targets),
                                'feature': feature_key(f, span.value),
                                'ref': ref, 'label': f'discard the unconfirmed {f} on {ref}'})
         ws.add_ops(staged)

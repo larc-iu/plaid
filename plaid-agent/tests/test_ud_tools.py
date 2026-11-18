@@ -1317,7 +1317,9 @@ def test_a_discarded_machine_lemma_is_emptied_and_stays_the_machines(refs, stamp
     """H3-10-1: a discarded lemma kept its null span, as a cleared lemma does,
     but took the approval's stamp, so the discard left a VERIFIED empty value
     and Parse then refused the sentence as a person's work. It keeps the
-    machine's stamp, and a second discard finds nothing left on it."""
+    machine's stamp, and a second discard finds nothing left on it. The span
+    stays here because the discard is of lemmas only and the machine's arc
+    on it stays (REV-U4-1: where every arc on it goes, the span goes)."""
     from ud_fixtures import FakeClient, document_raw, project_raw
     raw = document_raw()
     machine = {'prov': 'inferred', 'provSource': 'service:ud:parse'}
@@ -1338,6 +1340,84 @@ def test_a_discarded_machine_lemma_is_emptied_and_stays_the_machines(refs, stamp
     again = Workspace(client, load_project(client, PID))
     assert run(again, 'discard_predictions', document='Viaje', field='lemma', **args).startswith(
         'Nothing to discard')
+
+
+_S1_LEMMAS = ['sp-l1', 'sp-l2a', 'sp-l2b', 'sp-l3', 'sp-l4']
+
+
+def _parsed_raw(enhanced=()):
+    """The fixture document with sentence 1 all the parser's: every span and
+    every arc stamped machine, as a fresh Parse leaves it."""
+    from ud_fixtures import with_enhanced
+    raw = with_enhanced(enhanced)
+    machine = {'prov': 'inferred', 'provSource': 'service:ud:parse'}
+    for sl in raw['text_layers'][0]['token_layers'][2]['span_layers']:
+        for sp in sl.get('spans') or []:
+            sp['metadata'] = dict(machine)
+        for rl in sl.get('relation_layers') or []:
+            for r in rl['relations']:
+                if not (r.get('metadata') or {}).get('suppress'):
+                    r['metadata'] = dict(machine)
+    return raw
+
+
+def _parsed_ws(enhanced=()):
+    from ud_fixtures import FakeClient, project_raw
+    client = FakeClient(project=project_raw(), documents={'ud1': _parsed_raw(enhanced)})
+    return Workspace(client, load_project(client, PID))
+
+
+@pytest.mark.parametrize('refs', [None, ['s1.w1', 's1.w2', 's1.w3', 's1.w4', 's1.w5']])
+@pytest.mark.parametrize('stamp_mode', ['verified', 'unverified'])
+def test_a_discard_of_every_machine_value_deletes_the_lemmas_as_the_grid_does(refs, stamp_mode):
+    """REV-U4-1: a discard kept each machine lemma as a null span with the
+    machine's stamp, and the grid counts a span by its stamp, not its value:
+    every word still waited for review with nothing in it, and Accept then
+    verified the empty lemmas. Where every arc on a lemma goes in the same
+    discard, the span goes, as the grid's Discard predictions deletes it,
+    and its arcs go with it (deleting them again by id would be a 404)."""
+    ws = _parsed_ws()
+    args = {'refs': refs} if refs else {}
+    assert 'Planned' in run(ws, 'discard_predictions', document='Viaje', **args)
+    execute_plan(ws.client, ws.ops, source='s', label='l', stamp_mode=stamp_mode, project=ws.project)
+    deleted = ws.client.payloads('spans.delete')
+    assert set(_S1_LEMMAS) <= set(deleted)
+    assert [u for u in ws.client.updates('spans') if u[0] in _S1_LEMMAS] == []
+    assert ws.client.payloads('relations.delete') == []
+
+
+def test_a_discarded_lemma_whose_childs_arc_stays_keeps_its_place():
+    """Discarding the root word alone: the arcs from it to the words not
+    named stay, so its lemma span stays, valueless and the machine's, and
+    only its own arc is deleted."""
+    ws = _parsed_ws()
+    assert 'Planned' in run(ws, 'discard_predictions', document='Viaje', refs=['s1.w1'])
+    execute_plan(ws.client, ws.ops, source='s', label='l', stamp_mode='verified', project=ws.project)
+    assert 'sp-l1' not in ws.client.payloads('spans.delete')
+    assert ('sp-l1', None) in ws.client.updates('spans')
+    assert ws.client.payloads('relations.delete') == ['r-1']
+
+
+def test_a_discarded_lemma_the_plan_also_heads_keeps_its_place():
+    """A head drawn in the same plan hangs off the word's lemma span, so the
+    discard leaves the span in place for it."""
+    ws = _parsed_ws()
+    assert 'Planned' in run(ws, 'discard_predictions', document='Viaje', refs=['s1.w5'])
+    run(ws, 'set_head', document='Viaje', ref='s1.w5', head=4, deprel='punct')
+    execute_plan(ws.client, ws.ops, source='s', label='l', stamp_mode='verified', project=ws.project)
+    assert 'sp-l4' not in ws.client.payloads('spans.delete')
+    assert ('sp-l4', None) in ws.client.updates('spans')
+
+
+def test_a_discarded_lemma_an_enhanced_edge_hangs_on_keeps_its_place():
+    """The enhanced graph is read-only to the assistant, and a row of it on
+    the lemma would go with the span: the span stays."""
+    ws = _parsed_ws([{'id': 'e-1', 'source': 'sp-l3', 'target': 'sp-l4', 'value': 'punct'}])
+    assert 'Planned' in run(ws, 'discard_predictions', document='Viaje', refs=['s1.w5'])
+    execute_plan(ws.client, ws.ops, source='s', label='l', stamp_mode='verified', project=ws.project)
+    assert 'sp-l4' not in ws.client.payloads('spans.delete')
+    assert ('sp-l4', None) in ws.client.updates('spans')
+    assert ws.client.payloads('relations.delete') == ['r-4']
 
 
 def test_a_head_that_is_not_a_number_reads_as_english(ws):
