@@ -6,7 +6,6 @@ import { AssistantMarkdown } from '@ui/components/assistant/AssistantMarkdown.js
 import { copyText } from '@ui/lib/download.js';
 import { TYPE } from '@ui/lib/typeScale.js';
 import { historyHref } from '@ui/hooks/useHistoryParam.js';
-import { fullTimestamp } from '@ui/lib/formatTime.js';
 import { plural } from '@ui/lib/plural.js';
 import { APP_ROUTES } from '@/appRoutes.js';
 import {
@@ -14,19 +13,21 @@ import {
   HARMONIZE_LEFT_TEXT,
   changeReasonText,
   changesGroup,
-  changesText,
-  documentCounts,
-  oneStep,
-  sumParts,
-  durationText,
-  fieldValuesText,
   findingsPiecesText,
-  noticeCounts,
-  noticeText,
   refusedText,
   skippedText,
 } from './jobText.js';
 import SECTIONS from './jobSections.json';
+import {
+  BLANK_ELSEWHERE,
+  blankDocuments,
+  blankParts,
+  draftLexiconsOf,
+  noticeOf,
+  pausedRows,
+  skippedDocuments,
+  totalRows,
+} from './jobTotals.js';
 
 // A finished job's report (CONTRACT 5.3, as the client hands it over, keys in
 // camelCase): the totals, the summary the assistant wrote under a heading
@@ -41,187 +42,16 @@ import SECTIONS from './jobSections.json';
 // Every list the worker cut says how many it left out. A section's heading is
 // jobSections.json's, which the assistant names sections by (read_job).
 
-const Heading = ({ section, children }) => (
+export const Heading = ({ section, children }) => (
   <h3 className={`${TYPE.card} mb-2 mt-6`}>{section ? SECTIONS[section] : children}</h3>
 );
 
-const More = ({ n, noun }) =>
+export const More = ({ n, noun }) =>
   n > 0 ? (
     <p className="mt-1 text-sm text-muted-foreground">
       And {n.toLocaleString()} more {plural(n, noun)}.
     </p>
   ) : null;
-
-// What is still blank of each thing the job fills (the plan's targets, by
-// name): the totals' rows, or, when the totals hold none, the documents' rows
-// summed by target in the order they come. Each `{target, unit, left,
-// notReached, skipped}`, `unit` a word, a morpheme or a sentence (what Left
-// blank lists).
-// A job that fills nothing has none, and core's own report of a job no worker
-// finished counts none.
-const blankSums = (report) => {
-  if (report.totals?.blank) return report.totals.blank;
-  const sums = new Map();
-  (report.documents || []).forEach((d) =>
-    (d.counts?.blank || []).forEach((b) => {
-      const s = sums.get(b.target) ?? {
-        target: b.target,
-        unit: b.unit,
-        left: 0,
-        untouched: 0,
-        notReached: 0,
-        skipped: 0,
-      };
-      s.left += b.left ?? 0;
-      s.unsegmented = (s.unsegmented ?? 0) + (b.unsegmented ?? 0);
-      s.untouched += b.untouched ?? 0;
-      s.notReached += b.notReached ?? 0;
-      s.skipped += b.skipped ?? 0;
-      sums.set(b.target, s);
-    }),
-  );
-  return [...sums.values()];
-};
-
-// A count of what a target holds blank, in the unit Left blank lists.
-const unitCount = (n, unit) => `${n.toLocaleString()} ${plural(n, unit)}`;
-
-// Rows `{field, id, values, inAnalyses?, outside?}` summed by the target's id (each row
-// carries it, REV-SUFIX-2), named as the first row names it.
-const sumById = (rows, into = new Map()) => {
-  rows.forEach((f) => {
-    const s = into.get(f.id) ?? { field: f.field, id: f.id, values: 0 };
-    s.values += f.values ?? 0;
-    if (f.inAnalyses > 0) s.inAnalyses = (s.inAnalyses ?? 0) + f.inAnalyses;
-    if (f.outside === true) s.outside = true;
-    into.set(f.id, s);
-  });
-  return into;
-};
-
-// What the job wrote outside its setup, a row per target (the worker's
-// `outside` rows, decided by id where it was written: values of a field, a
-// translation or an orthography, and segmentation, one per word or morpheme,
-// REV-SUFIX-1): the totals', or the documents' summed by id.
-const outsideRows = (report) => [
-  ...sumById(
-    report.totals?.outside ?? (report.documents || []).flatMap((d) => d.counts?.outside || []),
-  ).values(),
-];
-
-// The values the job set in each target, in the order of their names: the
-// totals' field rows, or, when the totals hold none (core's own report of a
-// job no worker finished sums named counts only), the documents' summed by id.
-// A target written outside the setup reads the count of its `outside` row,
-// which also holds the values an analysis carries and a translation, so each
-// such target has a row and those rows sum to the total.
-const fieldSums = (report) => {
-  const sums = report.totals?.fields
-    ? sumById(report.totals.fields)
-    : sumById((report.documents || []).flatMap((d) => d.counts?.fields || []));
-  outsideRows(report).forEach((f) =>
-    sums.set(f.id, { ...f, inAnalyses: sums.get(f.id)?.inAnalyses, outside: true }),
-  );
-  return [...sums.values()].sort((a, b) => (a.field < b.field ? -1 : a.field > b.field ? 1 : 0));
-};
-
-// What the job's changes are, by kind (the worker's `changes_parts`): the
-// totals', or, when they hold none (core's own report), the documents' summed.
-const changeParts = (report) =>
-  report.totals?.changesParts ??
-  sumParts((report.documents || []).map((d) => d.counts?.changesParts));
-
-// How many values the job wrote outside its setup: the sum of its rows.
-const outsideSum = (report) => outsideRows(report).reduce((n, f) => n + f.values, 0);
-
-// One "label: value" row of the totals, left out when it is an optional row
-// with nothing in it. The values the job set in each field follow the words
-// it analyzed, one row per field ("Thematic role: 107 values"), then what is
-// still blank of each thing the job fills, in the worked sentences and in
-// those it did not reach ("Role left blank: 7 words"), so the rows sum.
-const totalRows = (report) => {
-  const t = report.totals || {};
-  // The documents as the table says them, one function with read_job's
-  // (REV-RPF3-4): skipped apart from done (
-  // REV-RPF-P-9), stopped partway apart from not reached (RPF3-D2).
-  const docs = documentCounts(report);
-  // A whole-selection job: the documents done and how many it changed, in one
-  // row (RP4-4 finding 1, REV-SF2-7: "Documents done 3, changed 3").
-  const stepped = (report.documents || []).some(oneStep);
-  const rows = stepped
-    ? [
-        [
-          'Documents done',
-          `${docs.done.toLocaleString()}, changed ${docs.changed.toLocaleString()}`,
-        ],
-      ]
-    : [['Documents done', docs.done]];
-  const optional = (label, n) => n > 0 && rows.push([label, n]);
-  // Ended by the plan's search with no model call, apart from done (SF).
-  optional('Documents with nothing found by the plan’s search', docs.withNothingFoundByTheSearch);
-  optional('Documents skipped', docs.skipped);
-  optional('Documents in use', t.documentsInUse);
-  optional('Documents deleted', t.documentsGone);
-  optional('Documents not reached', docs.notReached);
-  optional('Documents stopped partway', docs.stoppedPartway);
-  rows.push(['Sentences written in', t.sentences]);
-  // One definition of a change, said in its parts (RP-3, RP-6).
-  if (t.changes > 0) rows.push(['Changes written', changesText(t.changes, changeParts(report))]);
-  optional('Deletions', t.deletions);
-  // Parts that ended without finishing, their steps used up or their answer
-  // too long, what they had staged written (the worker's `pieces_ended`,
-  // BRIEF RW, REV-RW-6).
-  optional('Parts that ended unfinished', report.piecesEnded);
-  // What the job changed of what people wrote, by provenance, and of the
-  // text: each document's History entry shows the changes (REV-DAY-S-3).
-  optional('People’s values, morphemes and links changed or removed', t.peoplesValuesChanged);
-  optional('Changes to the text', t.textChanges);
-  // What the text edits did to the words (RP-6).
-  optional('Words added', t.wordsAdded);
-  optional('Existing words or punctuation marks changed or removed', t.tokensChanged);
-  optional('Translations written', t.translations);
-  optional('Translations replaced', t.refreshed);
-  optional('Words analyzed', t.words);
-  fieldSums(report).forEach((f) => f.values > 0 && rows.push([f.field, fieldValuesText(f)]));
-  optional('Values not in the setup', outsideSum(report));
-  blankSums(report).forEach((b) => {
-    // A target is named as everywhere on the page, "segmentation" too (N-1).
-    // A word listed blank for a morpheme field because it has no morphemes
-    // is said beside the field's morphemes, so the row adds up with the
-    // list (RPF3-B).
-    rows.push([
-      `${b.target} left blank`,
-      unitCount(b.left ?? 0, b.unit) +
-        (b.unsegmented > 0 ? ` and ${unitCount(b.unsegmented, 'word')} not segmented` : ''),
-    ]);
-    // Counted, never listed: blank in sentences the job worked and wrote
-    // nothing in (RP-3, RP-6).
-    if (b.untouched > 0) {
-      rows.push([
-        `${b.target} blank in sentences the job did not change`,
-        unitCount(b.untouched, b.unit),
-      ]);
-    }
-    if (b.notReached > 0) {
-      rows.push([`${b.target} blank in sentences not reached`, unitCount(b.notReached, b.unit)]);
-    }
-    if (b.skipped > 0) {
-      rows.push([`${b.target} blank in skipped sentences`, unitCount(b.skipped, b.unit)]);
-    }
-  });
-  optional('Lexicon links made', t.links);
-  optional('Entries created', t.entries);
-  optional('Changes proposed', t.proposed);
-  optional('Sentences skipped as too long', t.skippedTooLong);
-  optional('Sentences skipped as failed', t.skippedFailed);
-  optional('Sentences skipped as changed during the job', t.skippedChanged);
-  optional('Sentences skipped after an interrupted write', t.skippedInterrupted);
-  optional('Sentences skipped with no answer from the assistant', t.skippedNoAnswer);
-  optional('Sentences skipped and not listed', t.skippedMore);
-  optional('Changes not written, changed during the job', t.changed);
-  optional('Changes left out, sentence written before an interruption', t.repeated);
-  return rows.map(([label, n]) => [label, typeof n === 'string' ? n : (n ?? 0).toLocaleString()]);
-};
 
 const Analysis = ({ text, count }) => (
   <span className="whitespace-nowrap">
@@ -256,7 +86,7 @@ const EntryLine = ({ entry }) => {
 
 // A document of the report by its name, a link to what the job changed in it
 // (its History entry for the job's work there) where it wrote something.
-const DocumentName = ({ projectId, d }) =>
+export const DocumentName = ({ projectId, d }) =>
   d.name && changesGroup(d) ? (
     <Link
       className="font-medium underline"
@@ -267,19 +97,6 @@ const DocumentName = ({ projectId, d }) =>
   ) : (
     <span className="font-medium">{d.name ?? 'Deleted document'}</span>
   );
-
-// How much of each thing the job fills is blank in the sentences of a
-// document the job did not reach, or skipped (`key`): counted, never listed.
-const blankParts = (counts, key) =>
-  (counts?.blank || [])
-    .filter((b) => b[key] > 0)
-    .map((b) => `${b.target} ${unitCount(b[key], b.unit)}`);
-
-const BLANK_ELSEWHERE = [
-  ['untouched', 'Blank in sentences the job did not change'],
-  ['notReached', 'Blank in sentences not reached'],
-  ['skipped', 'Blank in skipped sentences'],
-];
 
 const BlankElsewhere = ({ counts }) =>
   BLANK_ELSEWHERE.map(([key, label]) => {
@@ -330,7 +147,7 @@ const Refused = ({ projectId, d }) => {
 // The words the job's text edits respelled and left their analysis on: their
 // morpheme forms still spell the old word (the worker's `respelled`, CONTRACT,
 // added by RPF3), each linked into the grid at its sentence.
-const Respelled = ({ report, projectId }) => {
+export const Respelled = ({ report, projectId }) => {
   const list = report.respelled || [];
   const more = report.respelledMore || 0;
   if (!list.length && !more) return null;
@@ -370,7 +187,7 @@ const Respelled = ({ report, projectId }) => {
 // person approves in a conversation with the assistant about the job. Then,
 // under a line of their own, the changes it applied whose write was cut short
 // and that were not written (`reason`). Hidden when there are none.
-const ChangesTable = ({ list, projectId }) => (
+export const ChangesTable = ({ list, projectId }) => (
   <table className="w-full text-sm">
     <thead className="text-left text-muted-foreground">
       <tr>
@@ -406,7 +223,7 @@ const ChangesTable = ({ list, projectId }) => (
   </table>
 );
 
-const ProposedChanges = ({ report, projectId }) => {
+export const ProposedChanges = ({ report, projectId }) => {
   const list = report.proposed || [];
   const more = report.proposedMore || 0;
   if (!list.length && !more) return null;
@@ -431,7 +248,7 @@ const ProposedChanges = ({ report, projectId }) => {
 
 // The documents of the job its plan did not work, and how many a report too
 // large for core could not list.
-const LeftOut = ({ report, projectId }) => {
+export const LeftOut = ({ report, projectId }) => {
   const list = report.plan?.leftOut || [];
   const more = report.plan?.leftOutMore || 0;
   if (!list.length && !more) return null;
@@ -480,7 +297,7 @@ export { Written as JobWritten };
 
 // What the job's code counted, as data, and how many tables the report could
 // not hold.
-const Tables = ({ tables, more = 0 }) =>
+export const Tables = ({ tables, more = 0 }) =>
   tables.length || more > 0 ? (
     <>
       <Heading section="tables" />
@@ -558,242 +375,190 @@ export const JobFindings = ({ findings, pieces = null, cut = null }) => {
   );
 };
 
-export const JobReport = ({ report, projectId, vocabs = [], undone = null, undoneBy = null }) => {
-  // Each wait named as the running page names it (RPF3-D1, RP2-1): taking
-  // turns with people's chats on the model is not waiting for people.
-  const paused = [
-    ['Taking turns with people using the model', report.pausedForPeopleS],
-    ['Waiting for people to finish editing', report.pausedForEditsS],
-    ['The model not answering', report.pausedForModelS],
-  ].filter(([, s]) => s > 0);
-  const skipped = (report.documents || []).filter((d) => d.skipped?.length);
-  const blank = (report.documents || []).filter(
-    (d) =>
-      d.left?.length ||
-      d.leftMore > 0 ||
-      d.leftUnread ||
-      BLANK_ELSEWHERE.some(([key]) => blankParts(d.counts, key).length > 0) ||
-      d.refused?.length ||
-      d.refusedMore > 0,
-  );
-  const harmonize = report.harmonize || {};
+// The report's totals, label and value, under their heading.
+export const TotalsList = ({ report, undone = null }) => (
+  <>
+    <Heading>{undone ? 'What the job had written' : 'Totals'}</Heading>
+    <dl className="grid max-w-xl grid-cols-[1fr_auto] gap-x-6 gap-y-1 text-sm">
+      {[...totalRows(report), ...pausedRows(report)].map(([label, value]) => (
+        <div key={label} className="contents">
+          <dt className="text-muted-foreground">{label}</dt>
+          <dd className="text-right tabular-nums">{value}</dd>
+        </div>
+      ))}
+    </dl>
+  </>
+);
+
+// The model's account, after the counts and marked as its own (R4), or that
+// it could not be written.
+export const AssistantSummary = ({ report }) => (
+  <>
+    {((report.summary && report.summaryBy !== 'worker') || report.summaryFailed) && (
+      <Heading>Assistant’s summary</Heading>
+    )}
+    {report.summary && report.summaryBy !== 'worker' && (
+      <>
+        <p className="mb-2 text-sm text-muted-foreground">{byTheAssistant('above')}</p>
+        <Written text={report.summary} data-testid="job-summary" />
+      </>
+    )}
+    {report.summaryFailed && (
+      <p className="text-sm text-muted-foreground">The summary could not be written.</p>
+    )}
+  </>
+);
+
+// One document's skipped sentences, each linked into the grid.
+export const SkippedDocument = ({ d, projectId }) => (
+  <div className="mb-3 text-sm">
+    <p>
+      <DocumentName projectId={projectId} d={d} />
+    </p>
+    <ul className="ml-4 list-disc">
+      {d.skipped.map((s) => (
+        <li key={s.sentenceId ?? s.sentence}>
+          {d.name && s.sentenceId ? (
+            <Link
+              className="underline"
+              to={APP_ROUTES.sentence(projectId, d.documentId, s.sentenceId)}
+            >
+              {s.sentence}
+            </Link>
+          ) : (
+            s.sentence
+          )}{' '}
+          <span className="text-muted-foreground">{skippedText(s)}</span>
+        </li>
+      ))}
+    </ul>
+    {d.counts?.skippedMore > 0 && (
+      <p className="ml-4 text-muted-foreground">
+        And {d.counts.skippedMore.toLocaleString()} more skipped.
+      </p>
+    )}
+  </div>
+);
+
+// One document's places left blank, each linked into the grid, what is blank
+// in its other sentences, and what a refusal left undone there.
+export const BlankDocument = ({ d, projectId }) => (
+  <div className="mb-3 text-sm">
+    <p>
+      <DocumentName projectId={projectId} d={d} />
+    </p>
+    <ul className="ml-4 list-disc">
+      {(d.left || []).map((l) => (
+        <li key={`${l.sentenceId} ${l.ref}`}>
+          {d.name && l.sentenceId ? (
+            <Link
+              className="underline"
+              to={APP_ROUTES.sentence(projectId, d.documentId, l.sentenceId, {
+                word: l.begin ?? undefined,
+              })}
+            >
+              {l.ref}
+            </Link>
+          ) : (
+            l.ref
+          )}{' '}
+          {l.form !== null && l.form !== undefined && (
+            <>
+              <span dir="auto">{l.form}</span>{' '}
+            </>
+          )}
+          <span className="text-muted-foreground">{(l.targets || []).join(', ')}</span>
+        </li>
+      ))}
+    </ul>
+    {d.leftMore > 0 && (
+      <p className="ml-4 text-muted-foreground">
+        And {d.leftMore.toLocaleString()} more left blank.
+      </p>
+    )}
+    {d.leftUnread && <p className="ml-4 text-muted-foreground">Could not be read.</p>}
+    <BlankElsewhere counts={d.counts} />
+    <Refused projectId={projectId} d={d} />
+  </div>
+);
+
+// What harmonize set each form to, and from what.
+export const HarmonizeChanged = ({ list, more = 0 }) => (
+  <>
+    <table className="w-full text-sm">
+      <thead className="text-left text-muted-foreground">
+        <tr>
+          <th className="py-1 pr-4 font-medium">Form</th>
+          <th className="py-1 pr-4 font-medium">Set to</th>
+          <th className="py-1 pr-4 font-medium">Decided by</th>
+          <th className="py-1 font-medium">Replaced</th>
+        </tr>
+      </thead>
+      <tbody>
+        {list.map((c) => (
+          <tr key={`${c.form}|${c.to}`} className="border-t align-top">
+            <td className="py-1 pr-4">{c.form}</td>
+            <td className="py-1 pr-4">
+              <Analysis text={c.to} />
+            </td>
+            <td className="py-1 pr-4">{HARMONIZE_BY_TEXT[c.by] ?? c.by}</td>
+            <td className="py-1">
+              {(c.from || []).map((f) => (
+                <div key={f.analysis}>
+                  <Analysis text={f.analysis} count={f.count} />
+                </div>
+              ))}
+            </td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+    <More n={more} noun="form" />
+  </>
+);
+
+// The forms harmonize left inconsistent, and why.
+export const HarmonizeLeft = ({ list, more = 0 }) => (
+  <>
+    <table className="w-full text-sm">
+      <thead className="text-left text-muted-foreground">
+        <tr>
+          <th className="py-1 pr-4 font-medium">Form</th>
+          <th className="py-1 pr-4 font-medium">Analyses</th>
+          <th className="py-1 font-medium">Reason</th>
+        </tr>
+      </thead>
+      <tbody>
+        {list.map((l) => (
+          <tr key={`${l.form}|${l.reason}`} className="border-t align-top">
+            <td className="py-1 pr-4">{l.form}</td>
+            <td className="py-1 pr-4">
+              {(l.analyses || []).map((a) => (
+                <div key={a.analysis}>
+                  <Analysis text={a.analysis} count={a.count} />
+                </div>
+              ))}
+            </td>
+            <td className="py-1">{HARMONIZE_LEFT_TEXT[l.reason] ?? l.reason}</td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+    <More n={more} noun="form" />
+  </>
+);
+
+// The entries the job made, the machine drafts in each lexicon, and those of
+// them nothing links.
+export const Entries = ({ report, vocabs = [] }) => {
   const entries = report.entries || {};
-  const changed = harmonize.changed || [];
-  const left = harmonize.left || [];
-  // The project's lexicons the job created entries in, in the project's order.
-  const madeIn = new Set(entries.lexicons || []);
-  const draftLexicons = vocabs.filter((v) => madeIn.has(v.id));
+  const draftLexicons = draftLexiconsOf(report, vocabs);
   const entryLists = [['Created', entries.created, entries.createdMore]].filter(
     ([, list = [], more = 0]) => list.length || more,
   );
   const unlinked = entries.unlinked || [];
-  // Once the job is undone, its notice leads with the undo, and says no more
-  // that what it wrote stands unverified (RPF3-D3, RP2-4 finding 5).
-  const notice = undone
-    ? `Undone by ${undoneBy}, ${fullTimestamp(undone.time)}. The counts below are what the job had written.`
-    : report.notice !== undefined
-      ? report.notice
-      : noticeText(noticeCounts(report));
-
   return (
-    <section aria-label="Report">
-      <h2 className={`${TYPE.section} mt-8`}>Report</h2>
-      {report.stopped === 'without-worker' && (
-        <p className="mt-2 text-sm text-muted-foreground">Stopped with no worker running.</p>
-      )}
-      {/* The worker's own line, from its counts, where the job changed
-          people's work or the text (R4). Core's own report, of a job no
-          worker finished, has none: the same line from its counts
-          (REV-RPF-W-3). */}
-      {notice && (
-        <p className="mt-3 max-w-2xl text-sm font-medium" data-testid="job-notice">
-          {notice}
-        </p>
-      )}
-      {report.summary && report.summaryBy === 'worker' && (
-        <p className="mt-3 max-w-2xl text-sm" data-testid="job-summary">
-          {report.summary}
-        </p>
-      )}
-
-      <Heading>{undone ? 'What the job had written' : 'Totals'}</Heading>
-      <dl className="grid max-w-xl grid-cols-[1fr_auto] gap-x-6 gap-y-1 text-sm">
-        {[...totalRows(report), ...paused.map(([l, s]) => [l, durationText(s * 1000)])].map(
-          ([label, value]) => (
-            <div key={label} className="contents">
-              <dt className="text-muted-foreground">{label}</dt>
-              <dd className="text-right tabular-nums">{value}</dd>
-            </div>
-          ),
-        )}
-      </dl>
-
-      {((report.summary && report.summaryBy !== 'worker') || report.summaryFailed) && (
-        <Heading>Assistant’s summary</Heading>
-      )}
-      {/* The model's account, after the counts and marked as its own (R4). */}
-      {report.summary && report.summaryBy !== 'worker' && (
-        <>
-          <p className="mb-2 text-sm text-muted-foreground">{byTheAssistant('above')}</p>
-          <Written text={report.summary} data-testid="job-summary" />
-        </>
-      )}
-      {report.summaryFailed && (
-        <p className="text-sm text-muted-foreground">The summary could not be written.</p>
-      )}
-
-      <LeftOut report={report} projectId={projectId} />
-      <ProposedChanges report={report} projectId={projectId} />
-      <Tables tables={report.tables || []} more={report.tablesMore || 0} />
-
-      <Respelled report={report} projectId={projectId} />
-
-      {skipped.length > 0 && (
-        <>
-          <Heading section="skipped" />
-          {skipped.map((d) => (
-            <div key={d.documentId} className="mb-3 text-sm">
-              <p>
-                <DocumentName projectId={projectId} d={d} />
-              </p>
-              <ul className="ml-4 list-disc">
-                {d.skipped.map((s) => (
-                  <li key={s.sentenceId ?? s.sentence}>
-                    {d.name && s.sentenceId ? (
-                      <Link
-                        className="underline"
-                        to={APP_ROUTES.sentence(projectId, d.documentId, s.sentenceId)}
-                      >
-                        {s.sentence}
-                      </Link>
-                    ) : (
-                      s.sentence
-                    )}{' '}
-                    <span className="text-muted-foreground">{skippedText(s)}</span>
-                  </li>
-                ))}
-              </ul>
-              {d.counts?.skippedMore > 0 && (
-                <p className="ml-4 text-muted-foreground">
-                  And {d.counts.skippedMore.toLocaleString()} more skipped.
-                </p>
-              )}
-            </div>
-          ))}
-        </>
-      )}
-
-      {blank.length > 0 && (
-        <>
-          <Heading section="left" />
-          {blank.map((d) => (
-            <div key={d.documentId} className="mb-3 text-sm">
-              <p>
-                <DocumentName projectId={projectId} d={d} />
-              </p>
-              <ul className="ml-4 list-disc">
-                {(d.left || []).map((l) => (
-                  <li key={`${l.sentenceId} ${l.ref}`}>
-                    {d.name && l.sentenceId ? (
-                      <Link
-                        className="underline"
-                        to={APP_ROUTES.sentence(projectId, d.documentId, l.sentenceId, {
-                          word: l.begin ?? undefined,
-                        })}
-                      >
-                        {l.ref}
-                      </Link>
-                    ) : (
-                      l.ref
-                    )}{' '}
-                    {l.form !== null && l.form !== undefined && (
-                      <>
-                        <span dir="auto">{l.form}</span>{' '}
-                      </>
-                    )}
-                    <span className="text-muted-foreground">{(l.targets || []).join(', ')}</span>
-                  </li>
-                ))}
-              </ul>
-              {d.leftMore > 0 && (
-                <p className="ml-4 text-muted-foreground">
-                  And {d.leftMore.toLocaleString()} more left blank.
-                </p>
-              )}
-              {d.leftUnread && <p className="ml-4 text-muted-foreground">Could not be read.</p>}
-              <BlankElsewhere counts={d.counts} />
-              <Refused projectId={projectId} d={d} />
-            </div>
-          ))}
-        </>
-      )}
-
-      {(changed.length > 0 || harmonize.changedMore > 0) && (
-        <>
-          <Heading section="harmonize.changed" />
-          <table className="w-full text-sm">
-            <thead className="text-left text-muted-foreground">
-              <tr>
-                <th className="py-1 pr-4 font-medium">Form</th>
-                <th className="py-1 pr-4 font-medium">Set to</th>
-                <th className="py-1 pr-4 font-medium">Decided by</th>
-                <th className="py-1 font-medium">Replaced</th>
-              </tr>
-            </thead>
-            <tbody>
-              {changed.map((c) => (
-                <tr key={`${c.form}|${c.to}`} className="border-t align-top">
-                  <td className="py-1 pr-4">{c.form}</td>
-                  <td className="py-1 pr-4">
-                    <Analysis text={c.to} />
-                  </td>
-                  <td className="py-1 pr-4">{HARMONIZE_BY_TEXT[c.by] ?? c.by}</td>
-                  <td className="py-1">
-                    {(c.from || []).map((f) => (
-                      <div key={f.analysis}>
-                        <Analysis text={f.analysis} count={f.count} />
-                      </div>
-                    ))}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-          <More n={harmonize.changedMore} noun="form" />
-        </>
-      )}
-
-      {(left.length > 0 || harmonize.leftMore > 0) && (
-        <>
-          <Heading section="harmonize.left" />
-          <table className="w-full text-sm">
-            <thead className="text-left text-muted-foreground">
-              <tr>
-                <th className="py-1 pr-4 font-medium">Form</th>
-                <th className="py-1 pr-4 font-medium">Analyses</th>
-                <th className="py-1 font-medium">Reason</th>
-              </tr>
-            </thead>
-            <tbody>
-              {left.map((l) => (
-                <tr key={`${l.form}|${l.reason}`} className="border-t align-top">
-                  <td className="py-1 pr-4">{l.form}</td>
-                  <td className="py-1 pr-4">
-                    {(l.analyses || []).map((a) => (
-                      <div key={a.analysis}>
-                        <Analysis text={a.analysis} count={a.count} />
-                      </div>
-                    ))}
-                  </td>
-                  <td className="py-1">{HARMONIZE_LEFT_TEXT[l.reason] ?? l.reason}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-          <More n={harmonize.leftMore} noun="form" />
-        </>
-      )}
-
+    <>
       {(entryLists.length > 0 || draftLexicons.length > 0) && (
         <>
           <Heading>Entries</Heading>
@@ -821,7 +586,6 @@ export const JobReport = ({ report, projectId, vocabs = [], undone = null, undon
           )}
         </>
       )}
-
       {(unlinked.length > 0 || entries.unlinkedMore > 0) && (
         <>
           <Heading section="entries.unlinked" />
@@ -838,6 +602,81 @@ export const JobReport = ({ report, projectId, vocabs = [], undone = null, undon
           <More n={entries.unlinkedMore || 0} noun="entry" />
         </>
       )}
+    </>
+  );
+};
+
+export const JobReport = ({ report, projectId, vocabs = [], undone = null, undoneBy = null }) => {
+  const skipped = skippedDocuments(report);
+  const blank = blankDocuments(report);
+  const harmonize = report.harmonize || {};
+  const changed = harmonize.changed || [];
+  const left = harmonize.left || [];
+  const notice = noticeOf(report, undone, undoneBy);
+
+  return (
+    <section aria-label="Report">
+      <h2 className={`${TYPE.section} mt-8`}>Report</h2>
+      {report.stopped === 'without-worker' && (
+        <p className="mt-2 text-sm text-muted-foreground">Stopped with no worker running.</p>
+      )}
+      {/* The worker's own line, from its counts, where the job changed
+          people's work or the text (R4). Core's own report, of a job no
+          worker finished, has none: the same line from its counts
+          (REV-RPF-W-3). */}
+      {notice && (
+        <p className="mt-3 max-w-2xl text-sm font-medium" data-testid="job-notice">
+          {notice}
+        </p>
+      )}
+      {report.summary && report.summaryBy === 'worker' && (
+        <p className="mt-3 max-w-2xl text-sm" data-testid="job-summary">
+          {report.summary}
+        </p>
+      )}
+
+      <TotalsList report={report} undone={undone} />
+      <AssistantSummary report={report} />
+
+      <LeftOut report={report} projectId={projectId} />
+      <ProposedChanges report={report} projectId={projectId} />
+      <Tables tables={report.tables || []} more={report.tablesMore || 0} />
+
+      <Respelled report={report} projectId={projectId} />
+
+      {skipped.length > 0 && (
+        <>
+          <Heading section="skipped" />
+          {skipped.map((d) => (
+            <SkippedDocument key={d.documentId} d={d} projectId={projectId} />
+          ))}
+        </>
+      )}
+
+      {blank.length > 0 && (
+        <>
+          <Heading section="left" />
+          {blank.map((d) => (
+            <BlankDocument key={d.documentId} d={d} projectId={projectId} />
+          ))}
+        </>
+      )}
+
+      {(changed.length > 0 || harmonize.changedMore > 0) && (
+        <>
+          <Heading section="harmonize.changed" />
+          <HarmonizeChanged list={changed} more={harmonize.changedMore} />
+        </>
+      )}
+
+      {(left.length > 0 || harmonize.leftMore > 0) && (
+        <>
+          <Heading section="harmonize.left" />
+          <HarmonizeLeft list={left} more={harmonize.leftMore} />
+        </>
+      )}
+
+      <Entries report={report} vocabs={vocabs} />
     </section>
   );
 };
