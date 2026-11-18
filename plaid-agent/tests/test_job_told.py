@@ -41,3 +41,42 @@ def test_a_setup_change_beside_a_value_is_counted_apart_from_it():
     status = toolkit.job_piece_call(ws, 'plan_status', {})
     assert 'approve' not in status and status.splitlines()[0] == '2 planned changes:'
 
+
+# --- D9: a job that stands undone says so ---------------------------------------------------------
+
+UNDONE = {'operation': 'op-1', 'time': '2026-11-18T03:10:00Z', 'user': 'u1'}
+
+
+def _undone_job():
+    return {'id': 'j1', 'project': 'p1', 'state': 'done', 'undone': UNDONE, 'created_at': '2026-11-18T01:00:00Z',
+            'started_by': 'u1', 'documents': ['d1'], 'instructions': 'Gloss.',
+            'report': {'notice': "People's work: 3 values people wrote were changed.",
+                       'totals': {'changes': 40}, 'documents': []}}
+
+
+def test_read_job_says_an_undone_job_is_undone_and_drops_its_notice():
+    from plaid_agent.igt.jobread import summary
+    lines = summary(_undone_job())
+    assert lines[0] == 'State: done, undone 2026-11-18 03:10 UTC.'
+    said = '\n'.join(lines)
+    assert "People's work" not in said
+    assert 'Undone 2026-11-18 03:10 UTC: the counts below are what the job had written, not what stands now.' in lines
+
+
+def test_the_list_of_jobs_says_which_stand_undone():
+    from plaid_agent.igt.jobread import _list_jobs
+
+    class _Jobs:
+        def list(self, project):
+            return [{**_undone_job(), 'document_count': 1}, {**_undone_job(), 'id': 'j2', 'undone': None}]
+
+    class _Ws:
+        client = type('C', (), {'jobs': _Jobs()})()
+        project = type('P', (), {'id': 'p1'})()
+
+        def note_read(self, *a, **k):
+            pass
+
+    out = _list_jobs(_Ws(), 1)
+    assert 'j1 | done, undone 2026-11-18 03:10 UTC |' in out
+    assert 'j2 | done |' in out

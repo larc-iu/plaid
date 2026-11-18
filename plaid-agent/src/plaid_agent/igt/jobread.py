@@ -213,9 +213,19 @@ def _state_line(job: Dict[str, Any]) -> str:
     line = f'State: {state}' + (f' ({reason})' if reason and reason != state else '')
     if state in ('running', 'stopping') and job.get('phase'):
         line += f', {job["phase"]}'
+    line += _undone(job)
     if job.get('message'):
         line += f'. Its line: "{job["message"]}"'
     return line + '.'
+
+
+def _undone(job: Dict[str, Any]) -> str:
+    """", undone <time>" for a job that stands undone (core's ``undone``,
+    REV D9), as the page's badge says it, or nothing."""
+    undone = job.get('undone')
+    if not isinstance(undone, dict):
+        return ''
+    return f', undone {_when(undone.get("time"))}'.rstrip()
 
 
 def _quoted(what: str, text: str, chars: Optional[int]) -> str:
@@ -323,7 +333,12 @@ def summary(job: Dict[str, Any], note_chars: Optional[int] = JOB_SUMMARY_NOTE_CH
         from .job import IgtRunner
         top = notice({**(report.get('totals') or {}), **one_step_totals(report.get('documents') or [])},
                      IgtRunner.PEOPLE_NOUNS)
-    if top:
+    if isinstance(job.get('undone'), dict):
+        # Its changes are taken back (REV D9): the page's own notice, in place
+        # of the worker's line of what it changed.
+        lines.append(f'Undone {_when(job["undone"].get("time"))}: the counts below are what the job had written, '
+                     'not what stands now.')
+    elif top:
         # The worker's own top line: what the job changed of people's work
         # and of the text (RPF-A4, the owner's R4), and what its one step over
         # all the documents did.
@@ -503,7 +518,7 @@ def _list_jobs(ws, page: int) -> str:
         ended = f', ended {_when(j.get("finished_at"))}' if j.get('finished_at') else ''
         instructions = ' '.join(str(j.get('instructions') or '').split())
         brief = instructions if len(instructions) <= 60 else instructions[:59] + '…'
-        lines.append(f'{j.get("id")} | {j.get("state")} | "{brief}" | started by '
+        lines.append(f'{j.get("id")} | {j.get("state")}{_undone(j)} | "{brief}" | started by '
                      f'{j.get("started_by_name") or j.get("started_by")}, {_when(j.get("created_at"))}{ended} | '
                      f'{_documents(j.get("document_count") or 0)}')
     if start + len(shown) < len(jobs):
