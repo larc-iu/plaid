@@ -777,6 +777,13 @@ def run_job(job: Job, runner) -> Optional[Dict[str, Any]]:
         job.set(phase=REPORTING, current_document=None, message='Writing the report.')
         return _finish(job, 'done', runner, harmonize, entries)
     except Exception as e:  # noqa: BLE001 - a stop, core saying the job is no longer this worker's, or a fault
+        if core_fault(e) == 'passing':
+            # Core busy or out of reach past every try (S4-1): passing
+            # trouble, never the job's end. The job is dropped as it stands,
+            # its lease lapses, and a claim once core answers takes it up
+            # again from what core holds.
+            logger.warning('Job %s: dropped while core does not answer: %s', job.id, e)
+            return None
         if core_fault(e) == 'access':
             e = job.access_lost()
         if not isinstance(e, JobStopped) and not no_longer_mine(e):
@@ -1397,8 +1404,13 @@ class Worker:
             else:
                 run_job(job, runner)
         except Exception as e:  # noqa: BLE001 - a job the worker cannot finish is failed, never taken again
-            logger.exception('Job %s: ended on an error of the worker\'s own', job.id)
-            _give_up(job, e)
+            if core_fault(e) == 'passing':
+                # Core out of reach as the job ended (S4-1): dropped, taken up
+                # again once core answers.
+                logger.warning('Job %s: dropped while core does not answer: %s', job.id, e)
+            else:
+                logger.exception('Job %s: ended on an error of the worker\'s own', job.id)
+                _give_up(job, e)
         finally:
             job.stop()
         return claimed
