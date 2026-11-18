@@ -223,8 +223,10 @@ test('an assistant plan is undone whole', async ({ page }) => {
     }
     return route.continue();
   });
+  // The route stays to the end of the test (it lets every later request
+  // through): unrouting while the page re-reads after the undo strands a
+  // request in flight, and the reload never lands (FLK2-2).
   await undoIn(dialog);
-  await page.unroute('**/audit/entries/*/undo?*');
   expect(keys.length).toBe(2);
   expect(keys[1]).toBe(keys[0]);
   const undos = (await client.documents.audit(documentId))

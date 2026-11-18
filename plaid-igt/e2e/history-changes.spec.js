@@ -320,9 +320,12 @@ test('a machine gloss beside a person’s in one word is the machine’s alone, 
     release = resolve;
   });
   let pages = 0;
+  // Let go by a flag, never page.unroute: unrouting while a request is in
+  // flight strands it (FLK2-2).
+  let holding = true;
   await page.route('**/audit/entries/*/changes?*', async (route) => {
     const url = new URL(route.request().url());
-    if (!url.searchParams.get('document-id')) return route.continue();
+    if (!holding || !url.searchParams.get('document-id')) return route.continue();
     pages += 1;
     if (pages === 1) {
       const response = await route.fetch();
@@ -340,7 +343,7 @@ test('a machine gloss beside a person’s in one word is the machine’s alone, 
   await expect(count(page)).toHaveText('2 values changed, 0 replaced a person’s value', {
     timeout: 20_000,
   });
-  await page.unroute('**/audit/entries/*/changes?*');
+  holding = false;
 
   // ni's gloss as the person left it, ma's the machine's, nothing struck.
   const cell = changes(page).locator('tr[data-row="morph:Gloss"] td').nth(3);

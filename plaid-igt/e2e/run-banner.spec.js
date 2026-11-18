@@ -263,7 +263,6 @@ test('a built-in step left in flight says nothing away, and coming back names th
     timeout: 15000,
   });
   await expect(banner(page)).toHaveCount(0);
-  await page.unroute('**/api/v1/query**');
 });
 
 test('reloading mid-run asks first, and the reloaded page rejoins the run', async ({ page }) => {

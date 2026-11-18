@@ -120,8 +120,12 @@ test('a failed save keeps the typed value in its cell, and focus stays where Ent
   page,
 }) => {
   await openAnalyze(page);
-  await page.route('**/api/v1/spans**', (route) => route.fulfill({ status: 503, body: '' }));
-  await page.route('**/api/v1/batch**', (route) => route.fulfill({ status: 503, body: '' }));
+  // Offline by a flag, never page.unroute: unrouting while a request is in
+  // flight strands it (FLK2-2).
+  let offline = true;
+  const down = (route) => (offline ? route.fulfill({ status: 503, body: '' }) : route.continue());
+  await page.route('**/api/v1/spans**', down);
+  await page.route('**/api/v1/batch**', down);
   const cell = page.locator(`.igt-field[data-cell-key="ma:${ids.m[1]}:Gloss"]`);
   await cell.click();
   await page.keyboard.type('OFFLINE');
@@ -143,8 +147,7 @@ test('a failed save keeps the typed value in its cell, and focus stays where Ent
       return a?.dataset?.tier === 'ma:Gloss' ? 'next gloss' : (a?.tagName ?? null);
     }),
   ).toBe('next gloss');
-  await page.unroute('**/api/v1/spans**');
-  await page.unroute('**/api/v1/batch**');
+  offline = false;
   // Back in the cell, Enter sends it again and it lands.
   await cell.click();
   await expect(cell).toHaveValue('OFFLINE');
