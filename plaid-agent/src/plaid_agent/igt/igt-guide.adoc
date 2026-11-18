@@ -611,7 +611,7 @@ Step 2 reuses your own work, in the manner of FieldWorks' guesses from previous 
 A word receives a copy only when it is **unanalyzed**: still a single morpheme identical to the word, with no annotation values and no lexicon link.
 A word you have segmented, glossed, or linked, even partly, is never touched.
 
-For each such word, Plaid IGT looks at every other occurrence of the same form in the document and in up to 25 other documents of the project, those with the most words it is looking for, and copies the analysis given most often: the morphemes, the lexicon links, and the annotation values.
+For each such word, Plaid IGT looks at every other occurrence of the same form in the document and in up to 25 other documents of the project, those with the most words it is looking for (a document of more than 10,000 words only when there are not 25 shorter ones), and copies the analysis given most often: the morphemes, the lexicon links, and the annotation values.
 If two analyses are tied, the word is left alone for you to decide.
 Only analyses a person made or confirmed count, so one machine pass never feeds the next.
 What a copy carries is set per project under **Settings → Services** (see <<_settings_services>>).
@@ -625,6 +625,8 @@ A whole word is never linked to an affix or clitic entry.
 The rule replaces only links nobody has confirmed: its own, links copied with an earlier analysis, and links to an entry that no longer has the word's or morpheme's form.
 A link a person made or confirmed stays, and so does an entry an analysis service chose for that occurrence.
 Runs of words whose joined form matches a multi-word expression entry are linked as one (see <<_multi_word_expressions>>).
+In a project with more links than the server counts at once, the rule links a word or morpheme only when the lexicon has exactly one entry of its form, and Auto-analyze says how many it did not link.
+The entries in the Alt+↓ list are then ordered by the open document's links alone.
 
 **Alt+↓** on a morpheme field with a lexicon field, such as Gloss or POS, opens a list of each sense with its value, the alternatives an analysis service weighed with their probability, and the values the project has given the form.
 A click on the morpheme's link opens the same list for one field: the field whose values an analysis service gave with their entries, else the field whose lexicon field is the entry's gloss, else the first morpheme field with a lexicon field.
