@@ -328,7 +328,10 @@
 ;; --- token surface form (the domain's :token/value) -----------------------
 ;; A token carries only offsets; its surface is the substring of its text body.
 ;; There is no `value` column, so slice it: join the token's text (once, cached by
-;; alias) and `substr(body, begin+1, end-begin)` (SQLite substr is 1-based, len arg).
+;; alias) and cut it with PLAID_SLICE (exec.clj), which gives what
+;; `substr(body, begin+1, end-begin)` gives but reads each body once per
+;; statement: the body is read only where PLAID_HAS says the statement has not
+;; kept that text yet (a CASE reads its ELSE only when it gets there).
 (defn- token-text-alias!
   [st a]
   (or (get-in @st [:token-text a])
@@ -341,7 +344,9 @@
 (defn- token-surface-sql
   [st a]
   (let [tx (token-text-alias! st a)]
-    [:substr (col tx :body) [:+ (col a :begin) [:inline 1]] [:- (col a :end_) (col a :begin)]]))
+    [:plaid_slice (col tx :id)
+     [:case [:plaid_has (col tx :id)] nil :else (col tx :body)]
+     (col a :begin) (col a :end_)]))
 
 (defn- surface-field?
   "Whether field `k` of an entity of `kind` is a token's surface, which has no
@@ -354,14 +359,14 @@
   vector of them for `in`), the term `end - begin` = the literal's length in
   code points, or nil when no such term is sound.
 
-  SUBSTR walks the text from its first character to the token's offset, so
-  comparing every token's surface with a literal costs the length of each
-  text once per token (SCL6-4). The guard reads only the token's row, so the
-  SUBSTR runs for the tokens of the right length alone. It can drop no
-  match: SQLite's substr counts code points, as offsets do, and a token lies
-  inside its text. A literal with another spelling (`canonical?`) is
-  compared in NFC, where a stored decomposed letter has more code points
-  than the literal, so any such literal leaves the guard off."
+  Slicing every token's surface to compare it with a literal reads every
+  text (SCL6-4, measured when that was SUBSTR, which walked each text once per
+  token). The guard reads only the token's row, so the slice runs for the
+  tokens of the right length alone. It can drop no match: a surface is cut by
+  code points, as offsets count, and a token lies inside its text. A literal
+  with another spelling (`canonical?`) is compared in NFC, where a stored
+  decomposed letter has more code points than the literal, so any such
+  literal leaves the guard off."
   [a v]
   (let [lits (if (vector? v) v [v])]
     (when (and (seq lits) (every? string? lits) (not-any? canonical? lits))
@@ -383,7 +388,7 @@
   ;; span's or relation's :value) is matched as stored, its literal encoded the
   ;; same, and its regex runs on the DECODED scalar. A token's :value is its
   ;; SURFACE (`surface-field?`), sliced from the text body, so match and regex
-  ;; run on the substr expression directly.
+  ;; run on the slice expression directly.
   (doseq [[k {:keys [column json? id?]}] clauses/field-column-list
           :when (contains? cmap k)
           :let [v (get cmap k)]]

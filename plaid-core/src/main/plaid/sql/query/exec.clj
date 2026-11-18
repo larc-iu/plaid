@@ -133,9 +133,97 @@
         (.invoke m-result-null this (object-array []))
         (.invoke m-result-text this (object-array [(canonical/nfc (.invoke m-value-text this (object-array [(int 0)])))]))))))
 
-(defn- register-regexp! [^SQLiteConnection sqlite]
+;; --- A token's surface, sliced by code point (PLAID_SLICE) -------------------
+;; SQLite's substr walks a text's UTF-8 from its first byte to the token's
+;; offset, so reading every token's surface costs (tokens) x (text length): one
+;; long document made every word query of its project slow (SCL1-1, SCL2-1,
+;; SCL7-3). The compiler reads a surface as
+;;   PLAID_SLICE(text_id, CASE WHEN PLAID_HAS(text_id) THEN NULL ELSE body END, begin, end)
+;; so SQLite reads a body only for the first token of its text, and the slice
+;; is cut from the text kept since. Owner's ruling 2026-11-18: a text is kept
+;; for ONE statement and dropped when it ends, nothing stays on the pooled
+;; connection, and there is no other cache.
+
+(def ^:private ^Method m-value-long
+  (doto (.getDeclaredMethod Function "value_long" (into-array Class [Integer/TYPE]))
+    (.setAccessible true)))
+
+(def ^:private slice-keep-chars
+  "The most UTF-16 chars of text one statement keeps. Past it every kept text
+  is dropped and read again when next needed, which costs what substr cost."
+  20000000)
+
+(defn- arg-text ^String [^Function f i]
+  (.invoke m-value-text f (object-array [(int i)])))
+
+(defn- arg-null? [^Function f i]
+  (= sqlite-null (.invoke m-value-type f (object-array [(int i)]))))
+
+(defn- arg-long ^long [^Function f i]
+  (long (.invoke m-value-long f (object-array [(int i)]))))
+
+(defn- kept-text
+  "`body` ready to cut by code point: the string, and where its text has
+  characters past U+FFFF, the UTF-16 index of each code point (and of its end)."
+  [^String body]
+  (let [n (.codePointCount body 0 (.length body))]
+    {:s body
+     :n n
+     :at (when (not= n (.length body))
+           (let [^ints at (int-array (inc n))]
+             (loop [cp 0 i 0]
+               (aset at cp i)
+               (when (< cp n)
+                 (recur (inc cp) (+ i (Character/charCount (.codePointAt body i))))))
+             at))}))
+
+(defn- cut
+  "What SQLite's substr(body, begin + 1, end - begin) gives: the code points
+  from `begin` to `end`, and for `end` before `begin` those from `end` to
+  `begin`, both clipped to the text."
+  ^String [{:keys [^String s n at]} begin end]
+  (let [hi (min (max begin end) n)
+        lo (min (max 0 (min begin end)) hi)
+        u (fn [cp] (if at (aget ^ints at (int cp)) cp))]
+    (.substring s (int (u lo)) (int (u hi)))))
+
+(defn- slice-functions
+  "The PLAID_HAS and PLAID_SLICE functions of ONE statement, and the function
+  that drops what they keep. They share a map of text id to kept text."
+  []
+  (let [kept (java.util.HashMap.)
+        chars (long-array 1)
+        has (proxy [Function] []
+              (xFunc []
+                (.invoke m-result-int this (object-array [(int (if (.containsKey kept (arg-text this 0)) 1 0))]))))
+        slice (proxy [Function] []
+                (xFunc []
+                  (if (some #(arg-null? this %) [0 2 3])
+                    (.invoke m-result-null this (object-array []))
+                    (let [id (arg-text this 0)
+                          t (or (.get kept id)
+                                (do (when (arg-null? this 1)
+                                      ;; PLAID_HAS said it was kept: nothing drops a text in between
+                                      (throw (IllegalStateException. (str "PLAID_SLICE: text " id " was not kept"))))
+                                    (let [body (arg-text this 1)]
+                                      (when (> (+ (aget chars 0) (.length body)) slice-keep-chars)
+                                        (.clear kept)
+                                        (aset chars 0 0))
+                                      (aset chars 0 (+ (aget chars 0) (.length body)))
+                                      (let [t (kept-text body)] (.put kept id t) t))))]
+                      (.invoke m-result-text this (object-array [(cut t (arg-long this 2) (arg-long this 3))]))))))]
+    {:has has :slice slice :drop! (fn [] (.clear kept) (aset chars 0 0))}))
+
+(defn- register-regexp!
+  "Register this statement's functions on `sqlite`. Returns the function that
+  drops what PLAID_SLICE kept, to run when the statement ends."
+  [^SQLiteConnection sqlite]
   (Function/create sqlite "REGEXP" (regexp-function))
-  (Function/create sqlite "PLAID_NFC" (nfc-function)))
+  (Function/create sqlite "PLAID_NFC" (nfc-function))
+  (let [{:keys [has slice drop!]} (slice-functions)]
+    (Function/create sqlite "PLAID_HAS" has)
+    (Function/create sqlite "PLAID_SLICE" slice)
+    drop!))
 
 (def ^:private default-limit
   "Rows returned when the query specifies no :limit."
@@ -212,14 +300,17 @@
   [^java.sql.Connection conn f deadline]
   (let [sqlite (.unwrap conn SQLiteConnection)
         ndb (.getDatabase sqlite)
-        _ (register-regexp! sqlite)            ; make REGEXP() and PLAID_NFC() available for this query
+        ;; REGEXP, PLAID_NFC, PLAID_HAS and PLAID_SLICE for this statement
+        drop-kept! (register-regexp! sqlite)
         done (atom false)
         worker (promise)
         fut (future (deliver worker (Thread/currentThread))
                     (try (f conn)
-                         ;; clear any interrupt before this pooled thread is
-                         ;; reused (the watchdog may have set it)
-                         (finally (reset! done true) (Thread/interrupted))))
+                         ;; the texts PLAID_SLICE kept go when the statement
+                         ;; ends, on the thread that ran it; clear any
+                         ;; interrupt before this pooled thread is reused (the
+                         ;; watchdog may have set it)
+                         (finally (drop-kept!) (reset! done true) (Thread/interrupted))))
         watchdog (future (Thread/sleep (ms-left deadline))
                          (when-not @done
                            ;; abort SQLite's VM AND interrupt the worker thread,

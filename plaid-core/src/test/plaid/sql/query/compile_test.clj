@@ -152,6 +152,17 @@
 
 (def ^:private guard #"\(t_1\.end_ - t_1\.begin\) (=|IN)")
 
+(deftest a-surface-is-cut-from-a-text-the-statement-reads-once
+  ;; SCL1-1, SCL2-1, SCL7-3: SQLite's SUBSTR walked a text from its start for
+  ;; every token, so a long text made every surface query of its project slow.
+  ;; PLAID_SLICE (exec.clj) keeps each text for the statement, and the body is
+  ;; read only where PLAID_HAS says it is not kept yet.
+  (let [[sql] (surface-sql {"value" "ab"})
+        [sql2] (surface-sql {"value" {"regex" "a"}})]
+    (doseq [s [sql sql2]]
+      (is (re-find #"PLAID_SLICE\(txt_\d+\.id, CASE WHEN PLAID_HAS\(txt_\d+\.id\) THEN NULL ELSE txt_\d+\.body END, t_1\.begin, t_1\.end_\)" s))
+      (is (not (str/includes? s "SUBSTR"))))))
+
 (deftest a-surface-equality-reads-the-token-length-first
   ;; SCL6-4: every token's SUBSTR walks its text from the start, so the length
   ;; of the literal in code points is asked of the token row before it
@@ -159,7 +170,7 @@
     (let [[sql & params] (surface-sql {"value" "a𐍈b"})]
       (is (re-find #"\(t_1\.end_ - t_1\.begin\) = \?" sql))
       (is (some #{3} params))
-      (is (< (str/index-of sql "end_ - t_1.begin") (str/index-of sql "SUBSTR")))))
+      (is (< (str/index-of sql "end_ - t_1.begin") (str/index-of sql "PLAID_SLICE")))))
   (testing "a list: each length once"
     (let [[sql & params] (surface-sql {"value" ["ab" "cd" "xyz"]})]
       (is (re-find #"\(t_1\.end_ - t_1\.begin\) IN \(\?, \?\)" sql))
