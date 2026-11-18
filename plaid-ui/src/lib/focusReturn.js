@@ -105,6 +105,14 @@ export function useFocusReturn(forwardedRef) {
     const content = event.target;
     const id = content?.id;
     if (id && document.querySelector(`[aria-controls="${CSS.escape(id)}"]`)) return;
+    // What the dialog did already put focus somewhere on the page (a confirmed
+    // delete focuses what is left): it stays there.
+    const at = document.activeElement;
+    if (at && at !== document.body && !content?.contains(at)) {
+      saved.current = null;
+      event.preventDefault();
+      return;
+    }
     const target = focusReturnTarget(saved.current ?? [], content);
     saved.current = null;
     if (!target) return;

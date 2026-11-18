@@ -10,6 +10,7 @@ import {
   AlertDialogTitle,
   AlertDialogDescription,
   AlertDialogCancel,
+  AlertDialogAction,
 } from './alert-dialog.jsx';
 
 const settle = () => act(() => new Promise((r) => setTimeout(r, 20)));
@@ -116,6 +117,44 @@ describe('Dialog focus return', () => {
     expect(document.activeElement.textContent).toBe('Cancel');
     await escape();
     expect(document.activeElement).toBe(document.body.querySelector('[data-id=opener]'));
+    await view.unmount();
+  });
+
+  // FLK5-3: umr's Delete node with its confirm put focus on the deleted node's
+  // parent, and the dialog's close took it back to a node focused before.
+  it('leaves focus where the confirmed action put it', async () => {
+    const Harness = () => {
+      const [open, setOpen] = useState(false);
+      return (
+        <div>
+          <button data-id="opener" onClick={() => setOpen(true)}>
+            Delete
+          </button>
+          <button data-id="next">Next</button>
+          <AlertDialog open={open} onOpenChange={setOpen}>
+            <AlertDialogContent>
+              <AlertDialogTitle>Delete?</AlertDialogTitle>
+              <AlertDialogDescription>Gone for good.</AlertDialogDescription>
+              <AlertDialogCancel>Cancel</AlertDialogCancel>
+              <AlertDialogAction
+                data-id="ok"
+                onClick={() =>
+                  // As a confirm's caller does once its answer arrives.
+                  setTimeout(() => document.body.querySelector('[data-id=next]').focus(), 0)
+                }
+              >
+                Delete
+              </AlertDialogAction>
+            </AlertDialogContent>
+          </AlertDialog>
+        </div>
+      );
+    };
+    const view = await renderComponent(<Harness />);
+    await press('[data-id=opener]');
+    await press('[data-id=ok]');
+    expect(document.body.querySelector('[role=alertdialog]')).toBe(null);
+    expect(document.activeElement).toBe(document.body.querySelector('[data-id=next]'));
     await view.unmount();
   });
 
