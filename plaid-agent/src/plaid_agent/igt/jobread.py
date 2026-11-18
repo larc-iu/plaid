@@ -278,6 +278,10 @@ def plan_line(report: Dict[str, Any]) -> Optional[str]:
             return "This job's setup could not be read. Nothing was written."
         return 'The assistant’s model failed during planning. Nothing was written.'
     line = f'Worked in {_PIECES.get(plan.get("pieces"), plan.get("pieces"))}'
+    named = plan.get('documents_named')
+    if plan.get('pieces') == 'selection' and isinstance(named, int):
+        # A plan of one step over some of the job's documents (S2-2).
+        line = f'Worked in one part for {named:,} document{"" if named == 1 else "s"}'
     line += search_part(plan)
     fallback = plan.get('fallback') or []
     if plan.get('pieces') == 'selection' and fallback:

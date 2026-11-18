@@ -2756,7 +2756,7 @@ class IgtRunner:
                 'plan': {**{k: self.plan_pending.get(k) for k in ('by', 'why', 'pieces', 'only_empty', 'edits_text',
                                                                   'gone', 'search')
                             if self.plan_pending.get(k) is not None},
-                         **self.fills_named(job, self.plan_pending)},
+                         **self.fills_named(job, self.plan_pending), **self.documents_named(job, self.plan_pending)},
                 'steps': self.steps_now, 'ended_at': self.now_iso()})
         text = canonical(self.plan_kept(self.plan_pending))
         rows = [{'form': PLAN_FORM, 'key': analysis_key(text), 'analysis': text, 'count': 1,
@@ -6744,7 +6744,7 @@ class IgtRunner:
             named = set(plan.get('documents') or job.order)
             # The sentences a search matched are the walk's, not the report's (SF).
             plan = {**{k: v for k, v in plan.items() if k not in ('matched', 'matched_words')},
-                    **self.fills_named(job, plan),
+                    **self.fills_named(job, plan), **self.documents_named(job, plan),
                     'fallback': fallback,
                     'left_out': [{'document_id': d, 'name': self.names.get(d) or (job.rows.get(d) or {}).get('name')}
                                  for d in job.order
@@ -6876,6 +6876,16 @@ class IgtRunner:
             logger.warning('Job %s: what its plan fills could not be named for the report: %s', job.id, e)
             return {}
         return {'fills_names': tg.shown_names(project, tg.of_ids(project, plan['fills']))}
+
+    @staticmethod
+    def documents_named(job, plan: Dict[str, Any]) -> Dict[str, Any]:
+        """``documents_named``: how many of the job's documents a plan that
+        names fewer than all of them names, for the job page and read_job
+        ("Worked on 2 documents at once.", S2-2). Nothing when it names none
+        or every one."""
+        order = set(job.order)
+        named = {d for d in plan.get('documents') or [] if d in order}
+        return {'documents_named': len(named)} if named and len(named) < len(order) else {}
 
     def still_proposed(self, job, changes: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         """``changes`` less each one its document already holds as the

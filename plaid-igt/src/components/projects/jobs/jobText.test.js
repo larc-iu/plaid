@@ -107,6 +107,19 @@ describe('the Plan line', () => {
     expect(JSON.stringify(parts)).not.toMatch(/[⁦-⁩]/);
     expect(planParts({ by: 'none', reason: 'failed' })).toHaveLength(1);
   });
+
+  // S2-2: a one-step plan over some of the job's documents never says "all".
+  it('says how many documents a one-step plan named when it named fewer than all', () => {
+    expect(planParts({ pieces: 'selection', documentsNamed: 2, fillsNames: ['Gloss'] })).toEqual([
+      'Worked on 2 documents at once. Fills: Gloss.',
+    ]);
+    expect(planParts({ pieces: 'selection', documentsNamed: 1, fillsNames: ['Gloss'] })).toEqual([
+      'Worked on 1 document at once. Fills: Gloss.',
+    ]);
+    expect(planParts({ pieces: 'selection', fillsNames: ['Gloss'] })).toEqual([
+      'Worked on all the documents at once. Fills: Gloss.',
+    ]);
+  });
 });
 
 // REV-SJ1-10: every end the server writes the report of from the rows.

@@ -1338,3 +1338,31 @@ def test_the_planners_document_line_names_only_what_is_empty_the_most_first_and_
     finally:
         limits.JOB_PLAN_EMPTY_TARGETS = old
     assert f'Empty: {names[want[0][0]]} 9, {names[want[1][0]]} 4, and 1 more.' in text, text
+
+
+def test_a_selection_limited_to_some_documents_says_how_many_it_named(monkeypatch):
+    """S2-2: a plan of one step over 2 of the job's 3 documents carries
+    ``documents_named`` in its plan row and in the report's plan, and the
+    plan line says "for 2 documents", never "for all the documents"."""
+    from plaid_agent.igt.jobread import plan_line
+    client = JobClient(_docs(3))
+    job = start(client, id=J, plan=None)
+    use(monkeypatch, _model(plan={'pieces': 'selection', 'documents': ['Story 3', 'Story 1']}, piece=_gloss_all))
+    finished = run_job(job, runner(job))
+    plan = finished['report']['plan']
+    assert plan['documents_named'] == 2
+    rows = [json.loads(r['analysis']) for (f, _k), r in client.jobs.decision_rows.get(J, {}).items()
+            if f == ' piece']
+    # Stored as core keeps a row's keys.
+    assert [r['plan'].get('documents-named') for r in rows if 'plan' in r] == [2]
+    assert plan_line(finished['report']).startswith('Worked in one part for 2 documents.')
+
+
+def test_a_selection_over_every_document_names_no_count(monkeypatch):
+    from plaid_agent.igt.jobread import plan_line
+    client = JobClient(_docs(2))
+    job = start(client, id=J, plan=None)
+    use(monkeypatch, _model(plan={'pieces': 'selection', 'documents': ['Story 1', 'Story 2']}, piece=_gloss_all))
+    finished = run_job(job, runner(job))
+    assert 'documents_named' not in finished['report']['plan']
+    assert plan_line(finished['report']).startswith('Worked in one part for all the documents.')

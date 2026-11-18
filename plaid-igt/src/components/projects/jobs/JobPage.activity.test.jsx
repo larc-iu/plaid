@@ -551,6 +551,32 @@ describe('the job page’s list of its work', () => {
     await v.unmount();
   });
 
+  // S2-2: the one step's row of a plan that named some of the documents.
+  it('names the one step’s row by how many documents its plan named', async () => {
+    const step = {
+      seq: '000001',
+      piece: { ...FIRST.piece, document: null, name: null, whole: true, first: null, last: null },
+    };
+    const plan = {
+      ...PLAN,
+      piece: { ...PLAN.piece, plan: { ...PLAN.piece.plan, pieces: 'selection' } },
+    };
+    let v = await mount(clientOf([jobOf()], [page([step, plan])]));
+    expect(text(rows(v.container)[0])).toMatch(/^All documents/);
+    await v.unmount();
+    const named = {
+      ...PLAN,
+      piece: {
+        ...PLAN.piece,
+        plan: { ...PLAN.piece.plan, pieces: 'selection', documentsNamed: 2 },
+      },
+    };
+    v = await mount(clientOf([jobOf()], [page([step, named])]));
+    expect(text(rows(v.container)[0])).toMatch(/^2 documents of the plan/);
+    expect(text(planLine(v.container))).toContain('Worked on 2 documents at once.');
+    await v.unmount();
+  });
+
   it('names a piece of a deleted document so, with no link', async () => {
     const gone = {
       seq: '000003',

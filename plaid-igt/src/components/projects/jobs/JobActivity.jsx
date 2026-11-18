@@ -7,6 +7,7 @@ import { TYPE } from '@ui/lib/typeScale.js';
 import { fullTimestamp, timeAgo } from '@ui/lib/formatTime.js';
 import { TALL_LIST_PAGE_SIZE, usePagedList } from '@ui/hooks/usePagedList.js';
 import { isJobActive } from '@ui/domain/jobs.js';
+import { countOf } from '@ui/lib/plural.js';
 import { APP_ROUTES } from '@/appRoutes.js';
 import { JobWritten } from './JobReport.jsx';
 import { PIECES_MAX } from './jobPieces.js';
@@ -104,6 +105,7 @@ export const JobActivity = ({ job, projectId, pieces }) => {
                   piece={piece}
                   projectId={projectId}
                   names={names}
+                  plan={job?.report?.plan ?? pieces.plan}
                   states={states}
                   active={active}
                   findingsShown={reportHoldsFindings(job?.report)}
@@ -152,8 +154,16 @@ const AFTER_TEXT_WORDS = { added: 'the words added', edited: 'after the text edi
 // Where a piece worked: its document and sentences, a link into the grid at
 // its first sentence, or the document for a piece of the whole document. The
 // document's name as it is now: a document deleted since reads so.
-const Where = ({ piece, projectId, names }) => {
-  if (!piece.document) return <span className="font-medium">All documents</span>;
+const Where = ({ piece, projectId, names, plan }) => {
+  if (!piece.document) {
+    // The one step of a plan that named some of the job's documents (S2-2).
+    const named = plan?.pieces === 'selection' ? plan.documentsNamed : undefined;
+    return (
+      <span className="font-medium">
+        {named > 0 ? `${countOf(named, 'document')} of the plan` : 'All documents'}
+      </span>
+    );
+  }
   const name = names.has(piece.document) ? names.get(piece.document) : piece.name;
   if (name === null || name === undefined) {
     return <span className="font-medium text-muted-foreground">Deleted document</span>;
@@ -220,13 +230,21 @@ const PieceFindings = ({ findings }) => {
 const reportHoldsFindings = (report) =>
   typeof report?.findings === 'string' && report.findings !== '' && !(report.findingsCut > 0);
 
-const PieceRow = ({ piece, projectId, names, states, active = false, findingsShown = false }) => {
+const PieceRow = ({
+  piece,
+  projectId,
+  names,
+  plan,
+  states,
+  active = false,
+  findingsShown = false,
+}) => {
   const skipped = piece.skipped || [];
   const refused = piece.refused || [];
   return (
     <>
       <div className="flex flex-wrap justify-between gap-x-4">
-        <Where piece={piece} projectId={projectId} names={names} />
+        <Where piece={piece} projectId={projectId} names={names} plan={plan} />
         <Ended piece={piece} />
       </div>
       <p>{pieceWrittenText(piece)}</p>
