@@ -520,7 +520,13 @@ export const documentCounts = (report) => {
   const leftIds = new Set((report?.plan?.leftOut || []).map((d) => d.documentId));
   const leftMore = report?.plan?.leftOutMore ?? 0;
   const left = (report?.plan?.leftOut?.length ?? 0) + leftMore;
-  const unfinished = docs.filter((d) => d.state === 'not-reached' && !leftIds.has(d.documentId));
+  // Those the server never answered for are counted apart (REV-JR2-3).
+  const unanswered = docs.filter(
+    (d) => d.state === 'not-reached' && d.counts?.unanswered === true,
+  ).length;
+  const unfinished = docs.filter(
+    (d) => d.state === 'not-reached' && !leftIds.has(d.documentId) && d.counts?.unanswered !== true,
+  );
   const partway = unfinished.filter(stoppedPartway).length;
   return {
     done: Math.max(0, (t.documentsDone ?? 0) - skipped - unmatched),
@@ -530,8 +536,9 @@ export const documentCounts = (report) => {
     stoppedPartway: partway,
     notReached: report?.documents
       ? Math.max(0, unfinished.length - partway - leftMore)
-      : Math.max(0, (t.documentsNotReached ?? 0) - left),
+      : Math.max(0, (t.documentsNotReached ?? 0) - left - (t.documentsUnanswered ?? 0)),
     leftOut: left,
+    unanswered: report?.documents ? unanswered : (t.documentsUnanswered ?? 0),
   };
 };
 

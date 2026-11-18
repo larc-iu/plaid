@@ -621,6 +621,9 @@ def test_a_document_core_never_answered_for_is_marked_counted_and_said_on_the_to
     assert finished['report']['totals']['documents_unanswered'] == 1
     assert finished['report']['notice'] == '1 document was not worked: the server did not answer.'
     assert state_text(d1) == 'not worked: the server did not answer'
+    from plaid_agent.igt.job import document_counts
+    counts = document_counts(finished['report'])
+    assert (counts['unanswered'], counts['not_reached']) == (1, 0), counts
 
 
 def test_the_unanswered_line_is_said_for_many_and_read_from_cores_own_report():

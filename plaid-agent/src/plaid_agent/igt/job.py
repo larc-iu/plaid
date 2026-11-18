@@ -1079,15 +1079,19 @@ def document_counts(report: Dict[str, Any]) -> Dict[str, int]:
     plan = report.get('plan') if isinstance(report.get('plan'), dict) else {}
     left_ids = left_out_ids(report)
     left_more = plan.get('left_out_more') or 0
-    unfinished = [d for d in docs if d.get('state') == 'not-reached' and d.get('document_id') not in left_ids]
+    # Those the server never answered for are counted apart (REV-JR2-3).
+    unanswered = sum(1 for d in docs if d.get('state') == 'not-reached' and counts(d).get(UNANSWERED) is True)
+    unfinished = [d for d in docs if d.get('state') == 'not-reached' and d.get('document_id') not in left_ids
+                  and counts(d).get(UNANSWERED) is not True]
     partway = sum(1 for d in unfinished if (d.get('done') or 0) > 0 or (counts(d).get('changes') or 0) > 0)
     left = len(plan.get('left_out') or []) + left_more
     return {'done': max(0, (totals.get('documents_done') or 0) - skipped - unmatched),
             'changed': changed, 'with_nothing_found_by_the_search': unmatched,
             'skipped': skipped, 'stopped_partway': partway,
             'not_reached': max(0, len(unfinished) - partway - left_more) if 'documents' in report
-            else max(0, (totals.get('documents_not_reached') or 0) - left),
-            'left_out': left}
+            else max(0, (totals.get('documents_not_reached') or 0) - left - (totals.get('documents_unanswered') or 0)),
+            'left_out': left, 'unanswered': unanswered if 'documents' in report
+            else totals.get('documents_unanswered') or 0}
 
 
 def left_out_ids(report: Dict[str, Any]) -> set:

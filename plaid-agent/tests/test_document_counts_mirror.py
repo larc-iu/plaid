@@ -47,6 +47,9 @@ CASES = [
                    {**_doc('not-reached', 0), 'document_id': 'l2'}, {**_doc('not-reached', 0), 'document_id': 'n1'}]},
     {'totals': {'documents_done': 1, 'documents_not_reached': 3},
      'plan': {'left_out': [{'document_id': 'l1', 'name': 'L1'}], 'left_out_more': 1}},
+    # REV-JR2-3: a document the server never answered for is counted apart.
+    {'totals': {'documents_done': 1, 'documents_not_reached': 2},
+     'documents': [_doc('done', 2), _doc('not-reached', 0, {'unanswered': True}), _doc('not-reached', 0)]},
     {'totals': {'documents_done': 1, 'documents_not_reached': 4}},
     # A plan limited by a search (SF): two documents it matched nothing in,
     # one it matched and worked, one it matched and was not reached.
