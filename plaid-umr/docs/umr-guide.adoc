@@ -387,6 +387,7 @@ A change to work a person made or accepted is marked **Accepted**.
 One attribute set on every node of a concept is one row with its count, and **Show where** lists a few of the nodes.
 
 **Approve as unverified** records every value the assistant writes as its proposal, unconfirmed, as a service's proposals are, to be confirmed later in the editor.
+A node's concept and attributes are recorded together, so an attribute change approved as unverified makes the whole node unverified, its concept included.
 **Approve as verified** records them as the assistant's work accepted by you.
 A confirmation in the plan is made under either button.
 Tick **Record as human-made** to record them as your own work instead, and the card then offers a single **Approve**.
