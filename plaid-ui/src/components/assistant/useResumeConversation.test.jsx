@@ -103,6 +103,44 @@ describe('useResumeConversation', () => {
     await unmount();
   });
 
+  // The read of the list is made as the surface comes up. A first message
+  // sent before it answers names a conversation the read cannot have, and
+  // clearing it took the conversation off screen with its turn still running
+  // (FLK1-4).
+  it('leaves a conversation named after the read began, though the read does not list it', async () => {
+    let answer;
+    const read = vi.fn(
+      () =>
+        new Promise((resolve) => {
+          answer = resolve;
+        }),
+    );
+    const picked = [];
+    const box = { id: null };
+    const Probe = () => {
+      useResumeConversation({
+        projectId: 'here',
+        conversationId: box.id,
+        onConversationId: (id, options) => {
+          box.id = id;
+          picked.push([id, options]);
+        },
+        reload: read,
+        resumeNewest: true,
+        onNothingOpen: () => {},
+        openConversationId: () => box.id,
+      });
+      return <span />;
+    };
+    const m = await renderComponent(<Probe />);
+    box.id = 'sent';
+    await m.rerender(<Probe />);
+    await m.step(async () => answer([row('3')]));
+    expect(picked).toEqual([]);
+    expect(box.id).toBe('sent');
+    await m.unmount();
+  });
+
   it('comes back to the thread this page session left, before the newest one', async () => {
     lastOpen.set('here', '1');
     const { picked, unmount } = await mount({ rows: [row('3'), row('1')], resumeNewest: true });

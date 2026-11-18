@@ -55,9 +55,15 @@ export const useResumeConversation = ({
     // The list for the project just left can answer after the one just opened,
     // and it would then resume that project's conversation on this screen.
     let cancelled = false;
+    // The conversation named when the read began. One named since (a message
+    // sent, a row clicked) was the reader's doing, and the read, made before
+    // it, cannot know it: it stands (FLK1-4: a first message sent as the list
+    // answered was taken off screen, its turn still running).
+    const named = idRef.current;
     reload().then((metas) => {
       if (cancelled || resumed.current === projectId) return;
       resumed.current = projectId;
+      if (idRef.current !== named) return;
       if (keepNewRef.current?.()) return;
       // Only a conversation of THIS project, whose keys are the only ones this
       // screen reads, and only one that still exists (it may have been deleted
