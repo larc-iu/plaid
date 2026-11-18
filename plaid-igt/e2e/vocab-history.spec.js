@@ -56,7 +56,7 @@ const openPast = async (page, itemId) => {
 
 test('a past state lists the entries as they were, read-only', async ({ page }) => {
   await openPast(page, ids.kai);
-  await expect(page.getByText('Delete entry "kaia"')).toBeVisible();
+  await expect(page.getByText('Delete entry "\u2068kaia\u2069"')).toBeVisible();
   await expect(page.getByRole('link', { name: /kaia/ })).toBeVisible();
   const form = page.locator('input[id$="-form"]');
   await expect(form).toHaveValue('kai');
@@ -84,7 +84,7 @@ test('an entry is put back as it was, and the form shows it', async ({ page }) =
   await expect(page.locator('input[id$="-form"]')).toHaveValue('kai');
   await expect(page.locator('input[id$="-form"]')).toBeEnabled();
   await expect(page.getByRole('button', { name: 'Save' })).toBeDisabled();
-  await expect(page.getByText(/Restore entry “kai” to/)).toBeVisible();
+  await expect(page.getByText(/Restore entry “\u2068kai\u2069” to/)).toBeVisible();
 });
 
 test('a deleted entry comes back, and Undo deletes it again', async ({ page }) => {
