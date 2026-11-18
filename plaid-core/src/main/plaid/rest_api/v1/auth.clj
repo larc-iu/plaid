@@ -463,10 +463,13 @@
                           ;; — nothing to bump, treat as already logged out.
                           {:status 204 :body nil}
                           (let [result (bump-password-changes! db user-id)]
-                            (if (:success result)
-                              {:status 204 :body nil}
-                              (do (log/error "Logout failed for" user-id ":" (:error result))
-                                  {:status 500 :body {:error "Internal error"}}))))))}}])
+                            (cond
+                              (:success result) {:status 204 :body nil}
+                              ;; A refusal with its own code (503 on a busy
+                              ;; database, which the clients retry) answers it.
+                              (:code result) {:status (:code result) :body {:error (:error result)}}
+                              :else (do (log/error "Logout failed for" user-id ":" (:error result))
+                                        {:status 500 :body {:error "Internal error"}}))))))}}])
 
 (def ^:private jwt-rejection-window-ms
   "How long one refused token stays quiet after the warning it earns. A client

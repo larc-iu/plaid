@@ -160,6 +160,17 @@
     (is (= 401 (:status post))
         "Old token must be rejected after /logout bumps password_changes")))
 
+(deftest logout-the-database-refused-answers-its-code
+  ;; A logout whose write met a busy database answers that refusal (503, which
+  ;; the clients retry), not a 500 (REV-CL-3).
+  (with-redefs [auth/bump-password-changes! (fn [_ _] {:success false :code 503
+                                                       :error "Database busy, please retry"})]
+    (let [r (rest-handler (-> (mock/request :post "/api/v1/logout")
+                              (mock/header "accept" "application/edn")
+                              (mock/header "Authorization" (str "Bearer " admin-token))))]
+      (is (= 503 (:status r)))
+      (is (= "Database busy, please retry" (:error (read-string (slurp (:body r)))))))))
+
 ;; ----------------------------------------------------------------------------
 ;; #95 — login rate limiting kicks in after 10 failures
 ;; ----------------------------------------------------------------------------
