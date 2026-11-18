@@ -1466,6 +1466,63 @@
       (is (some? (:operation (undone! admin-request op))))
       (is (nil? (undone))))))
 
+(deftest a-job-made-to-stand-again-is-undone-again-whole
+  ;; H2-5-1: the job's undo and its undo's undo wrote its rows since the
+  ;; job, so a second Undo job left every row as changed since
+  (let [{:keys [doc d2 vocab job before]} (job-world!)
+        after (state [doc d2] [vocab])
+        op (str (:operation (:body (undo-job admin-request job))))]
+    (is (some? (:operation (undone! admin-request op))))
+    (is (= after (state [doc d2] [vocab])))
+    (let [resp (:body (undo-job admin-request job))]
+      (is (zero? (:skipped-count resp)) (pr-str (:skipped resp)))
+      (is (= before (state [doc d2] [vocab])))
+      (is (= (str (:operation resp)) (-> (job-read admin-request job) :body :job/undone :operation))))))
+
+(defn- one-document-job!
+  "An ended job that wrote span values in one document only, under one group."
+  []
+  (let [{:keys [proj doc spans] :as w} (setup!)
+        job (str (random-uuid))
+        g (str (random-uuid))
+        in (fn [m p] (admin-request m (str p (if (str/includes? p "?") "&" "?") "group-id=" g
+                                           "&group-kind=job&group-message=Assistant%20job%3A%20gloss")))
+        _ (assert-ok (update-span in (nth spans 1) :value "JOB"))
+        _ (assert-ok (update-span in (nth spans 2) :value "JOB2"))
+        now (psc/now-iso)]
+    (psc/execute! db {:insert-into :jobs
+                      :values [{:id job :project_id (str proj) :app "igt" :started_by "admin@example.com"
+                                :state "done" :created_at now :instructions "Gloss"}]})
+    (psc/execute! db {:insert-into :job_documents
+                      :values [{:job_id job :document_id (str doc) :position 0 :state "done"
+                                :gloss_group g :updated_at now}]})
+    (assoc w :job job)))
+
+;; H2-5-1 (hunt 2026-11-18): every History page narrows its undo
+;; to its document, so a job whose undo wrote in that document alone could
+;; never be made to stand again from History.
+(deftest a-redo-narrowed-to-the-only-document-the-undo-wrote-makes-a-job-stand-again
+  (let [{:keys [job doc spans]} (one-document-job!)
+        undone #(-> (job-read admin-request job) :body :job/undone)
+        op (str (:operation (:body (undo-job admin-request job))))]
+    (is (some? (undone)))
+    (testing "the undo undone from the document's History: the job stands"
+      (is (some? (:operation (undone! admin-request op :document-id doc))))
+      (is (= "JOB" (-> (get-span admin-request (nth spans 1)) :body :span/value)))
+      (is (nil? (undone))))
+    (testing "and can be undone again from its page"
+      (let [again (str (:operation (:body (undo-job admin-request job))))]
+        (is (= again (:operation (undone))))
+        (is (not= "JOB" (-> (get-span admin-request (nth spans 1)) :body :span/value)))))))
+
+(deftest a-redo-narrowed-to-a-vocabulary-leaves-a-job-undone
+  ;; the job's undo also wrote document rows the vocabulary's History leaves
+  (let [{:keys [job vocab]} (job-world!)
+        undone #(-> (job-read admin-request job) :body :job/undone)
+        op (str (:operation (:body (undo-job admin-request job))))]
+    (is (some? (:operation (undone! admin-request op :vocab-layer-id vocab))))
+    (is (= op (:operation (undone))))))
+
 (deftest rev-un4-2-a-list-is-one-project-the-caller-reads
   (testing "an entry the caller cannot read: 403, nothing written"
     (let [{:keys [proj spans]} (setup!)
