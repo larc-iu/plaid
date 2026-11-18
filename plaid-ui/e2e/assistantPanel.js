@@ -17,7 +17,7 @@
 // apps and can resolve neither Playwright nor `@larc-iu/plaid-client` from
 // here, so `test`, `expect` and `seedAuth` come in as arguments.
 
-import { assistantStub } from './assistantChrome.js';
+import { assistantStub, noSavedConversations } from './assistantChrome.js';
 
 // Whose assistant stands in for "somebody else's" in the test below. Any app
 // but this one will do: the apps share projects, so an assistant belonging to
@@ -120,9 +120,12 @@ export const assistantPanelTests = ({
       .toBe(true);
   };
 
+  // Every test here is about a new thread, which a conversation stored on the
+  // project would replace.
   const open = async (page, services = stub) => {
     await seedAuth(page);
     await withAssistant(page, services);
+    await noSavedConversations(page);
     await openDocument(page);
   };
 

@@ -1,13 +1,19 @@
 import PlaidClient, { ROLES, uuidv7 } from '@larc-iu/plaid-client';
 import { randomUUID } from 'node:crypto';
 import { test, expect, seedAuth, readToken, CORE } from './fixtures.js';
-import { getFixture, roleOf } from './fixtureProject.js';
-import { skipUnlessAgent, startIgtAssistant } from './assistantService.js';
+import { roleOf } from './fixtureProject.js';
+import {
+  assistantProject,
+  deleteAssistantProject,
+  skipUnlessAgent,
+  startIgtAssistant,
+} from './assistantService.js';
 
 // The Assistant tab, without a model: conversations are records in the
 // user's key/value store that the service writes, so a plan can be seeded
-// straight into one (the ops name real layers, tokens, and spans of the
-// "E2E IGT Fixture" project) and the tab is driven from there. The service is
+// straight into one (the ops name real layers, tokens, and spans of a project
+// of the spec's own, so no other spec's conversations, assistants or writes
+// to the document reach it) and the tab is driven from there. The service is
 // the record's only writer, so Discard, a lost turn's settling and Approve
 // need an `assist` service online: those tests start the real one against a
 // scripted model (assistantService.js), and skip only where the plaid-agent
@@ -24,7 +30,6 @@ let projectId;
 let doc; // {id, name, version, sentenceId, wordId, wordBegin, surface}
 let pos; // the Part of Speech span layer on words
 let posSpan; // {id, value} of the first word's current POS span, or null
-const seeded = []; // conversation ids to delete
 const key = (kind, id) => `igt:assistant:${projectId}:${kind}:${id}`;
 
 const seedConversation = async ({
@@ -36,7 +41,6 @@ const seedConversation = async ({
   serviceId = 'igt:assist:e2e',
 }) => {
   const id = randomUUID();
-  seeded.push(id);
   await client.userData.put(userId, key('conv', id), { messages, display });
   await client.userData.put(userId, key('meta', id), {
     id,
@@ -121,7 +125,7 @@ const readPos = async () => {
 test.beforeAll(async () => {
   ({ userId } = readToken());
   client = new PlaidClient(CORE, readToken().token);
-  ({ projectId } = await getFixture());
+  ({ projectId } = await assistantProject('assistant tab'));
   const full = await client.projects.get(projectId);
   const textLayer = full.textLayers.find((l) => roleOf(l) === ROLES.BASELINE);
   const WORD = textLayer.tokenLayers.find((l) => roleOf(l) === ROLES.WORD);
@@ -149,24 +153,13 @@ test.beforeAll(async () => {
   posSpan = await readPos();
 });
 
-test.afterAll(async () => {
-  for (const id of seeded) {
-    for (const k of [key('conv', id), key('meta', id)]) {
-      await client.userData.delete(userId, k).catch(() => {});
-    }
-  }
-  // Whatever the approve test wrote, the fixture goes back to how it was.
-  const now = await readPos();
-  if (now && !posSpan) await client.spans.delete(now.id);
-  else if (now && posSpan && now.value !== posSpan.value)
-    await client.spans.update(now.id, posSpan.value);
-});
+test.afterAll(() => deleteAssistantProject(client, userId, projectId));
 
 test.beforeEach(async ({ page }) => {
   await seedAuth(page);
 });
 
-// The real assistant online on the fixture project for `fn`, then stopped
+// The real assistant online on the spec's project for `fn`, then stopped
 // and forgotten, so no offline assistant is left there.
 const withAssistant = async (serviceId, fn) => {
   skipUnlessAgent(test);
@@ -264,7 +257,7 @@ test('a turn whose request is gone offers Retry and clears the pending marker', 
       .poll(async () => (await client.userData.get(userId, key('meta', id))).value.pending)
       .toBeNull();
     // Not listed as unfinished any more.
-    await expect(page.getByText('unfinished')).toHaveCount(0);
+    await expect(page.getByRole('link', { name: /e2e lost turn/ })).not.toContainText('unfinished');
   });
 });
 
@@ -387,7 +380,7 @@ for (const [button, unverified] of [
       });
       await service.stop();
       // Forgotten once its channel has closed (a live one is refused, 409), so
-      // no offline assistant is left on the fixture project.
+      // no offline assistant is left on the project.
       await expect
         .poll(
           () =>

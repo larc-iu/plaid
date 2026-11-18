@@ -1,10 +1,14 @@
 import PlaidClient from '@larc-iu/plaid-client';
 import { test, expect, seedAuth, readToken, CORE } from './fixtures.js';
-import { getFixture } from './fixtureProject.js';
-import { skipUnlessAgent, startIgtAssistant } from './assistantService.js';
+import {
+  assistantProject,
+  deleteAssistantProject,
+  skipUnlessAgent,
+  startIgtAssistant,
+} from './assistantService.js';
 
 // What the assistant did, on screen (design/TRANSPARENCY.md): the real IGT
-// assistant on a scripted model writes text, reads the fixture document
+// assistant on a scripted model writes text, reads the spec's own document
 // twice, runs code, and answers. The text before each call stays on screen,
 // each step opens to its input and exactly what the tool returned (the
 // round stored beside the conversation), the same after a reload.
@@ -19,8 +23,10 @@ let projectId;
 test.beforeAll(async () => {
   ({ userId } = readToken());
   client = new PlaidClient(CORE, readToken().token);
-  ({ projectId } = await getFixture());
+  ({ projectId } = await assistantProject('assistant trace'));
 });
+
+test.afterAll(() => deleteAssistantProject(client, userId, projectId));
 
 test.beforeEach(async ({ page }) => {
   await seedAuth(page);
@@ -91,7 +97,7 @@ test('a turn keeps its text between calls and each step opens to what the tool r
     await page.getByRole('button', { name: /3 steps/ }).click();
     await expect(page.getByText('First I read the sample.')).toBeVisible();
     // The name is isolated (FSI and PDI) so a right-to-left title cannot
-    // reorder the label. Both reads of the one-sentence fixture match.
+    // reorder the label. Both reads of the one-sentence document match.
     const first = page
       .getByRole('button', { name: /^Read “\u2068?Sample IGT Document\u2069?”: sentence 1 of/ })
       .first();

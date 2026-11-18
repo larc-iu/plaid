@@ -32,6 +32,23 @@ export const assistantStub = (app, over = {}) => [
   },
 ];
 
+// The panel resumes the project's newest conversation, so one that another
+// spec left on a shared project (or is writing right now on another worker)
+// changed what a test of a new thread saw: a second Assistant picker, a thread
+// held read-only by another tab. Answering the panel's read of the saved
+// conversations with none starts it on a new thread whatever is stored. Only
+// the sidebar's list is answered: a record named in the address is still read.
+export const noSavedConversations = (page) =>
+  page.route(
+    (url) =>
+      /\/api\/v1\/users\/[^/]+\/data$/.test(url.pathname) &&
+      /^[a-z]+:assistant:[^:]+:meta:$/.test(url.searchParams.get('prefix') ?? ''),
+    (route) =>
+      route.request().method() === 'GET'
+        ? route.fulfill({ json: { entries: [], 'next-cursor': null } })
+        : route.continue(),
+  );
+
 export const assistantHarness = ({
   app,
   expect,
@@ -192,9 +209,12 @@ export const assistantChromeTests = ({
   seedConversation,
 }) => {
   const { withAssistant, panelOf, toggle, rail, openDock, gotoDocument, contentSelector } = chrome;
+  // The tests that open the panel this way are about a new thread. The two
+  // about stored ones seed their own and open the panel themselves.
   const open = async (page) => {
     await seedAuth(page);
     await withAssistant(page);
+    await noSavedConversations(page);
     await gotoDocument(page, documentId());
     await openDock(page);
   };

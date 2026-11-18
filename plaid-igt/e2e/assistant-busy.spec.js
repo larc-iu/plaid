@@ -1,7 +1,11 @@
 import PlaidClient from '@larc-iu/plaid-client';
 import { test, expect, seedAuth, readToken, CORE } from './fixtures.js';
-import { getFixture } from './fixtureProject.js';
-import { skipUnlessAgent, startIgtAssistant } from './assistantService.js';
+import {
+  assistantProject,
+  deleteAssistantProject,
+  skipUnlessAgent,
+  startIgtAssistant,
+} from './assistantService.js';
 
 // A model whose key has every request slot in use answers HTTP 429. The real
 // IGT assistant waits for a free slot and the panel says so (FX-BUSY,
@@ -15,8 +19,10 @@ let projectId;
 test.beforeAll(async () => {
   ({ userId } = readToken());
   client = new PlaidClient(CORE, readToken().token);
-  ({ projectId } = await getFixture());
+  ({ projectId } = await assistantProject('assistant busy'));
 });
+
+test.afterAll(() => deleteAssistantProject(client, userId, projectId));
 
 test.beforeEach(async ({ page }) => {
   await seedAuth(page);

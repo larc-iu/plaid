@@ -16,6 +16,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { coreUrl } from '../../plaid-ui/e2e/appFixtures.js';
+import { createScratchProject } from './fixtureProject.js';
 
 const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 const PYTHONPATH = [
@@ -241,4 +242,29 @@ export async function runScriptedJobWorker({ token, script, timeoutMs = 150_000 
     : '';
   fs.rmSync(dir, { recursive: true, force: true });
   return { code, log: output, traces };
+}
+
+// A project of its own for a spec that starts the assistant or writes
+// through it, so its conversations, its assistant online and the version of
+// its document are its own, whatever else runs at the same time. One
+// one-sentence document, named as the fixture's is.
+export const assistantProject = (label) =>
+  createScratchProject({
+    name: `${label} ${Date.now()}`,
+    docName: 'Sample IGT Document',
+    body: 'Todos los seres humanos nacen libres e iguales en dignidad y derechos.',
+  });
+
+// Every record the assistant keeps for `userId` on `projectId` (each
+// conversation, its sidebar entry, its rounds), deleted, then the project.
+// The conversations are the user's data, not the project's, so deleting the
+// project alone leaves them. Run whether the tests passed or not: a test cut
+// off before it learned its conversation's id cannot delete it itself.
+export async function deleteAssistantProject(client, userId, projectId) {
+  if (!projectId) return;
+  const records = await client.userData
+    .list(userId, { prefix: `igt:assistant:${projectId}:` })
+    .catch(() => []);
+  for (const e of records) await client.userData.delete(userId, e.key).catch(() => {});
+  await client.projects.delete(projectId).catch(() => {});
 }

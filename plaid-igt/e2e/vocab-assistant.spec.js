@@ -1,7 +1,7 @@
 import PlaidClient from '@larc-iu/plaid-client';
 import { test, expect, seedAuth, readToken, CORE } from './fixtures.js';
 import { getFixture } from './fixtureProject.js';
-import { assistantStub } from '../../plaid-ui/e2e/assistantChrome.js';
+import { assistantStub, noSavedConversations } from '../../plaid-ui/e2e/assistantChrome.js';
 
 // The assistant docked beside the entry list, on a vocabulary's Entries screen.
 //
@@ -31,10 +31,14 @@ const extraProjects = [];
 // under test reads.
 const ASSISTANT = assistantStub('igt');
 
-const withAssistant = (page, services = ASSISTANT) =>
-  page.route('**/api/v1/projects/*/services', (route) =>
+// Each test is about a new thread on the fixture project, so the panel is
+// kept from resuming a conversation another spec left or is writing there.
+const withAssistant = async (page, services = ASSISTANT) => {
+  await noSavedConversations(page);
+  await page.route('**/api/v1/projects/*/services', (route) =>
     route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(services) }),
   );
+};
 
 const client = () => new PlaidClient(CORE, readToken().token);
 
