@@ -949,6 +949,24 @@ describe('buildCldfDocuments — per-example media', () => {
     expect(bad.warnings.join(' ')).toMatch(/"Examples\/100%.mp3" is not in the archive/);
   });
 
+  it('finds a file whose relative URL starts with ./ (H2-13-4)', () => {
+    for (const url of ['./Examples/a.mp3', 'Examples/./a.mp3', 'x/../Examples/a.mp3']) {
+      const [doc] = buildCldfDocuments(
+        dataset(
+          'ID,Primary_Text,Analyzed_Word,Gloss,Audio\r\nex1,hola,hola,hi,m1\r\n',
+          [...BASIC_COLUMNS, col('Audio', 'mediaReference')],
+          [mediaTable],
+          {
+            'media.csv': `ID,Media_Type,Download_URL\r\nm1,audio/mpeg,${url}\r\n`,
+            'Examples/a.mp3': 'ID3fake',
+          },
+        ),
+      ).documents;
+      expect(doc.mediaName).toBe('a.mp3');
+      expect(doc.warnings.join(' ')).not.toMatch(/not in the archive/);
+    }
+  });
+
   it('says nothing about media once each example is its own document', () => {
     expect(buildCldfDocuments(ds()).warnings.join(' ')).not.toMatch(/media file/);
   });

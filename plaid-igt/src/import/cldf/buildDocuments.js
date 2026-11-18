@@ -329,6 +329,18 @@ const decodedUrl = (url) => {
   }
 };
 
+// A path with its "." and ".." segments resolved: "./media/a.wav" is
+// "media/a.wav", as a relative URL is (H2-13-4).
+const withoutDotSegments = (p) => {
+  const out = [];
+  for (const seg of p.split('/')) {
+    if (seg === '.') continue;
+    if (seg === '..') out.pop();
+    else out.push(seg);
+  }
+  return out.join('/');
+};
+
 function resolveMedia(dataset, index, { contributionId, mediaId }, warnings) {
   const table = index.table;
   if (!table) return null;
@@ -343,7 +355,9 @@ function resolveMedia(dataset, index, { contributionId, mediaId }, warnings) {
   }
   const path = inZip || url;
   if (!path) return null;
-  const entry = (p) => dataset.entries?.[`${dataset.baseDir}${p}`] ?? dataset.entries?.[p];
+  const entry = (p) =>
+    dataset.entries?.[withoutDotSegments(`${dataset.baseDir}${p}`)] ??
+    dataset.entries?.[withoutDotSegments(p)];
   // A relative URL is percent-encoded ("Story%20one.wav"), the archive's
   // entry is not.
   const decoded = inZip ? path : decodedUrl(path);
