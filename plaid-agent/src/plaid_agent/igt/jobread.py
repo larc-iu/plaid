@@ -380,9 +380,13 @@ def summary(job: Dict[str, Any], note_chars: Optional[int] = JOB_SUMMARY_NOTE_CH
     if stopped or (job.get('reason') in ('worker-lost', 'starter-access') and 'notice' not in report):
         # A report core wrote from the rows its worker last recorded: History
         # may hold more (S3-1, REV-SJ1-10, the page's own line).
-        lines.append(('Stopped with no worker running.' if stopped else 'Ended by the server.') + (
-            ' The counts are what its worker recorded before it stopped, and History holds every change it wrote.'
-            if job.get('wrote') else ''))
+        # The reason already says what ended a job the server failed: only
+        # the hedge is added to it (REV-SJ1-R2-3).
+        hedge = ('The counts are what its worker recorded before it stopped, and History holds every change it '
+                 'wrote.') if job.get('wrote') else ''
+        said = ' '.join(x for x in ('Stopped with no worker running.' if stopped else '', hedge) if x)
+        if said:
+            lines.append(said)
     planned = plan_line(report)
     if planned:
         lines.append(planned)

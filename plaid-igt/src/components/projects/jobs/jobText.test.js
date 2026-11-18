@@ -121,9 +121,12 @@ describe('the line of a job the server ended', () => {
       'Stopped with no worker running.',
     );
     for (const reason of ['worker-lost', 'starter-access']) {
-      expect(serverEndLine({ ...core({ stopped: null }), reason, wrote: true })).toBe(
-        `Ended by the server.${hedge}`,
-      );
+      expect(serverEndLine({ ...core({ stopped: null }), reason, wrote: true })).toBe(hedge.trim());
+    }
+  });
+  it('adds nothing to a reason that already says what ended the job, when the job wrote nothing', () => {
+    for (const reason of ['worker-lost', 'starter-access']) {
+      expect(serverEndLine({ report: { stopped: null }, reason, wrote: false })).toBe(null);
     }
   });
   it('says nothing of a report its worker wrote', () => {

@@ -149,10 +149,11 @@ export const jobEditedText = (job) =>
 // count no changes.
 // The line under the headline of a job the server ended with a report of
 // its own, made from the rows its worker last recorded: one stopped with no
-// worker running, or one the server failed (`worker-lost`, or `starter-access`
-// at a claim) whose report has no worker's `notice`. What ended it, and,
-// when History holds its writes, that the counts may be short (S3-1,
-// REV-SJ1-10). Null for any other.
+// worker running ("Stopped with no worker running.", a fact its reason does
+// not say), or one the server failed (`worker-lost`, or `starter-access` at a
+// claim) whose report has no worker's `notice`, whose reason words already
+// say what ended it. When History holds its writes, that the counts may be
+// short (S3-1, REV-SJ1-10, REV-SJ1-R2-3). Null when there is nothing to add.
 export const serverEndLine = (job) => {
   const report = job?.report;
   if (!report) return null;
@@ -160,8 +161,9 @@ export const serverEndLine = (job) => {
   const failed =
     ['worker-lost', 'starter-access'].includes(job.reason) && report.notice === undefined;
   if (!stopped && !failed) return null;
-  const first = stopped ? 'Stopped with no worker running.' : 'Ended by the server.';
-  return job.wrote ? `${first} The counts are what its worker recorded before it stopped.` : first;
+  const hedge = job.wrote ? 'The counts are what its worker recorded before it stopped.' : null;
+  if (!stopped) return hedge;
+  return hedge ? `Stopped with no worker running. ${hedge}` : 'Stopped with no worker running.';
 };
 
 export const wroteNothing = (job) => {

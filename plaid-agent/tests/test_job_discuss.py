@@ -510,7 +510,8 @@ def test_a_job_the_server_failed_says_so_and_that_its_counts_may_be_short():
     for reason in ('worker-lost', 'starter-access'):
         said = '\n'.join(jobread.summary({**base, 'reason': reason,
                                           'report': {'stopped': None, 'totals': {'changes': 0}, 'documents': []}}))
-        assert 'Ended by the server. The counts are what its worker recorded before it stopped' in said
+        assert 'The counts are what its worker recorded before it stopped' in said
+        assert 'Ended by the server' not in said
     said = '\n'.join(jobread.summary({**base, 'reason': 'starter-access',
                                       'report': {'stopped': None, 'notice': None, 'totals': {}, 'documents': []}}))
-    assert 'Ended by the server.' not in said
+    assert 'The counts are what its worker recorded' not in said
