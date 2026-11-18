@@ -1642,6 +1642,14 @@ class Gone(Exception):
     """The document is gone."""
 
 
+def first_request(e: BaseException) -> bool:
+    """Whether a write that met core's passing trouble may be made again
+    from its gate (D21): the trouble came before its first request went out
+    (``wrote_any`` is set on what a send raises), and it was not put off
+    (:class:`Deferred`, a lock lost included) or found gone."""
+    return not isinstance(e, (Deferred, Gone)) and not hasattr(e, 'wrote_any')
+
+
 def _status(e: BaseException) -> int:
     """The status of core's refusal in ``e`` or in what caused it (a lost
     lock's renewal included), else 0."""
@@ -3608,12 +3616,16 @@ class IgtRunner:
 
             def put_off():
                 raise Deferred(document_id)
-            # Tried again from the gate after core's passing trouble, and put
-            # off when it outlasts the tries, as a selection's write is: a
-            # passing error never runs the model context again (D21).
+            # Tried again from the gate after core's passing trouble met
+            # before its first request, and put off when it outlasts the
+            # tries: such an error never runs the model context again (D21).
+            # Once a request of it went out (``wrote_any`` set, whatever its
+            # value), the piece is taken again over what is left, as before
+            # (REV-L2B): its own tries that may have landed would read as
+            # changes since the piece read the document.
             try:
                 core_job.through_core(self.job, lambda: self.write(project, document_id, *staged, summary=key),
-                                      gave_up=put_off)
+                                      gave_up=put_off, retry=first_request)
             finally:
                 self.hold_cursor.pop(document_id, None)
             core_job.through_core(self.job, lambda: self.end_summary(key))
@@ -3783,7 +3795,7 @@ class IgtRunner:
                 try:
                     core_job.through_core(job, lambda: self.write(project, document_id, ws, doc, part, prints,
                                                                   list(ws.ops), note, piece_tag(piece), summary=key),
-                                          gave_up=gave_up)
+                                          gave_up=gave_up, retry=first_request)
                 except Deferred:
                     # Its note is never shown beside no changes: the piece is
                     # taken again, once, at the start of the walk.

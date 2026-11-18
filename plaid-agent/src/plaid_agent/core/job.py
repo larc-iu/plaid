@@ -777,7 +777,8 @@ def run_job(job: Job, runner) -> Optional[Dict[str, Any]]:
 
 
 def through_core(job: Job, step: Callable[[], Any], gave_up: Optional[Callable[[], Any]] = None,
-                 wait: Optional[Callable[[float], None]] = None):
+                 wait: Optional[Callable[[float], None]] = None,
+                 retry: Optional[Callable[[BaseException], bool]] = None):
     """THE way every call the worker makes to core is made (REV-J-B2 S3-4):
     ``step`` is a call, or a step of calls that is safe to make again from
     its start (each reads the documents and the job's record as they are,
@@ -789,7 +790,9 @@ def through_core(job: Job, step: Callable[[], Any], gave_up: Optional[Callable[[
     (:meth:`Job.renewed`) is the step made again at once. Anything else goes
     up at once, for :func:`run_job` to sort: the job no longer this
     worker's, the starter's access gone, a fault. ``wait`` waits between
-    tries in place of ``job.sleep``, which stops at a stop."""
+    tries in place of ``job.sleep``, which stops at a stop. ``retry(e)``,
+    where given, says whether a step that met passing trouble may be made
+    again: when it says no, the error goes up at once."""
     for n in range(1, JOB_CORE_TRIES + 1):
         try:
             return step()
@@ -797,7 +800,7 @@ def through_core(job: Job, step: Callable[[], Any], gave_up: Optional[Callable[[
             if core_fault(e) == 'access' and n < JOB_CORE_TRIES and job.renewed(e):
                 logger.warning('Job %s: its token was refused and a heartbeat renewed it: %s', job.id, e)
                 continue
-            if core_fault(e) != 'passing':
+            if core_fault(e) != 'passing' or (retry is not None and not retry(e)):
                 raise
             logger.warning('Job %s: core did not take a call (%s of %s): %s', job.id, n, JOB_CORE_TRIES, e)
             if n == JOB_CORE_TRIES:
@@ -809,23 +812,16 @@ def through_core(job: Job, step: Callable[[], Any], gave_up: Optional[Callable[[
 
 def tool_through_core(job: Job, ws, call: Callable[[], Any]):
     """A model's tool call in a job's piece, made again while core is busy
-    or out of reach (:func:`core_fault` ``passing``), as every call to core
-    is, when it staged nothing before it failed: the workspace's ops and
-    tables as they were (D21). So a read that meets core's passing trouble
-    never runs the piece's model context again. A call that staged
-    something, or trouble that outlasts :data:`JOB_CORE_TRIES`, goes up
-    for the piece's caller to sort."""
+    or out of reach, as every call to core is (:func:`through_core`), when
+    it staged nothing before it failed: the workspace's ops and tables as
+    they were (D21). So a read that meets core's passing trouble never runs
+    the piece's model context again. A call that staged something, or
+    trouble that outlasts the tries, goes up for the piece's caller to
+    sort."""
     def staged():
         return [id(o) for o in ws.ops], len(getattr(ws, 'tables', None) or ())
-    for n in range(1, JOB_CORE_TRIES + 1):
-        before = staged()
-        try:
-            return call()
-        except Exception as e:  # noqa: BLE001 - core's passing trouble is tried again, the rest goes up
-            if core_fault(e) != 'passing' or n == JOB_CORE_TRIES or staged() != before:
-                raise
-            logger.warning('Job %s: core did not take a tool\'s call (%s of %s): %s', job.id, n, JOB_CORE_TRIES, e)
-            job.sleep(JOB_CORE_WAIT_S * n)
+    before = staged()
+    return through_core(job, call, retry=lambda e: staged() == before)
 
 
 def _stopped_parts(job: Job, runner, harmonize, entries):
