@@ -1,9 +1,9 @@
-import { useMemo, useState, useEffect } from 'react';
+import { useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import { Info } from 'lucide-react';
 import { MarkedText } from '@ui/components/shared/MarkedText.jsx';
 import { Notice } from '@ui/components/shared/Notice.jsx';
-import { pageSlice, TALL_LIST_PAGE_SIZE } from '@ui/hooks/usePagedList';
+import { usePagedList, TALL_LIST_PAGE_SIZE } from '@ui/hooks/usePagedList';
 import { ListPager } from '@ui/components/shared/list-search';
 import { detectDirection } from '@ui/domain/textDirection.js';
 import { countOf } from '@ui/lib/plural.js';
@@ -13,7 +13,9 @@ import { countOf } from '@ui/lib/plural.js';
 // the annotation editor (deep-linked via ?sent=), built by `hrefFor`. The full
 // match set is paged client-side (the query API returns all matches at once —
 // it has no offset/cursor), at the shared tall-row page size: a hit is a whole
-// sentence under a document heading, not a table row.
+// sentence under a document heading, not a table row. The page is in the URL
+// (`?page=`), so Back from a hit returns to the page it was on. A new request
+// drops it (SearchPage).
 export const SearchResults = ({
   groups,
   count,
@@ -23,14 +25,10 @@ export const SearchResults = ({
   docName,
   hrefFor,
 }) => {
-  const [page, setPage] = useState(0);
-  useEffect(() => {
-    setPage(0);
-  }, [groups]);
-
-  // Memoized so `pageItems` keeps its identity across renders that change
-  // neither the results nor the page — the grouping below keys on it.
-  const paged = useMemo(() => pageSlice(groups, page, TALL_LIST_PAGE_SIZE), [groups, page]);
+  const { setPage, ...paged } = usePagedList(groups, {
+    pageSize: TALL_LIST_PAGE_SIZE,
+    urlParam: 'page',
+  });
   const { pageItems } = paged;
 
   // Group only the current page's sentences by document for rendering.

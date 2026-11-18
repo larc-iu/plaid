@@ -172,6 +172,8 @@ export const SearchPage = () => {
         (params) => {
           const next = new URLSearchParams(params);
           next.set('q', queryText);
+          // Another request's results open on their first page.
+          next.delete('page');
           return next;
         },
         { replace: true },
