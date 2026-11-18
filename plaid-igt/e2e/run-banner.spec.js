@@ -111,8 +111,10 @@ const toastsOver = async (page, ms) => {
   return [...seen];
 };
 
-// Translate, then link, by default. No analysis service is online here.
-const open = async (page, steps = { translate: true, copy: false, analyze: true, link: true }) => {
+// Translate, then link, by default. The analysis step is off: no analysis
+// service of this spec's is online, and another spec's on the shared fixture
+// project (popover-scroll's probe) would otherwise add a step (FLK3-5).
+const open = async (page, steps = { translate: true, copy: false, analyze: false, link: true }) => {
   if (page.url() !== 'about:blank') await page.goto('about:blank');
   await seedAuth(page);
   await page.addInitScript(
