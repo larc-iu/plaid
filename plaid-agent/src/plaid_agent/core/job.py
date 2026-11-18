@@ -451,6 +451,7 @@ class Job:
         #: every client :meth:`client` handed out, each given the token of
         #: every heartbeat (D6)
         self._clients: 'weakref.WeakSet' = weakref.WeakSet()
+        self._clients_lock = threading.Lock()
         #: the token :meth:`renewed` last got
         self._renewed: Optional[str] = None
         self._stop = threading.Event()
@@ -502,8 +503,9 @@ class Job:
             if isinstance(answer, dict):
                 self.state = answer.get('state') or self.state
                 self.token = answer.get('token') or self.token
-                for c in list(self._clients):
-                    c.token = self.token
+                with self._clients_lock:
+                    for c in list(self._clients):
+                        c.token = self.token
             return True
 
     def ended(self) -> JobStopped:
@@ -599,7 +601,11 @@ class Job:
         that outlasts the token's hour, or a starter's logout, never leaves it
         with a token core no longer takes (D6)."""
         c = self.client_for(self.token)
-        self._clients.add(c)
+        with self._clients_lock:
+            # The heartbeat's thread hands each a new token, one that came
+            # while this one was built too.
+            self._clients.add(c)
+            c.token = self.token
         return c
 
     # --- waits ---------------------------------------------------------------
