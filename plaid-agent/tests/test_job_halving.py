@@ -32,12 +32,13 @@ def looping(asked, n, kwargs):
     return reply(calls=[call(100 + n, 'analyses_of', {'form': f'x{n}'})])
 
 
-def cut_twice(asked, n, kwargs):
-    """A model that stages, then is cut at its output limit twice: the
-    stretch fails ``output`` with work staged."""
+def repeating(asked, n, kwargs):
+    """A model that stages, then fails ``repeating``: a failure, not a piece
+    that ended without finishing (a second output cut or used-up steps write
+    what was staged, REV-RW-6), so nothing it staged is written."""
     if n == 1:
         return reply(calls=analyse(asked))
-    return reply('...', finish='length')
+    raise core_job.TurnFailed(core_job.REPEATING_LINE)
 
 
 def test_a_stretch_over_the_round_cap_is_halved_into_three_and_two(monkeypatch):
@@ -81,7 +82,7 @@ def test_nothing_a_failed_stretch_staged_is_written(monkeypatch):
 
     def answer(asked, n, kwargs):
         if 2 in targets_named(asked):
-            return cut_twice(asked, n, kwargs)
+            return repeating(asked, n, kwargs)
         return reply(calls=analyse(asked)) if n == 1 else reply('Done.')
     use(monkeypatch, Model(answer))
     runner(job).document('d1')

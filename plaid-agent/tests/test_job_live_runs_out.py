@@ -75,5 +75,5 @@ def test_a_whole_document_staged_then_out_of_calls_is_closed_and_written(world, 
     (doc,) = finished['report']['documents']
     assert doc['counts']['words'] == N and doc['skipped'] == []
     assert all(len(_morphs(admin, s, 'dA', f'dA-s{i}w1')) == 1 for i in range(1, N + 1))
-    assert finished['report']['pieces_closed'] == 1
+    assert finished['report']['pieces_ended'] == 1
     assert [n['note'] for n in finished['report']['notes']] == ['Staged every word. Nothing unfinished.']

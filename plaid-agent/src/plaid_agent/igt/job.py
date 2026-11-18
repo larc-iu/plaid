@@ -2793,12 +2793,14 @@ class IgtRunner:
         ws, note = staged
         if ws.answered_nothing:
             # Asked twice, it staged nothing and said nothing: a piece that
-            # failed, so the documents are worked one piece each, as after
+            # failed, so the documents are worked in stretches, as after
             # any failure of the piece (DF1 item 1). Not a rule of reading.
+            # Its row says so (REV-RW-6).
             core_job.through_core(job, lambda: self.fall_back(SELECTION, 'failed'), gave_up=lambda: None)
+            core_job.through_core(job, lambda: self.failed_whole(None, None, [], NO_ANSWER))
             return False
         key = analysis_key(canonical({'document': None, 'first': None, 'whole': True}))
-        self.begin_summary(key, None, None, [], True, note, self.refused_of(ws, None), closed=ws.ended is not None)
+        self.begin_summary(key, None, None, [], True, note, self.refused_of(ws, None), ended=ws.ended)
         # The piece's note and tables, tried again on their own: a passing
         # error on their row never runs the model context again (REV-JG3-9).
         core_job.through_core(job, lambda: self.record_piece(
@@ -3652,7 +3654,7 @@ class IgtRunner:
                     self.after_text_failed(document_id, doc, part, piece, kind)
                     return
             self.begin_summary(key, document_id, doc.name, part, False, note, self.refused_of(ws, document_id),
-                               closed=ws.ended is not None,
+                               ended=ws.ended,
                                after_text='added' if self.only_new() is not None else 'edited')
             self.record_piece(project, piece, note, ws.tables, doc, part)
             self.record_refusals(ws, document_id)
@@ -3722,10 +3724,14 @@ class IgtRunner:
         prints = {s.id: ws.sentence_print(doc, s) for s in doc.sentences}
         message = self.message(ws, project, doc, part, st, whole)
         note = self.run_piece(ws, project, message, document_id, sentences=self.in_sentences() and not whole)
+        if whole and ws.answered_nothing:
+            # A whole document asked twice that staged and said nothing fails
+            # as any whole piece does: its document goes to stretches (REV-RW-6).
+            raise StretchFailed(NO_ANSWER, 'no answer')
         piece = {'document': document_id, 'first': part[0].id if part else None, 'whole': whole}
         key = analysis_key(canonical(piece))
         self.begin_summary(key, document_id, doc.name, part, whole, note, self.refused_of(ws, document_id),
-                           closed=ws.ended is not None)
+                           ended=ws.ended)
         if ws.answered_nothing:
             # Asked twice, it staged nothing and said nothing: its sentences
             # are skipped with a reason of their own, never counted worked.
@@ -3868,6 +3874,13 @@ class IgtRunner:
             # none when the call failed.
             ws.ended = BUDGET
             return dataclasses.replace(result, text='', failure=None) if result.failure is not None else result
+        if result.failure is not None and getattr(result.failure, 'cut_at', None) and pace.asks_again \
+                and (ws.ops or getattr(ws, 'tables', None)):
+            # A piece's second call at its output limit, with work staged:
+            # it ends without finishing as a piece whose steps are used up
+            # does, and what it staged is written (REV-RW-6).
+            ws.ended = OUTPUT
+            return dataclasses.replace(result, text='', failure=None)
         if result.failure is not None:
             raise result.failure
         return result
@@ -5123,14 +5136,15 @@ class IgtRunner:
 
     def begin_summary(self, key: str, document_id: Optional[str], name: Optional[str], part: List[Sentence],
                       whole: bool, note: str, refused: List[Dict[str, Any]],
-                      after_text: Optional[str] = None, closed: bool = False,
+                      after_text: Optional[str] = None, ended: Optional[str] = None,
                       failed: Optional[str] = None) -> None:
         """A piece whose model context has ended, summed up once what it
         wrote is known (:meth:`end_summary`). The same piece taken up again
         (after a write put off, a document gone for a while) keeps the
         writes of its earlier run and adds its model calls, and its note and
-        refusals are the last run's. ``closed``: it ended by its closing call
-        (BRIEF RW B2). ``failed``: the failure's kind of a whole-document or
+        refusals are the last run's. ``ended``: what ended it without
+        finishing (``budget``, its steps used up, or ``output``, a second call
+        at its output limit, REV-RW-6). ``failed``: the failure's kind of a whole-document or
         selection piece whose documents then went to stretches (B1)."""
         earlier = self.unsummed.get(key) or {}
         ranged = bool(part) and not whole
@@ -5148,7 +5162,7 @@ class IgtRunner:
             # A piece after a text edit (RPF3-B): ``added`` under onlynew,
             # else ``edited``, which the work list words.
             **({'after_text': after_text} if after_text else {}),
-            **({'closed': True} if closed else {}), **({'failed': failed} if failed else {})}
+            **({'ended': ended} if ended else {}), **({'failed': failed} if failed else {})}
 
     def end_summary(self, key: str) -> None:
         """Keep the summary of piece ``key`` among the job's decisions, once
@@ -5204,7 +5218,8 @@ class IgtRunner:
                  **({'skipped': skipped} if skipped else {}), **({'refused': p['refused']} if p['refused'] else {}),
                  **({'findings': p['findings']} if p.get('findings') else {}),
                  **({'after_text': p['after_text']} if p.get('after_text') else {}),
-                 **({'closed': True} if p.get('closed') else {}), **({'failed': p['failed']} if p.get('failed') else {}),
+                 **({'ended': p['ended']} if p.get('ended') else {}),
+                 **({'failed': p['failed']} if p.get('failed') else {}),
                  **({'matching': p['matching']} if p.get('matching') else {})}
         row = self.summary_row(p['seq'], value, p['document'], p['first_id'])
         if row is None:
@@ -5928,8 +5943,8 @@ class IgtRunner:
             logger.warning('Job %s: its plan and proposed changes could not be read for the report: %s', job.id, e)
             rows = []
         plan, changes, notes, dropped, fallback, tables_dropped = self.plan_stored(rows), [], [], 0, [], 0
-        # The pieces that ended by their closing call (BRIEF RW B5), each once.
-        closed: set = set()
+        # The pieces that ended without finishing (REV-RW-6), each once.
+        ended: set = set()
         keys: set = set()
         #: a word's last row, by its form (RPF3-B)
         respelled: Dict[str, Dict[str, Any]] = {}
@@ -5956,8 +5971,8 @@ class IgtRunner:
             except (ValueError, TypeError, KeyError):
                 continue
             if form == PIECE_FORM:
-                if isinstance(value, dict) and value.get('closed'):
-                    closed.add(r.get('key'))
+                if isinstance(value, dict) and value.get('ended'):
+                    ended.add(r.get('key'))
             elif form.startswith(FALLBACK_FORM):
                 fallback.append({'document_id': None if value.get('document') == SELECTION
                                  else value.get('document'), 'reason': value.get('reason')})
@@ -6032,7 +6047,7 @@ class IgtRunner:
                 'proposed': listed, 'proposed_more': more + dropped, 'proposed_dropped': dropped,
                 'notes': shown_notes, 'notes_more': notes_more, 'tables': made[:JOB_TABLES_MAX],
                 'tables_more': max(0, len(made) - JOB_TABLES_MAX) + tables_dropped,
-                **({'pieces_closed': len(closed)} if closed else {}),
+                **({'pieces_ended': len(ended)} if ended else {}),
                 **({'findings': findings, **getattr(self, 'findings_counts', {})} if findings else {})}
 
     def findings_of(self, plan: Optional[Dict[str, Any]], found: List[Dict[str, Any]],

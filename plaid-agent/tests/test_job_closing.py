@@ -213,5 +213,5 @@ def test_a_closed_piece_says_so_on_its_row_and_the_report_counts_it(monkeypatch)
     use(monkeypatch, Model(answer))
     finished = run_job(job, runner(job))
     rows = _summaries(client)
-    assert [bool(r.get('closed')) for r in rows] == [True, False], rows
-    assert finished['report']['pieces_closed'] == 1
+    assert [r.get('ended') for r in rows] == ['budget', None], rows
+    assert finished['report']['pieces_ended'] == 1

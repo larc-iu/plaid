@@ -74,27 +74,29 @@ def test_an_answer_of_nothing_is_asked_again_once_and_its_second_answer_written(
 
 @pytest.mark.parametrize('plan', ['sentences', 'document'])
 def test_a_piece_that_answers_nothing_twice_has_its_sentences_skipped_as_no_answer(monkeypatch, plan):
-    """s1-s2's piece (the whole document under a plan by documents) answers
-    nothing, and nothing again: its sentences are skipped "no-answer", not
-    worked, not Left blank, and the totals count them. The other piece is
-    written."""
+    """s1-s2's piece answers nothing, and nothing again: its sentences are
+    skipped "no-answer", not worked, not Left blank, and the totals count
+    them. The other piece is written. Under a plan by documents the whole
+    document answers nothing first and goes to stretches (REV-RW-6), whose
+    s1-s2 piece then does the same."""
     def answer(asked, n, kwargs):
-        if plan == 'document' or 1 in targets_named(asked):
+        if 'Your piece: the whole document' in asked or 1 in targets_named(asked):
             return reply(None)
         return _stage(asked) if n == 1 else reply('Done.')
     finished, model = _run(monkeypatch, plan, answer)
     assert finished['state'] == 'done'
     (doc,) = finished['report']['documents']
-    skipped = ['s1', 's2'] if plan == 'sentences' else [f's{i}' for i in range(1, N + 1)]
+    skipped = ['s1', 's2']
     assert [s['sentence'] for s in doc['skipped']] == skipped
     assert all(s['reason'] == igt_job.NO_ANSWER and s['kind'] is None for s in doc['skipped'])
     assert finished['report']['totals']['skipped_no_answer'] == len(skipped)
     assert not any(e['sentence_id'] in {f'd1-{x}' for x in skipped} for e in doc['left']), doc['left']
     assert doc['counts']['words'] == 2 * (N - len(skipped))
     assert doc['counts'].get('analyzed', 0) == N - len(skipped)
-    nothing = [c for c in model.calls if plan == 'document' or 1 in targets_named(c['asked'])]
-    # Two calls: the answer, and the one asked again. Never a third.
-    assert [c['n'] for c in nothing] == [1, 2]
+    nothing = [c for c in model.calls if 'Your piece: the whole document' in c['asked']
+               or 1 in targets_named(c['asked'])]
+    # Two calls a piece: the answer, and the one asked again. Never a third.
+    assert [c['n'] for c in nothing] == ([1, 2] if plan == 'sentences' else [1, 2, 1, 2])
 
 
 @pytest.mark.parametrize('plan', ['sentences', 'document'])
@@ -107,13 +109,13 @@ def test_the_blanks_of_skipped_sentences_are_counted_apart(monkeypatch, plan):
     from plaid_agent.igt import jobread
 
     def answer(asked, n, kwargs):
-        if plan == 'document' or 1 in targets_named(asked):
+        if 'Your piece: the whole document' in asked or 1 in targets_named(asked):
             return reply(None)
         return _stage(asked) if n == 1 else reply('Done.')
     finished, _ = _run(monkeypatch, plan, answer)
     report = finished['report']
     (doc,) = report['documents']
-    words = 4 if plan == 'sentences' else 2 * N
+    words = 4
     rows = [{'target': 'segmentation', 'unit': 'word', 'left': 0, 'untouched': 0, 'not_reached': 0, 'skipped': words},
             {'target': 'Morph Gloss', 'unit': 'morpheme', 'left': 0, 'untouched': 0, 'not_reached': 0,
              'skipped': 0}]
