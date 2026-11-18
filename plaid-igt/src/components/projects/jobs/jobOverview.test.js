@@ -293,8 +293,27 @@ describe('what to check', () => {
     expect(tab.count).toBe(counted);
   });
 
-  it('has none for a job with no report', () => {
-    expect(toCheckRows({ state: 'running', report: null })).toEqual([]);
+  // REV-RP-4: core fails a job before its worker's report arrives, and the
+  // job's own document rows still say which documents were not finished.
+  it('builds the rows of documents from the job’s own rows for an ended job with no report', () => {
+    const job = {
+      state: 'failed',
+      report: null,
+      documents: [
+        { documentId: 'd1', state: 'not-reached', done: 0, counts: { changes: 3 } },
+        { documentId: 'd2', state: 'in-use', counts: {} },
+        { documentId: 'd3', state: 'not-reached', done: 0, counts: {} },
+        { documentId: 'd4', state: 'done', done: 4, counts: { changes: 1 } },
+      ],
+    };
+    expect(toCheckRows(job).map((r) => [r.text, r.view, r.filter])).toEqual([
+      ['1 document in use, not worked', 'documents', 'in-use'],
+      ['1 document not reached', 'documents', 'not-reached'],
+      ['1 document stopped partway', 'documents', 'partway'],
+    ]);
+    expect(toCheckRows({ state: 'failed', report: null, documents: [job.documents[3]] })).toEqual(
+      [],
+    );
   });
 });
 
@@ -381,6 +400,13 @@ describe('the sections', () => {
     };
     expect(keys(jobSections(job, null))).toEqual(['overview', 'documents 1', 'setup']);
     expect(keys(jobSections(job, 0))).toEqual(['overview', 'documents 1', 'setup']);
+    // An ended job with no report keeps its Notes.
+    expect(keys(jobSections({ ...job, report: null }, 3))).toEqual([
+      'overview',
+      'documents 1',
+      'notes 3',
+      'setup',
+    ]);
   });
 
   it('draws Entries for the machine drafts of a lexicon of the project', () => {

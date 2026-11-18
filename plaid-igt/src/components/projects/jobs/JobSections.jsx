@@ -141,6 +141,8 @@ export const ReportOverview = ({ job, sectionHref, sections }) => {
   const report = job.report;
   const notice = report && !job.undone ? noticeOf(report) : null;
   const findings = typeof report?.findings === 'string' ? report.findings : '';
+  // With no report, only the rows the job's documents give, and no Nothing.
+  const rows = toCheckRows(job);
   return (
     <section aria-label="Report" className="mt-6">
       <p className="max-w-3xl text-base font-medium" data-testid="job-headline">
@@ -166,8 +168,8 @@ export const ReportOverview = ({ job, sectionHref, sections }) => {
         <JobFindings findings={findings} pieces={report.findingsPieces} cut={report.findingsCut} />
       )}
       {/* An undone job's writes are taken back: nothing of them is to check. */}
-      {!job.undone && (
-        <ToCheck rows={toCheckRows(job)} sectionHref={sectionHref} sections={sections} />
+      {!job.undone && (report || rows.length > 0) && (
+        <ToCheck rows={rows} sectionHref={sectionHref} sections={sections} />
       )}
       {report && <TotalsList report={report} undone={job.undone ?? null} />}
       {report && <AssistantSummary report={report} />}

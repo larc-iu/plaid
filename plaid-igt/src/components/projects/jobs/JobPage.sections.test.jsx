@@ -240,6 +240,29 @@ describe('the Overview of an ended job', () => {
     await v.unmount();
   });
 
+  // REV-RP-4: what the page knows of an ended job with no report is its
+  // documents' rows: it says what they hold and claims nothing else.
+  it('draws the documents to check of an ended job with no report, and no Nothing.', async () => {
+    const failed = {
+      ...ENDED,
+      state: 'failed',
+      reason: 'starter-access',
+      documents: [doc(1, { state: 'not-reached', done: 0, counts: { changes: 3 } }), doc(2)],
+      report: null,
+    };
+    const v = await mount(clientOf(failed));
+    expect(all(v.container, '[data-testid="job-to-check"] li > span').map(text)).toEqual([
+      '1 document stopped partway',
+    ]);
+    expect(byText(v.container, 'h3', 'Totals')).toBeNull();
+    await v.unmount();
+    const clean = { ...failed, documents: [doc(1), doc(2)] };
+    const w = await mount(clientOf(clean));
+    expect(byText(w.container, 'h3', 'To check')).toBeNull();
+    expect(text(w.container)).not.toContain('Nothing.');
+    await w.unmount();
+  });
+
   it('says Nothing. when nothing needs a person', async () => {
     const clean = {
       ...ENDED,

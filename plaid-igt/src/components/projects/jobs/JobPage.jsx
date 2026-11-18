@@ -657,7 +657,7 @@ const count = (row, key) => (row.counts?.[key] ?? 0).toLocaleString();
 // `plan`: the report's, or while there is none the plan row's.
 const JobDocuments = ({ job, projectId, plan }) => {
   const [params, setParams] = useSearchParams();
-  const ended = !isJobActive(job) && !!job.report;
+  const ended = !isJobActive(job);
   const leftOut = new Set((job.report?.plan?.leftOut || []).map((d) => d.documentId));
   const reported = new Map((job.report?.documents || []).map((d) => [d.documentId, d]));
   const checks = new Map(

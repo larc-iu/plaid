@@ -73,13 +73,13 @@ const SKIPPED_KINDS = [
 const VALUES_PEOPLE_WROTE = ['value, morpheme or link', 'values, morphemes or links'];
 
 // What of an ended job needs a person, a row per kind with a count above
-// zero, in a fixed order: `{key, text, view, filter?}`, `view` the section
+// zero, in a fixed order (the documents' states from the job's own rows where
+// it has no report): `{key, text, view, filter?}`, `view` the section
 // that lists the items (`filter` the Documents filter), none where nothing
 // lists them.
 export const toCheckRows = (job) => {
   const report = job?.report;
-  if (!report) return [];
-  const t = report.totals || {};
+  const t = report?.totals || {};
   const docs = documentsOf(job);
   const rows = [];
   const add = (key, n, text, view, filter) =>
@@ -94,6 +94,9 @@ export const toCheckRows = (job) => {
   const notReached = unfinished.length - partway;
   check('not-reached', notReached, `${countOf(notReached, 'document')} not reached`);
   check('partway', partway, `${countOf(partway, 'document')} stopped partway`);
+  // An ended job core failed before its worker's report arrived has only its
+  // documents' rows: nothing else is known (REV-RP-4).
+  if (!report) return rows;
 
   const listed = docs.flatMap((d) => d.skipped || []);
   SKIPPED_KINDS.forEach(([reason, key, label]) => {
@@ -245,8 +248,8 @@ export const jobSections = (job, notes = null, vocabs = []) => {
   const out = [{ key: 'overview', label: 'Overview' }];
   if (docs.length) out.push({ key: 'documents', label: 'Documents', count: docs.length });
   const report = job?.report;
+  if (!isJobActive(job) && notes > 0) out.push({ key: 'notes', label: 'Notes', count: notes });
   if (!isJobActive(job) && report) {
-    if (notes > 0) out.push({ key: 'notes', label: 'Notes', count: notes });
     const add = (key, label, count) => count > 0 && out.push({ key, label, count });
     // Blank places come in two kinds (left blank in sentences the job
     // changed, blank in those it did not) and in several units: no one count
