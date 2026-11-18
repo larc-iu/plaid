@@ -249,11 +249,14 @@ const longDocument = (words) => {
 
 test('a 20,000-word document builds in about ten times what 2,000 words take', () => {
   const build = ({ body, info }) =>
-    timed(() => buildSentenceRows(body, info), { warm: 1, runs: 3 });
+    timed(() => buildSentenceRows(body, info), { warm: 1, runs: 5 });
   const [, small] = build(longDocument(2000));
   const [rows, ms] = build(longDocument(20000));
   assert.equal(rows.length, 800);
   assert.equal(rows[799].tokens[24].tokenForm, 'w19999𐌰');
   assert.equal(rows[799].relations.length, 25);
-  withinFactorOf(30, small, ms, { floorMs: 5, label: '20,000 words' });
+  // The small case takes 1 to 5 ms, so a busy runner's one pause could pass
+  // a bound of 30 times that. 30 times 20 ms is still far under the seconds a
+  // scan of every row per row takes at 20,000 words.
+  withinFactorOf(30, small, ms, { floorMs: 20, label: '20,000 words' });
 });
