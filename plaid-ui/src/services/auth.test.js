@@ -256,10 +256,16 @@ describe('authService', () => {
   it('keeps nothing on a sign-out a person asked for', async () => {
     window.location.hash = '#/projects/p1';
     vi.spyOn(window.location, 'reload').mockImplementation(() => {});
-    authService.logout();
+    // Every beforeEach signs out through the shared module, and the page's
+    // signing-out mark never resets, so this sign-out runs on fresh modules.
+    vi.resetModules();
+    const fresh = await import('./auth.js');
+    fresh.configureAuth({ loginRoute: '#/login' });
+    const { isSigningOut } = await import('../lib/returnTo.js');
+    expect(isSigningOut()).toBe(false);
+    fresh.authService.logout();
     expect(sessionStorage.getItem('plaid:return-to')).toBe(null);
     // and the guard writes no page for the sign-in to go to
-    const { isSigningOut } = await import('../lib/returnTo.js');
     expect(isSigningOut()).toBe(true);
   });
 
