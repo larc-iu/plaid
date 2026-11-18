@@ -256,6 +256,23 @@
                       [job {:operation (str (:id newest)) :time (str (:ts newest)) :user (:user_id newest)}]))))
           (group-by (fn [r] (second (re-matches #"job:(.+)/(?:undo|redo)" (:ref r)))) rows))))
 
+(defn- wrote?
+  "Whether History holds a change job `job-id` wrote: an operation under one
+  of the groups its document rows name (each document's gloss and harmonize
+  pass), the groups its undo takes. True whatever its report counts: a
+  worker that died after a write and before its row says nothing of it
+  (S3-1)."
+  [db job-id]
+  (let [groups (->> (psc/q db {:select [:gloss_group :harmonize_group] :from [:job_documents]
+                               :where [:= :job_id (str job-id)]})
+                    (mapcat (juxt :gloss_group :harmonize_group))
+                    (remove nil?)
+                    (map str)
+                    distinct
+                    vec)]
+    (boolean (and (seq groups)
+                  (psc/q1 db {:select [:id] :from [:operations] :where [:in :group_id groups] :limit 1})))))
+
 (defn- row->job
   "A job as the wire carries it. `parts` says what to add: `:documents`, the
   document rows, `:report`, the stored report."
@@ -292,7 +309,8 @@
       (:documents parts) (assoc :job/documents (mapv row->document (document-rows db (:id row))))
       ;; Keys stay strings: a setup is kept as the app sent it.
       (some? (:setup row)) (assoc :job/setup (psc/read-metadata-value (:setup row)))
-      (:report parts) (assoc :job/report (psc/read-json (:report row))))))
+      (:report parts) (assoc :job/report (psc/read-json (:report row))
+                             :job/wrote (wrote? db (:id row))))))
 
 (defn get
   "Job `id` with its document rows and report, or nil when there is no such

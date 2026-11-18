@@ -267,6 +267,26 @@ describe('Undo job', () => {
     await v.unmount();
   });
 
+  // S3-1: stopped while its worker was dead, core's report counts nothing,
+  // and History holds what the job wrote (core's `wrote`).
+  it('is offered whenever History holds the job’s writes, whatever its report counts', async () => {
+    const report = {
+      stopped: 'without-worker',
+      totals: { changes: 0 },
+      harmonize: { changed: [], left: [], changedMore: 0, leftMore: 0 },
+    };
+    let v = await mount(clientOf(jobOf({ report, wrote: true })));
+    expect(button(v.container, 'Undo job')).not.toBeNull();
+    expect(v.container.textContent).toContain(
+      'Stopped with no worker running. The counts are what its worker recorded before it stopped.',
+    );
+    await v.unmount();
+    v = await mount(clientOf(jobOf({ report, wrote: false })));
+    expect(button(v.container, 'Undo job')).toBeNull();
+    expect(v.container.textContent).not.toContain('The counts are what its worker recorded');
+    await v.unmount();
+  });
+
   // RP-6: "179 values, 625 tokens and 1 text". A token is no word a person
   // knows: a job that edited no text wrote tokens only as morphemes, and one
   // that edited the text moved its words and sentences, which no count says.

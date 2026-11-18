@@ -41,6 +41,9 @@ export const headlineFacts = (job) => {
       docs.some(oneStep) && docs.some((d) => STEP_UNFINISHED.includes(d.counts?.ranOut)),
     notGotTo: docs.filter((d) => d.counts?.ranOut === 'not-read').length,
     findings: typeof report.findings === 'string' && report.findings !== '',
+    // History holds changes the job wrote, whatever its report counts: core
+    // reads its groups (S3-1).
+    wrote: job?.wrote === true,
   };
 };
 
@@ -77,6 +80,13 @@ const headlineWhat = (f) => {
   if (what) return `${capital(what)}${ended ? `, then ${ended}` : ''}.`;
   if (f.findings)
     return ended ? `Wrote findings, then ${ended}.` : 'Wrote findings, changed nothing.';
+  // Its report counts no change and History holds some: a worker that died
+  // after a write and before it recorded it (S3-1).
+  if (f.wrote && f.state !== 'undone') {
+    if (f.state === 'cancelled') return 'Stopped after writing changes not counted here.';
+    if (f.state === 'failed') return 'Failed after writing changes not counted here.';
+    return 'Wrote changes not counted here.';
+  }
   if (f.state === 'cancelled') return 'Stopped before changing anything.';
   if (f.state === 'failed') return 'Failed before changing anything.';
   return f.state === 'undone' ? 'Undone.' : 'Changed nothing.';

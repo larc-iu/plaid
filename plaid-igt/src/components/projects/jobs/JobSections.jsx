@@ -157,7 +157,11 @@ export const ReportOverview = ({ job, sectionHref, sections }) => {
         {jobHeadline(job)}
       </p>
       {report?.stopped === 'without-worker' && (
-        <p className="mt-1 text-sm text-muted-foreground">Stopped with no worker running.</p>
+        <p className="mt-1 text-sm text-muted-foreground">
+          Stopped with no worker running.
+          {/* Core's report counts the rows its worker last recorded (S3-1). */}
+          {job.wrote && ' The counts are what its worker recorded before it stopped.'}
+        </p>
       )}
       {/* The worker's own line, from its counts, where the job changed
           people's work or the text (R4). */}

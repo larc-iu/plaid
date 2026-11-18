@@ -82,6 +82,22 @@ describe('the headline', () => {
       { ...NOTHING, state: 'cancelled', findings: true },
       'Wrote findings, then stopped.',
     ],
+    // S3-1: a worker that died after a write and before it recorded it.
+    [
+      'a job stopped whose report counts nothing History holds',
+      { ...NOTHING, state: 'cancelled', wrote: true },
+      'Stopped after writing changes not counted here.',
+    ],
+    [
+      'a job failed whose report counts nothing History holds',
+      { ...NOTHING, state: 'failed', wrote: true },
+      'Failed after writing changes not counted here.',
+    ],
+    [
+      'an undone job whose report counts nothing',
+      { ...NOTHING, state: 'undone', wrote: true },
+      'Undone.',
+    ],
   ])('%s', (_, facts, said) => {
     expect(headlineText(facts)).toBe(said);
   });
@@ -112,6 +128,7 @@ describe('the headline', () => {
       stepUnfinished: false,
       notGotTo: 0,
       findings: false,
+      wrote: false,
     });
     expect(jobHeadline(job)).toBe(
       'Changed 4 sentences in 1 of 3 documents in one step, then undone.',

@@ -1414,6 +1414,17 @@
 
 (defn- job-read [req job] (api-call req {:method :get :path (str "/api/v1/jobs/" job)}))
 
+(deftest a-jobs-read-says-whether-history-holds-its-writes
+  ;; S3-1: whatever its report counts, so the page offers Undo job.
+  (let [{:keys [proj job]} (job-world!)
+        silent (str (random-uuid))
+        now (psc/now-iso)]
+    (is (true? (-> (job-read admin-request job) :body :job/wrote)))
+    (psc/execute! db {:insert-into :jobs
+                      :values [{:id silent :project_id (str proj) :app "igt" :started_by "admin@example.com"
+                                :state "cancelled" :created_at now :instructions "Gloss"}]})
+    (is (false? (-> (job-read admin-request silent) :body :job/wrote)))))
+
 (deftest a-jobs-read-says-it-stands-undone
   (let [{:keys [proj job]} (job-world!)
         other (:job (job-world!))

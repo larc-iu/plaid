@@ -284,8 +284,10 @@ export const JobPage = ({ project, projectId, jobId, client }) => {
   // A maintainer undoes an ended job whole, documents and lexicon together.
   // Not while it stands undone, even once its work is brought back from
   // History (a job stays undone, H2-5-1). Not for a job that wrote nothing
-  // (RP-4).
-  const undoable = !active && canManageProject(project, user) && !job.undone && !wroteNothing(job);
+  // (RP-4): offered whenever History holds its writes, whatever its report
+  // counts (`wrote`, core's, S3-1).
+  const undoable =
+    !active && canManageProject(project, user) && !job.undone && (job.wrote || !wroteNothing(job));
   const plan = job.report?.plan ?? pieces.plan;
   const at = jobPath(projectId, jobId);
   // A section of the page, with a filter of its list where one is given.
