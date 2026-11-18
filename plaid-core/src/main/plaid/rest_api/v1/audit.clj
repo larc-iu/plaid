@@ -232,7 +232,9 @@
       {:status 403 :body {:error (str "User " user-id " lacks sufficient privileges to read this entry")
                           :unresolved true}}
 
-      (not (seen?))
+      ;; An admin reads every row, so an entry with no document or vocabulary
+      ;; row (an account's change) has none to show, which is no refusal (ACL6-6).
+      (and (not (user/admin? record)) (not (seen?)))
       {:status 403 :body {:error (str "User " user-id " lacks sufficient privileges to read this entry")}}
 
       :else
