@@ -1138,8 +1138,16 @@ export class ConlluDocument extends DocumentModel {
   }
 
   // Manually create a word (e.g. from a text selection) plus its 1:1
-  // morpheme and a default lemma, in one atomic batch.
-  async createWord(begin, end, textContent) {
+  // morpheme and a default lemma, in one atomic batch. The range is trimmed
+  // of whitespace at both ends, and one of whitespace only makes nothing: a
+  // FORM holds no space at its ends and is never empty.
+  async createWord(rawBegin, rawEnd, textContent) {
+    const chars = [...textContent];
+    let begin = rawBegin;
+    let end = rawEnd;
+    while (begin < end && /\s/u.test(chars[begin])) begin += 1;
+    while (end > begin && /\s/u.test(chars[end - 1])) end -= 1;
+    if (begin >= end) return false;
     const info = this.layerInfo;
     const { textLayer, sentenceTokenLayer, wordTokenLayer, morphemeTokenLayer, lemmaLayer } = info;
     const text = textLayer?.text;

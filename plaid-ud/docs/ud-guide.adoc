@@ -166,7 +166,7 @@ Splitting a sentence removes the dependency relations that would cross the new b
 Hover over a token to open its panel, where you can toggle **Start of sentence**, edit the token's **words**, or **delete** the token.
 Splitting a token into several words makes a multi-word token, and merging them makes it an ordinary token again.
 Changing the forms but not the number of words keeps their annotations. Changing the number replaces the words, and asks first if annotations would be lost.
-You can also select a span of text to make a new token from it.
+You can also select a span of text to make a new token from it. Spaces at the ends of the selection are left out.
 
 = Annotation
 
