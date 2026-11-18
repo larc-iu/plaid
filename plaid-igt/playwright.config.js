@@ -16,6 +16,10 @@ const PORT = new URL(BASE_URL).port;
 // which looks exactly like flakiness. Prefer a server of your own.
 const OWN_SERVER = process.env.PLAYWRIGHT_OWN_SERVER === '1';
 
+// Every spec that starts or claims a job (see `projects` below).
+const JOB_SPECS =
+  /(^|\/)(jobs|job-[^/]*|assistant-job[^/]*|history-changes|history-undo)\.spec\.js$/;
+
 export default defineConfig({
   testDir: './e2e',
   // Two runs from this directory clobber each other's `.playwright-artifacts-*`
@@ -40,5 +44,21 @@ export default defineConfig({
     reuseExistingServer: !OWN_SERVER,
     timeout: 60_000,
   },
-  projects: [{ name: 'chromium', use: { ...devices['Desktop Chrome'] } }],
+  // The job specs, and the specs that start a job, share one server-wide
+  // queue: a worker claims the oldest job of any project, and core runs one
+  // at a time. Two of them at once take each other's jobs (FLK3-4), so they
+  // run one at a time whatever --workers says. bb e2e runs one worker anyway.
+  projects: [
+    {
+      name: 'chromium',
+      testIgnore: JOB_SPECS,
+      use: { ...devices['Desktop Chrome'] },
+    },
+    {
+      name: 'jobs',
+      testMatch: JOB_SPECS,
+      workers: 1,
+      use: { ...devices['Desktop Chrome'] },
+    },
+  ],
 });
