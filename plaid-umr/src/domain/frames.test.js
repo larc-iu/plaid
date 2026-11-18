@@ -99,6 +99,9 @@ describe('the Arabic frame file', () => {
     });
   });
 
+  // Its work is fixed: every roleset in the shipped Arabic file, about 1.3 s
+  // of CPU, waiting on nothing. It runs past vitest's 5 s only on a worker
+  // given under a quarter of a core, so the bound leaves room for that.
   it('offers every roleset for its lemma typed bare, a lemma--NN one after the plain', () => {
     const lemma = (id) => id.replace(/-\d+$/, '').replace(/-$/, '');
     // One lookup per lemma, not per id: 7,445 lookups rather than 10,041, at
@@ -116,7 +119,7 @@ describe('the Arabic frame file', () => {
       '\u0623\u062b\u0631-03',
       '\u0623\u062b\u0631--01',
     ]);
-  });
+  }, 30_000);
 
   it('holds no tanwin or other mark in an id', () => {
     expect(Object.keys(arabic).filter((id) => /[\u064b-\u0652]/.test(id))).toEqual([]);
