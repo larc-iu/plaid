@@ -11,10 +11,12 @@ const idOf = (t) => (t && typeof t === 'object' ? t.id : t);
  * In a document's History: a row in a sentence of the document now
  * (`doc`, the live IgtDocument) is placed at that sentence, "Sentence 3", a
  * link into the grid. The text and the document's own row are placed at the
- * tabs that show them. A row not in the document now (deleted since) is not
- * placed.
+ * tabs that show them. A row not in the document now (deleted since) is
+ * placed by the tokens its image in `rows` (the entry's change rows, `{kind,
+ * id, before, after}`) names, while one of them is still in a sentence
+ * (H2-5-4), and else not placed.
  */
-export const documentPlacer = (doc, { projectId, documentId }) => {
+export const documentPlacer = (doc, { projectId, documentId, rows = [] }) => {
   const tokens = new Map();
   const spanTokens = new Map();
   const relationSpan = new Map();
@@ -37,11 +39,24 @@ export const documentPlacer = (doc, { projectId, documentId }) => {
   const number = new Map(sentences.map((s, i) => [s.id, i + 1]));
   const base = APP_ROUTES.document(projectId, documentId);
 
+  const images = new Map();
+  for (const r of rows || []) {
+    const image = r.after ?? r.before;
+    if (image) images.set(`${r.kind}:${r.id}`, image);
+  }
+  const imageTokens = (kind, id) => (images.get(`${kind}:${id}`)?.tokens || []).map(idOf);
+  const spanTokensOf = (id) => spanTokens.get(id) ?? imageTokens('span', id);
+
   const tokensOf = (row) => {
     if (row.kind === 'token') return [row.id];
-    if (row.kind === 'span') return spanTokens.get(row.id);
-    if (row.kind === 'vocab-link') return linkTokens.get(row.id);
-    if (row.kind === 'relation') return spanTokens.get(relationSpan.get(row.id));
+    if (row.kind === 'span') return spanTokensOf(row.id);
+    if (row.kind === 'vocab-link')
+      return linkTokens.get(row.id) ?? imageTokens('vocab-link', row.id);
+    if (row.kind === 'relation') {
+      return spanTokensOf(
+        relationSpan.get(row.id) ?? idOf(images.get(`relation:${row.id}`)?.source),
+      );
+    }
     return null;
   };
 

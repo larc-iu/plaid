@@ -57,6 +57,24 @@ describe('documentPlacer', () => {
   });
 });
 
+// H2-5-4: a link deleted since (Undo job took it) is still in this document.
+it('documentPlacer places a row gone since at the sentence its image names', () => {
+  const place = documentPlacer(twoSentences(), {
+    projectId: 'p1',
+    documentId: 'd1',
+    rows: [
+      { kind: 'vocab-link', id: 'gone-link', before: { id: 'gone-link', tokens: ['m-3'] } },
+      { kind: 'span', id: 'gone-span', after: { id: 'gone-span', tokens: ['w-1'] } },
+      { kind: 'relation', id: 'gone-rel', before: { id: 'gone-rel', source: 'gone-span' } },
+      { kind: 'span', id: 'gone-both', before: { id: 'gone-both', tokens: ['gone'] } },
+    ],
+  });
+  expect(place({ kind: 'vocab-link', id: 'gone-link' })?.label).toBe('Sentence 2');
+  expect(place({ kind: 'span', id: 'gone-span' })?.label).toBe('Sentence 1');
+  expect(place({ kind: 'relation', id: 'gone-rel' })?.label).toBe('Sentence 1');
+  expect(place({ kind: 'span', id: 'gone-both' })).toBeNull();
+});
+
 describe('vocabularyPlacer', () => {
   const place = vocabularyPlacer({
     vocabularyId: 'v1',

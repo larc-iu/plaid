@@ -130,8 +130,8 @@ export const DocumentHistoryChanges = ({ context, user = null }) => {
     return { tokenRows, vocabularies };
   }, [docRows, entryRows, after]);
   const place = useMemo(
-    () => documentPlacer(liveDoc, { projectId, documentId }),
-    [liveDoc, projectId, documentId],
+    () => documentPlacer(liveDoc, { projectId, documentId, rows: docRows || [] }),
+    [liveDoc, projectId, documentId, docRows],
   );
 
   if (!after) return <Loading label="Loading changes…" />;
