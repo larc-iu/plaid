@@ -459,8 +459,8 @@ def test_plan_work_refuses_a_plan_that_does_not_say_what_it_fills():
 
 
 @pytest.mark.parametrize('pieces, said', [
-    ('sentences', f'This plan is 1 piece over 1 document. {FILLS_NOTHING} Its pieces are offered only set_field and '
-                  'reads.'),
+    ('sentences', f'This plan is 1 piece over 1 document. {FILLS_NOTHING} Its pieces are offered only set_field, '
+                  'read_lexicon and analyses_of.'),
     ('document', f'This plan is 1 piece over 1 document. {FILLS_NOTHING}'),
     ('selection', f'This plan is 1 piece over 1 document. {FILLS_NOTHING}'),
 ])
