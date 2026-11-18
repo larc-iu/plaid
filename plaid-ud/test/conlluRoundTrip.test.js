@@ -121,3 +121,32 @@ test('a document whose name has a space round-trips with its name and valid sent
     old,
   );
 });
+
+// REV-U3-2: `# newpar` and `# newpar id = …` are sentence comments. They
+// stay on their sentences, and the file is still one document.
+test('newpar and newpar id stay on their sentences, in one document', () => {
+  const input = conllu([
+    '# newpar id = p1',
+    '# text = del perro',
+    '1-2\tdel\t_\t_\t_\t_\t_\t_\t_\t_',
+    '1\tde\tde\tADP\t_\t_\t3\tcase\t_\t_',
+    '2\tel\tel\tDET\t_\t_\t3\tdet\t_\t_',
+    '3\tperro\tperro\tNOUN\t_\t_\t0\troot\t_\t_',
+    '',
+    '# newpar',
+    '# text = ladra',
+    '1\tladra\tladrar\tVERB\t_\t_\t0\troot\t_\t_',
+    '',
+    '# newpar id = p3',
+    '# text = sí',
+    '1\tsí\tsí\tINTJ\t_\t_\t0\troot\t_\t_',
+  ]);
+  const out = new ConlluDocument({ raw: rawDocFromConllu(input, 'rt-doc') }).toConllu();
+  const blocks = out.trim().split('\n\n');
+  assert.equal(blocks.length, 3, out);
+  assert.ok(blocks[0].split('\n').includes('# newpar id = p1'), out);
+  assert.ok(blocks[1].split('\n').includes('# newpar'), out);
+  assert.ok(blocks[2].split('\n').includes('# newpar id = p3'), out);
+  assert.equal(splitConlluByNewdoc(out).length, 1);
+  assert.equal(new ConlluDocument({ raw: rawDocFromConllu(out, 'rt-doc') }).toConllu(), out);
+});

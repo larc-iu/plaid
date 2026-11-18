@@ -35,10 +35,11 @@ export const SENT_ID = 'sent_id';
 const SENTENCE_RESERVED = new Set([SENT_ID, 'text']);
 
 /**
- * CoNLL-U's own document and paragraph markers. Written under a sentence,
- * `# newdoc id = …` starts a new document when the file is read again.
+ * CoNLL-U's document marker. Written under a sentence, `# newdoc id = …`
+ * starts a new document when the file is read again. `newpar` is a sentence
+ * comment and a field like any other.
  */
-const CONLLU_MARKER = /^(newdoc|newpar)(\s+id)?$/;
+const CONLLU_MARKER = /^newdoc(\s+id)?$/;
 
 /** Names back to what is stored. */
 export const toMetadataConfig = (names) => (names || []).map((name) => ({ name: name.trim() }));
