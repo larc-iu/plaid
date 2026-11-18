@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeAll, vi } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 
 // Just enough of IndexedDB for the store: one database, one object store,
 // requests that answer on a later tick and a transaction that completes after.
@@ -41,11 +41,14 @@ function fakeIndexedDb() {
   };
 }
 
+// Each test gets a database and a store module of its own: signing out closes
+// the module for good, and the upgrade tests put another database in place.
 let idb;
 let store;
-beforeAll(async () => {
+beforeEach(async () => {
   idb = fakeIndexedDb();
   globalThis.indexedDB = idb;
+  vi.resetModules();
   store = await import('./precedentStore.js');
 });
 
