@@ -229,3 +229,20 @@ def test_a_group_number_followed_by_a_digit_says_how_to_write_it():
     assert str(e.value) == ('A regex replacement cannot hold a backslash. Type the character itself. '
                             'Write $1 for a group.')
     assert replacer(r'(^|[.-])3AUG(?=[.-]|$)', '$13NSG', True, False)('RL.3AUG') == 'RL.3NSG'
+
+
+def test_a_pattern_asked_for_again_is_not_translated_again(monkeypatch):
+    """The umr search asked matcher() once a word, and each call translated the
+    pattern again for its decomposed half, folding every class when the case
+    is ignored: 5.7 s for one search of "a" on 2,873 words (SCL7-5). The same
+    pattern asked for again is compiled already."""
+    from plaid_agent.core import java_regex
+    calls = []
+    real = java_regex.translate
+    monkeypatch.setattr(java_regex, 'translate', lambda *a, **kw: calls.append(a) or real(*a, **kw))
+    for literal in (True, False):
+        first = matcher('scl7-5 pattern', literal=literal, case_insensitive=True)
+        calls.clear()
+        again = [matcher('scl7-5 pattern', literal=literal, case_insensitive=True) for _ in range(3)]
+        assert calls == []
+        assert [m('An SCL7-5 PATTERN here') for m in [first] + again] == [True] * 4

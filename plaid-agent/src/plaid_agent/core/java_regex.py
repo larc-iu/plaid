@@ -1012,6 +1012,7 @@ def names_mark(src: str) -> bool:
     return False
 
 
+@functools.lru_cache(maxsize=256)
 def compile_decomposed(pattern: str, **kw):
     """``pattern`` decomposed (:func:`decompose_pattern`, in NFD outside its
     classes), compiled, when the pattern sent to the server for it names a
@@ -1019,7 +1020,9 @@ def compile_decomposed(pattern: str, **kw):
     decomposing makes it a pattern that cannot be used). The server's REGEXP
     also matches such a pattern decomposed with the value in NFD, so a tone
     mark searched for on its own, typed or by escape, finds it inside a
-    composed letter (Luke, 2026-10-16)."""
+    composed letter (Luke, 2026-10-16). Cached as :func:`compile_local` is:
+    a caller that asks :func:`matcher` once a value (umr search) paid a
+    translation a value (SCL7-5)."""
     try:
         sent = translate(pattern, **kw).server
     except PatternError:
