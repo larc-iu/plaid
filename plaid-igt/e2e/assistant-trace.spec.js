@@ -45,6 +45,10 @@ test('a turn keeps its text between calls and each step opens to what the tool r
   page,
 }) => {
   skipUnlessAgent(test);
+  // The waits below allow 90 s for the service to start (Python, litellm), 30
+  // for the composer and 60 for the turn: the test's budget holds them, as
+  // assistant.spec.js's does.
+  test.setTimeout(150_000);
   const serviceId = 'igt:assist:e2e-trace';
   const service = await startIgtAssistant({
     token: readToken().token,

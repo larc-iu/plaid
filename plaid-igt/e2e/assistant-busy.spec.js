@@ -26,6 +26,10 @@ const WAITING = 'The model is busy. Waiting for a free slot…';
 
 async function withAssistant(page, serviceId, script, body) {
   skipUnlessAgent(test);
+  // The waits below allow 90 s for the service to start (Python, litellm), 30
+  // for the composer and 60 for the reply: the test's budget holds them, as
+  // assistant.spec.js's does.
+  test.setTimeout(150_000);
   const service = await startIgtAssistant({
     token: readToken().token,
     projectId,
