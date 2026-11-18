@@ -166,3 +166,32 @@ def test_a_change_on_a_derived_morpheme_replaces_no_accepted_work():
     w = fake_ws(FakeClient())
     call_tool(w, 'set_morpheme', {'document': 'd1', 'ref': 's1.w3.m1', 'type': 'stem', 'form': 'akun'})
     assert not any(op.get('replaces_work') for op in w.plan_payload()['ops'])
+
+
+# --- a link on the derived morpheme, then an analysis of its word (S1-1) ---------
+
+def test_an_analysis_planned_after_a_link_on_the_derived_morpheme_keeps_one_chain():
+    """STRESS S1-1: link_entry on s1.w3.m1 of an unsegmented word, then
+    set_analysis of the word in the same plan. The analysis's first morpheme
+    is the one the link made, so the word holds one chain, linked on its
+    first morpheme, as when the two calls come the other way round."""
+    w = fake_ws(FakeClient())
+    call_tool(w, 'link_entry', {'document': 'd1', 'refs': ['s1.w3.m1'], 'entry_id': 'vi-gam'})
+    call_tool(w, 'set_analysis', {'document': 'd1', 'ref': 's1.w3',
+                                  'morphemes': [{'form': 'akuna', 'type': 'stem', 'fields': {'Morph Gloss': 'go'}}]})
+    _counts, c = _applied(w)
+    [made] = c.payloads('tokens.create')
+    mid = made['kwargs']['id']
+    assert c.payloads('vocab_links.create')[0]['args'][1] == [mid]
+    assert [s['args'][1] for s in c.payloads('spans.create')] == [[mid]]
+
+
+def test_a_two_morpheme_analysis_after_a_link_on_the_derived_morpheme_makes_one_more():
+    w = fake_ws(FakeClient())
+    call_tool(w, 'link_entry', {'document': 'd1', 'refs': ['s1.w3.m1'], 'entry_id': 'vi-gam'})
+    call_tool(w, 'set_analysis', {'document': 'd1', 'ref': 's1.w3', 'morphemes': [{'form': 'aku'}, {'form': 'na'}]})
+    _counts, c = _applied(w)
+    made = c.payloads('tokens.create')
+    assert len(made) == 2
+    assert [m['kwargs']['precedence'] for m in made] == [1, 2]
+    assert c.payloads('vocab_links.create')[0]['args'][1] == [made[0]['kwargs']['id']]

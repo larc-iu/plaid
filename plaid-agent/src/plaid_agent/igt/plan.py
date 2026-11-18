@@ -406,6 +406,11 @@ def _apply_set_analysis(ctx: Context, op) -> int:
     # An unsegmented word's derived morpheme is stored nowhere: the analysis
     # makes its whole chain.
     existing = [m for m in op.get('existing') or [] if not is_virtual(m.get('id'))]
+    made = ctx.materialized.get(virtual_morpheme_id(op['word_id']))
+    if not existing and made:
+        # An earlier write of this plan made it (a link on s1.w3.m1): the
+        # analysis's first morpheme, never a second chain beside it (S1-1).
+        existing = [{'id': made}]
     morphemes = op.get('morphemes') or []
     layer, text_id = op['morpheme_layer_id'], op['text_id']
     begin, end = op['begin'], op['end']
