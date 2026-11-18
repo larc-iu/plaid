@@ -310,7 +310,7 @@ export const wordFormDocIndexQuery = (wordTokenLayerId) => ({
 // not enough shorter ones (SCL3-3): by the count of matches alone, the
 // longest document in the project led for any common form and was read whole
 // on every run.
-export const LONG_SOURCE_WORDS = 10_000;
+const LONG_SOURCE_WORDS = 10_000;
 
 // Pick the documents worth fetching for a set of target forms: those
 // containing an exact or casefolded match, ranked by matching-token count,
