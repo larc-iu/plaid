@@ -1648,7 +1648,13 @@ class JobWorkspace(Workspace):
 # --- the runner --------------------------------------------------------------------
 
 class Deferred(Exception):
-    """The document is in use: put it off and come back later (SPEC 5.3)."""
+    """The document is in use: put it off and come back later (SPEC 5.3).
+    ``error``: core's passing trouble that outlasted the tries, when that put
+    it off and no person did (:meth:`IgtRunner.off_on_trouble`, REV D14)."""
+
+    def __init__(self, document_id: str, error: Optional[BaseException] = None):
+        super().__init__(document_id)
+        self.error = error
 
 
 class Gone(Exception):
@@ -2314,6 +2320,11 @@ class IgtRunner:
         self.changes_dropped = 0
         #: documents the job has waited for once at least: their defers count
         self.waited: set = set()
+        #: document id -> core's error, for a document put off last because
+        #: core did not answer, and how many times core put each off in this
+        #: run (:meth:`defer`, REV D14)
+        self.server_off: Dict[str, BaseException] = {}
+        self.unanswered: Counter = Counter()
         #: document id -> the MARK, core's own stamp of the newest History
         #: unit there at the look before a piece read the document: the
         #: piece's write is put off when anyone else wrote after it
@@ -2509,6 +2520,7 @@ class IgtRunner:
             if (job.rows.get(d) or {}).get('state') in ROW_FINAL:
                 continue
             if self.document(d) == 'deferred':
+                self.end_if_unanswered(d)
                 deferred.append(d)
         while deferred:
             # Every pass over put-off documents waits the quiet window first,
@@ -2518,6 +2530,7 @@ class IgtRunner:
             still = []
             for d in deferred:
                 if self.document(d) == 'deferred':
+                    self.end_if_unanswered(d)
                     if (job.rows.get(d) or {}).get('state') != 'in-use':
                         still.append(d)
             deferred = still
@@ -2922,10 +2935,13 @@ class IgtRunner:
             try:
                 if self.write_piece(project, d, ws, ws._docs[d], by_doc.get(d, []) + carried, note, shown, key):
                     loose = []
-            except Deferred:
+            except Deferred as e:
                 # Its writes were dropped: it is worked again in stretches
-                # (its fallback row, ``whole_document``).
-                core_job.through_core(job, lambda: (self.fall_back(d, 'in-use'), self.defer(d)))
+                # (its fallback row, ``whole_document``), put off by a person
+                # or by core not answering (REV D14).
+                error = e.error
+                core_job.through_core(job, lambda: (self.fall_back(d, 'in-use' if error is None else 'unreachable'),
+                                                    self.defer(d, error)))
                 # What a landed try of it wrote is never sent again nor
                 # listed: the rest goes with the next write.
                 done = core_job.through_core(job, self.loose_landed)
@@ -3105,10 +3121,25 @@ class IgtRunner:
             prints = {s.id: ws.sentence_print(doc, s) for s in doc.sentences}
             return self.write(project, document_id, ws, doc, part, prints, ops, note, SELECTION_TAG, selection=True,
                               summary=summary)
+        return self.off_on_trouble(document_id, step)
 
-        def put_off():
-            raise Deferred(document_id)
-        return core_job.through_core(self.job, step, gave_up=put_off)
+    def off_on_trouble(self, document_id: str, step: Callable[[], Any]) -> Any:
+        """``step`` through core (:func:`core_job.through_core`), the
+        document put off (:class:`Deferred`) when core's passing trouble
+        outlasts the tries: by a person for a lock (423), else by core not
+        answering, with its error (REV D14)."""
+        met: List[BaseException] = []
+
+        def tried():
+            try:
+                return step()
+            except Exception as e:
+                met[:] = [e]
+                raise
+
+        def gave_up():
+            raise Deferred(document_id, None if _status(met[0]) == 423 else met[0])
+        return core_job.through_core(self.job, tried, gave_up=gave_up)
 
     def entries_that_fit(self, project: IgtProject, ops: List[Dict[str, Any]],
                          selection: bool = False) -> List[Dict[str, Any]]:
@@ -3214,33 +3245,59 @@ class IgtRunner:
         saying so: what for, and how long, never a clock time (whose clock is
         the worker's, not the reader's)."""
         job = self.job
-        name = self.names.get(documents[0]) or (job.rows.get(documents[0]) or {}).get('name')
-        where = (f'"{name}"' if name else 'a document') if len(documents) == 1 else f'{len(documents)} documents'
         minutes = round(JOB_DEFER_WAIT_S / 60)
+        # Those core put off are no person's: said apart, and not counted as
+        # a wait for people's edits (REV D14).
+        people = [d for d in documents if d not in self.server_off]
+        if people:
+            name = self.names.get(people[0]) or (job.rows.get(people[0]) or {}).get('name')
+            where = (f'"{name}"' if name else 'a document') if len(people) == 1 else f'{len(people)} documents'
+            message = f'Waiting for people to finish in {where}. Trying again in {minutes} minutes.'
+        else:
+            message = f'The server did not answer. Trying again in {minutes} minutes.'
         said = job.line
-        job.set(current_document=None,
-                message=f'Waiting for people to finish in {where}. Trying again in {minutes} minutes.')
+        job.set(current_document=None, message=message)
         began = job.now()
         try:
             job.sleep(JOB_DEFER_WAIT_S)
         finally:
             # Counted apart from taking turns on the model (RPF3-D1).
-            job.paused['edits'] += job.now() - began
+            if people:
+                job.paused['edits'] += job.now() - began
             if not job.lost:
                 job.set(message=said)
 
-    def defer(self, document_id: str) -> str:
+    def defer(self, document_id: str, error: Optional[BaseException] = None) -> str:
         """Put a document off. A defer counts only after the job has waited
         for it (:meth:`wait_for_people`): a document in use is waited for
         JOB_DEFER_ROUNDS times before it ends ``in-use`` (SPEC 5.3), never
-        counted twice within a second by passes with no wait between."""
+        counted twice within a second by passes with no wait between. Put
+        off because core did not answer (``error``, REV D14), it counts no
+        defer and never ends ``in-use``: :meth:`end_if_unanswered` bounds
+        it."""
         # Taken up again later, it is looked at afresh.
         self.seen_marks.pop(document_id, None)
+        if error is not None:
+            self.server_off[document_id] = error
+            self.unanswered[document_id] += 1
+            self.job.update_row(document_id, state='deferred')
+            return 'deferred'
+        self.server_off.pop(document_id, None)
         row = self.job.rows.get(document_id) or {}
         defers = (row.get('defers') or 0) + (1 if document_id in self.waited else 0)
         self.job.update_row(document_id, defers=defers,
                             state='in-use' if defers >= JOB_DEFER_ROUNDS else 'deferred')
         return 'deferred'
+
+    def end_if_unanswered(self, document_id: str) -> None:
+        """The job ends (``worker-error``) once core has put one document off
+        once more than JOB_DEFER_ROUNDS waits allow, as a person would end it
+        ``in-use`` (REV D14). Raised outside any handler, so it carries no
+        refusal of core and is never taken for a passing one."""
+        if document_id in self.server_off and self.unanswered[document_id] > JOB_DEFER_ROUNDS:
+            minutes = round(JOB_DEFER_WAIT_S / 60)
+            raise RuntimeError(f'the server did not answer after {JOB_DEFER_ROUNDS} waits of {minutes} minutes: '
+                               f'{self.server_off[document_id]}')
 
     @property
     def own_ref(self) -> str:
@@ -3363,8 +3420,11 @@ class IgtRunner:
                 job.update_row(document_id, state='gone')
                 return 'gone'
         try:
-            return core_job.through_core(job, step, gave_up=lambda: core_job.through_core(
-                job, lambda: self.defer(document_id)))
+            try:
+                return self.off_on_trouble(document_id, step)
+            except Deferred as e:
+                error = e.error
+            return core_job.through_core(job, lambda: self.defer(document_id, error))
         except Exception as e:  # noqa: BLE001 - core's refusals sorted, the rest goes up
             fault = core_job.core_fault(e)
             if fault == 'mine':
