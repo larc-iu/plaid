@@ -263,6 +263,10 @@ export const DependencyTree = forwardRef(
 
     // Handle mouse up on token (complete drag)
     const handleTokenMouseUp = (e, position) => {
+      // A release with no drag of this tree's own is left to the tree whose
+      // drag it ends: stopped here, it never reached that tree's window
+      // listener, and its arc stayed in the hand for the next click to write.
+      if (!dragLiveRef.current) return;
       e.stopPropagation();
       if (isReadOnly) return;
       // The word the arc in the hand is SHOWN landing on, which where two
@@ -300,6 +304,8 @@ export const DependencyTree = forwardRef(
 
     // Handle mouse up on ROOT (when dragging TO ROOT)
     const handleRootMouseUp = (e) => {
+      // As a word's release: one with no drag of this tree's own goes on.
+      if (!dragLiveRef.current) return;
       e.stopPropagation();
       if (isReadOnly) return;
       if (dragOrigin && dragSourceId && dragSourceId !== 'ROOT') {
@@ -348,6 +354,14 @@ export const DependencyTree = forwardRef(
       // A release that no word or ROOT bar took (those stop it reaching here).
       up: (e) => {
         if (!dragLiveRef.current) return;
+        // Let go on another sentence: the arc cannot land there, and the
+        // drag ends with nothing written.
+        const row = svgRef.current?.closest('[data-sentence-row]');
+        const where = e.target instanceof Element ? e.target.closest('[data-sentence-row]') : null;
+        if (row && where && where !== row) {
+          endDrag();
+          return;
+        }
         if (svgRef.current) {
           const rect = svgRef.current.getBoundingClientRect();
           const point = { x: e.clientX - rect.left, y: e.clientY - rect.top };
@@ -505,6 +519,12 @@ export const DependencyTree = forwardRef(
       return row.contains(where) || row.contains(document.activeElement);
     };
     const handleKeyDown = (e) => {
+      // A drag leaves focus on the page's body, which no sentence claims, so
+      // the tree with the arc in the hand takes Escape whatever has focus.
+      if (e.key === 'Escape' && dragLiveRef.current) {
+        endDrag();
+        return;
+      }
       if (!inThisSentence(e)) return;
       if (e.key === 'd' && (e.ctrlKey || e.metaKey) && !focusedRelation && !editingRelation) {
         e.preventDefault();
@@ -522,9 +542,7 @@ export const DependencyTree = forwardRef(
         setSelectedSource(null);
         closeEditor();
         setFocusedRelation(null);
-        setDragOrigin(null);
-        setDragCurrent(null);
-        setDragSourceId(null);
+        endDrag();
       }
     };
 
