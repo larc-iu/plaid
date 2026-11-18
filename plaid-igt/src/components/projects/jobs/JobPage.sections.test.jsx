@@ -410,6 +410,27 @@ describe('the lists of an ended job', () => {
     await x.unmount();
   });
 
+  // REV-RP-10: the forms past the report's cut are said once, under the list.
+  it('says the forms a list could not hold once, under its pages', async () => {
+    const left = Array.from({ length: 30 }, (_, k) => ({
+      form: `f${k}`,
+      reason: 'unvouched',
+      analyses: [{ analysis: `f${k} ‘x’`, count: 2 }],
+    }));
+    const job = { ...ENDED, report: { ...ENDED.report, harmonize: { left, leftMore: 7 } } };
+    const v = await mount(clientOf(job), '?view=inconsistent');
+    const said = () => text(panel(v.container)).split('And 7 more forms.').length - 1;
+    expect(said()).toBe(1);
+    // Under the paged list, not a line of its pages.
+    const line = byText(panel(v.container), 'p', 'And 7 more forms.');
+    expect(line.closest('.rounded-md')).toBeNull();
+    expect(all(panel(v.container), 'tbody tr')).toHaveLength(25);
+    await v.step(() => panel(v.container).querySelector('button[aria-label="Next page"]').click());
+    expect(all(panel(v.container), 'tbody tr')).toHaveLength(5);
+    expect(said()).toBe(1);
+    await v.unmount();
+  });
+
   it('pages Left blank at 25 documents, the page in the address', async () => {
     const v = await mount(clientOf(ENDED), '?view=blank');
     const names = () => all(panel(v.container), 'p > span.font-medium').map(text);

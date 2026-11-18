@@ -44,7 +44,7 @@ export const Heading = ({ section, children }) => (
   <h3 className={`${TYPE.card} mb-2 mt-6`}>{section ? SECTIONS[section] : children}</h3>
 );
 
-const More = ({ n, noun }) =>
+export const More = ({ n, noun }) =>
   n > 0 ? (
     <p className="mt-1 text-sm text-muted-foreground">
       And {n.toLocaleString()} more {plural(n, noun)}.

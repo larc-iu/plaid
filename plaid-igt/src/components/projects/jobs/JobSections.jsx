@@ -11,6 +11,7 @@ import {
   Heading,
   JobFindings,
   LeftOut,
+  More,
   ProposedChanges,
   Respelled,
   SkippedDocument,
@@ -62,8 +63,10 @@ const ConsistentSection = ({ report }) => (
   <>
     <Heading section="harmonize.changed" />
     <Paged items={report.harmonize?.changed || []} className="">
-      {(list) => <HarmonizeChanged list={list} more={report.harmonize?.changedMore} />}
+      {(list) => <HarmonizeChanged list={list} />}
     </Paged>
+    {/* Once, under the pages (REV-RP-10). */}
+    <More n={report.harmonize?.changedMore ?? 0} noun="form" />
   </>
 );
 
@@ -71,8 +74,9 @@ const InconsistentSection = ({ report }) => (
   <>
     <Heading section="harmonize.left" />
     <Paged items={report.harmonize?.left || []} className="">
-      {(list) => <HarmonizeLeft list={list} more={report.harmonize?.leftMore} />}
+      {(list) => <HarmonizeLeft list={list} />}
     </Paged>
+    <More n={report.harmonize?.leftMore ?? 0} noun="form" />
   </>
 );
 
