@@ -55,3 +55,15 @@ def test_a_job_that_ends_with_no_line_keeps_no_progress_line(monkeypatch):
     assert getattr(refuse_line, 'done', False), 'the heartbeat clearing the line was refused'
     assert row['state'] == 'done'
     assert row['message'] is None, row['message']
+
+
+def test_a_done_job_with_its_report_written_keeps_no_progress_line(monkeypatch):
+    client = JobClient({'d1': document('d1', 'Story', [{'words': ['ka']}])})
+    made = client.jobs.create('p1', 'igt', 'Gloss the words.')
+    use(monkeypatch, Model(planned(lambda asked, n, kw: reply('Done.'))))
+    cfg = ModelConfig(model='fake/m', stream=False, max_steps=1000)
+    Worker(client, {'igt': lambda job: IgtRunner(job, cfg, count=lambda v: 1, write_summary=True)}, 'fake/m',
+           client_for=lambda token: client, sleep=lambda s: None, heartbeat_s=10 ** 6).once()
+    row = client.jobs.rows[made['id']]
+    assert row['state'] == 'done'
+    assert row['message'] is None, row['message']

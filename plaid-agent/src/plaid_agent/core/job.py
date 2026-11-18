@@ -919,10 +919,14 @@ def _finish(job: Job, state: str, runner, harmonize, entries, reason: Optional[s
         report.update(_summary(job, runner, report))
         report.update(_findings(job, runner, report))
         fit_report(report)
+
     def end():
         # The end's line (or none) once more just before the finish, which
         # carries no line: a heartbeat refused while it was set would leave
-        # the last progress line as the line the ended job shows (S4-2).
+        # the last progress line as the line the ended job shows (S4-2). An
+        # end with no line of its own clears what the report's writing said.
+        if not said:
+            job.line = job.status['message'] = None
         job.beat()
         return job.admin.jobs.finish(job.id, job.worker_id, state, report, reason=reason)
     try:
