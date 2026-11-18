@@ -364,8 +364,9 @@ def test_harmonize_settles_a_document_before_it_rewrites_in_it(monkeypatch):
 @pytest.mark.parametrize('pieces', PIECES)
 def test_core_out_of_reach_during_a_write_puts_the_document_off_and_the_job_ends_done(monkeypatch, pieces):
     """REV-JG-4: core answers 502 to every write. The document is put off as
-    a stretch's is, waited for, and ended in use: the job ends done, never
-    failed with the error."""
+    a stretch's is, waited for, and ended not reached, never in use, which
+    would name a person (D14): the job ends done, never failed with the
+    error."""
     client, job, clock, _ = _job(monkeypatch, pieces)
 
     def down(c, ops, **kw):
@@ -374,7 +375,7 @@ def test_core_out_of_reach_during_a_write_puts_the_document_off_and_the_job_ends
     from plaid_agent.core.job import run_job
     finished = run_job(job, runner(job))
     assert finished['state'] == 'done', (finished['state'], finished.get('reason'), job.status.get('message'))
-    assert finished['report']['documents'][0]['state'] == 'in-use'
+    assert finished['report']['documents'][0]['state'] == 'not-reached'
 
 
 @pytest.mark.parametrize('pieces', PIECES)

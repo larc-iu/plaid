@@ -136,17 +136,17 @@ def test_a_document_core_did_not_answer_for_is_waited_for_as_such_and_finished_a
     assert job.paused['edits'] == 0, "not a wait for people's edits"
 
 
-def test_core_out_of_reach_for_good_ends_the_job_never_a_document_in_use(monkeypatch):
+def test_core_out_of_reach_for_good_ends_the_document_not_reached_never_in_use(monkeypatch):
+    """Put off by core as often as a person's document would be before it
+    ends in use, it ends not reached, and the job goes on (REV-JG-4)."""
     client, job, r = _two_documents(monkeypatch, 10 ** 6)
-    with pytest.raises(RuntimeError) as e:
-        r.work(job)
-    assert str(e.value) == f'the server did not answer after {JOB_DEFER_ROUNDS} waits of 10 minutes: HTTP 502 Bad Gateway'
-    assert core_job.core_fault(e.value) is None, 'never taken for a passing fault and tried again'
-    assert job.rows['d1']['state'] == 'deferred' and not job.rows['d1'].get('defers')
+    r.work(job)
+    assert job.rows['d1']['state'] == 'not-reached' and not job.rows['d1'].get('defers')
+    assert job.rows['d2']['state'] == 'done'
     assert job.paused['edits'] == 0
     waits = [m for m in _said(client) if m == 'The server did not answer. Trying again in 10 minutes.']
     assert len(waits) == JOB_DEFER_ROUNDS and JOB_DEFER_WAIT_S == 600
-    assert core_job.error_line(e.value).startswith('The job worker met an error and stopped the job: the server')
+    assert not [m for m in _said(client) if m.startswith('Waiting for people')]
 
 
 @pytest.mark.parametrize('status,person', [(502, False), (429, False), (423, True)])
@@ -176,3 +176,4 @@ def test_read_job_says_the_words_core_s_own_report_holds_in_its_documents_and_wh
     top = next(line for line in summary(job) if line.startswith("The report's top line"))
     assert top == ('The report\'s top line: "Text: 25 words added, 2 existing words or punctuation marks changed or '
                    'removed."'), top
+
