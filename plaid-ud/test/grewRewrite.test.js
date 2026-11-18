@@ -350,3 +350,19 @@ test('lexicon errors: ambiguous value, unknown field, files, and the search box'
     (e) => /1 fields on a line, 2 in the header/.test(e.message) && e.line === 4,
   );
 });
+
+// A lexicon pasted with spaces for tabs read its header as one field
+// "noun Gender", and the rule failed with "Lexicon 'lex' has no field
+// 'noun'" under "Unsupported feature" (H3-6-7).
+test('lexicon: a header with spaces between its fields says fields are tab-separated', () => {
+  assert.throws(
+    () =>
+      parseGrs(
+        'pattern { X [upos=NOUN, lemma=lex.noun, !Gender] } commands { X.Gender = lex.Gender }\n#BEGIN lex\nnoun Gender\ndog Masc\ncat Fem\n#END',
+      ),
+    (e) =>
+      e.name === 'GrewParseError' &&
+      e.message === "Lexicon 'lex': fields are separated by tabs, not spaces" &&
+      e.line === 3,
+  );
+});

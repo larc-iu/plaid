@@ -162,17 +162,27 @@ function createParser(src) {
       const text = raw.replace(/\r$/, '');
       if (!text.trim() || text.trimStart().startsWith('%')) return;
       const cells = text.split(FIELD_SEP).map((c) => c.trim());
+      const sourceLine = () => src.split('\n')[bodyLine + k - 1] ?? '';
       if (!fields) {
+        // A field name never holds a space: a header that does was pasted
+        // with spaces for tabs.
+        if (cells.some((c) => /\s/.test(c))) {
+          throw new GrewParseError(
+            `Lexicon '${name}': fields are separated by tabs, not spaces`,
+            bodyLine + k,
+            1,
+            sourceLine(),
+          );
+        }
         fields = cells;
         return;
       }
       if (cells.length !== fields.length) {
-        const lines2 = src.split('\n');
         throw new GrewParseError(
           `Lexicon '${name}': ${cells.length} fields on a line, ${fields.length} in the header (fields are tab-separated)`,
           bodyLine + k,
           1,
-          lines2[bodyLine + k - 1] ?? '',
+          sourceLine(),
         );
       }
       entries.push(Object.fromEntries(fields.map((f, i) => [f, cells[i]])));
