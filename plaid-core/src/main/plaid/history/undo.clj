@@ -1305,21 +1305,28 @@
   "`{:documents [...] :vocabs [...]}`, the projects of the documents and the
   homes of the vocabularies whose rows of `ops` the caller may undo
   (`may-document?`, `may-vocab?`, within `:document-id` or `:vocab-id` when
-  given). An undo is filed under the one project these name together, else
-  under the entry's first operation's project (ACL8-1). An entry's own route
-  refuses one whose rows lie in documents of several projects and in no
-  vocabulary (`undo*`): filed under one, it would be missing from the
-  other's History, as the route for several entries refuses entries in more
-  than one project. A vocabulary's rows show in its History, which every
-  project that borrows it reads."
-  [db ops {:keys [may-document? may-vocab? document-id vocab-id]}]
+  given). Within `:vocab-id` the documents are those of the links it
+  narrows to (`unit-items`), and the home is that vocabulary's.
+
+  One entry's undo is filed under the one project of these documents, else
+  under the one vocabulary home, else under the entry's first operation's
+  project (ACL8-1, REV-CA2-1). An entry's own route refuses one whose rows
+  lie in documents of several projects and in no vocabulary (`undo*`):
+  filed under one, it would be missing from the other's History, as the
+  route for several entries refuses entries in more than one project. A
+  vocabulary's rows show in its History, which every project that borrows
+  it reads."
+  [db ops entry-id {:keys [may-document? may-vocab? document-id vocab-id] :as opts}]
   (let [{:keys [documents vocabs]} (changes/unit-scopes db ops)
-        documents (cond->> documents document-id (filter #(= (str %) (str document-id))))
+        documents (cond
+                    document-id (filter #(= (str %) (str document-id)) documents)
+                    vocab-id (distinct (keep :doc (:items (unit-items db entry-id opts))))
+                    :else documents)
         vocabs (cond->> vocabs vocab-id (filter #(= (str %) (str vocab-id))))]
-    {:documents (distinct (keep #(when (and (not vocab-id) may-document? (may-document? %))
+    {:documents (distinct (keep #(when (and may-document? (may-document? %))
                                    (some-> (changes/document-project db %) str))
                                 documents))
-     :vocabs (distinct (keep #(when (and (not document-id) may-vocab? (may-vocab? %))
+     :vocabs (distinct (keep #(when (and (not document-id) (or vocab-id (and may-vocab? (may-vocab? %))))
                                 (some-> (psc/q1 db {:select [:project_id] :from [:vocab_layers]
                                                     :where [:= :id (str %)]})
                                         :project_id str))
@@ -1357,13 +1364,14 @@
   [db entry-id {:keys [user dry-run?] :as opts}]
   (let [several? (coll? entry-id)
         ops (if several? (changes/units-ops db entry-id) (changes/unit-ops db entry-id))
-        permitted (when (seq ops) (permitted-projects db ops opts))
+        permitted (when (seq ops) (permitted-projects db ops entry-id opts))
         projects (distinct (concat (:documents permitted) (:vocabs permitted)))]
     (cond
       (empty? ops)
       nil
 
-      (and (not several?) (empty? (:vocabs permitted)) (< 1 (count (:documents permitted))))
+      (and (not several?) (not (:vocab-id opts)) (empty? (:vocabs permitted))
+           (< 1 (count (:documents permitted))))
       {:error "The entries are in more than one project. Undo each project's entries on their own."
        :code 422}
 
@@ -1372,7 +1380,11 @@
                             (if several?
                               (str "Undo " (count entry-id) " entries: " (entry-label db (first entry-id) ops))
                               (str "Undo entry " entry-id ": " (entry-label db entry-id ops))))
-            project (if (= 1 (count projects)) (first projects) (some :project_id ops))
+            project (cond
+                      several? (if (= 1 (count projects)) (first projects) (some :project_id ops))
+                      (= 1 (count (:documents permitted))) (first (:documents permitted))
+                      (= 1 (count (:vocabs permitted))) (first (:vocabs permitted))
+                      :else (some :project_id ops))
             not-undone (not-undone-ops db ops)
             ;; An undo that a job's read must find gets a group of its own,
             ;; whose ref names the job (`job-ref`), one id for every attempt.

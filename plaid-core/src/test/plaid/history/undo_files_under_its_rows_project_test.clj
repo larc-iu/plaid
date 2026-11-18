@@ -122,3 +122,42 @@
     (assert-status 200 (undo (str "?document-id=" (:document p))))
     (is (= 1 (count (undos user1-request (:project p)))))
     (is (empty? (undos user1-request h)))))
+
+(deftest an-undo-whose-rows-lie-in-one-document-project-is-filed-there
+  ;; The rule for an entry's own route: the one project of the documents whose
+  ;; rows the caller may undo, else the vocabulary's home (REV-CA2-1). A
+  ;; borrower's maintainer, narrowing to the borrowed vocabulary, undoes only
+  ;; the link in their own document: that undo was filed under the
+  ;; vocabulary's home, where they have no role, and was missing from theirs.
+  (let [p (world "P")
+        h (create-test-project admin-request "H")
+        _ (grant! (:project p) "maintainers" "user2@example.com")
+        _ (grant! (:project p) "maintainers" "user1@example.com")
+        _ (grant! h "maintainers" "user1@example.com")
+        v (id (create-vocab-layer admin-request h "Shared"))
+        _ (link-vocab-to-project admin-request (:project p) v)
+        entry! (fn []
+                 (let [g (random-uuid)
+                       item (id (api-call admin-request {:method :post :path (str "/api/v1/vocab-items?group-id=" g)
+                                                         :body {:vocab-layer-id v :form "alpha"}}))]
+                   (assert-status 201 (api-call admin-request {:method :post
+                                                               :path (str "/api/v1/vocab-links?group-id=" g)
+                                                               :body {:vocab-item item :tokens [(:token p)]}}))
+                   g))]
+    (testing "a borrower's maintainer, narrowed to the vocabulary: filed under the borrower"
+      (let [g (entry!)]
+        (assert-status 200 (api-call user2-request {:method :post
+                                                    :path (str "/api/v1/audit/entries/" g "/undo?vocab-layer-id=" v)}))
+        (is (= 1 (count (undos admin-request (:project p)))))
+        (is (empty? (undos admin-request h)))))
+    (testing "a maintainer of both, not narrowed: filed under the one document project"
+      (let [g (entry!)]
+        (assert-status 200 (api-call user1-request {:method :post :path (str "/api/v1/audit/entries/" g "/undo")}))
+        (is (= 2 (count (undos admin-request (:project p)))))
+        (is (empty? (undos admin-request h)))))
+    (testing "the vocabulary's own rows only: filed under its home"
+      (let [g (random-uuid)
+            _ (api-call admin-request {:method :post :path (str "/api/v1/vocab-items?group-id=" g)
+                                       :body {:vocab-layer-id v :form "beta"}})]
+        (assert-status 200 (api-call user1-request {:method :post :path (str "/api/v1/audit/entries/" g "/undo")}))
+        (is (= 1 (count (undos admin-request h))))))))
