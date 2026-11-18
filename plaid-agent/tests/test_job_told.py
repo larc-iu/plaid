@@ -414,3 +414,31 @@ def test_the_selection_piece_and_a_fills_nothing_piece_are_built_without_the_evi
 def test_plan_work_promises_what_is_empty_only_to_pieces_shown_it():
     said = toolkit.PLAN_WORK['function']['description']
     assert 'Pieces in sentences and of one document are shown what of it is empty.' in said, said
+
+
+# --- REV-JR2-1: no line a job sends lists more than a few sentences -------------------------------
+
+def _utf16(s):
+    return len(s.encode('utf-16-le')) // 2
+
+
+def test_no_progress_line_for_a_500_sentence_document_passes_cores_cap():
+    from plaid_agent.igt.job import SENTENCES_NAMED, sentences_text
+    client = JobClient({'d1': document('d1', 'Story', [{'words': ['blank']}]),
+                        'd2': document('d2', 'Other', [{'words': ['ta']}])})
+    job = start(client)
+    r = runner(job)
+    total = 500
+    shapes = [list(range(1, total + 1)), list(range(1, total + 1, 2)), list(range(3, total + 1, 7)), [5],
+              list(range(1, 2 * SENTENCES_NAMED, 2))]
+    name = 'Story of a long name ' * 4
+    lines = []
+    for idx in shapes:
+        lines.append(r.progress_line(name, False, idx, total))
+        lines.append(r.after_text_line(name, idx))
+    lines.append(r.progress_line(name, True, shapes[0], total))
+    assert all(_utf16(x) <= 300 for x in lines), [x for x in lines if _utf16(x) > 300]
+    assert sentences_text(list(range(3, 41, 3))) == '13 sentences from 3 to 39'
+    assert sentences_text(list(range(1, 2 * SENTENCES_NAMED, 2))) == \
+        'sentences ' + ', '.join(str(i) for i in range(1, 2 * SENTENCES_NAMED, 2))
+

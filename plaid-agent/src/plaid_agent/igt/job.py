@@ -1092,14 +1092,24 @@ def left_out_ids(report: Dict[str, Any]) -> set:
     return {d.get('document_id') for d in plan.get('left_out') or [] if isinstance(d, dict)}
 
 
+#: The most sentences a line names one by one (REV-JR2-1): past it, the
+#: count and the span, so a heartbeat line stays far under core's cap.
+SENTENCES_NAMED = 8
+
+
 def sentences_text(indexes: List[int]) -> str:
     """A part's sentences by their own numbers: "sentence 4", "sentences 3
     to 7" for a run, else each, "sentences 3, 11, 19" (D12: a part of
-    scattered sentences is never said as a run)."""
+    scattered sentences is never said as a run), and past
+    :data:`SENTENCES_NAMED` the count and the span, "12 sentences from 3 to
+    40" (REV-JR2-1). Every line that names a part's sentences says them
+    through it."""
     if len(indexes) == 1:
         return f'sentence {indexes[0]}'
     if is_run(indexes):
         return f'sentences {indexes[0]} to {indexes[-1]}'
+    if len(indexes) > SENTENCES_NAMED:
+        return f'{len(indexes)} sentences from {indexes[0]} to {indexes[-1]}'
     return 'sentences ' + ', '.join(str(i) for i in indexes)
 
 
@@ -3916,8 +3926,7 @@ class IgtRunner:
         lines.insert(len(lines) - 1, AFTER_TEXT_LINE)
         piece = {'document': document_id, 'first': part[0].id, 'whole': False, 'after_text': True}
         key = analysis_key(canonical(piece))
-        said = sentences_text([s.index for s in part])
-        job.set(current_document=document_id, message=f'{doc.name}: {said}, {self.after_text_label()}.')
+        job.set(current_document=document_id, message=self.after_text_line(doc.name, [s.index for s in part]))
         self.following = True
         try:
             while True:
@@ -3986,6 +3995,11 @@ class IgtRunner:
         self.begin_summary(key, document_id, doc.name, part, False, '', [],
                            after_text='added' if self.only_new() is not None else 'edited')
         self.end_summary(key)
+
+    def after_text_line(self, name: str, indexes: List[int]) -> str:
+        """The heartbeat's line for a piece after a text edit, its sentences
+        said by :func:`sentences_text` (REV-JR2-1)."""
+        return f'{name}: {sentences_text(indexes)}, {self.after_text_label()}.'
 
     def after_text_label(self) -> str:
         """How the work list names a piece after a text edit: the words the
