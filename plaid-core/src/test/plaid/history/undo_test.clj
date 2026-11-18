@@ -478,8 +478,11 @@
                                                 :body {:losers [foxes]}}))
           entry (last-op-id "vocab-item/merge-into")
           everyone (undone! admin-request entry :dry-run true)
+          mine (undone! user1-request entry :dry-run true)
           summary (undone! user1-request entry)]
       (is (pos? (:skipped-unreadable summary)) (pr-str summary))
+      (is (= (:skipped-unreadable mine) (:skipped-unreadable summary))
+          "their own dry run counts what their undo leaves (REV-SJ3-R2-2)")
       (is (= (- (:rows everyone) (:rows summary)) (:skipped-unreadable summary))
           "every row of the borrower's document, left and counted")
       (is (zero? (:skipped-unreadable everyone)) "the admin reads them all")
@@ -510,8 +513,11 @@
                                            :path (str "/api/v1/jobs/" job "/undo" (when dry? "?dry-run=true"))}))
         body (fn [resp] (assert-ok resp) (:body resp))
         everyone (body (call admin-request true))
+        mine (body (call user1-request true))
         summary (body (call user1-request false))]
     (is (pos? (:skipped-unreadable summary)) (pr-str summary))
+    (is (= (:skipped-unreadable mine) (:skipped-unreadable summary))
+        "their own dry run counts what their undo leaves (REV-SJ3-R2-2)")
     (is (= (- (:rows everyone) (:rows summary)) (:skipped-unreadable summary)))
     (is (= fox (:vocab_item_id (psc/fetch-by-id db :vocab_links l-b0))) "the borrower's link stays merged")))
 
