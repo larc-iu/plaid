@@ -572,7 +572,9 @@
   parent's end, once per parent: a one-condition Grew search over 5,000
   sentences took 1.8 to 2.3 s in SQL. With the document it seeks the child's own
   layer through `idx_tokens_layer_doc_end`: 0.3 s, and every Grew and
-  assistant query measured got faster or stayed (SCL7-2)."
+  assistant query measured got faster or stayed (SCL7-2). That holds on
+  SAMPLED token statistics: read whole, a two-relation pattern is 25 times
+  slower (`plaid.server.sql/tables-analysed-whole` says how much and why)."
   [child parent]
   [:and
    [:<> (col child :id) (col parent :id)]

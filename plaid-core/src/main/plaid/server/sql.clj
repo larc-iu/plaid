@@ -351,7 +351,19 @@
    and gives 1 wherever the first layer holds unique values. The migration
    20261118153000-spans-statistics-whole took the statistics of a database
    analysed before once, since a refresh takes a table again only when it
-   has grown tenfold."
+   has grown tenfold.
+
+   Do not add `tokens` or `relations` here without measuring a Grew pattern
+   with two relations in one sentence (`V -[nsubj]-> N; V -[obj]-> O`)
+   first. With their statistics read whole (`idx_tokens_layer_doc_end`
+   '399485 44388 439 2' on the scale fixture), the document equality
+   `within-pred` adds lets SQLite reach the sentence's words by (layer,
+   document) alone, every word of the document once per outer row: 0.6 s
+   sampled against 15.7 s whole through sqlite-jdbc, the same 492 rows (and
+   2.2 s at 56368ca02, before that equality, per the review REV-CQ-1). The
+   sampled statistics happen to give the good plan, so a database whose
+   first token layer is small, and so samples close to whole, can meet the
+   slow one."
   #{"spans"})
 
 (defn- analysis-limit
