@@ -208,8 +208,8 @@ describe('the words', () => {
       'The assistant’s model failed during planning.',
       'The fields this job was set up to fill are gone.',
       'This job’s setup could not be read.',
-      'The model refused the job’s calls.',
-      'Its worker stopped during it too many times.',
+      'The model’s provider refused the job’s calls.',
+      'Its worker stopped during it ten times.',
     ]);
     expect(jobReasonText({ reason: 'cancelled', message: null })).toBe(null);
     expect(jobReasonText(null)).toBe(null);
