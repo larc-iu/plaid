@@ -251,3 +251,16 @@ test('MISC on a multi-word token row is dropped aloud, as on a word row', async 
     'MISC values on 1 token row dropped: Plaid UD does not store the MISC column.',
   ]);
 });
+
+// H3-5-5: a FEATS entry with no `=` or no value was skipped in silence,
+// where an unreadable DEPS value is counted.
+test('FEATS entries that cannot be read are dropped aloud', async () => {
+  const { warnings } = await importOf([
+    '# text = a b',
+    '1\ta\t_\tNUM\t_\tNumType\t0\troot\t_\t_',
+    '2\tb\t_\tNUM\t_\tNumType=Card|Foo=\t1\tdep\t_\t_',
+  ]);
+  assert.deepEqual(warnings, ['2 FEATS entries could not be read and were dropped.']);
+  const one = await importOf(['# text = a', '1\ta\t_\tNUM\t_\tPolite\t0\troot\t_\t_']);
+  assert.deepEqual(one.warnings, ['1 FEATS entry could not be read and was dropped.']);
+});

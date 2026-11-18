@@ -320,6 +320,7 @@ async function importDocument(client, projectId, name, conlluText, precomputedLa
     const uposOps = [];
     const xposOps = [];
     const featOps = [];
+    let unreadableFeats = 0;
 
     morphemeMeta.forEach((meta, i) => {
       const morphemeId = morphemeIds[i];
@@ -349,11 +350,15 @@ async function importDocument(client, projectId, name, conlluText, precomputedLa
         // Through the one reader, so an off-spec `Gender = Fem` in the file
         // lands under the same name a typed one does. A pair the reader cannot
         // complete (`Gender=`, or an empty entry from `A=1||B=2`) is nothing to
-        // store. What the file says otherwise stands: an import records a
-        // corpus, and the Validation tab is where what it recorded is judged.
+        // store, and is counted. What the file says otherwise stands: an import
+        // records a corpus, and the Validation tab is where what it recorded is
+        // judged.
         row.feats.forEach((f) => {
           const feature = normalizeFeature(f);
-          if (!feature) return;
+          if (!feature) {
+            unreadableFeats += 1;
+            return;
+          }
           featOps.push({
             spanLayerId: featuresLayer.id,
             tokens: [morphemeId],
@@ -362,6 +367,13 @@ async function importDocument(client, projectId, name, conlluText, precomputedLa
         });
       }
     });
+
+    if (unreadableFeats > 0) {
+      importWarnings.push(
+        `${countOf(unreadableFeats, 'FEATS entry', 'FEATS entries')} could not be read and ` +
+          `${unreadableFeats === 1 ? 'was' : 'were'} dropped.`,
+      );
+    }
 
     lemmaMeta.forEach((lm, k) => {
       lemmaSpanIds[lm.sentIdx][lm.rowIndex] = lemmaOps[k].id;
