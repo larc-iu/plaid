@@ -398,13 +398,16 @@ export async function runExport({
   }
   const vocabsById = Object.fromEntries(vocabs.map((v) => [v.id, v]));
   // A CLDF dataset names an entry's vocabulary by name alone, so two sharing a
-  // name would come back as one. The person renames one first (ruled a user
-  // error, 2026-09-17).
-  if (wantCldfDictionary) {
+  // name would come back as one, and an archive with two is refused by its
+  // import (H2-6-2). The person renames one first (ruled a user error,
+  // 2026-09-17).
+  if (wantCldfDictionary || format.archive) {
     const names = new Set();
     for (const v of vocabs) {
       if (names.has(v.name)) {
-        throw new Error(`Two vocabularies are named "${v.name}". Rename one to export as CLDF.`);
+        throw new Error(
+          `Two vocabularies are named "${v.name}". Rename one to export as ${format.archive ? 'a Plaid IGT archive' : 'CLDF'}.`,
+        );
       }
       names.add(v.name);
     }

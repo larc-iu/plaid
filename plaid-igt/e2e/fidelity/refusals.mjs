@@ -5,9 +5,10 @@
 // any other refusal.
 export const REFUSALS = {
   // Ruled a user error (2026-09-17): the archive import tells vocabularies
-  // apart by name, and a CLDF dataset names one by its name alone.
+  // apart by name, and a CLDF dataset names one by its name alone. Both
+  // exports refuse it, so no archive is made that its import refuses (H2-6-2).
   twins: {
-    native: { at: 'import', message: /Two vocabularies are named/ },
+    native: { at: 'export', message: /Two vocabularies are named/ },
     cldf: { at: 'export', message: /Two vocabularies are named/ },
   },
 };

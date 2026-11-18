@@ -1279,6 +1279,7 @@ A segment that crosses a sentence break is left out, and the export says how man
 * **LaTeX book** (`.zip`): LaTeX source for a book of the texts, to compile with LuaLaTeX.
 See <<_latex_book>>.
 * **Plaid IGT JSON** (`.zip`): a lossless archive you can import again later.
+It and CLDF refuse a project with two vocabularies of one name: rename one first.
 
 An export holds everything its preset names, or it fails, and the export panel says what could not be read.
 

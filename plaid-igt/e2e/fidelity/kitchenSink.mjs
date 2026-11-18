@@ -16,7 +16,7 @@
 //   Kitchen sink            everything that fits in one project
 //   Kitchen sink blacklist  the ignored-tokens rule a project can only have one of
 //   Kitchen sink twins      two vocabularies with one name, which the native
-//                           import and the CLDF export refuse (ruled a user
+//                           and the CLDF export refuse (ruled a user
 //                           error), so it cannot share a project with the rest
 //   Bare                    setup and nothing else, the negative control
 //   Kitchen sink ud only    a project plaid-ud set up and plaid-igt never did,

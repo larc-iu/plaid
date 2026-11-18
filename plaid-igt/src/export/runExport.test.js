@@ -866,6 +866,21 @@ describe('runExport — native plaid-igt-json', () => {
     expect(manifest.documents).toEqual([]);
   });
 
+  it('refuses two vocabularies with one name, which its import would refuse (H2-6-2)', async () => {
+    const client = stubClient({ docs: [rawDoc('d1', 'Solo', 'hi')] });
+    client.vocabLayers.get = async (id) => ({ ...VOCAB, id });
+    await expect(
+      runExport({
+        client,
+        project: { ...PROJECT, vocabs: [{ id: 'v1' }, { id: 'v2' }] },
+        preset: nativePreset(),
+        scope: { type: 'project' },
+      }),
+    ).rejects.toThrow(
+      'Two vocabularies are named "Lexicon". Rename one to export as a Plaid IGT archive.',
+    );
+  });
+
   it('refuses an archive when a document asked for cannot be read', async () => {
     const docs = [rawDoc('d1', 'Bad', 'hi')];
     const client = stubClient({ docs, failIds: ['d1'] });
