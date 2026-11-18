@@ -79,9 +79,11 @@ const set = (document, ref, field, value) => ({
   arguments: { document, refs: [ref], field, value },
 });
 
-// The Report region's totals, label to value.
+// The Report region's totals, label to value, once the Overview has drawn
+// them: a tab clicked just before draws its panel after the click returns.
 const totalsOf = async (page) => {
   const report = page.getByRole('region', { name: 'Report' });
+  await expect(report.locator('dl > div > dt:visible').first()).toBeVisible({ timeout: 30_000 });
   const labels = await report.locator('dl > div > dt').allInnerTexts();
   const values = await report.locator('dl > div > dd').allInnerTexts();
   return Object.fromEntries(labels.map((l, i) => [l, values[i]]));
@@ -606,6 +608,7 @@ test('a plan limited by a search says it on the Plan line, the documents and the
     .getByRole('tablist', { name: 'Sections' })
     .getByRole('tab', { name: 'Overview' })
     .click();
+  await expect(page.locator('[role="tabpanel"][data-view="overview"]')).toBeVisible();
   const totals = await totalsOf(page);
   expect(totals['Documents done']).toBe('1');
   expect(totals['Documents with nothing found by the plan’s search']).toBe('1');
