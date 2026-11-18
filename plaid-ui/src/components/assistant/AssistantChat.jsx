@@ -196,7 +196,10 @@ export const AssistantChat = ({
   const [opening, setOpening] = useState(null); // id being fetched
   const activeRef = useRef(active);
   activeRef.current = active;
-  const openSeq = useRef(0); // the latest open() request, so a stale read is ignored
+  // The latest open() request, so a stale read is ignored. Whatever else moves
+  // it on also ends `opening`: the read under way no longer decides anything,
+  // and the composer waits on `opening`.
+  const openSeq = useRef(0);
   // This tab's id (hold.js), for the requests made from callbacks declared
   // above the hold itself.
   const tabRef = useRef(null);
@@ -219,6 +222,7 @@ export const AssistantChat = ({
     onRemoved: (id) => {
       if (activeRef.current?.id !== id) return;
       openSeq.current++;
+      setOpening(null);
       setActive(newConversation());
       setConvIdRef.current(null, { replace: true });
     },
@@ -406,6 +410,7 @@ export const AssistantChat = ({
       const seq = ++openSeq.current;
       const j = jobFor(id);
       if (j) {
+        setOpening(null);
         setActive(j.done ? j.result.conv : j.conv);
         return;
       }
@@ -440,9 +445,11 @@ export const AssistantChat = ({
   useEffect(() => {
     if (convId) {
       if (convId !== activeRef.current?.id) openRef.current(convId);
-    } else if (activeRef.current && !activeRef.current.draft) {
+    } else {
+      // A read still under way is for a conversation the address no longer names.
       openSeq.current++;
-      setActive(newConversation());
+      setOpening(null);
+      if (activeRef.current && !activeRef.current.draft) setActive(newConversation());
     }
   }, [convId]);
 
@@ -531,6 +538,7 @@ export const AssistantChat = ({
 
   const startNew = () => {
     openSeq.current++;
+    setOpening(null);
     // Already sitting in an untouched new conversation: nothing to start.
     if (!activeRef.current?.draft || activeRef.current.display.length) {
       setActive(newConversation());
@@ -646,7 +654,9 @@ export const AssistantChat = ({
     }
   };
 
-  const canSend = !!service && !busy && !attaching && !readOnly;
+  // Not while a conversation is being opened: the message would go into the
+  // new one on screen until the record arrives, not the one being opened.
+  const canSend = !!service && !busy && !attaching && !readOnly && !opening;
 
   // What clicking the notification of a turn that ended while the page was
   // hidden does besides focusing the window: shows its conversation, when
