@@ -71,6 +71,7 @@ describe('planRows', () => {
         rule: null,
         kept: false,
         writesNothing: false,
+        count: null,
       },
       {
         index: 1,
@@ -82,6 +83,7 @@ describe('planRows', () => {
         rule: null,
         kept: false,
         writesNothing: false,
+        count: null,
       },
     ]);
   });
@@ -98,6 +100,7 @@ describe('planRows', () => {
         rule: null,
         kept: false,
         writesNothing: false,
+        count: null,
       },
     ]);
     expect(planRows(null)).toEqual([]);

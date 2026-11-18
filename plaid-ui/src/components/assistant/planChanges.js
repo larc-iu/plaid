@@ -138,10 +138,11 @@ export const staleLine = (reason) =>
 // said 1,807 changes for a card of 801 (survey 2026-11-17). `proposedCount` is
 // the service's count (`proposed_changes` in plaid-agent's
 // core/conversation.py): each change a folded row or a rule stands for, none
-// for a kept value, the count the model's own plan line and the card's
-// "changes" (a rule's count, "and n more changes", a partial tally) use. It is
-// what the turn staged and stays so whatever became of the plan: the card
-// says that. A plan whose record holds no count gets no line.
+// for a kept value, the count of the model's own plan line. The card's
+// numbers of changes add up each row's `count`, which the service writes from
+// the same rule (`row_changes`), so they sum to this line. It is what the turn
+// staged and stays so whatever became of the plan: the card says that. A plan
+// whose record holds no count gets no line.
 export const stagedLine = (plan) => {
   const n = plan?.proposedCount;
   return Number.isInteger(n) && n >= 0 ? `Staged: ${count(n, 'change', 'changes')}` : null;
@@ -150,15 +151,22 @@ export const stagedLine = (plan) => {
 // How many rows a settled plan's record no longer holds (planRecord.js).
 export const rowsOmitted = (plan) => Number(plan?.omitted?.count) || 0;
 
-// How many of those rows were changes: a row that writes nothing (a kept
-// value, a corpus-wide change settled to none) is not one.
-export const changesOmitted = (plan) =>
-  Math.max(0, rowsOmitted(plan) - (Number(plan?.omitted?.kept) || 0));
+// How many changes those rows stood for (`omitted.changes`), or null for a
+// plan stored before its rows carried a count: the card then names no number.
+export const changesOmitted = (plan) => {
+  if (rowsOmitted(plan) === 0) return 0;
+  const n = plan?.omitted?.changes;
+  return Number.isInteger(n) ? n : null;
+};
 
 // The line that ends such a plan's list of changes, on the card and in the
 // exports.
 export const omittedLine = (n) =>
-  n === 1 ? 'and 1 more change' : `and ${n.toLocaleString('en-US')} more changes`;
+  n == null
+    ? 'and more changes'
+    : n === 1
+      ? 'and 1 more change'
+      : `and ${n.toLocaleString('en-US')} more changes`;
 
 // The changes to show, in plan order: the service's located changes when
 // they line up with the ops, else their labels alone.
@@ -193,6 +201,10 @@ export const planRows = (plan) => {
       // A corpus-wide change the plan's keeps and named changes left with
       // nothing to write: listed, and counted as no change.
       writesNothing: !!c.writesNothing,
+      // How many changes the row stands for, as the service counts them
+      // (`row_changes`): a folded row its members, a rule its values, a kept
+      // value none. Null on a plan stored before rows carried it.
+      count: Number.isInteger(c.count) ? c.count : null,
     }));
   }
   return changes.map((c, i) => ({
@@ -205,11 +217,17 @@ export const planRows = (plan) => {
     rule: null,
     kept: false,
     writesNothing: false,
+    count: null,
   }));
 };
 
-/** How many of these rows are changes: a row that writes nothing is not one. */
-export const changeCount = (rows) => (rows || []).filter((r) => !r.kept && !r.writesNothing).length;
+/**
+ * How many changes these rows stand for, each as many as its `count`: the
+ * unit of the staged line. Null when a row does not say, and then the card
+ * names no number.
+ */
+export const changeCount = (rows) =>
+  (rows || []).some((r) => r.count == null) ? null : (rows || []).reduce((n, r) => n + r.count, 0);
 
 // Rows grouped by the place they change, groups in order of first appearance,
 // rows in plan order within each.

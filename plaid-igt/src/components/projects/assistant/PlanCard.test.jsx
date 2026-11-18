@@ -29,6 +29,7 @@ const gloss = (i) => ({
   where: { ...at(i), word: 1 },
   change: 'Gloss = "x"',
   writesText: false,
+  count: 1,
 });
 
 const retype = {
@@ -36,6 +37,7 @@ const retype = {
   where: at(1),
   change: 'retype "Los niños jugaban." → "Los niños jugaban"',
   writesText: true,
+  count: 1,
 };
 
 const render = (changes, extra = {}) =>

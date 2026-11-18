@@ -290,8 +290,12 @@ describe('expanding a long plan', () => {
 describe('a kept value', () => {
   const kept = (n, keeps) =>
     plan([
-      ...Array.from({ length: n }, (_, i) => ({ label: `change ${i}` })),
-      ...Array.from({ length: keeps }, (_, i) => ({ label: `upos stays "N${i}"`, kept: true })),
+      ...Array.from({ length: n }, (_, i) => ({ label: `change ${i}`, count: 1 })),
+      ...Array.from({ length: keeps }, (_, i) => ({
+        label: `upos stays "N${i}"`,
+        kept: true,
+        count: 0,
+      })),
     ]);
   const header = (root) => root.querySelector('th span');
 
@@ -319,10 +323,10 @@ describe('a kept value', () => {
 
   it('is left out of "and n more changes" on a settled plan cut short', async () => {
     const p = {
-      ...plan([{ label: 'change 0' }]),
+      ...plan([{ label: 'change 0', count: 1 }]),
       ops: undefined,
       opCount: 4,
-      omitted: { count: 3, kept: 1 },
+      omitted: { count: 3, kept: 1, changes: 2 },
     };
     const view = await mount(p, { status: 'applied' });
     expect(view.container.querySelector('[data-testid=rows-omitted]').textContent).toBe(
@@ -342,9 +346,9 @@ describe('a kept value', () => {
 describe('a corpus-wide change settled to none', () => {
   const settled = (changes) =>
     plan([
-      { label: 'discard nothing in "Viaje"', writesNothing: true },
-      ...Array.from({ length: changes }, (_, i) => ({ label: `upos "NOUN" → "N${i}"` })),
-      { label: 'upos stays "NOUN"', kept: true },
+      { label: 'discard nothing in "Viaje"', writesNothing: true, count: 0 },
+      ...Array.from({ length: changes }, (_, i) => ({ label: `upos "NOUN" → "N${i}"`, count: 1 })),
+      { label: 'upos stays "NOUN"', kept: true, count: 0 },
     ]);
   const header = (root) => root.querySelector('th span');
 

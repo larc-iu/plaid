@@ -319,12 +319,13 @@ describe('a settled plan cut to its first rows', () => {
       label: `r${i}`,
       change: 'x',
       where: { kind: 'token', documentId: 'd1', documentName: 'Doc one', surface: `w${i}` },
+      count: 1,
     }));
     const p = {
       id: 'p',
       summary: '900 field values',
       opCount: 900,
-      omitted: { count: 700 },
+      omitted: { count: 700, changes: 700 },
       changes: rows,
     };
     const view = await mount(p, { status: 'applied' }, (card) => (

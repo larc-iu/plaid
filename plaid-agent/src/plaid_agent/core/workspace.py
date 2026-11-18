@@ -681,6 +681,12 @@ class BaseWorkspace:
             return None
         ops = self.settle_for_payload()
         changes = self.describe_changes(ops)
+        # How many changes each row stands for, which the card adds up for
+        # every number of changes it shows (REV-RL1-1).
+        if len(changes) == len(ops):
+            from .plan import row_changes
+            for row, op in zip(changes, ops):
+                row['count'] = row_changes(op)
         for op in ops:
             op.pop(CARD, None)
         out = {'id': uuid7(), 'summary': self.summarize(self.ops), 'ops': ops,

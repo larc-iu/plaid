@@ -803,6 +803,10 @@ def compact_plan(item: Dict[str, Any]) -> Dict[str, Any]:
         held = sum(1 for c in dropped if c.get('kept') or c.get('writes_nothing'))
         if held:
             kept['omitted']['kept'] = held
+        # The changes those rows stood for, when each row says (`plan_payload`).
+        counts = [c.get('count') for c in dropped]
+        if all(isinstance(n, int) for n in counts):
+            kept['omitted']['changes'] = sum(counts)
     return {**item, 'plan': kept}
 
 

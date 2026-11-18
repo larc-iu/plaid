@@ -9,6 +9,7 @@ import {
   omittedLine,
   planRows,
   changesOmitted,
+  rowsOmitted,
   ruleCountLine,
   ruleDocuments,
   ruleMoreLine,
@@ -150,7 +151,7 @@ const planToMarkdown = (plan, status, outcome, inProject, reason, recorded) => {
   });
   // A long settled plan keeps its first rows only (planRecord.js).
   const omitted = changesOmitted(plan);
-  if (omitted > 0) lines.push('', omittedLine(omitted));
+  if (rowsOmitted(plan) > 0 && omitted !== 0) lines.push('', omittedLine(omitted));
   return lines.join('\n');
 };
 

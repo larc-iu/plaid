@@ -93,6 +93,13 @@ def changes_of(op: Dict[str, Any]) -> int:
     return 1
 
 
+def row_changes(op: Dict[str, Any]) -> int:
+    """The changes one stored op, a card row, stands for: each member of a
+    folded row counted as :func:`changes_of` counts it. The card's numbers
+    add these up, and so they agree with ``proposed_count``."""
+    return sum(changes_of(m) for m in expand_ops([op]))
+
+
 def plan_changes(ops: List[Dict[str, Any]]) -> int:
     """The changes a plan holds (:func:`changes_of`)."""
     return sum(changes_of(op) for op in ops)

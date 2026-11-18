@@ -25,6 +25,7 @@ const row = (i) => ({
   where: { kind: 'token', documentId: `d${i % 3}`, documentName: `Text ${i % 3}`, sentence: i },
   writesText: i % 100 === 0,
   replacesWork: i % 50 === 0 ? 2 : 0,
+  count: 1,
 });
 
 const bigPlan = () => {
@@ -59,6 +60,7 @@ describe('a long settled plan', () => {
       labels: labels.slice(0, SETTLED_ROWS_MAX),
       omitted: {
         count: rest.length,
+        changes: rest.length,
         writesText: rest.filter((c) => c.writesText).length,
         replacesWork: rest.reduce((n, c) => n + c.replacesWork, 0),
       },

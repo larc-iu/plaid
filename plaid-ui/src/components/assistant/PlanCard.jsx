@@ -119,7 +119,14 @@ export const PlanCard = ({
   // approving it would write nothing, so it can only be discarded (Luke
   // 2026-10-16).
   const nothingToWrite =
-    undecided && allRows.length > 0 && changeCount(allRows) === 0 && changesOmitted(plan) === 0;
+    undecided &&
+    allRows.length > 0 &&
+    allRows.every((r) => r.kept || r.writesNothing) &&
+    omitted === 0;
+  // Every number of changes the card shows counts changes, as the line above
+  // it does, or is not shown (`changeCount`).
+  const total = changeCount(allRows);
+  const more = changesOmitted(plan);
   return (
     <div
       className={cn(
@@ -266,7 +273,8 @@ export const PlanCard = ({
                           settled to none, writes nothing. */}
                       {changeCount(g.rows) > 0 && (
                         <span className="ml-1.5 font-normal text-muted-foreground">
-                          {omitted > 0 ? `${changeCount(g.rows)} shown` : changeCount(g.rows)}
+                          {changeCount(g.rows).toLocaleString('en-US')}
+                          {omitted > 0 && ' shown'}
                         </span>
                       )}
                     </th>
@@ -291,10 +299,10 @@ export const PlanCard = ({
                   ))}
               </Fragment>
             ))}
-            {changesOmitted(plan) > 0 && shown.hidden === 0 && (
+            {omitted > 0 && more !== 0 && shown.hidden === 0 && (
               <tr>
                 <td colSpan={2} className="pt-2 text-muted-foreground" data-testid="rows-omitted">
-                  {omittedLine(changesOmitted(plan))}
+                  {omittedLine(more)}
                 </td>
               </tr>
             )}
@@ -311,7 +319,11 @@ export const PlanCard = ({
           className="mt-1 flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
         >
           <ChevronDown className="h-3 w-3" />{' '}
-          {omitted > 0 ? `Show ${changeCount(allRows)}` : `Show all ${changeCount(allRows)}`}
+          {total == null
+            ? omitted > 0
+              ? 'Show more'
+              : 'Show all'
+            : `${omitted > 0 ? 'Show' : 'Show all'} ${total.toLocaleString('en-US')}`}
         </button>
       )}
       {stale && !dismissed && !readOnly && (
