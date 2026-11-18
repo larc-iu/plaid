@@ -773,6 +773,12 @@
         scope (delay (delegated-projects req db id (parse-project-ids project-ids)))
         refusal (delay (when delegating? (delegation-refusal db entry user-id @scope)))]
     (cond
+      ;; A job's token writes the job's own work and nothing else: a
+      ;; delegated token minted from it would outlive the job by up to its
+      ;; lifetime, writing as the starter after the job ended (ACL7-2).
+      (some-> requester-token (str/starts-with? "job:"))
+      {:status 403 :body {:error "A job's token cannot send requests to services."}}
+
       existing
       (if (request-visible? existing req id)
         (attach-stream req request-id)
@@ -929,7 +935,10 @@
       (not (and project-id (= project-id id) (nil? result)))
       {:status 404 :body {:error "Unknown or already-completed request"}}
 
-      (not= service-user-id (pra/->user-id req))
+      ;; A delegated token is held by another member's service, not by the
+      ;; account running this one, for the reason a delegated token opens no
+      ;; channel (`service-channel-handler`, ACL7-3).
+      (or (:auth/token-scope req) (not= service-user-id (pra/->user-id req)))
       {:status 403 :body {:error "Only the service a request was sent to can report on it."}}
 
       :else
