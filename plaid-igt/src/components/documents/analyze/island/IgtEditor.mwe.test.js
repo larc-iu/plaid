@@ -393,6 +393,50 @@ describe('gathering words into a multi-word expression', () => {
     expect(create.args.slice(0, 2)).toEqual(['i-satdown', ['w-3', 'w-4']]);
   });
 
+  // REV-G4-3: with a search typed, the keyboard starts on the top row drawn,
+  // a multi-word expression above the single-word entries.
+  it.each([
+    ['sat', 'sat down hard'],
+    ['down', 'sit down'],
+  ])('with "%s" typed it starts on the top row, %s', (typed, top) => {
+    mount({
+      extraItems: [
+        { id: 'i-sat', form: 'sat', metadata: { morphType: 'stem' } },
+        { id: 'i-down', form: 'down', metadata: { morphType: 'stem' } },
+        { id: 'i-sdh', form: 'sat down hard', metadata: { morphType: 'phrase' } },
+      ],
+    });
+    click(form('w-3'), { shiftKey: true });
+    click(form('w-4'), { shiftKey: true });
+    key(label('mwe:new'), 'Enter');
+    const box = popover().querySelector('.igt-vocab-pop__search');
+    box.value = typed;
+    box.dispatchEvent(new Event('input', { bubbles: true }));
+    const rows = [...popover().querySelectorAll('.igt-vocab-pop__item')];
+    const active = popover().querySelector('.igt-vocab-pop__item.is-active');
+    expect(active).toBe(rows[0]);
+    expect(active.querySelector('.igt-vocab-pop__form').textContent.trim()).toBe(top);
+  });
+
+  it('with "kick" typed Enter links the expression entry, not the single word', async () => {
+    const { client } = mount({
+      extraItems: [
+        { id: 'i-kick', form: 'kick', metadata: { morphType: 'stem' } },
+        { id: 'i-ktb', form: 'kick the bucket', metadata: { morphType: 'phrase' } },
+      ],
+    });
+    click(form('w-3'), { shiftKey: true });
+    click(form('w-4'), { shiftKey: true });
+    key(label('mwe:new'), 'Enter');
+    const box = popover().querySelector('.igt-vocab-pop__search');
+    box.value = 'kick';
+    box.dispatchEvent(new Event('input', { bubbles: true }));
+    key(popover().querySelector('.igt-vocab-pop__search'), 'Enter');
+    await settle(4);
+    const create = client.calls.find((c) => c.kind === 'vocabLinks.create');
+    expect(create.args[0]).toBe('i-ktb');
+  });
+
   it('picking an entry links the gathered words to it', async () => {
     const { doc, client } = mount();
     click(form('w-3'), { shiftKey: true });

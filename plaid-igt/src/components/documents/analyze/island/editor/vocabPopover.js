@@ -981,11 +981,13 @@ export const vocabPopover = {
     const covered = (it) =>
       it._tier !== TIERS.PRECEDENT &&
       (tree?.childrenOf.get(it.id) || []).some((c) => c.form === it.form && rankedIds.has(c.id));
-    // The current link first, then the ranked order: an unrelated phrase entry
-    // drawn at the top never takes the keyboard from an entry spelled like the
-    // gathered words.
+    // The current link first, then the ranked order: with nothing typed an
+    // unrelated phrase entry drawn at the top never takes the keyboard from an
+    // entry spelled like the gathered words (H2-14-3). With a search typed the
+    // list as drawn decides, so the keyboard starts on its top row (REV-G4-3).
     const current = currentItem && items.find((it) => it.id === currentItem.id);
-    const order = current ? [current, ...ranked.filter((it) => it !== current)] : ranked;
+    const base = search.trim() ? items : ranked;
+    const order = current ? [current, ...base.filter((it) => it !== current)] : base;
     const first = order.find((it) => !covered(it)) ?? order[0];
     // With nothing typed, Enter takes a row only when the form chose it: the
     // current link, what the form was linked to before, or an entry spelled
