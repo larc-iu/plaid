@@ -468,6 +468,8 @@ describe('listPrefKey', () => {
   // An app that never called configureUi, or a bundler that handed this module
   // out twice, must not quietly write keys under a prefix nobody chose.
   it('refuses to build a key for an app that named no prefix', () => {
+    // The app's test setup names one before every file.
+    configureUi();
     expect(() => listPrefKey('sort', 'projects')).toThrow(/appPrefix/);
   });
 
