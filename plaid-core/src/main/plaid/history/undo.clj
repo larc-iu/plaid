@@ -1301,6 +1301,30 @@
                         :set {:document_id (str (first docs))}
                         :where [:= :id (str (:id psaw/*op*))]}))))
 
+(defn- permitted-projects
+  "`{:documents [...] :vocabs [...]}`, the projects of the documents and the
+  homes of the vocabularies whose rows of `ops` the caller may undo
+  (`may-document?`, `may-vocab?`, within `:document-id` or `:vocab-id` when
+  given). An undo is filed under the one project these name together, else
+  under the entry's first operation's project (ACL8-1). An entry's own route
+  refuses one whose rows lie in documents of several projects and in no
+  vocabulary (`undo*`): filed under one, it would be missing from the
+  other's History, as the route for several entries refuses entries in more
+  than one project. A vocabulary's rows show in its History, which every
+  project that borrows it reads."
+  [db ops {:keys [may-document? may-vocab? document-id vocab-id]}]
+  (let [{:keys [documents vocabs]} (changes/unit-scopes db ops)
+        documents (cond->> documents document-id (filter #(= (str %) (str document-id))))
+        vocabs (cond->> vocabs vocab-id (filter #(= (str %) (str vocab-id))))]
+    {:documents (distinct (keep #(when (and (not vocab-id) may-document? (may-document? %))
+                                   (some-> (changes/document-project db %) str))
+                                documents))
+     :vocabs (distinct (keep #(when (and (not document-id) may-vocab? (may-vocab? %))
+                                (some-> (psc/q1 db {:select [:project_id] :from [:vocab_layers]
+                                                    :where [:= :id (str %)]})
+                                        :project_id str))
+                             vocabs))}))
+
 (defn- undo*
   "Undo entry `entry-id` as one operation of type `audit-entry/undo`, or with
   `:dry-run?` say what that would do without writing. nil when no entry has
@@ -1327,16 +1351,28 @@
   that wrote what undo does not take back), `:permitted` (how many rows the
   caller may maintain), and on a real call that wrote, `:operation` (the
   undo's own id). `:documents` names the documents whose versions moved.
-  `{:error msg :code n}` when it could not be done."
+  `{:error msg :code n}` when it could not be done, 422 for one entry whose
+  rows the caller may undo lie in documents of more than one project and in
+  no vocabulary (`permitted-projects`)."
   [db entry-id {:keys [user dry-run?] :as opts}]
   (let [several? (coll? entry-id)
-        ops (if several? (changes/units-ops db entry-id) (changes/unit-ops db entry-id))]
-    (when (seq ops)
+        ops (if several? (changes/units-ops db entry-id) (changes/unit-ops db entry-id))
+        permitted (when (seq ops) (permitted-projects db ops opts))
+        projects (distinct (concat (:documents permitted) (:vocabs permitted)))]
+    (cond
+      (empty? ops)
+      nil
+
+      (and (not several?) (empty? (:vocabs permitted)) (< 1 (count (:documents permitted))))
+      {:error "The entries are in more than one project. Undo each project's entries on their own."
+       :code 422}
+
+      :else
       (let [description (or (:description opts)
                             (if several?
                               (str "Undo " (count entry-id) " entries: " (entry-label db (first entry-id) ops))
                               (str "Undo entry " entry-id ": " (entry-label db entry-id ops))))
-            project (some :project_id ops)
+            project (if (= 1 (count projects)) (first projects) (some :project_id ops))
             not-undone (not-undone-ops db ops)
             ;; An undo that a job's read must find gets a group of its own,
             ;; whose ref names the job (`job-ref`), one id for every attempt.
