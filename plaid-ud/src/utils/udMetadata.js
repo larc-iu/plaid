@@ -34,6 +34,12 @@ export const SENT_ID = 'sent_id';
  */
 const SENTENCE_RESERVED = new Set([SENT_ID, 'text']);
 
+/**
+ * CoNLL-U's own document and paragraph markers. Written under a sentence,
+ * `# newdoc id = …` starts a new document when the file is read again.
+ */
+const CONLLU_MARKER = /^(newdoc|newpar)(\s+id)?$/;
+
 /** Names back to what is stored. */
 export const toMetadataConfig = (names) => (names || []).map((name) => ({ name: name.trim() }));
 
@@ -61,6 +67,7 @@ export function metadataFieldError(name, level, taken = []) {
       ? 'Every sentence already has sent_id.'
       : `${trimmed} is written from the document text.`;
   }
+  if (level === 'sentence' && CONLLU_MARKER.test(trimmed)) return `${trimmed} is a CoNLL-U marker.`;
   if (taken.some((t) => sameName(t.trim(), trimmed))) return `${trimmed} is already a field.`;
   return null;
 }

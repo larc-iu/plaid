@@ -65,6 +65,16 @@ test('metadataFieldError refuses the reserved names', () => {
   assert.equal(metadataFieldError(SENT_ID, 'document'), null);
 });
 
+// H3-7-3: a sentence field `newdoc id` was exported as `# newdoc id = …` under
+// a sentence, and the import split the document there and lost the rest.
+test('metadataFieldError refuses CoNLL-U document and paragraph markers for a sentence', () => {
+  for (const name of ['newdoc id', 'newdoc', 'newpar', 'newpar id', 'newdoc  id']) {
+    assert.equal(metadataFieldError(name, 'sentence'), `${name} is a CoNLL-U marker.`);
+  }
+  assert.equal(metadataFieldError('newdoc id', 'document'), null);
+  assert.equal(metadataFieldError('newdocs', 'sentence'), null);
+});
+
 test('metadataFieldError refuses an empty name and a duplicate', () => {
   assert.equal(metadataFieldError('   ', 'document'), 'A field needs a name.');
   assert.match(metadataFieldError('Genre', 'document', ['Source', 'Genre']), /already a field/);
