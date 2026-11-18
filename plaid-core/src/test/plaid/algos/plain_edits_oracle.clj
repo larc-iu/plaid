@@ -668,3 +668,48 @@
                        (str id " deleted with a letter left " (pr-str (cp/cp-subs old begin end))))))
           tokens)))
 
+;; ---------------------------------------------------------------- the main property test
+
+(defn configs-of-part
+  "The names of the configs the `k`th (from 0) of `n` test namespaces runs:
+  every `n`th name in sorted order, from the `k`th. Every config is in
+  exactly one part, a new one too. The main property test takes about five
+  minutes on one JVM, so it is split over three namespaces, which the
+  suite's runner can give a JVM each (FLK8-5)."
+  [k n]
+  (take-nth n (drop k (sort (keys configs)))))
+
+(defn check-configs!
+  "The main property test, on the configs named: each config's
+  `cases-per-config` seeded cases, as the ops a client sends (composed, and
+  keystroke by keystroke in either order of the carets) and as a whole-body
+  save, under the judge. A case's seed comes from its config's name and
+  number alone, so a config runs the same cases in any namespace."
+  [cnames]
+  (doseq [cname cnames
+          :let [opts (configs cname)]]
+    (let [fails (atom [])]
+      (dotimes [seed cases-per-config]
+        (let [rng (java.util.Random. (+ seed (* 7919 (hash cname))))
+              layout (:layout opts :apps)
+              {:keys [body tokens]} (gen-doc rng opts)
+              gaps (gen-gaps rng body tokens opts)
+              tokens (layout-tokens layout tokens)
+              new-body (ta/edit-ops-body (ta/gap-ops gaps) body)
+              server (server-gaps body (ta/gap-ops gaps) tokens layout)
+              readings {:composed (ta/gap-ops gaps)
+                        :keys-left-to-right (keystrokes gaps false)
+                        :keys-right-to-left (keystrokes gaps true)}]
+          (doseq [[rname ops] readings]
+            (let [r (run body tokens ops layout false)
+                  ps (into (problems body tokens server r (kept-out-of layout))
+                           (letters-left-problems body tokens ops r))]
+              (when (seq ps) (swap! fails conj {:config cname :seed seed :reading rname :old body :gaps gaps :problems (take 3 ps)}))))
+          (let [[bgaps r] (save-read body new-body tokens layout false)
+                ps (into (problems body tokens bgaps r (kept-out-of layout)) (survivor-problems body new-body tokens layout r))]
+            (when (seq ps) (swap! fails conj {:config cname :seed seed :reading :whole-body :old body :gaps bgaps :problems (take 3 ps)})))))
+      (when (or (System/getenv "PLAIN_ORACLE_DEBUG") (System/getProperty "plain.oracle.debug"))
+        (println cname (count @fails) (frequencies (map :reading @fails)))
+        (doseq [f (take 6 @fails)] (println (pr-str f))))
+      (testing (str cname)
+        (is (empty? @fails) (pr-str (take 3 @fails)))))))

@@ -1,41 +1,19 @@
 (ns plaid.algos.plain-edits-oracle-test
-  "The plain-edits oracle's main property test: every config's edits, as the ops
-  a client sends and as a whole-body save, under the judge, and the whole-body
-  judges on their own. The generators and the judge are in
-  `plaid.algos.plain-edits-oracle`."
+  "The plain-edits oracle's main property test on the first third of the
+  configs (the rest in `plaid.algos.plain-edits-oracle-2-test` and
+  `-3-test`), and the whole-body judges on their own. The generators, the
+  judge and the property test are in `plaid.algos.plain-edits-oracle`."
   (:require [clojure.string :as str]
             [clojure.test :refer [deftest is testing]]
-            [plaid.algos.plain-edits-oracle :refer [cases-per-config configs gen-doc gen-gaps kept-out-of keystrokes layout-tokens letters-left-problems problems run save save-read server-gaps survivor-problems]]
-            [plaid.algos.text :as ta]
+            [plaid.algos.plain-edits-oracle :refer [check-configs! configs configs-of-part problems save-read survivor-problems]]
             [plaid.util.codepoint :as cp]))
 
 (deftest a-plain-layer-takes-every-edit-the-plain-way
-  (doseq [[cname opts] configs]
-    (let [fails (atom [])]
-      (dotimes [seed cases-per-config]
-        (let [rng (java.util.Random. (+ seed (* 7919 (hash cname))))
-              layout (:layout opts :apps)
-              {:keys [body tokens]} (gen-doc rng opts)
-              gaps (gen-gaps rng body tokens opts)
-              tokens (layout-tokens layout tokens)
-              new-body (ta/edit-ops-body (ta/gap-ops gaps) body)
-              server (server-gaps body (ta/gap-ops gaps) tokens layout)
-              readings {:composed (ta/gap-ops gaps)
-                        :keys-left-to-right (keystrokes gaps false)
-                        :keys-right-to-left (keystrokes gaps true)}]
-          (doseq [[rname ops] readings]
-            (let [r (run body tokens ops layout false)
-                  ps (into (problems body tokens server r (kept-out-of layout))
-                           (letters-left-problems body tokens ops r))]
-              (when (seq ps) (swap! fails conj {:config cname :seed seed :reading rname :old body :gaps gaps :problems (take 3 ps)}))))
-          (let [[bgaps r] (save-read body new-body tokens layout false)
-                ps (into (problems body tokens bgaps r (kept-out-of layout)) (survivor-problems body new-body tokens layout r))]
-            (when (seq ps) (swap! fails conj {:config cname :seed seed :reading :whole-body :old body :gaps bgaps :problems (take 3 ps)})))))
-      (when (or (System/getenv "PLAIN_ORACLE_DEBUG") (System/getProperty "plain.oracle.debug"))
-        (println cname (count @fails) (frequencies (map :reading @fails)))
-        (doseq [f (take 6 @fails)] (println (pr-str f))))
-      (testing (str cname)
-        (is (empty? @fails) (pr-str (take 3 @fails)))))))
+  (check-configs! (configs-of-part 0 3)))
+
+;; The other two thirds are in plain-edits-oracle-2-test and -3-test.
+(deftest the-three-parts-run-every-config-once
+  (is (= (sort (keys configs)) (sort (mapcat #(configs-of-part % 3) (range 3))))))
 
 ;; The judge of whole-body saves, on its own: a word may go only when some
 ;; shortest diff takes all its letters.
