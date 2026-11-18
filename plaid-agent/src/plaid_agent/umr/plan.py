@@ -210,7 +210,7 @@ def _apply_create_node(ctx: Context, op) -> int:
         if there:
             ctx.span_at[(op['document_id'], op['var'])] = there
             if there != span:
-                ctx.notes.append(f'{op["var"]} was already in the document, so it was not added again')
+                ctx.notes.append(f'the constant {op["var"]} was already in the document, so it was not added again')
             return 0
 
     def queue(batch, o=op, m=meta):

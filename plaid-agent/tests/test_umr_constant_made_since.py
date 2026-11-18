@@ -55,7 +55,8 @@ def test_a_constant_made_since_planning_is_used_and_not_made_again():
     assert _made_constants(client) == [], 'no second author'
     [triple] = client.payloads('relations.create')
     assert triple['args'][1] == 'mc-author', 'the triple hangs on the author that is there'
-    assert any('author' in n and 'already' in n for n in result.get('notes') or []), result
+    assert result.get('notes') == [
+        'the constant author was already in the document, so it was not added again'], result
 
 
 def test_a_constant_still_missing_at_approval_is_made():
