@@ -842,6 +842,8 @@
  * @property {number} rows The entry's rows (in the narrowing asked for)
  * @property {UndoSkippedRow[]} skipped The first 1,000 rows left
  * @property {number} skippedCount Every row left
+ * @property {number} skippedUnreadable Rows left in documents or vocabularies the caller cannot read: a count
+ *   only, never listed in `skipped` nor counted anywhere else
  * @property {{opType: string, count: number}[]} notUndone The entry's operations that changed what undo does not take back
  * @property {string} [operation] The undo's own entry, when the call wrote
  */

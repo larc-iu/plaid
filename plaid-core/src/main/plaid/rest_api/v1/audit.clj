@@ -280,7 +280,7 @@
        "document's layers would not hold, so all that document's rows are left (does-not-fit), or a closed list no "
        "longer allows its value (value-not-allowed), or its place is taken: a text where its layer holds another text "
        "of the document now (place-taken). A row of a document or vocabulary the caller cannot read is neither "
-       "counted nor listed. Leaving is closed under dependency. Changes to a project, its "
+       "counted nor listed: skipped-unreadable says only how many of them are left. Leaving is closed under dependency. Changes to a project, its "
        "layers, a vocabulary's name or settings, users and memberships are not undone: not-undone lists the "
        "entry's operations that made them ({op-type, count}). A project's deletion is not an entry: it cannot be "
        "undone. The response counts what was undone per kind (undone: {inserted, updated, deleted} for documents, "
@@ -323,7 +323,7 @@
   (let [zero {:inserted 0 :updated 0 :deleted 0}]
     {:entries (vec ids) :dry-run (boolean dry-run?)
      :undone (zipmap [:documents :texts :tokens :spans :relations :vocab-links :vocab-items] (repeat zero))
-     :total 0 :rows 0 :skipped [] :skipped-count 0 :not-undone []}))
+     :total 0 :rows 0 :skipped [] :skipped-count 0 :skipped-unreadable 0 :not-undone []}))
 
 (defn- undo-answer
   "Run the undo of `ids` (one entry id, or a collection read as one) whose

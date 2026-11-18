@@ -977,6 +977,15 @@ def _audit_filter(entries, start_time, end_time, op_types, kinds=None):
     return [_with_entry_end_time(e, given) for e, given in out]
 
 
+
+def _undo_answer(summary):
+    """An undo's summary as core answers it: ``skipped_unreadable``, the rows
+    left in documents or vocabularies the caller cannot read, counted and
+    never named, 0 unless the given summary says (S9-3)."""
+    if not isinstance(summary, dict):
+        return summary
+    return {**summary, 'skipped_unreadable': summary.get('skipped_unreadable', 0)}
+
 class _AuditLog(list):
     """The fake's audit log of its home project: the list of entries it always
     was, which also answers ``audit.changes`` and ``audit.changes_page`` from
@@ -1011,14 +1020,17 @@ class _AuditLog(list):
     def undo(self, entry_id, *, dry_run=False, document_id=None, vocab_layer_id=None):
         """The server's undo of an entry, recorded dry or not. Either way it
         answers with the fake's ``undo_summary``: what WOULD be undone, or what
-        was. The fake applies nothing to its documents."""
+        was, with ``skipped_unreadable`` (rows left where the caller cannot
+        read, a count only) 0 unless it says. The fake applies nothing to its
+        documents."""
         self._root.fail_if_asked('audit.undo')
+        answer = _undo_answer(self._root.undo_summary)
         self._root.record('audit.undo',
                           {'args': (entry_id,),
                            'kwargs': {'dry_run': dry_run, 'document_id': document_id,
                                       'vocab_layer_id': vocab_layer_id}},
-                          {'body': self._root.undo_summary})
-        return self._root.undo_summary
+                          {'body': answer})
+        return answer
 
     def undo_entries(self, entry_ids, *, dry_run=False):
         """The server's undo of several entries as one, recorded dry or not,
@@ -1026,8 +1038,8 @@ class _AuditLog(list):
         self._root.fail_if_asked('audit.undo_entries')
         self._root.record('audit.undo_entries',
                           {'args': (list(entry_ids),), 'kwargs': {'dry_run': dry_run}},
-                          {'body': self._root.undo_summary})
-        return self._root.undo_summary
+                          {'body': _undo_answer(self._root.undo_summary)})
+        return _undo_answer(self._root.undo_summary)
 
 
 class FakeClient:
@@ -2293,7 +2305,7 @@ class _FakeJobs:
         job = self._job(job_id, 'POST', path)
         if job['state'] not in _JOB_FINAL:
             raise self._refuse(409, 'POST', path, 'This job has not ended. A job is undone once it has stopped.')
-        summary = self._client.undo_summary
+        summary = _undo_answer(self._client.undo_summary)
         # As core's read: the job stands undone once an undo wrote something.
         # The fake keeps no log, so an undo of that undo is not followed.
         if not dry_run and summary and summary.get('operation'):

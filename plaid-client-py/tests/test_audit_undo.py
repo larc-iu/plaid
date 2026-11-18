@@ -56,8 +56,9 @@ def test_an_undos_summary_is_recased_its_skipped_rows_with_the_row_each_names():
 def test_the_fake_records_an_undo_and_answers_its_summary():
     summary = {'entry': 'e1', 'total': 2, 'skipped': [], 'skipped_count': 0}
     fake = FakeClient({}, undo_summary=summary)
-    assert fake.audit.undo('e1', dry_run=True, document_id='d1') == summary
-    assert fake.audit.undo('e1') == summary
+    # As core's answer: a count of the rows left where the caller cannot read (S9-3).
+    assert fake.audit.undo('e1', dry_run=True, document_id='d1') == {**summary, 'skipped_unreadable': 0}
+    assert fake.audit.undo('e1') == {**summary, 'skipped_unreadable': 0}
     assert [c for c in fake.calls if c[0] == 'audit.undo'] == [
         ('audit.undo', {'args': ('e1',), 'kwargs': {'dry_run': True, 'document_id': 'd1',
                                                      'vocab_layer_id': None}}),
@@ -110,7 +111,7 @@ def test_an_undo_never_joins_an_open_logical_operation():
 def test_the_fake_records_several_entries_and_a_job_undone():
     summary = {'entries': ['e1', 'e2'], 'total': 3, 'skipped': [], 'skipped_count': 0}
     fake = FakeClient({}, undo_summary=summary)
-    assert fake.audit.undo_entries(['e1', 'e2'], dry_run=True) == summary
+    assert fake.audit.undo_entries(['e1', 'e2'], dry_run=True) == {**summary, 'skipped_unreadable': 0}
     assert ('audit.undo_entries', {'args': (['e1', 'e2'],), 'kwargs': {'dry_run': True}}) in fake.calls
 
 
@@ -124,7 +125,7 @@ def test_the_fake_undoes_a_job_only_once_it_has_ended():
         fake.jobs.undo(job['id'])
     assert refused.value.status == 409
     fake.jobs.cancel(job['id'])
-    assert fake.jobs.undo(job['id'], dry_run=True) == summary
+    assert fake.jobs.undo(job['id'], dry_run=True) == {**summary, 'skipped_unreadable': 0}
 
 
 def test_the_fake_job_reads_undone_after_an_undo_that_wrote():
@@ -137,3 +138,11 @@ def test_the_fake_job_reads_undone_after_an_undo_that_wrote():
     fake.jobs.undo(job['id'])
     undone = fake.jobs.get(job['id'])['undone']
     assert undone['operation'] == 'o1' and undone['user'] == fake.jobs.user and undone['time']
+
+
+def test_the_fake_answers_the_rows_left_where_the_caller_cannot_read_as_given():
+    """S9-3: core's summary counts them, never names them."""
+    summary = {'entries': ['g1'], 'total': 1, 'skipped': [], 'skipped_count': 0, 'skipped_unreadable': 2}
+    fake = FakeClient({}, undo_summary=summary)
+    assert fake.audit.undo('e1')['skipped_unreadable'] == 2
+    assert fake.audit.undo_entries(['e1'])['skipped_unreadable'] == 2

@@ -1399,6 +1399,7 @@ What cannot go back is left as it is, and the dialog lists it with the reason an
 A value changed again later is left, and so is anything something was added to since, such as a word that now has a gloss.
 Lexicon entries are not undone from a document: undoing the same entry in the vocabulary's History puts back its entries and every link to them, such as the links a merge moved.
 Changes to settings, fields, vocabularies and members are never undone.
+A merge of a lexicon entry another project borrows moves links in that project's documents too: those you cannot open are left as they are, and the dialog says how many, such as **2 changes in documents or lexicons you cannot open are not undone.**
 Undoing is for a project's maintainers.
 
 [[_changes_in_an_entry]]

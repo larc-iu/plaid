@@ -462,6 +462,59 @@
     (testing "the documents' versions moved"
       (is (every? true? (map < versions [(version hd) (version bd)]))))))
 
+;; S9-3: a merge by a maintainer of the vocabulary's home moves a link in a
+;; borrowing project's document the person cannot read. Their undo leaves it,
+;; and says how many such rows it leaves, a count with no id or name.
+
+(defn- home-maintainer! [home]
+  (assert-no-content (api-call admin-request {:method :post
+                                              :path (str "/api/v1/projects/" home "/maintainers/user1@example.com")})))
+
+(deftest an-undo-counts-the-rows-it-leaves-where-the-caller-cannot-read
+  (testing "a hand merge undone by its maker, a member of the home only"
+    (let [{:keys [home fox foxes l-h1 l-b0]} (merge-world!)
+          _ (home-maintainer! home)
+          _ (assert-ok (api-call user1-request {:method :post :path (str "/api/v1/vocab-items/" fox "/merge")
+                                                :body {:losers [foxes]}}))
+          entry (last-op-id "vocab-item/merge-into")
+          everyone (undone! admin-request entry :dry-run true)
+          summary (undone! user1-request entry)]
+      (is (pos? (:skipped-unreadable summary)) (pr-str summary))
+      (is (= (- (:rows everyone) (:rows summary)) (:skipped-unreadable summary))
+          "every row of the borrower's document, left and counted")
+      (is (zero? (:skipped-unreadable everyone)) "the admin reads them all")
+      (is (not-any? #(= l-b0 (:id %)) (:skipped summary)) "never named")
+      (is (= foxes (:vocab_item_id (psc/fetch-by-id db :vocab_links l-h1))) "the home's link went back")
+      (is (= fox (:vocab_item_id (psc/fetch-by-id db :vocab_links l-b0))) "the borrower's link stays merged")))
+  (testing "nothing unreadable, nothing counted"
+    (let [{:keys [fox foxes]} (merge-world!)
+          entry (merge! fox [foxes])]
+      (is (zero? (:skipped-unreadable (undone! admin-request entry)))))))
+
+(deftest undo-job-counts-the-rows-it-leaves-where-the-caller-cannot-read
+  (let [{:keys [home hd fox foxes l-b0]} (merge-world!)
+        _ (home-maintainer! home)
+        g (str (random-uuid))
+        job (str (random-uuid))
+        now (psc/now-iso)
+        _ (assert-ok (api-call (in-group user1-request g) {:method :post
+                                                           :path (str "/api/v1/vocab-items/" fox "/merge")
+                                                           :body {:losers [foxes]}}))
+        _ (psc/execute! db {:insert-into :jobs
+                            :values [{:id job :project_id (str home) :app "igt" :started_by "user1@example.com"
+                                      :state "done" :created_at now :instructions "Merge foxes into fox."}]})
+        _ (psc/execute! db {:insert-into :job_documents
+                            :values [{:job_id job :document_id (str hd) :position 0 :state "done"
+                                      :gloss_group g :updated_at now}]})
+        call (fn [req dry?] (api-call req {:method :post
+                                           :path (str "/api/v1/jobs/" job "/undo" (when dry? "?dry-run=true"))}))
+        body (fn [resp] (assert-ok resp) (:body resp))
+        everyone (body (call admin-request true))
+        summary (body (call user1-request false))]
+    (is (pos? (:skipped-unreadable summary)) (pr-str summary))
+    (is (= (- (:rows everyone) (:rows summary)) (:skipped-unreadable summary)))
+    (is (= fox (:vocab_item_id (psc/fetch-by-id db :vocab_links l-b0))) "the borrower's link stays merged")))
+
 (deftest undoing-a-merge-someone-built-on
   (testing "a person relinked one word since: that link is left, the rest undone"
     (let [{:keys [fox foxes l-h1 l-b0 h1 vocab]} (merge-world!)

@@ -381,7 +381,7 @@ c.audit.undo(done["operation"])  # and back again
 
 `document_id` / `documentId` takes one document's rows only, its links included, and `vocab_layer_id` / `vocabLayerId` takes one vocabulary's entries and the links that name one of them.
 An undo needs a maintainer: of a document's project for its rows, of a vocabulary's home project for its entries.
-Rows the caller may not maintain are listed as `not-permitted` and the rest undone, and rows in a document or vocabulary the caller cannot read are neither counted nor listed.
+Rows the caller may not maintain are listed as `not-permitted` and the rest undone, and rows in a document or vocabulary the caller cannot read are neither counted nor listed: `skipped-unreadable` says only how many of them are left.
 A delegated token undoes only the rows of documents in the projects it reaches.
 Undoing the same entry again finds nothing left and writes nothing.
 An undo may be sent with an `Idempotency-Key` or inside a batch: a dry run there writes nothing either.

@@ -3563,7 +3563,8 @@ class AuditResource(_Resource):
         ``built-on``, ``needs``, ``text-changed-since``, ``name-taken``,
         ``place-taken``, ``does-not-fit``, ``value-not-allowed``). A row in a
         document or vocabulary the caller cannot read is neither counted nor
-        listed. Changes to a project, its
+        listed: ``skipped_unreadable`` says only how many of them are left.
+        Changes to a project, its
         layers, a vocabulary's name or settings, users and memberships are not
         undone: ``not_undone`` lists the entry's operations that made them.
         Undoing an entry again finds nothing left and writes nothing. The undo
@@ -3863,8 +3864,9 @@ class JobsResource(_Resource):
         core from the job's own rows. The answer is ``audit.undo``'s summary,
         ``entries`` naming the groups. A job still waiting, running or
         stopping is refused 409. Rows the caller may not maintain are left
-        ``not-permitted``, and 403 when it maintains none. More than 20,000
-        rows: 413, saying how many. The job's read then carries ``undone``
+        ``not-permitted``, and 403 when it maintains none, and those in a
+        document the caller cannot read are counted in ``skipped_unreadable``
+        only. More than 20,000 rows: 413, saying how many. The job's read then carries ``undone``
         (``{operation, time, user}``) until that undo is itself undone.
 
         Args:

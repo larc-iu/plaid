@@ -299,7 +299,16 @@ export const notUndoneLines = (summary) => {
     const w = NOT_UNDONE.find(([re]) => re.test(opType))?.[1] ?? `Changes of type ${opType}`;
     if (!words.includes(w)) words.push(w);
   }
-  return words.map((w) => `${w} are not undone.`);
+  const unread = unreadableLine(summary);
+  return [...words.map((w) => `${w} are not undone.`), ...(unread ? [unread] : [])];
+};
+
+// The rows an undo leaves where the caller cannot read, which core counts and
+// never names (`skippedUnreadable`, S9-3), or ''.
+const unreadableLine = (summary) => {
+  const n = summary?.skippedUnreadable ?? 0;
+  if (!(n > 0)) return '';
+  return `${countOf(n, 'change')} in documents or lexicons you cannot open ${n === 1 ? 'is' : 'are'} not undone.`;
 };
 
 /**
@@ -318,6 +327,7 @@ export const undoneToast = (summary, opts) => {
     // Said apart from what was undone, never "as they were" twice
     // (REV-RPF3B-7).
     left ? `${left[0].toUpperCase()}${left.slice(1)} not undone.` : '',
+    unreadableLine(summary),
   ]
     .filter(Boolean)
     .join(' ');

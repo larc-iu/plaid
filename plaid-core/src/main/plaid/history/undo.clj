@@ -1001,10 +1001,13 @@
 (defn- summarize
   "The summary, of the rows `readable?` lets the caller read (a row in a
   document or vocabulary it cannot read is neither counted nor named, as the
-  changes read leaves it out, REV-UN-4). A row named under `by` or `needs` is
-  named only where it lies is readable."
-  [items left readable?]
-  (let [items (filter #(readable? (place-of %)) items)
+  changes read leaves it out, REV-UN-4), but for `:skipped-unreadable`: how
+  many such rows are left, a count only, so the caller learns the undo is not
+  whole (S9-3). A row named under `by` or `needs` is named only where it lies
+  is readable."
+  [all-items left readable?]
+  (let [items (filter #(readable? (place-of %)) all-items)
+        unreadable (count (filter #(and (contains? left (:k %)) (not (readable? (place-of %)))) all-items))
         name-ref (fn [r] (let [p (::place r)]
                            (when (and p (readable? p)) (dissoc r ::place))))
         left (update-vals left (fn [r] (cond-> r
@@ -1024,7 +1027,8 @@
      :total (count applied)
      :rows (count items)
      :skipped (vec (take max-listed skipped))
-     :skipped-count (count skipped)}))
+     :skipped-count (count skipped)
+     :skipped-unreadable unreadable}))
 
 ;; ============================================================
 ;; One attempt, inside the transaction
@@ -1284,7 +1288,8 @@
   Returns `{:summary {...}}`, where the summary has `:undone` (per kind,
   `{:inserted :updated :deleted}`), `:total`, `:skipped` (`{:kind :id
   :document|:vocab-layer :reason}`, with `:by` or `:needs` naming a row, the
-  first `max-listed`), `:skipped-count`, `:not-undone` (the entry's operations
+  first `max-listed`), `:skipped-count`, `:skipped-unreadable` (rows left in
+  documents or vocabularies the caller cannot read, a count only), `:not-undone` (the entry's operations
   that wrote what undo does not take back), `:permitted` (how many rows the
   caller may maintain), and on a real call that wrote, `:operation` (the
   undo's own id). `:documents` names the documents whose versions moved.

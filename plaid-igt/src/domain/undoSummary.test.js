@@ -256,6 +256,24 @@ describe('notUndoneLines', () => {
   });
 });
 
+// S9-3: core counts the rows an undo leaves where the caller cannot read,
+// never naming them.
+describe('rows left where the caller cannot read', () => {
+  it('are said in the dialog and in the result, by count only', () => {
+    const s = summary({ vocabLinks: counts(1) }, [], { skippedUnreadable: 2 });
+    expect(notUndoneLines(s)).toEqual([
+      '2 changes in documents or lexicons you cannot open are not undone.',
+    ]);
+    expect(notUndoneLines({ ...s, skippedUnreadable: 1 })).toEqual([
+      '1 change in documents or lexicons you cannot open is not undone.',
+    ]);
+    expect(notUndoneLines({ ...s, skippedUnreadable: 0 })).toEqual([]);
+    expect(undoneToast(s).message).toBe(
+      '1 link put back as it was. 2 changes in documents or lexicons you cannot open are not undone.',
+    );
+  });
+});
+
 describe('undoneToast', () => {
   it('says what was undone and how many were left', () => {
     expect(undoneToast(summary({ spans: counts(1) }))).toEqual({
