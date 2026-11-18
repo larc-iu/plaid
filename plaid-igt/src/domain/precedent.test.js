@@ -134,6 +134,26 @@ describe('queries', () => {
     expect(q.where).toContainEqual(['token', '?t', { layer: '?tl', doc: 'doc-1' }]);
   });
 
+  // H2-14-2: a multi-word expression linked to an entry with no phrase type
+  // is still one link over several words, not what each word was given.
+  it('link queries leave out every link over more than one token', () => {
+    for (const q of [
+      ...linkPrecedentQueries(['v1'], { projectId: 'p1' }),
+      ...linkPrecedentQueries(['v1'], { projectId: 'p1', docId: 'doc-1' }),
+    ]) {
+      expect(q.where).toContainEqual([
+        'not',
+        ['link-token', '?l', '?t2'],
+        ['precedes*', '?t', '?t2'],
+      ]);
+      expect(q.where).toContainEqual([
+        'not',
+        ['link-token', '?l', '?t2'],
+        ['precedes*', '?t2', '?t'],
+      ]);
+    }
+  });
+
   it('link queries count the links of this project only, never those of a project sharing the vocabulary', () => {
     for (const q of [
       ...linkPrecedentQueries(['v1', 'v2'], { projectId: 'p1' }),

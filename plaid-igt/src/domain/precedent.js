@@ -104,9 +104,12 @@ const addLink = (tally, kind, form, itemId, n, machine) => {
 // provenance. Row shape: [itemId, tokenValue, morphForm, role, morphType,
 // prov, provConfirmed, count] — morphForm for morpheme tokens (their value is
 // just the parent word's slice), tokenValue otherwise; morphType is the
-// entry's, so rows from multi-word expressions (one per member word, since a
-// link over several tokens joins once per token) can be left out of a single
-// word's precedent; prov and provConfirmed are the link's (null when absent).
+// entry's, so a phrase entry's links can be left out of a single word's
+// precedent; prov and provConfirmed are the link's (null when absent).
+// A link over several tokens (a multi-word expression, whatever its entry's
+// type) is left out by the query itself: it would join once per member word
+// and give each word the expression's entry (H2-14-2). The two anti-joins
+// keep a link only when no other token of it comes before or after this one.
 // With `docId`, the same counts for that one document alone.
 //
 // A vocabulary can be linked to several projects, and without a `scope` the
@@ -122,6 +125,8 @@ export function linkPrecedentQueries(vocabIds, { projectId, docId = null } = {})
       ['link-token', '?l', '?t'],
       ['token', '?t', { layer: '?tl', ...(docId ? { doc: docId } : {}) }],
       ['token-layer', '?tl', {}],
+      ['not', ['link-token', '?l', '?t2'], ['precedes*', '?t', '?t2']],
+      ['not', ['link-token', '?l', '?t2'], ['precedes*', '?t2', '?t']],
     ],
     return: {
       group: [
