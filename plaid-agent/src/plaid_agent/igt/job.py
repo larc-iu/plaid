@@ -2441,7 +2441,7 @@ class IgtRunner:
                         job.update_row(d, targets=len(searched[d]),
                                        counts={**(row.get('counts') or {}), MATCHED: len(searched[d])})
             core_job.through_core(job, unmatched)
-        if plan['pieces'] == SELECTION and SELECTION not in core_job.through_core(job, self.fallen_back):
+        if plan['pieces'] == SELECTION and not core_job.through_core(job, self.selection_ran):
             self.selection(job, order)
         # Every document still to finish is walked, a selection's too: the
         # walk settles it, ends it done when nothing is left, and works what
@@ -2724,6 +2724,17 @@ class IgtRunner:
         return [d for d in named if d in job.rows]
 
     # --- a selection: one piece for the whole job --------------------------------------
+
+    def selection_ran(self) -> bool:
+        """Whether core holds a row the selection's one ask wrote: its
+        summary, or a fallback row (``selection``, or a document's, which only
+        the selection's ask writes before the walk). A restarted worker then
+        never asks it again (REV-RW-R2-3): its writes are in core, and asked
+        again they would turn into proposals."""
+        if self.fallen_back():
+            return True
+        self.summaries_known()
+        return analysis_key(canonical({'document': None, 'first': None, 'whole': True})) in self.summarized
 
     def selection(self, job, order: List[str]) -> bool:
         """The whole selection as one piece: one model context reads the
