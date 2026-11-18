@@ -2353,13 +2353,14 @@ class IgtRunner:
         """What a refusal of a document's read, lock or write means: the
         document is :class:`Gone` when core no longer finds it (404, or 403
         naming nothing, ``unresolved``), the job's right to write is gone
-        on any other 403 or a 401 (``Job.access_lost``: the job fails
+        on any other 403 (``Job.access_lost``: the job fails
         ``starter-access``, and no document is called gone for it), and
-        anything else is the refusal itself."""
+        anything else is the refusal itself: a 401 included, whose token
+        ``core_job.through_core`` renews (D5)."""
         fault = core_job.core_fault(e)
         if fault == 'mine':
             return self.job.ended()
-        if fault == 'access':
+        if fault == 'access' and e.status != 401:
             return self.job.access_lost()
         data = e.response_data if isinstance(e.response_data, dict) else {}
         if e.status == 404 or (e.status == 403 and data.get('unresolved')):

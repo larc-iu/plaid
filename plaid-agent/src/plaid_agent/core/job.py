@@ -425,6 +425,8 @@ class Job:
         #: every client :meth:`client` handed out, each given the token of
         #: every heartbeat (D6)
         self._clients: 'weakref.WeakSet' = weakref.WeakSet()
+        #: the token :meth:`renewed` last got
+        self._renewed: Optional[str] = None
         self._stop = threading.Event()
         self._thread: Optional[threading.Thread] = None
 
@@ -445,11 +447,12 @@ class Job:
             if self.lost:
                 return
 
-    def beat(self) -> None:
+    def beat(self) -> bool:
         """One heartbeat: the status out, the job's state and a fresh token
-        back. What core refuses with says the job is lost to this worker."""
+        back. What core refuses with says the job is lost to this worker.
+        True when core answered it."""
         if self.lost:
-            return
+            return False
         with self._beat_lock:
             try:
                 answer = self.admin.jobs.heartbeat(self.id, self.worker_id, **self.status)
@@ -466,15 +469,16 @@ class Job:
                     self.lost = 'finished'
                 else:
                     logger.warning('Job %s: a heartbeat was refused: %s', self.id, e)
-                return
+                return False
             except Exception as e:  # noqa: BLE001 - a beat that did not get through is tried at the next
                 logger.warning('Job %s: a heartbeat did not get through: %s', self.id, e)
-                return
+                return False
             if isinstance(answer, dict):
                 self.state = answer.get('state') or self.state
                 self.token = answer.get('token') or self.token
                 for c in list(self._clients):
                     c.token = self.token
+            return True
 
     def ended(self) -> JobStopped:
         """Core refused a write (:func:`no_longer_mine`): the job ended or
@@ -483,6 +487,23 @@ class Job:
         still gets the job's report). Nothing more is written."""
         self.beat()
         return JobStopped(self.lost or 'finished')
+
+    def renewed(self, e: BaseException) -> bool:
+        """Core refused the job's token 401 (not ``job-ended``): the starter
+        changed their password or logged out everywhere, which revokes every
+        token minted for them (CONTRACT 4), or the token ran out. A heartbeat
+        that core answers, the job still this worker's, has minted a valid
+        one: True, and the step is made again with it. A token renewed here
+        and refused again is not renewed again (D5)."""
+        err = plaid_error(e)
+        if err is None or err.status != 401 or core_fault(err) != 'access':
+            return False
+        if self.token is not None and self.token == self._renewed:
+            return False
+        if not self.beat() or self.lost:
+            return False
+        self._renewed = self.token
+        return True
 
     def access_lost(self) -> JobStopped:
         """Core refused the starter's token its access (SPEC 12): the job
@@ -740,12 +761,17 @@ def through_core(job: Job, step: Callable[[], Any], gave_up: Optional[Callable[[
     ``passing``: a 5xx, a network error, 423, 429) it is made again,
     :data:`JOB_CORE_TRIES` times in all with a growing wait. When the trouble
     outlasts them, ``gave_up()`` answers where it is given, else the error
-    goes up. Anything else goes up at once, for :func:`run_job` to sort: the
-    job no longer this worker's, the starter's access gone, a fault."""
+    goes up. A token core refused 401 while a heartbeat renews it
+    (:meth:`Job.renewed`) is the step made again at once. Anything else goes
+    up at once, for :func:`run_job` to sort: the job no longer this
+    worker's, the starter's access gone, a fault."""
     for n in range(1, JOB_CORE_TRIES + 1):
         try:
             return step()
         except Exception as e:  # noqa: BLE001 - core's passing trouble is tried again, the rest goes up
+            if core_fault(e) == 'access' and n < JOB_CORE_TRIES and job.renewed(e):
+                logger.warning('Job %s: its token was refused and a heartbeat renewed it: %s', job.id, e)
+                continue
             if core_fault(e) != 'passing':
                 raise
             logger.warning('Job %s: core did not take a call (%s of %s): %s', job.id, n, JOB_CORE_TRIES, e)
