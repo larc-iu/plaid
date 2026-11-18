@@ -48,3 +48,27 @@ def test_a_piece_that_repeats_a_refused_call_with_work_staged_writes_it_and_skip
     row = job.rows['d1']
     assert [(s.get('sentence'), s.get('reason'), s.get('kind')) for s in row.get('skipped') or []] == \
         [('s2', 'failed', 'repeating')], row
+
+
+def test_a_blip_on_the_skip_of_an_unfinished_piece_never_asks_the_model_again(monkeypatch):
+    """REV-JR1-12: the skips before an unfinished piece's write are tried
+    again on their own."""
+    from plaid_client import PlaidAPIError
+    first = call(1, 'set_analysis', {'document': 'Story 1', 'ref': 's1.w1', 'morphemes': [{'form': 'blank'}]})
+    asked = []
+    for blip in (False, True):
+        client = _client(2)
+        job = start(client)
+        model = use(monkeypatch, Model(_refused_thrice(first)))
+        real = client.jobs.update_document
+        left = {'n': 1 if blip else 0}
+
+        def update(job_id, document_id, worker_id, **fields):
+            if left['n'] and fields.get('skipped'):
+                left['n'] -= 1
+                raise PlaidAPIError('HTTP 502', status=502)
+            return real(job_id, document_id, worker_id, **fields)
+        client.jobs.update_document = update
+        assert runner(job).document('d1') == 'done'
+        asked.append(len(model.calls))
+    assert asked[0] == asked[1], asked

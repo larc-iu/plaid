@@ -3640,8 +3640,10 @@ class IgtRunner:
             *staged, key = staged
             # What a piece that ended without finishing did not get to is
             # settled BEFORE its write, so a worker that dies between the two
-            # passes no sentence uncounted (REV-SP-10, REV-RW-2).
-            self.unfinished(document_id, staged[0], staged[1])
+            # passes no sentence uncounted (REV-SP-10, REV-RW-2). Tried again
+            # on its own: a passing error never asks the model again
+            # (REV-JR1-12).
+            core_job.through_core(self.job, lambda: self.unfinished(document_id, staged[0], staged[1]))
 
             def put_off():
                 raise Deferred(document_id)
