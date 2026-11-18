@@ -30,10 +30,7 @@ const rewound = (conv) => {
   const asked = display[i];
   const messages = [...conv.messages];
   const last = messages.findLastIndex((m) => isMessage(m, asked.text));
-  // A failed turn's kept steps (`failedTurn`) stay, and the question is asked
-  // again after them.
-  const after = messages.slice(last + 1);
-  if (last >= 0 && !after.some((m) => m?.failedTurn) && after.every((m) => m?.role === 'user')) {
+  if (last >= 0 && messages.slice(last + 1).every((m) => m?.role === 'user')) {
     messages.splice(last, 1);
   }
   if (i === display.length - 1) {
