@@ -25,7 +25,7 @@
 (defn- assert-ok-finish [resp]
   (is (#{200 204} (:status resp)) (pr-str resp)))
 
-(deftest a-ref-naming-a-job-is-taken-only-from-that-jobs-own-token
+(deftest a-ref-naming-a-job-is-taken-only-from-that-jobs-starter
   (let [{:keys [p d1 st m r a] :as w} (jh/world!)
         job (job-id (start! st p))
         token (as (-> (claim! jh/worker-a) :body :token))
@@ -37,21 +37,25 @@
         qm (jh/user! "qmaint@example.com")
         _ (jh/grant! (:q w) "maintainers" "qmaint@example.com")
         qm-d (h/create-test-document qm (:q w) "q doc 2")]
-    (testing "the job's own token may label its writes with its own ref"
-      (is (= 200 (rename token d1 (str "job:" job "/doc:" d1 "/pass:gloss")))))
-    (testing "the job's own token may not write core's undo or redo ref, nor another job's ref"
-      (is (= 403 (rename token d1 (str "job:" job "/undo"))))
-      (is (= 403 (rename token d1 (str "job:" job "/redo"))))
+    (testing "the job's token and its starter may label their writes with the job's ref"
+      (is (= 200 (rename token d1 (str "job:" job "/doc:" d1 "/pass:gloss"))))
+      (is (= 200 (rename st d1 (str "job:" job "/doc:" d1 "/pass:gloss")))))
+    (testing "nobody writes core's undo or redo ref, nor names a job that is not theirs"
+      (doseq [who [token st]]
+        (is (= 403 (rename who d1 (str "job:" job "/undo"))))
+        (is (= 403 (rename who d1 (str "job:" job "/redo")))))
       (is (= 403 (rename token d1 (str "job:" (random-uuid) "/doc:" d1)))))
     (assert-ok-finish (finish! job jh/worker-a "done"))
     (doseq [[label who doc] [["a stranger, in their own project" n own-d]
                              ["a maintainer of Q only, in Q" qm qm-d]
-                             ["the job's starter, in P" st d1]
                              ["a maintainer of P, in P" m d1]
                              ["the admin, in P" a d1]]
             pass ["undo" "redo" "doc:x/pass:gloss"]]
       (testing (str label ", ref job:<id>/" pass)
         (is (= 403 (rename who doc (str "job:" job "/" pass))))))
+    (doseq [pass ["undo" "redo"]]
+      (testing (str "the starter, ref job:<id>/" pass " after the job ended")
+        (is (= 403 (rename st d1 (str "job:" job "/" pass))))))
     (testing "other refs stay free labels"
       (is (= 200 (rename n own-d "action:vocab-replace"))))
     (testing "P's job does not read undone"

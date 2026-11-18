@@ -895,22 +895,21 @@
     (str "group-ref must be at most " og/ref-max-length " characters")))
 
 (defn- job-ref-refusal
-  "Why the request's `?group-ref=` `ref` may not be taken from the caller
-  whose scoped token's `:jti` is `token-key`, or nil. A ref is the caller's
-  claim about its own write, and core reads only one kind, `job:<id>/...`,
-  to decide anything (whether a job stands undone, which writes are a
-  job's own). So the rule: a ref that starts with `job:` is taken only from
-  that job's own token (`job:<id>`, `plaid.rest-api.v1.auth/issue-job-token!`),
-  and `job:<id>/undo` and `job:<id>/redo` from nobody, since core writes them
-  itself on an undo (ACL7-1). Any other ref is a label core never reads."
-  [ref token-key]
-  (when (and ref (str/starts-with? ref "job:"))
-    (let [own? (and (string? token-key)
-                    (str/starts-with? token-key "job:")
-                    (or (= ref token-key) (str/starts-with? ref (str token-key "/"))))]
-      (when (or (not own?)
-                (contains? #{(str token-key "/undo") (str token-key "/redo")} ref))
-        "A group-ref that names a job is taken only from that job's own worker."))))
+  "Why the request's `?group-ref=` `ref` may not be taken from `user-id`, or
+  nil. A ref is the caller's claim about its own write, and core reads only
+  one kind, `job:<id>/...`, to decide anything (whether a job stands undone,
+  which writes are a job's own). So the rule: a ref that names a job is
+  taken only from that job's starter, the account every token of the job
+  writes as (`plaid.rest-api.v1.auth/issue-job-token!`), and `job:<id>/undo`
+  and `job:<id>/redo` from nobody, since core writes them itself on an undo
+  (ACL7-1). Any other ref is a label core never reads."
+  [db ref user-id]
+  (when-let [[_ job tail] (some->> ref (re-matches #"job:([^/]*)(/.*)?"))]
+    (when (or (contains? #{"/undo" "/redo"} tail)
+              (not= (some-> user-id str)
+                    (some-> (psc/q1 db {:select [:started_by] :from [:jobs] :where [:= :id job]})
+                            :started_by str)))
+      "A group-ref that names a job is taken only from that job's starter, and never names its undo.")))
 
 (defn wrap-operation-group
   "When a write request carries `?group-id=<uuid>` (plus an optional
@@ -933,7 +932,7 @@
   `ref-max-length` characters, or the request is refused (400): unlike the
   message, both are read by programs, so a cut ref or an unknown kind would
   be a wrong record rather than an untidy one. A ref that names a job is
-  taken only from that job's own token (`job-ref-refusal`), else 403."
+  taken only from that job's starter (`job-ref-refusal`), else 403."
   [handler]
   (fn [request]
     (let [raw (raw-query-param request "group-id")
@@ -951,9 +950,9 @@
         {:status 400
          :body {:error (group-structure-error gid kind ref)}}
 
-        (job-ref-refusal ref (-> request :auth/token-scope :token-key))
+        (job-ref-refusal (:db request) ref (:user/id request))
         {:status 403
-         :body {:error (job-ref-refusal ref (-> request :auth/token-scope :token-key))}}
+         :body {:error (job-ref-refusal (:db request) ref (:user/id request))}}
 
         gid
         (binding [op/*current-group-id* gid
