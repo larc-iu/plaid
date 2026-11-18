@@ -121,20 +121,23 @@ export function alignSegments(body, begin, end, texts) {
   return spans;
 }
 
+/** The last path segment of a URL as written, or '' when there is none. */
+const lastSegment = (url) =>
+  String(url || '')
+    .split(/[\\/]/)
+    .pop() || '';
+
 /**
- * The last path segment of a URL, percent-decoded ("Market%20talk.wav" is
- * "Market talk.wav", H2-13-1), or as written when an escape in it is
- * malformed. '' when there is none.
+ * A name percent-decoded ("Market%20talk.wav" is "Market talk.wav",
+ * H2-13-1), or null when it has no escape or a malformed one.
  */
-const lastSegment = (url) => {
-  const raw =
-    String(url || '')
-      .split(/[\\/]/)
-      .pop() || '';
+const decodedName = (name) => {
+  if (!name.includes('%')) return null;
   try {
-    return decodeURIComponent(raw);
+    const decoded = decodeURIComponent(name);
+    return decoded === name ? null : decoded;
   } catch {
-    return raw;
+    return null;
   }
 };
 
@@ -144,7 +147,8 @@ const descriptorName = (d) => lastSegment(d?.relativeUrl || d?.url);
 /**
  * The recordings a file names that stand on their own: a descriptor whose
  * EXTRACTED_FROM names another descriptor is the audio already inside that
- * one, and is left out. Each is `{ name, mimeType, timeOrigin }`, the
+ * one, and is left out. Each is `{ name, decoded?, mimeType, timeOrigin }`,
+ * `decoded` the name with its escapes read out when it has any, the
  * origin in milliseconds or null.
  */
 export const mediaDescriptors = (eaf) => {
@@ -154,11 +158,18 @@ export const mediaDescriptors = (eaf) => {
       const from = lastSegment(d.extractedFrom);
       return !(from && named.has(from));
     })
-    .map((d) => ({
-      name: descriptorName(d),
-      mimeType: d.mimeType || '',
-      timeOrigin: d.timeOrigin ?? null,
-    }))
+    .map((d) => {
+      const name = descriptorName(d);
+      const decoded = decodedName(name);
+      return {
+        name,
+        // A URL's escapes read out, tried after the name as written, so a
+        // file really named with "%20" in it still matches (REV-G3-4).
+        ...(decoded ? { decoded } : {}),
+        mimeType: d.mimeType || '',
+        timeOrigin: d.timeOrigin ?? null,
+      };
+    })
     .filter((d) => d.name);
 };
 
@@ -218,9 +229,10 @@ export function matchMediaFiles(eafs, mediaFiles, { shared = false } = {}) {
   for (const eaf of eafs || []) {
     const descriptors = mediaDescriptors(eaf);
     const matched = descriptors.map((d) => {
+      const names = d.decoded ? [d.name, d.decoded] : [d.name];
       const pick =
-        claim((f) => matchKey(f.name) === matchKey(d.name)) ||
-        claim((f) => stem(f.name) === stem(d.name)) ||
+        names.reduce((p, n) => p || claim((f) => matchKey(f.name) === matchKey(n)), null) ||
+        names.reduce((p, n) => p || claim((f) => stem(f.name) === stem(n)), null) ||
         // A file naming one recording may be named after it instead.
         (descriptors.length === 1 ? claim((f) => stem(f.name) === stem(eaf.fileName)) : null);
       if (pick) taken.add(pool.indexOf(pick));

@@ -1382,6 +1382,42 @@ describe('matchMediaFiles', () => {
     expect(missing).toEqual(['100%.wav']);
   });
 
+  it('pairs a file named with an escape in it by its name as written first (REV-G3-4)', () => {
+    const raw = file('a%20b.wav');
+    const spaced = file('a b.wav');
+    const one = matchMediaFiles([eaf('x.eaf', 'a%20b.wav')], [raw]);
+    expect(one.byFile.get('x.eaf')).toBe(raw);
+    expect(one.missing).toEqual([]);
+    // Both chosen: the name as written wins, the decoded one is left over.
+    const both = matchMediaFiles([eaf('x.eaf', 'a%20b.wav')], [spaced, raw]);
+    expect(both.byFile.get('x.eaf')).toBe(raw);
+    expect(both.unmatched).toEqual([spaced]);
+  });
+
+  it("matches the recording plaid-igt's own export names, kept name escapes and all (REV-G3-4)", () => {
+    for (const kept of ['Market%20talk.wav', 'Market talk.wav', 'Sesión 12.wav']) {
+      const xml = buildEafDocument(
+        {
+          document: {
+            id: 'd1',
+            name: 'Doc',
+            mediaUrl: '/api/v1/documents/d1/media?v=1-5',
+            metadata: { 'Media file': kept },
+          },
+          body: 'hola',
+          sortedSentences: [makeSentence({ begin: 0, end: 4, tokens: [] })],
+          alignmentTokens: [],
+        },
+        { orthographies: [], wordFields: [], morphFields: [], sentFields: [] },
+        { exportedAt: '2026-01-01T00:00:00Z' },
+      );
+      const recording = file(kept);
+      const { byFile, missing } = matchMediaFiles([readEaf(xml, 'Doc.eaf')], [recording]);
+      expect(missing).toEqual([]);
+      expect(byFile.get('Doc.eaf')).toBe(recording);
+    }
+  });
+
   it('falls back to a file whose stem matches the .eaf', () => {
     const audio = file('story.wav');
     const { byFile } = matchMediaFiles([eaf('story.eaf', 'recorded-2019.wav')], [audio]);
