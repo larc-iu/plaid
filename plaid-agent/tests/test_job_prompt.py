@@ -52,8 +52,8 @@ def test_the_constants_are_the_contracts():
     assert shared.JOB_DECIDE_NOW == ('(system) Decide now with what you have: reading is over for this piece, and '
                                      'only the tools that stage changes are left. Stage your work and end with your '
                                      'note.')
-    assert (limits.JOB_DOCUMENT_PIECE_MAX_CHARS, limits.JOB_NOTE_MAX_CHARS, limits.JOB_CHANGES_MAX,
-            limits.JOB_CHANGE_VALUE_CHARS, limits.JOB_SUMMARY_MAX_CHARS) == (40000, 400, 500, 300, 3000)
+    assert (limits.JOB_DOCUMENT_PIECE_MAX_TOKENS, limits.JOB_NOTE_MAX_CHARS, limits.JOB_CHANGES_MAX,
+            limits.JOB_CHANGE_VALUE_CHARS, limits.JOB_SUMMARY_MAX_CHARS) == (16000, 400, 500, 300, 3000)
 
 
 def test_every_rule_the_job_keeps_is_the_chats_word_for_word():

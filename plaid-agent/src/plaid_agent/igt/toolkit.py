@@ -790,11 +790,12 @@ def plan_size(pieces: str, worked: List[Dict[str, Any]], skip: bool,
     is 9 pieces over 24 documents: 33 sentences match." A selection is one
     piece (BRIEF RW B4: a planner told nothing planned one piece to fill a
     whole text). None where nothing is counted."""
-    from ..core.limits import JOB_DOCUMENT_PIECE_MAX_CHARS, JOB_STRETCH_SENTENCES
+    from ..core.limits import JOB_DOCUMENT_PIECE_MAX_TOKENS, JOB_STRETCH_SENTENCES
     if pieces == 'document':
         # A document longer than one piece takes is worked in stretches, as
-        # ``IgtRunner.whole_document`` decides (REV-RPF3B-6).
-        n = sum(1 if int(d.get('characters') or 0) <= JOB_DOCUMENT_PIECE_MAX_CHARS
+        # ``IgtRunner.whole_document`` decides by the same measure
+        # (REV-RPF3B-6, D23).
+        n = sum(1 if int(d.get('tokens') or 0) <= JOB_DOCUMENT_PIECE_MAX_TOKENS
                 else -(-int(d.get('sentences') or 0) // JOB_STRETCH_SENTENCES) for d in worked)
     elif pieces == 'sentences' and matched:
         n = sum(-(-len(ids) // JOB_STRETCH_SENTENCES) for ids in matched.values())

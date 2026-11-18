@@ -50,7 +50,7 @@ from ..core.job import (BUDGET, OUTPUT, REPEATING, ROW_FINAL, SKIPPED_MORE, JobS
                         field_counts, fields_text,
                         BLANK_WHERE, blank_text, empty_counts, failure_kind, halve, harmonized, not_answering)
 from ..core.limits import (JOB_ANALYSIS_MAX_CHARS, JOB_CHANGE_VALUE_CHARS, JOB_CHANGES_MAX, JOB_CONTEXT_SENTENCES,
-                           JOB_DOCUMENT_PIECE_MAX_CHARS, JOB_FINDINGS_MAX_CHARS, JOB_FINDINGS_MERGE_CHARS,
+                           JOB_DOCUMENT_PIECE_MAX_TOKENS, JOB_FINDINGS_MAX_CHARS, JOB_FINDINGS_MERGE_CHARS,
                            JOB_NOTE_MAX_CHARS, JOB_SUMMARY_MAX_CHARS,
                            JOB_SUMMARY_NOTES_CHARS, JOB_SUMMARY_TABLE_CHARS, JOB_TABLES_MAX, JOB_TABLES_PER_PIECE,
                            JOB_DECISIONS_PER_CALL, JOB_DEFER_ROUNDS, JOB_DEFER_WAIT_S, JOB_GUIDELINES_MAX_CHARS,
@@ -2654,7 +2654,8 @@ class IgtRunner:
             except Gone:
                 job.update_row(d, state='gone')
                 continue
-            out.append({**tg.document_fact(doc, project), 'id': d})
+            # Its size as whole_document measures it, for the plan's size (D23).
+            out.append({**tg.document_fact(doc, project), 'id': d, 'tokens': self.document_tokens(doc, project)})
         return out
 
     def planning(self, project: IgtProject, facts: List[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
@@ -2669,7 +2670,7 @@ class IgtRunner:
             ws.job_setup = self.job_setup(project)
             # Its counts tell plan_work a plan that would work no sentence.
             ws.job_documents = [{'id': f['id'], 'name': f['name'], 'sentences': f['sentences'],
-                                 'empty': f['empty'], 'characters': f.get('characters')} for f in facts]
+                                 'empty': f['empty'], 'tokens': f.get('tokens')} for f in facts]
             system = build_plan_prompt(project)
             transcript = [{'role': 'user', 'content': self.plan_message(facts, project)}]
             seed(ws.seen, system, transcript, lambda tool, args: True)
@@ -3492,7 +3493,8 @@ class IgtRunner:
     def whole_document(self, project: IgtProject, doc) -> bool:
         """Whether this document is worked as one piece: the plan says
         ``document``, and the document as the piece's message renders it
-        fits JOB_DOCUMENT_PIECE_MAX_CHARS. A document larger than that is
+        fits JOB_DOCUMENT_PIECE_MAX_TOKENS (:meth:`document_tokens`). A
+        document larger than that is
         worked in stretches of sentences, which the report says (a fallback
         row among the job's decisions). So is a document with a fallback
         row of any reason (its whole-document piece failed, its write after
@@ -3510,11 +3512,15 @@ class IgtRunner:
             # still to work there: in stretches, which the report counts.
             self.fall_back(doc.id, 'again')
             return False
-        size = sum(len(render_sentence(s, project)) + 1 for s in doc.sentences)
-        if size <= JOB_DOCUMENT_PIECE_MAX_CHARS:
+        if self.document_tokens(doc, project) <= JOB_DOCUMENT_PIECE_MAX_TOKENS:
             return True
         self.fall_back(doc.id, 'too-long')
         return False
+
+    def document_tokens(self, doc, project: IgtProject) -> int:
+        """The document as a piece's message renders it, in the tokens the
+        piece's budget counts (``count``, D23)."""
+        return self.count('\n'.join(render_sentence(s, project) for s in doc.sentences))
 
     def every_sentence(self) -> bool:
         """Whether the walk takes every sentence of a document, empty or
@@ -4093,7 +4099,7 @@ class IgtRunner:
             context = [s for s in doc.sentences if s.index in near and s.index not in mine]
             shown = sorted(s.index for s in context + part)
         # Every sentence of the piece, past a read's cap of sentences: a
-        # whole document is within JOB_DOCUMENT_PIECE_MAX_CHARS.
+        # whole document is within JOB_DOCUMENT_PIECE_MAX_TOKENS.
         rendered = ws.render(doc, indexes=shown, max_sentences=len(shown))
         lines = [f'Document "{doc.name}".', '', rendered, '']
         full = []

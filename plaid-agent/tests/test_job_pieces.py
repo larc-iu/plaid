@@ -616,7 +616,7 @@ def test_a_document_piece_sees_the_whole_document_once(monkeypatch):
 
 
 def test_a_document_too_large_for_one_piece_is_worked_in_stretches_and_the_report_says_so(monkeypatch):
-    monkeypatch.setattr(igt_job, 'JOB_DOCUMENT_PIECE_MAX_CHARS', 10)
+    monkeypatch.setattr(igt_job, 'JOB_DOCUMENT_PIECE_MAX_TOKENS', 2)
     client = JobClient(_docs(1))
     job = start(client, 'Summarise each text.', id=J, plan='document')
     model = use(monkeypatch, _model(piece=_gloss_all))
@@ -634,7 +634,7 @@ def test_a_document_too_long_for_one_piece_is_worked_in_stretches_over_every_sen
     """REV-JG-7: a check job planned by documents (or as one selection that
     fell back), whose long document has nothing empty. Its stretches cover
     every sentence, so the instructions are carried out on the whole text."""
-    monkeypatch.setattr(igt_job, 'JOB_DOCUMENT_PIECE_MAX_CHARS', 10)
+    monkeypatch.setattr(igt_job, 'JOB_DOCUMENT_PIECE_MAX_TOKENS', 2)
     client = JobClient({'d1': document('d1', 'Story 1', GLOSSED)})
     job = start(client, 'Check every gloss and propose corrections.', id=J, plan=pieces)
     if pieces == 'selection':

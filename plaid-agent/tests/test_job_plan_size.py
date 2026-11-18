@@ -63,11 +63,11 @@ def test_a_document_plan_counts_the_stretches_a_long_document_is_worked_in():
     """REV-RPF3B-6 (the reviewer's sizes): documents of 12, 5, 1 and 900
     sentences, the last past the most one piece takes: worked in stretches,
     as whole_document decides, so 3 + 180 pieces."""
-    from plaid_agent.core.limits import JOB_DOCUMENT_PIECE_MAX_CHARS
-    docs = [{'id': 'd1', 'name': 'A', 'sentences': 12, 'empty': {}, 'characters': 600},
-            {'id': 'd2', 'name': 'B', 'sentences': 5, 'empty': {}, 'characters': 250},
-            {'id': 'd3', 'name': 'C', 'sentences': 1, 'empty': {}, 'characters': 50},
-            {'id': 'd4', 'name': 'D', 'sentences': 900, 'empty': {}, 'characters': JOB_DOCUMENT_PIECE_MAX_CHARS + 1}]
+    from plaid_agent.core.limits import JOB_DOCUMENT_PIECE_MAX_TOKENS
+    docs = [{'id': 'd1', 'name': 'A', 'sentences': 12, 'empty': {}, 'tokens': 150},
+            {'id': 'd2', 'name': 'B', 'sentences': 5, 'empty': {}, 'tokens': 60},
+            {'id': 'd3', 'name': 'C', 'sentences': 1, 'empty': {}, 'tokens': 12},
+            {'id': 'd4', 'name': 'D', 'sentences': 900, 'empty': {}, 'tokens': JOB_DOCUMENT_PIECE_MAX_TOKENS + 1}]
     out = toolkit.job_plan_call(_planning(docs), 'plan_work', {'pieces': 'document', 'fills': ['Morph Gloss']})
     assert f'This plan is {3 + -(-900 // JOB_STRETCH_SENTENCES):,} pieces over 4 documents.' in out, out
 

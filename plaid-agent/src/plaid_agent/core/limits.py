@@ -304,11 +304,13 @@ JOB_PLAN_SEARCH_PATTERN_MAX_CHARS = 200
 
 # A job is the assistant, unattended (the owner's rulings 11 to 14 of
 # 2026-11-13, fixer JG). Every part a model context is given has a budget.
-#: The largest document worked as one piece, as its message renders it: about
-#: a quarter of JOB_CALL_MAX_PROMPT_TOKENS in Latin script, which leaves room
-#: for the prompt, the tool list and the reads. A larger one is worked in
-#: stretches of sentences, and the report says so.
-JOB_DOCUMENT_PIECE_MAX_CHARS = 40000
+#: The largest document worked as one piece, as its message renders it, in
+#: the tokens the piece's budget counts (D23: in characters, a document in a
+#: script of several tokens a letter passed and then failed before any call):
+#: a quarter of JOB_CALL_MAX_PROMPT_TOKENS, which leaves room for the prompt,
+#: the tool list and the reads. A larger one is worked in stretches of
+#: sentences, and the report says so.
+JOB_DOCUMENT_PIECE_MAX_TOKENS = JOB_CALL_MAX_PROMPT_TOKENS // 4
 #: The documents the planning context is told of, one line each.
 JOB_PLAN_DOCUMENT_LINES = 200
 #: The most targets a planning message's document line names as holding
@@ -325,7 +327,7 @@ JOB_SETUP_MAX_CHARS = 4000
 #: says so (BRIEF PF). They are kept as written in a decision row of their
 #: own, so the cap is core's on one row (JOB_ANALYSIS_MAX_CHARS). Every piece
 #: is sent them, about 1,000 to 2,000 tokens, beside guidelines of up to
-#: GUIDELINES_INLINE_CHARS and a piece of up to JOB_DOCUMENT_PIECE_MAX_CHARS
+#: GUIDELINES_INLINE_CHARS and a piece of up to JOB_DOCUMENT_PIECE_MAX_TOKENS
 #: within JOB_CALL_MAX_PROMPT_TOKENS. The plan's own row holds the rest, its
 #: documents as their places in the job (REV-JG-3).
 JOB_PIECE_INSTRUCTIONS_MAX_CHARS = JOB_ANALYSIS_MAX_CHARS

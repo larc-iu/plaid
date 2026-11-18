@@ -69,7 +69,7 @@ def test_a_piece_that_staged_nothing_counts_its_words_untouched_and_the_row_clai
     document's row in core carries no left (it was left 0, which said
     nothing was left)."""
     monkeypatch.setattr(igt_job, 'JOB_STRETCH_SENTENCES', 2)
-    monkeypatch.setattr(igt_job, 'JOB_DOCUMENT_PIECE_MAX_CHARS', 10)
+    monkeypatch.setattr(igt_job, 'JOB_DOCUMENT_PIECE_MAX_TOKENS', 2)
     client = JobClient({'d1': _doc(set())})
     job = start(client, id=J, plan=plan)
     _applying(monkeypatch, client)

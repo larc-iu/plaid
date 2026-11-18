@@ -113,7 +113,7 @@ def test_a_bulk_op_closes_no_sentence_of_a_later_piece(world, monkeypatch, plan)
     monkeypatch.setattr(igt_job, 'JOB_STRETCH_SENTENCES', 2)
     if plan != 'sentences':
         # Too long for one piece: worked in stretches, by the same rule.
-        monkeypatch.setattr(igt_job, 'JOB_DOCUMENT_PIECE_MAX_CHARS', 10)
+        monkeypatch.setattr(igt_job, 'JOB_DOCUMENT_PIECE_MAX_TOKENS', 2)
     pieces = []
     use(monkeypatch, Model(_model(pieces)))
     job = _job(admin, writer, s, 'sentences' if plan == 'sentences' else 'document')
