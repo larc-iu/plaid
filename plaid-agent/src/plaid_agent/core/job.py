@@ -443,6 +443,9 @@ class Job:
         #: people to finish editing a document (an app's ``edits``, RPF3-D1)
         #: and waited for a model not answering
         self.paused = {'people': 0.0, 'model': 0.0, 'edits': 0.0}
+        #: claimed with a phase: an earlier worker ran it, and its waits are
+        #: not known here, so the report says none of them (D17)
+        self.resumed = self.job.get('phase') is not None
         self.started_at = self.job.get('started_at')
         self._beat_lock = threading.Lock()
         #: every client :meth:`client` handed out, each given the token of
@@ -1303,9 +1306,12 @@ def build_report(job: Job, state: str, reason: Optional[str], documents: List[Di
         'model': job.model, 'started_at': job.started_at,
         'finished_at': datetime.fromtimestamp(job.now(), timezone.utc).isoformat(timespec='seconds')
         .replace('+00:00', 'Z'),
-        'paused_for_people_s': int(job.paused['people']), 'paused_for_model_s': int(job.paused['model']),
+        # Not known for a job an earlier worker ran (null, as core's own
+        # report has them): this worker's waits are only part of them (D17).
+        'paused_for_people_s': None if job.resumed else int(job.paused['people']),
+        'paused_for_model_s': None if job.resumed else int(job.paused['model']),
         # Apart from taking turns with people on the model (RPF3-D1).
-        'paused_for_edits_s': int(job.paused['edits']),
+        'paused_for_edits_s': None if job.resumed else int(job.paused['edits']),
         'stopped': None, 'totals': totals, 'notice': notice(totals, nouns), 'documents': documents, 'summary': None,
         'summary_by': None,
         'summary_failed': False,
