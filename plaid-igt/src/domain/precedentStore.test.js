@@ -143,4 +143,18 @@ describe('precedentStore after an upgrade', () => {
     expect(await fresh.readStored('k', 'a')).toBe(null);
     expect(old.stores.get('projects').size).toBe(0);
   });
+  // REV-G4-2: version 3 kept link rows that counted a multi-word expression's
+  // link once for each of its words (H2-14-2). Kept, they would go on giving
+  // each word the expression's entry until a document changed.
+  it("hands back nothing version 3 kept: those counts gave each word an expression's entry", async () => {
+    const rows = [['i-atthewell', 'well', null, 'word', null, null, null, 1]];
+    const old = fakeOldIndexedDb(3, [
+      ['k', { login: 'a', results: { links: [{ results: rows }] } }],
+    ]);
+    globalThis.indexedDB = old;
+    vi.resetModules();
+    const fresh = await import('./precedentStore.js');
+    expect(await fresh.readStored('k', 'a')).toBe(null);
+    expect(old.stores.get('projects').size).toBe(0);
+  });
 });
