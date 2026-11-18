@@ -645,3 +645,26 @@ describe('left out, unanswered and too long past a list', () => {
     expect(rows).toContainEqual(['Sentences too long and not listed', '3']);
   });
 });
+
+// REV-JOIN18-2: a left-out document past the plan's cut list is no document
+// not reached, as the totals count it.
+describe('the plan’s left-out documents past its list', () => {
+  it('are not counted again as not reached', () => {
+    const job = {
+      state: 'done',
+      documents: [
+        { documentId: 'd1', state: 'not-reached', done: 0, counts: {} },
+        { documentId: 'd2', state: 'not-reached', done: 0, counts: {} },
+      ],
+      report: {
+        totals: {},
+        plan: { leftOut: [{ documentId: 'd1' }], leftOutMore: 1 },
+        documents: [
+          { documentId: 'd1', state: 'not-reached', done: 0, counts: {} },
+          { documentId: 'd2', state: 'not-reached', done: 0, counts: {} },
+        ],
+      },
+    };
+    expect(toCheckRows(job).map((r) => r.text)).toEqual(['2 documents left out by the plan']);
+  });
+});

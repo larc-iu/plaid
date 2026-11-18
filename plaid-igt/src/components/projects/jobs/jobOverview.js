@@ -130,7 +130,9 @@ export const toCheckRows = (job) => {
     (d) => d.state === 'not-reached' && !leftIds.has(d.documentId) && d.counts?.unanswered !== true,
   );
   const partway = unfinished.filter(stoppedPartway).length;
-  const notReached = unfinished.length - partway;
+  // Those left out past the plan's cut list have no id here: taken off as
+  // documentCounts takes them (REV-JOIN18-2).
+  const notReached = Math.max(0, unfinished.length - partway - (report?.plan?.leftOutMore ?? 0));
   check('not-reached', notReached, `${countOf(notReached, 'document')} not reached`);
   check('partway', partway, `${countOf(partway, 'document')} stopped partway`);
   check(
