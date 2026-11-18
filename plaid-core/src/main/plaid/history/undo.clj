@@ -893,7 +893,10 @@
 
 (defn- apply!
   "Write the applied rows. Returns the documents to check: every document
-  written that still stands."
+  written that still stands where the undo wrote a text or a token, or that
+  it put back. `restore/final-state-violation` checks token layers only, and
+  reads every token of the document, so a document where only spans, links
+  or relations went back is not read again (SCL4-2)."
   [tx applied live]
   (let [of (fn [table op] (filter #(and (= table (:table %)) (= op (:op %))) applied))
         doc-deletes (set (map :id (of "documents" :delete)))
@@ -917,10 +920,14 @@
       (doseq [i (of "vocab_items" :delete)]
         (guard (:k i) #(vocab-item/delete-items! tx [(:id i)])))
       (let [inserted (set (map :id (of "documents" :insert)))
-            written (into (set (map key per-doc)) inserted)]
+            written (into (set (map key per-doc)) inserted)
+            shaped (into inserted
+                         (keep (fn [[doc-id doc-items]]
+                                 (when (some #(#{"texts" "tokens"} (:table %)) doc-items) doc-id)))
+                         per-doc)]
         (op/bump-document-versions! tx (remove inserted (into written (remove doc-deletes @bumped))))
         (op/touch-vocab-layers! tx (distinct (keep #(when (= "vocab_items" (:table %)) (:vocab %)) applied)))
-        (sort-by str written)))))
+        (sort-by str shaped)))))
 
 (defn- cp-slice [^String s b e]
   (when (and s (<= 0 b e (.codePointCount s 0 (.length s))))
@@ -1067,26 +1074,53 @@
        (sort-by key)
        (mapv (fn [[t n]] {:op-type t :count n}))))
 
+(defn- unit-items
+  "The operations of entry `entry-id` and the rows an undo of it takes, as
+  `{:ops :items}`: every row the entry changed, narrowed to `:document-id`
+  or to `:vocab-id`."
+  [db entry-id {:keys [document-id vocab-id]}]
+  (let [{:keys [ops rows]} (changes/unit-rows db entry-id {:document-id document-id})
+        items (mapv item rows)
+        entry-vocab (link-vocab db items (distinct (keep (fn [i] (when (= "vocab_links" (:table i))
+                                                                   (or (:vocab_item_id (:before i))
+                                                                       (:vocab_item_id (:after i)))))
+                                                         items)))]
+    {:ops ops
+     :items (cond->> items
+              vocab-id (filterv (fn [i]
+                                  (case (:table i)
+                                    ("vocab_items" "vocab_layers") (= vocab-id (:vocab i))
+                                    "vocab_links" (some #(= vocab-id (entry-vocab %))
+                                                        [(:vocab_item_id (:before i)) (:vocab_item_id (:after i))])
+                                    false))))}))
+
+(defn- row-bound
+  "At least as many rows as an undo of the operations `ops` takes, counted
+  from indexes alone: their audit rows, and every row of a document they
+  made (an import's rows are recorded late or never)."
+  [db ops]
+  (let [op-ids (mapv (comp str :id) ops)
+        sum (fn [rs] (reduce + 0 (map :n rs)))
+        made (mapv (comp str :target_id)
+                   (psc/in-chunks #(psc/q db {:select [:target_id] :from [:audit_writes]
+                                              :where [:and [:in :op_id (vec %)] [:= :target_table "documents"]
+                                                      [:= :change_type "insert"]]})
+                                  op-ids))]
+    (+ (sum (psc/in-chunks #(psc/q db {:select [[[:count :*] :n]] :from [:audit_writes] :where [:in :op_id (vec %)]})
+                           op-ids))
+       (sum (for [t [:texts :tokens :spans :relations :vocab_links]
+                  r (psc/in-chunks #(psc/q db {:select [[[:count :*] :n]] :from [t] :where [:in :document_id (vec %)]})
+                                   made)]
+              r)))))
+
 (defn- attempt!
   "Plan, and unless `plan-only?`, write. Returns `{:items :left :written}`
   or `{:too-many n}`."
-  [tx entry-id {:keys [document-id vocab-id user excluded may-document? may-vocab?]}]
-  (let [{:keys [ops rows]} (changes/unit-rows tx entry-id {:document-id document-id})
+  [tx entry-id {:keys [user excluded may-document? may-vocab?] :as opts}]
+  (let [{:keys [ops items]} (unit-items tx entry-id opts)
         unit-ids (into #{} (map (comp str :id)) ops)
         unit? #(contains? unit-ids (str %))
-        start (str (:ts (first ops)))
-        items (mapv item rows)
-        entry-vocab (link-vocab tx items (distinct (keep (fn [i] (when (= "vocab_links" (:table i))
-                                                                   (or (:vocab_item_id (:before i))
-                                                                       (:vocab_item_id (:after i)))))
-                                                         items)))
-        items (cond->> items
-                vocab-id (filterv (fn [i]
-                                    (case (:table i)
-                                      ("vocab_items" "vocab_layers") (= vocab-id (:vocab i))
-                                      "vocab_links" (some #(= vocab-id (entry-vocab %))
-                                                          [(:vocab_item_id (:before i)) (:vocab_item_id (:after i))])
-                                      false))))]
+        start (str (:ts (first ops)))]
     (if (> (count items) max-rows)
       {:too-many (count items) :ops ops}
       (let [by-table (group-by :table items)
@@ -1267,7 +1301,7 @@
                         :set {:document_id (str (first docs))}
                         :where [:= :id (str (:id psaw/*op*))]}))))
 
-(defn undo
+(defn- undo*
   "Undo entry `entry-id` as one operation of type `audit-entry/undo`, or with
   `:dry-run?` say what that would do without writing. nil when no entry has
   that id (`plaid.history.changes/unit-ops`).
@@ -1387,3 +1421,19 @@
                                          :not-undone not-undone)
                             operation (assoc :operation operation))
                  :documents (when operation (:documents result))}))))))))
+
+(defn undo
+  "`undo*`, once the entry is known to fit: an undo of more than `max-rows`
+  rows is refused (413) before the write lock is taken, so it holds up
+  nobody's save (SCL4-3). The count of indexes in `row-bound` settles it
+  for most entries, and only an entry that count puts over the limit has
+  its rows read, outside the lock."
+  [db entry-id opts]
+  (let [ops (if (coll? entry-id) (changes/units-ops db entry-id) (changes/unit-ops db entry-id))
+        too-many (when (and (seq ops) (> (row-bound db ops) max-rows))
+                   (let [n (count (:items (unit-items db entry-id opts)))]
+                     (when (> n max-rows) n)))]
+    (if too-many
+      {:error (str "This entry changed " too-many " rows. An undo takes at most " max-rows ".")
+       :code 413}
+      (undo* db entry-id opts))))
