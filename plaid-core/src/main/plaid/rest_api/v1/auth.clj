@@ -1053,10 +1053,12 @@
     `project_id` is the new row's project. Without it a create's project is
     its document's.
 
-  A create resolves to no project (the gate's 403 `unresolved` to a member,
-  as for any id they cannot see) unless its parent names a document of its
-  layer's project, and then to no document either. A bulk create does so
-  when any of its entries does. Before, the gate judged the layer's project
+  A create whose parent lies in a document of another project than its
+  layer resolves to no project (the gate's 403 `unresolved` to a member, as
+  for any id they cannot see), and to no document either. A bulk create does
+  so when any of its entries does. A parent that names nothing (deleted a
+  moment ago) still resolves to the layer's project, so a versioned write
+  hears 409 and refetches (`middleware-test`). Before, the gate judged the layer's project
   while the version check and the lock check ran on the parent's document,
   so a create in one's own project naming another project's text, token or
   span answered with that document's version, who held its lock and its
@@ -1078,7 +1080,7 @@
                          (let [doc-project (project-of-document db (create-doc db body))]
                            (if-let [[k t] create-layer]
                              (let [layer-project (column-of db t :project_id (body-id body k))]
-                               (when (= (some-> layer-project str) (some-> doc-project str))
+                               (when (or (nil? doc-project) (= (some-> layer-project str) (str doc-project)))
                                  layer-project))
                              doc-project)))
         ;; A create whose parent is not in its layer's project resolves to

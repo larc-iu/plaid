@@ -1,9 +1,9 @@
 (ns plaid.rest-api.v1.create-parent-elsewhere-test
   "A create in one's own project that names a parent in another project (a
   document for a text, a text for a token, tokens for a span, spans for a
-  relation) gets the gate's 403 `unresolved`, the answer an unknown parent
-  gets, before any version or lock check on that parent's document
-  (ACL1-1, ACL3-1, and the existence and id echo of ACL2-1 and ACL10-5).
+  relation) gets the gate's 403 `unresolved`, naming nothing of that
+  project, before any version or lock check on that parent's document
+  (ACL1-1, ACL3-1, and the id echo of ACL2-1 and ACL10-5).
   Before, it answered 423 with the other document's lock holder, 409 for
   every version but the real one, and 400 messages quoting the other
   project's ids."
@@ -37,11 +37,11 @@
      :span-layer span-layer :relation-layer relation-layer :text text :tokens [t1 t2] :spans [s1 s2]}))
 
 (defn- creates
-  "Each create route, as [label method path body], writing into `p`'s
-  layers and naming `parent`'s rows (or unknown ids when `parent` is nil)."
+  "Each create route, as [label path body], writing into `p`'s layers and
+  naming `q`'s rows."
   [p q]
-  (let [u (fn [k] (if q (k q) (random-uuid)))
-        us (fn [k] (if q (k q) [(random-uuid) (random-uuid)]))]
+  (let [u (fn [k] (k q))
+        us u]
     [["text" "/api/v1/texts" {:text-layer-id (:text-layer p) :document-id (u :document) :body "x"}]
      ["token" "/api/v1/tokens" {:token-layer-id (:token-layer p) :text (u :text) :begin 0 :end 1}]
      ["span" "/api/v1/spans" {:span-layer-id (:span-layer p) :tokens [(first (us :tokens))] :value "v"}]
@@ -58,7 +58,7 @@
 (defn- version-of [doc]
   (-> (api-call admin-request {:method :get :path (str "/api/v1/documents/" doc)}) :body :document/version))
 
-(deftest a-create-naming-another-projects-parent-gets-the-unknown-ids-answer
+(deftest a-create-naming-another-projects-parent-is-refused-naming-nothing-of-it
   (let [p (world "P")
         q (world "Q")
         q-version (version-of (:document q))
@@ -71,13 +71,15 @@
     (testing "Q's maintainer holds the lock on Q's document"
       (reset! lock (acquire-lock user2-request (:document q)))
       (assert-status 200 @lock)
-      (doseq [[[label path body] [_ _ unknown-body]] (map vector (creates p q) (creates p nil))]
+      (doseq [[label path body] (creates p q)]
         (testing label
           (let [a (post user1-request path body)
-                b (post user1-request path unknown-body)]
+                said (str (:body a))]
             (is (= 403 (:status a)) (pr-str a))
-            (is (= (:body a) (:body b)) "the same answer as for unknown ids")
-            (is (true? (-> a :body :unresolved)))))))
+            (is (true? (-> a :body :unresolved)))
+            (doseq [fact [(:document q) (:project q) (:text-layer q) (:token-layer q) (:span-layer q)
+                          "user2@example.com"]]
+              (is (not (clojure.string/includes? said (str fact))) (str "names " fact)))))))
     (assert-status 204 (release-lock user2-request (:document q) (-> @lock :body :lock-id)))
     (testing "no document version is told apart from another"
       (doseq [[label path body] (creates p q)

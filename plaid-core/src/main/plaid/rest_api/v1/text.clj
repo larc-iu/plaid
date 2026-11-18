@@ -10,8 +10,8 @@
 
 (defn get-project-id
   "The project of the text the path names, or on the create (no text in the
-  path) of the body's text layer, when the body's document is in that
-  project too, else none (the gate's 403 `unresolved`, ACL1-1). A route that
+  path) of the body's text layer, unless the body's document is in another
+  project (then none: the gate's 403 `unresolved`, ACL1-1). A route that
   names its text reads only the path: the PATCH body is `any?`, so a body key
   would otherwise choose the project the gate checks (C1-1)."
   [{db :db params :parameters}]
@@ -22,7 +22,7 @@
           doc-project (when document-id
                         (:project_id (psc/q1 db {:select [:project_id] :from [:documents]
                                                  :where [:= :id document-id]})))]
-      (when (= (some-> layer-project str) (some-> doc-project str))
+      (when (or (nil? doc-project) (= (some-> layer-project str) (str doc-project)))
         layer-project))))
 
 (defn get-document-id
