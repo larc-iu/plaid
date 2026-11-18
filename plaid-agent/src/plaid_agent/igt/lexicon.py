@@ -13,7 +13,7 @@ from typing import Any, Dict, Optional
 from ..core.bidi import qv
 from ..core.args import whole
 from ..core.plan import change_of, labelled
-from ..core.tools import ADVICE, ToolError
+from ..core.tools import ADVICE, ToolError, next_step
 
 from .plan import NEW_ENTRY
 from .project import word_ref
@@ -265,8 +265,11 @@ def _dict_entry(ws: Workspace, entry_form, lexicon, entry_id, entry_gloss, what:
     """The entry a lexicon tool names, with its lexicon's view."""
     kind, target = ws.find_entry(entry_form, lexicon, entry_id, entry_gloss)
     if kind == 'new':
+        # A job's piece writes its plan when it ends, never on an approval
+        # (REV-JR2-5).
         raise ToolError(f'"{ws.new_entries[target]["form"]}" is created by this same plan and has no id until it '
-                        f'is approved, so it cannot {what} yet.', kind='conflict')
+                        + next_step(ws, 'is approved', 'is written when the piece ends') + f', so it cannot {what} yet.',
+                        kind='conflict')
     # find_entry found this item by scanning the project's own lexicons, which
     # is the list vocab_of_item scans, so the lookup lands.
     vocab = ws.vocab_of_item(target['id'])

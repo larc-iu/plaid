@@ -31,7 +31,7 @@ from ..core.java_regex import PatternError, matcher
 from ..core.plan import change_of, docs_of_op, labelled
 from ..core.keep import is_keep
 from ..core.refs import read_ref, same_form
-from ..core.tools import ADVICE, ToolError
+from ..core.tools import ADVICE, ToolError, next_step
 from ..core.workspace import BaseWorkspace
 
 from . import fit
@@ -50,15 +50,17 @@ from .plan import (ANALYSIS, ENTRY_READ, KIND, LEXICON_MAINTAINER, LEXICON_WRITE
 # whoever asks, and is changed from its own project.
 # Which ops need which is the registry's (``lexicon_right``), and the lexicon an
 # op writes is its ``vocab_id`` or that of the entry it is placed at.
+# Each refusal is its fact and the chat's step, which a job's piece is not
+# told (REV-JR2-5): the chat reads the two joined by a space, as before.
 MAINTAINER_ACTS = ('Only a Maintainer of {project} can rename, merge, delete or restore entries of the lexicon '
-                   '{lexicon}, and the person you are acting for is not one. Nothing was planned. Tell them a '
-                   'Maintainer of that project has to make this change.')
+                   '{lexicon}, and the person you are acting for is not one. Nothing was planned.',
+                   'Tell them a Maintainer of that project has to make this change.')
 WRITER_ACTS = ('Only a Writer or Maintainer of {project} can change the lexicon {lexicon}, and the person you '
-               'are acting for is {role}. Nothing was planned. Tell them a Writer or Maintainer of that project has to '
-               'make this change.')
+               'are acting for is {role}. Nothing was planned.',
+               'Tell them a Writer or Maintainer of that project has to make this change.')
 BORROWED = ('The lexicon {lexicon} belongs to another project and is read only here: words link to its entries, '
-            'and no entry is added or changed. Nothing was planned. Tell the user its entries are changed in its '
-            'own project, by a Writer or Maintainer of that project.')
+            'and no entry is added or changed. Nothing was planned.',
+            'Tell the user its entries are changed in its own project, by a Writer or Maintainer of that project.')
 
 # The kinds of field a staged value may be for besides an annotation field's
 # layer (Workspace.staged_values).
@@ -83,7 +85,7 @@ def tagset_rules(tagset: Optional[dict]) -> List[dict]:
 from .project import (BAD_REF, FORMAT_LEGEND, MARKERS, IgtProject, IgtDoc, Morpheme, Sentence, Word, is_virtual,
                       load_document, read_view, render_document, resolve)
 from .lexview import FLEX_MORPH_TYPES, LexView, _dict_hits, entry_line
-from .tagsets import SETTINGS_APART
+from .tagsets import SETTINGS_APART, SETTINGS_APART_NEXT
 from .vocab import ENTRY_IMPORT_STAMP_KEYS, PARENT_KEY, RESERVED_ITEM_KEYS, fields_for_item, morph_type_of
 from plaid_client.workflows.igt.senses import entry_morph_types
 
@@ -864,14 +866,20 @@ class Workspace(BaseWorkspace):
         return project_role(self.project.roles, self.requester_id)
 
     def lexicon_refusal(self, v: dict, right: str) -> Optional[str]:
-        """What a tool says when the user the turn acts for may not make a
+        """The refusal of :meth:`lexicon_refusal_parts`, its fact and its
+        step joined, or None."""
+        parts = self.lexicon_refusal_parts(v, right)
+        return None if parts is None else ' '.join(parts)
+
+    def lexicon_refusal_parts(self, v: dict, right: str) -> Optional[Tuple[str, str]]:
+        """What a tool says, as its fact and the chat's step, when the user the turn acts for may not make a
         change needing ``right`` (``plan.LEXICON_WRITER`` or
         ``LEXICON_MAINTAINER``) to lexicon ``v``, or None when they may. A
         borrowed lexicon is read only for everyone. In the project's own, the
         role is theirs in this project, and an administrator may do anything.
         No user (a script, a test) is left to the server."""
         if v.get('borrowed'):
-            return BORROWED.format(lexicon=qv(v['name']))
+            return BORROWED[0].format(lexicon=qv(v['name'])), BORROWED[1]
         if self.requester_id is None:
             return None
         role = self.requester_role()
@@ -881,9 +889,9 @@ class Workspace(BaseWorkspace):
             return None
         project = qv(self.project.name)
         if right == LEXICON_MAINTAINER:
-            return MAINTAINER_ACTS.format(project=project, lexicon=qv(v['name']))
-        return WRITER_ACTS.format(project=project, lexicon=qv(v['name']),
-                                  role='a Reader' if role == 'reader' else 'not one')
+            return MAINTAINER_ACTS[0].format(project=project, lexicon=qv(v['name'])), MAINTAINER_ACTS[1]
+        return (WRITER_ACTS[0].format(project=project, lexicon=qv(v['name']),
+                                      role='a Reader' if role == 'reader' else 'not one'), WRITER_ACTS[1])
 
     def lexicon_rights(self) -> Optional[str]:
         """What the overview says the user the turn acts for may change in
@@ -894,11 +902,13 @@ class Workspace(BaseWorkspace):
         role = self.requester_role()
         if role == LEXICON_MAINTAINER or role not in (LEXICON_WRITER, 'reader') or self.requester_is_admin():
             return None
+        # A job's piece acts for its starter, and has no user (REV-JR2-5).
+        who = next_step(self, 'The user', "The job's starter")
         if role == LEXICON_WRITER:
-            return ("The user is a Writer here: in this project's own lexicons they may add entries and change what "
+            return (who + " is a Writer here: in this project's own lexicons they may add entries and change what "
                     'is stored on them, and only a Maintainer of this project renames, merges, deletes or restores '
                     'entries.')
-        return "The user is a Reader here: no change can be planned for them."
+        return who + " is a Reader here: no change can be planned for them."
 
     def can_manage_vocab(self, v: dict) -> bool:
         """Whether the user the turn acts for may rename, merge or delete
@@ -1098,15 +1108,16 @@ class Workspace(BaseWorkspace):
         refuse_on_retyped(self, op, others)
         settings = op.get('kind') in SETTINGS_KINDS
         if others and any((o.get('kind') in SETTINGS_KINDS) != settings for o in others):
-            raise ToolError(SETTINGS_APART, kind='conflict')
+            raise ToolError(SETTINGS_APART, kind='conflict', advice=SETTINGS_APART_NEXT)
         need = lexicon_need(op)
         if need is not None:
             right, vocab_id, item_id = need
             v = (next((x for x in self.project.vocabs if x['id'] == vocab_id), None) if vocab_id
                  else self.vocab_of_item(item_id) if item_id else None)
-            refusal = self.lexicon_refusal(v, right) if v is not None else None
+            refusal = self.lexicon_refusal_parts(v, right) if v is not None else None
             if refusal:
-                raise ToolError(refusal, kind='not-allowed')
+                # The chat's step as advice, never a job's (REV-JR2-5).
+                raise ToolError(refusal[0], kind='not-allowed', advice=refusal[1])
 
     # --- plan --------------------------------------------------------------
 

@@ -269,8 +269,9 @@ def _kept_lexicons(ws: Workspace, rep) -> str:
             kept.append(f'{n} in "{v["name"]}"' + (' (another project\'s lexicon)' if v.get('borrowed') else ''))
     if not kept:
         return ''
+    # A job has no user to tell (REV-JR2-5).
     return ('\nHeadwords left as they are, since only a Maintainer of the project a lexicon belongs to can rename '
-            'them: ' + ', '.join(kept) + '. Tell the user.')
+            'them: ' + ', '.join(kept) + '.' + next_step(ws, ' Tell the user.', ''))
 
 
 def _scoped_respell(ws: Workspace, a: Dict[str, Any], cap: int) -> List[Dict[str, Any]]:
@@ -405,7 +406,7 @@ def _stage_rule(ws: Workspace, tool: str, args: Dict[str, Any], unit, *, change:
     moved = (f' It was planned already as entry {was_at + 1}: that copy is gone, and this one applies after the '
              'changes planned since.' + _emptied(ws, key, counted)) if was_at is not None and was_at < len(ws.ops) - 1 \
         else ''
-    named_line = _rewritten(len(rewritten), back)
+    named_line = _rewritten(len(rewritten), back, ws)
     if not kept:
         return (ws.planned_note(0) + (f' {named_line}' if rewritten else '') + more + moved
                 + left_for_analysis(left))
@@ -420,10 +421,10 @@ def _stage_rule(ws: Workspace, tool: str, args: Dict[str, Any], unit, *, change:
             + (f' {accepted} of them replace work a person made or accepted'
                + next_step(ws, ', and the card says so.', '.') if accepted else '')
             + (f' {undone} {unit[0] if undone == 1 else unit[1]} it matches '
-               f'{"goes" if undone == 1 else "go"} back to what is stored, so approval writes nothing there.'
-               if undone else '')
+               f'{"goes" if undone == 1 else "go"} back to what is stored'
+               + next_step(ws, ', so approval writes nothing there.', '.') if undone else '')
             + moved
-            + (f'\n{_partial_note(op, unit)}' if op.get('partial') else '')
+            + (f'\n{_partial_note(op, unit, ws)}' if op.get('partial') else '')
             + (f'\nMatches {mode}.' if mode else '')
             + (('\nEvery distinct change it makes' + next_step(ws, ', the card lists the same', '') + ':\n  '
                 + '\n  '.join(changes))
@@ -490,7 +491,8 @@ def _emptied(ws: Workspace, key: tuple, counted: Dict[tuple, int]) -> str:
         t = rules.target(o) if rules.is_rule(o) else None
         if t is None or t == key or o.get('head') is None or not counted.get(t) or _writes(ws, o):
             continue
-        out += f' {o.get("change") or o.get("tool")} now changes nothing (entry {i}), and approval writes nothing for it.'
+        out += (f' {o.get("change") or o.get("tool")} now changes nothing (entry {i})'
+                + next_step(ws, ', and approval writes nothing for it.', '.'))
     return out
 
 
@@ -588,14 +590,17 @@ def _counted(ws: Workspace, op: Dict[str, Any], kept: List[Dict[str, Any]],
     return out
 
 
-def _partial_note(op: Dict[str, Any], unit) -> str:
+def _partial_note(op: Dict[str, Any], unit, ws=None) -> str:
     """What the model is told of a rule that read only the first part of what
-    it would change: how much, and that the user approves this part and asks
-    again for the rest (the card says the same)."""
+    it would change: how much, and, in a chat, that the user approves this
+    part and asks again for the rest (the card says the same). A job's piece
+    is told the fact alone: it has no user, and the same call reads the same
+    first part again (REV-JR2-5)."""
     read, of = op['partial']
     return (f'Only the first {read:,} of the {of:,} {unit[1]} it would look at were read, in document order: '
             f'this change covers {_plural_unit(op.get("count") or 0, unit)} among them, and the rest are not '
-            f'in the plan. Tell the user so: once they approve this, ask again (the same call) for the rest.')
+            f'in the plan.' + next_step(ws, ' Tell the user so: once they approve this, ask again (the same call) '
+                                        'for the rest.', ''))
 
 
 def _plural_unit(n: int, unit) -> str:
@@ -828,13 +833,16 @@ def _values_only(ops) -> bool:
     return all(op.get('kind') in VALUE_KINDS for op in ops)
 
 
-def _rewritten(n: int, back: int = 0) -> str:
+def _rewritten(n: int, back: int = 0, ws=None) -> str:
     said = f'{n} planned change{"s" if n != 1 else ""} rewritten by this one'
     if not back:
         return said + '.'
+    # A job's piece has no approval (REV-JR2-5).
     if back == n:
-        return (said + f' back to the value stored: approval leaves {"it as it is" if n == 1 else "them as they are"}.')
-    return said + f', {back} of them back to the value stored, which approval leaves as it is.'
+        return (said + ' back to the value stored'
+                + next_step(ws, f': approval leaves {"it as it is" if n == 1 else "them as they are"}.', '.'))
+    return said + f', {back} of them back to the value stored' + next_step(
+        ws, ', which approval leaves as it is.', '.')
 
 
 # --- the plan's named values under its rules --------------------------------------

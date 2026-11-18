@@ -541,3 +541,58 @@ def test_the_chats_overlap_and_reshape_refusals_are_unchanged():
         bulk.clear_of_reshapes([{'kind': 'split_word', 'doc': 'd1'}], ['d1'], 'respelling')
     assert str(e.value) == ('This plan already reshapes text or words in a document this respelling reaches. Let '
                             'the user approve one, then plan the other, or discard_plan and plan this alone.')
+
+
+# --- REV-JR2-5: no answer to a job's piece names a user, an approval or a card -------------------
+
+CHAT_WORDS = ('user', 'approv', 'card', 'ask again', 'tokenized')
+
+
+def _no_chat(text):
+    return not any(w in str(text).lower() for w in CHAT_WORDS)
+
+
+def test_a_partial_rule_and_a_rewritten_change_are_told_as_facts_in_a_job():
+    from plaid_agent.igt import bulk
+    op, unit = {'partial': (500, 900), 'count': 3}, ('value', 'values')
+    chat = bulk._partial_note(op, unit, _chat_ws())
+    assert chat.endswith('Tell the user so: once they approve this, ask again (the same call) for the rest.')
+    assert chat == bulk._partial_note(op, unit)
+    job = bulk._partial_note(op, unit, _job_ws())
+    assert _no_chat(job) and job.endswith('and the rest are not in the plan.'), job
+    assert bulk._rewritten(2, 2, _chat_ws()) == ('2 planned changes rewritten by this one back to the value stored: '
+                                                  'approval leaves them as they are.')
+    assert bulk._rewritten(2, 1, _job_ws()) == '2 planned changes rewritten by this one, 1 of them back to the value stored.'
+
+
+def test_a_new_document_in_a_job_is_not_said_to_be_tokenized():
+    out = toolkit.job_piece_call(_job_ws(), 'create_document', {'name': 'New', 'text': 'Ali gam. Mo.'})
+    assert _no_chat(out), out
+    assert 'will be tokenized' in str(toolkit.call_tool(_chat_ws(), 'create_document', {'name': 'New',
+                                                                                         'text': 'Ali gam. Mo.'}))
+
+
+def test_the_lexicon_and_tagset_refusals_name_no_user_in_a_job(monkeypatch):
+    from plaid_agent.core.prompt import JOB_LEAVE_IT
+    for ws, job in ((_job_ws(), True), (_chat_ws(), False)):
+        ws.requester_id = 'w@x.org'
+        monkeypatch.setattr(type(ws), 'requester_role', lambda self: 'writer')
+        monkeypatch.setattr(type(ws), 'requester_is_admin', lambda self: False)
+        rights = ws.lexicon_rights()
+        out = (toolkit.job_piece_call if job else toolkit.call_tool)(
+            ws, 'tagsets', {'action': 'edit', 'tagset': 'X', 'changes': {}})
+        if job:
+            assert rights.startswith("The job's starter is a Writer here") and out.endswith(JOB_LEAVE_IT), out
+            assert 'Tell them' not in out
+        else:
+            assert rights.startswith('The user is a Writer here') and out.endswith('Tell them who can.'), out
+        v = {'id': 'vx', 'name': 'Lexicon', 'borrowed': True}
+        said = ws.lexicon_refusal(v, 'writer')
+        assert said.endswith('Tell the user its entries are changed in its own project, by a Writer or Maintainer '
+                             'of that project.')
+
+
+def test_a_restore_beside_other_changes_is_refused_in_a_job_without_a_chat_step():
+    ws = _job_ws()
+    for staging in (True, False):
+        assert _no_chat(ws.exclusive_message(staging)) and 'discard_plan' not in ws.exclusive_message(staging)

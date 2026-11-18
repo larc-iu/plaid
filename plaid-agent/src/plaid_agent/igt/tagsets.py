@@ -26,7 +26,7 @@ from plaid_client.workflows.igt.tagsets import (CLOSED, MIXED, MODES, field_cons
                                                 strip_space, trim)
 
 from ..core.bidi import qv
-from ..core.tools import ToolError, kind_of
+from ..core.tools import ADVICE, ToolError, kind_of, next_step
 from .vocab import ROLE_STATUS, fields_with_role
 
 PROJECT = 'project'
@@ -356,8 +356,8 @@ def _check(ws, name: str, field: Optional[str], lexicon: Optional[str]) -> str:
         if every and words_n * 2 > len(every):
             said = (f'The one unlisted part of {f["name"]} is a word gloss' if len(every) == 1 else
                     f'{words_n} of the {len(every)} unlisted parts of {f["name"]} are word glosses')
-            lines.append(f'  {said}. A closed list refuses every word gloss it does not list: ask the user '
-                         'whether they mean mixed (tags enforced, word glosses free).')
+            lines.append(f'  {said}. A closed list refuses every word gloss it does not list' + next_step(
+                ws, ': ask the user whether they mean mixed (tags enforced, word glosses free).', '.'))
         r = _core_refused(ws, f, t)
         stay = sum(n for _, n in _refused(attested, t)) - r['count']
         if r['count']:
@@ -422,8 +422,9 @@ def _require_maintainer(ws, lexicon: Optional[dict]) -> None:
     if uid is None or ws.requester_role() == 'maintainer' or ws.requester_is_admin():
         return
     where = f'the lexicon {qv(lexicon["name"])}' if lexicon is not None else 'the project'
-    raise ToolError(f'Only a Maintainer of this project may change the tagsets of {where}, and the user is not one. '
-                    'Tell them who can.', kind='not-allowed')
+    # The chat's step as advice, a job's piece told its own line (REV-JR2-5).
+    raise ToolError(f'Only a Maintainer of this project may change the tagsets of {where}, and the user is not one.',
+                    kind='not-allowed', advice='Tell them who can.')
 
 
 def _values(raw, name: str) -> List[dict]:
@@ -557,13 +558,13 @@ def _edit(ws, name: str, lexicon: Optional[str], changes: Dict[str, Any]) -> str
             # Closed with every part in use at once, most of them word glosses:
             # the user is asked first (bench igt-tagset-close-hard).
             raise ToolError(f'Nothing planned: {words} of the {n_added} values add_used would add are word glosses, '
-                            'which a closed list would hold as tags. First ask the user whether they mean mixed (tags '
-                            'enforced, word glosses free). Then call again, listing in add the values they want '
-                            'listed.', kind='conflict')
+                            'which a closed list would hold as tags.', kind='conflict',
+                            advice='First ask the user whether they mean mixed (tags enforced, word glosses free). '
+                                   'Then call again, listing in add the values they want listed.')
         if words:
-            notes.append(ws.warned(f'{words} of them are ordinary word glosses, which make a tag list a word list: '
-                                   'say so to the user, and ask before planning it unless they asked for exactly '
-                                   'that.'))
+            notes.append(ws.warned(f'{words} of them are ordinary word glosses, which make a tag list a word list'
+                                   + next_step(ws, ': say so to the user, and ask before planning it unless they '
+                                               'asked for exactly that.', '.')))
         joined = [v for v in added[before:] if any(ch in v for ch in '.:')]
         if joined and not t['delimiters']:
             notes.append(f'The tagset has no delimiters, so values such as {qv(joined[0])} are listed whole. '
@@ -597,8 +598,8 @@ def _edit(ws, name: str, lexicon: Optional[str], changes: Dict[str, Any]) -> str
             raise ToolError(f'{where.capitalize()} already has a tagset {qv(clash)}.', kind='conflict')
         taken = _find(_stored_tagsets(ws, owner), rename)
         if taken is not None and taken != was:
-            raise ToolError(f'{qv(taken)} is a stored tagset\'s name, which this plan frees: a tagset can take it '
-                            'in a later plan, once this one is approved.', kind='conflict')
+            raise ToolError(f'{qv(taken)} is a stored tagset\'s name, which this plan frees{ADVICE}', kind='conflict',
+                            advice=': a tagset can take it in a later plan, once this one is approved.')
         if rename != key:
             said.append(f'rename to {qv(rename)}')
             target = rename
@@ -722,16 +723,20 @@ def _planned(ws, owner: str, notes: List[str]) -> str:
                      and all(is_lexical_part(p) for p in _parts(v['value'], rule.get('delimiters') or '')))
         breaks.append(f'{name} ({_refused_line(answer)})')
     if breaks:
-        warning = (' Core will refuse this approval, writing nothing, while these stored values break the closed '
-                   'list: ' + '; '.join(breaks) + '. Tell the user. Add them to the list, leave it open, or drop '
-                   'this and plan changes to them first (a plan of their own).')
+        # A job only lists a tagset change as proposed, and has no user
+        # (REV-JR2-5).
+        warning = next_step(ws, ' Core will refuse this approval, writing nothing,',
+                            ' Core would refuse this change, writing nothing,') + (
+            ' while these stored values break the closed list: ' + '; '.join(breaks) + '.'
+            + next_step(ws, ' Tell the user. Add them to the list, leave it open, or drop this and plan changes to '
+                        'them first (a plan of their own).', ''))
         if words * 2 > refused_n:
             warning += (f' {words} of them are ordinary word glosses: a closed list would have to list every word '
-                        'gloss. Ask the user whether they mean mixed (tags enforced, word glosses free) before '
-                        'planning more.')
+                        'gloss.' + next_step(ws, ' Ask the user whether they mean mixed (tags enforced, word glosses '
+                                             'free) before planning more.', ''))
         out += ws.warned(warning)
     elif stays:
-        out += (' Approval writes it. ' + '. '.join(stays)
+        out += (next_step(ws, ' Approval writes it. ', ' ') + '. '.join(stays)
                 + '. The list takes force there once they are listed or changed (a plan of their own), and igt '
                 'names them under Validation.')
     return out
@@ -747,8 +752,9 @@ def _planned(ws, owner: str, notes: List[str]) -> str:
 # nothing: it reads the settings and records the plan applied when they read as
 # planned (`verify_settings`).
 
-SETTINGS_APART = ('Tagset changes are settings, a plan of their own: this plan already holds other changes. '
-                  'Finish this plan with the user first (approve or discard), then plan the other.')
+SETTINGS_APART = 'Tagset changes are settings, a plan of their own: this plan already holds other changes.'
+#: Its chat step, as a refusal's advice (REV-JR2-5).
+SETTINGS_APART_NEXT = 'Finish this plan with the user first (approve or discard), then plan the other.'
 
 IGT = 'igt'
 

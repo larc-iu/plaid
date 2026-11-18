@@ -28,7 +28,7 @@ from ..core.scope import review_documents
 from ..core.plan import by_document, change_of, confirm_preview, held_changes, labelled
 from ..core.provenance import unmark
 from ..core.refs import read_ref, same_form
-from ..core.tools import ADVICE, ToolError, kind_of
+from ..core.tools import ADVICE, ToolError, kind_of, next_step
 
 from .plan import (ANALYSIS, KIND, MORPHEME_KEY, MORPHEME_WRITERS, TEXT_SHAPE, WORD_SHAPE, analysed_morphemes,
                    reshaped_subjects)
@@ -1389,7 +1389,9 @@ def t_create_document(ws: Workspace, name: str, text: str, metadata: Optional[di
     words = planned_word_count(ws.project, text)
     ws.add_op({'kind': 'create_document', 'name': name, 'text': text, 'metadata': meta,
                'label': f'New document {qv(name)}: {len(sents)} sentence{"s" if len(sents) != 1 else ""}, {words} words'})
-    return ws.planned_note(1) + f' ({len(sents)} sentences, {words} words will be tokenized.)'
+    # A job only lists a new document as proposed (REV-JR2-5).
+    return ws.planned_note(1) + f' ({len(sents)} sentences, {words} words' + next_step(
+        ws, ' will be tokenized.)', '.)')
 
 
 PIECE_KEYS = ('span_ids', 'token_ids', 'link_ids')

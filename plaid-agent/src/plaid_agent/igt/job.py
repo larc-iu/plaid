@@ -1661,6 +1661,13 @@ class JobWorkspace(Workspace):
             return f'[Staged: {_n(held, "change")} to apply, {_n(proposed, "proposed change")} only listed in the report.]'
         return f'[Staged: {_n(held, "change")}.]' if held else '[Staged: nothing yet.]'
 
+    def exclusive_message(self, staging_it: bool) -> str:
+        """A restore stands alone in a piece too, with no approval or
+        later turn to name (REV-JR2-5)."""
+        if staging_it:
+            return 'A restore cannot be staged beside other changes, and this piece already holds some.'
+        return 'This piece holds a restore, and no other change can be staged beside it.'
+
     def unknown_new_entry(self, entry_id: str) -> str:
         return (f'No entry staged in this piece has id {entry_id}. Name an entry made before it by its form, '
                 'with its number if several share it ("gam#2"), as read_lexicon shows it.')
