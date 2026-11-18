@@ -64,7 +64,10 @@ export const isolate = (value) => `\u2068${value ?? ''}\u2069`;
 // right-to-left value reads in its own order while the text stays the stored
 // label, character for character: copied, searched or read by a test it is
 // what was stored, with no U+2066 to U+2069 in it (REV-G4-1). A fixed rule:
-// - with an arrow, each side of it (`Respell كَتَبَ → كتب` reads old to new);
+// - with an arrow, each side of it (`Respell كَتَبَ → كتب` reads old to new),
+//   its own quoted runs isolated within it (`Replace “x” → “y” in Gloss`,
+//   REV-G4-R2-2: a <bdi> takes its direction from its own text outside any
+//   nested one, so “y” does not turn " in Gloss" around);
 // - else each quoted run ("…" or “…”), and everything after the first ': '
 //   outside quotes, which is a cell edit's value (`Translation of sentence
 //   1: ذهب Ahmed إلى`, H2-8-2), its own quoted runs isolated within it.
@@ -88,7 +91,9 @@ const quotedParts = (text) => {
 export const labelParts = (label) => {
   if (typeof label !== 'string' || label === '') return label ? [String(label)] : [];
   if (label.includes(' → ')) {
-    return label.split(' → ').flatMap((side, i) => [...(i ? [' → '] : []), { isolate: [side] }]);
+    return label
+      .split(' → ')
+      .flatMap((side, i) => [...(i ? [' → '] : []), { isolate: quotedParts(side) }]);
   }
   let close = null;
   for (let i = 0; i < label.length; i += 1) {

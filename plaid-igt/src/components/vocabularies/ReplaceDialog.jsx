@@ -23,7 +23,6 @@ import {
   SelectValue,
 } from '@ui/components/ui/select';
 import { cn } from '@ui/lib/utils';
-import { isolate } from '@ui/lib/bidi.js';
 import { countOf } from '@ui/lib/plural.js';
 import { notifySuccess, notifyError, notifyWarning, humanizeError } from '@/utils/feedback';
 import { humanizeFieldName, FIELD_TYPES } from '@/domain/vocabFields';
@@ -68,6 +67,13 @@ const Change = ({ from, to }) => (
     </span>
   </span>
 );
+
+// Saved plain: History draws each value in a <bdi> where it shows it
+// (plaid-ui IsolatedLabel), and nothing invisible is stored (REV-G4-R2-2).
+export const replaceLabel = ({ filling, find, repl, field, vocabularyName }) =>
+  filling
+    ? `Set ${field} to “${repl}” where empty in ${vocabularyName || 'vocabulary'}`
+    : `Replace “${find}” → “${repl}” in ${field} of ${vocabularyName || 'vocabulary'}`;
 
 export const ReplaceDialog = ({
   open,
@@ -193,9 +199,7 @@ export const ReplaceDialog = ({
     let total = 0;
     let skipped = 0;
     let reused = false;
-    const label = filling
-      ? `Set ${target.label} to “${isolate(repl)}” where empty in ${vocabularyName || 'vocabulary'}`
-      : `Replace “${isolate(find)}” → “${isolate(repl)}” in ${target.label} of ${vocabularyName || 'vocabulary'}`;
+    const label = replaceLabel({ filling, find, repl, field: target.label, vocabularyName });
     try {
       const { landed, error } = await send(
         label,

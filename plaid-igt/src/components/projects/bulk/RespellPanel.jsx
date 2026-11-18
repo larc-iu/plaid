@@ -1,7 +1,6 @@
 import { useMemo, useState } from 'react';
 import { Button } from '@ui/components/ui/button';
 import { cn } from '@ui/lib/utils';
-import { isolate } from '@ui/lib/bidi.js';
 import { notifySuccess, notifyWarning } from '@/utils/feedback';
 import { buildReplacer, chainText, respellBarred } from './bulkPlan.js';
 import { planRespell, applyRespell } from './bulkRunner.js';
@@ -54,6 +53,10 @@ const RespellChange = ({ row, includeMorphemes }) => {
     </>
   );
 };
+
+// Saved plain: History draws each value in a <bdi> where it shows it
+// (plaid-ui IsolatedLabel), and nothing invisible is stored (REV-G4-R2-2).
+export const respellLabel = (find, repl) => `Respell “${find}” → “${repl}”`;
 
 export const RespellPanel = ({ project, projectId, client, layerInfo }) => {
   const [find, setFind] = useState('');
@@ -149,7 +152,7 @@ export const RespellPanel = ({ project, projectId, client, layerInfo }) => {
           writer,
           includeMorphemes,
           includeLexicon,
-          label: `Respell “${isolate(plan.find)}” → “${isolate(plan.repl)}”`,
+          label: respellLabel(plan.find, plan.repl),
           onProgress,
         },
       ),

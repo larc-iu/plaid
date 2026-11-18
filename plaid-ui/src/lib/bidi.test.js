@@ -112,6 +112,12 @@ describe('labelParts', () => {
       ' → ',
       { isolate: ['\u0643\u062a'] },
     ]);
+    // A quoted run on a side is isolated within it (REV-G4-R2-2).
+    expect(labelParts('Replace “a” → “b” in Gloss')).toEqual([
+      { isolate: ['Replace “', { isolate: ['a'] }, '”'] },
+      ' → ',
+      { isolate: ['“', { isolate: ['b'] }, '” in Gloss'] },
+    ]);
     expect(labelParts('Confirm word analysis')).toEqual(['Confirm word analysis']);
     expect(labelParts(null)).toEqual([]);
   });

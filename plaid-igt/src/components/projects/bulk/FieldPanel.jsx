@@ -2,7 +2,6 @@ import { useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { Label } from '@ui/components/ui/label';
 import { Button } from '@ui/components/ui/button';
-import { isolate } from '@ui/lib/bidi.js';
 import {
   Select,
   SelectTrigger,
@@ -95,6 +94,12 @@ const FieldChange = ({ row, target }) => {
   );
 };
 
+// Saved plain: History draws each value in a <bdi> where it shows it
+// (plaid-ui IsolatedLabel), and nothing invisible is stored (REV-G4-R2-2).
+// An empty `repl` clears.
+export const fieldApplyLabel = (find, repl, target) =>
+  repl === '' ? `Clear “${find}” in ${target}` : `Replace “${find}” → “${repl}” in ${target}`;
+
 export const FieldPanel = ({ project, projectId, client, layerInfo }) => {
   const writer = useWriter(project);
   const targets = useMemo(
@@ -182,9 +187,7 @@ export const FieldPanel = ({ project, projectId, client, layerInfo }) => {
         { rows: writable, versions: plan.versions, replan: plan.replan },
         {
           writer,
-          label: blank(plan.repl)
-            ? `Clear “${isolate(plan.find)}” in ${targetLabel}`
-            : `Replace “${isolate(plan.find)}” → “${isolate(plan.repl)}” in ${targetLabel}`,
+          label: fieldApplyLabel(plan.find, blank(plan.repl) ? '' : plan.repl, targetLabel),
           onProgress,
         },
       ),
