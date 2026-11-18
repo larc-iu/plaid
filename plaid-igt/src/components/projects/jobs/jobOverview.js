@@ -99,6 +99,16 @@ export const toCheckRows = (job) => {
     const n = t[key] ?? listed.filter((s) => s.reason === reason).length;
     add(`skipped-${reason}`, n, `${countOf(n, 'sentence')} ${label}`, 'skipped');
   });
+  // Those the worker moved past a document's list, or a report too large for
+  // core cut, counted apart from their reason's total (REV-RP-1): the Skipped
+  // section counts them as each document's "And N more skipped."
+  const notListed = t.skippedMore ?? sum(docs, (d) => d.counts?.skippedMore);
+  add(
+    'skipped-more',
+    notListed,
+    `${countOf(notListed, 'sentence')} skipped and not listed`,
+    'skipped',
+  );
 
   const inDocuments = (target, key) =>
     docs.filter((d) => (d.counts?.blank || []).some((b) => b.target === target && b[key] > 0))

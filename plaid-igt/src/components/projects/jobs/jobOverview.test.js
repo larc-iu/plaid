@@ -253,6 +253,46 @@ describe('what to check', () => {
     ]);
   });
 
+  // REV-RP-1: the sentences the worker moved past a document's list (or a
+  // report too large for core) are counted under skippedMore, apart from
+  // their reason's total.
+  it('counts the skipped sentences not listed, so its rows add up to the Skipped section', () => {
+    const job = {
+      state: 'done',
+      documents: [{ documentId: 'd1' }, { documentId: 'd2' }],
+      report: {
+        totals: { skippedTooLong: 2, skippedFailed: 1, skippedMore: 499 },
+        documents: [
+          {
+            documentId: 'd1',
+            state: 'done',
+            skipped: [
+              { sentence: 's1', reason: 'too-long' },
+              { sentence: 's2', reason: 'failed' },
+            ],
+            counts: { skippedMore: 499 },
+          },
+          {
+            documentId: 'd2',
+            state: 'done',
+            skipped: [{ sentence: 's4', reason: 'too-long' }],
+            counts: {},
+          },
+        ],
+      },
+    };
+    const rows = toCheckRows(job).filter((r) => r.view === 'skipped');
+    expect(rows.map((r) => r.text)).toEqual([
+      '2 sentences skipped, too long',
+      '1 sentence skipped, failed',
+      '499 sentences skipped and not listed',
+    ]);
+    const counted = rows.reduce((n, r) => n + Number(r.text.split(' ')[0].replace(/,/g, '')), 0);
+    const tab = jobSections(job, null).find((s) => s.key === 'skipped');
+    expect(counted).toBe(502);
+    expect(tab.count).toBe(counted);
+  });
+
   it('has none for a job with no report', () => {
     expect(toCheckRows({ state: 'running', report: null })).toEqual([]);
   });
