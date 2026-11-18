@@ -18,6 +18,14 @@ import { nameTakenMessage } from '@ui/lib/documentNames.js';
 import { createOnce } from '@ui/lib/createOnce.js';
 import { isEnter } from '@ui/lib/chords.js';
 
+// A name of only invisible characters is no name, as one of only spaces is
+// not. The set is core's (plaid.sql.common/visible?): White_Space, Cc, Cf and
+// the other default-ignorable code points, less the prepended concatenation
+// marks, which are drawn. Core refuses such a name too.
+const NO_NAME =
+  /^[[\p{White_Space}\p{Cc}\p{Cf}\p{Default_Ignorable_Code_Point}]--[\u0600-\u0605\u06DD\u070F\u0890\u0891\u08E2\u{110BD}\u{110CD}]]*$/v;
+const named = (s) => !NO_NAME.test(s);
+
 // The Documents tab's way to a new document, beside its heading, for a writer.
 export const NewDocument = ({ projectId, client, canManage }) => {
   const [open, setOpen] = useState(false);
@@ -41,7 +49,7 @@ export const NewDocument = ({ projectId, client, canManage }) => {
   const navigate = useNavigate();
 
   const handleCreateDocument = async () => {
-    if (!documentName.trim()) {
+    if (!named(documentName)) {
       notifyError('Name the document.', 'Failed to create the document');
       return;
     }
@@ -156,7 +164,7 @@ export const NewDocument = ({ projectId, client, canManage }) => {
                     setDocumentName(e.target.value);
                   }}
                   onKeyDown={(e) => {
-                    if (isEnter(e) && documentName.trim() && !isCreating) handleCreateDocument();
+                    if (isEnter(e) && named(documentName) && !isCreating) handleCreateDocument();
                   }}
                   aria-invalid={nameTaken ? true : undefined}
                   aria-describedby={nameTaken ? 'doc-name-taken' : undefined}
@@ -174,7 +182,7 @@ export const NewDocument = ({ projectId, client, canManage }) => {
                 </Button>
                 <Button
                   onClick={handleCreateDocument}
-                  disabled={!documentName.trim() || isCreating}
+                  disabled={!named(documentName) || isCreating}
                 >
                   {isCreating ? 'Creating…' : 'Create'}
                 </Button>

@@ -120,4 +120,41 @@ describe('New document', () => {
     expect(server.body).toBe('kai pele');
     expect(server.segments()).toHaveLength(2);
   });
+
+  // REV-RL2-4: a name of only invisible characters is no name, as one of only
+  // spaces is not: Create stays disabled and Enter makes nothing. A name with
+  // a visible character goes as typed.
+  it('takes a name of only invisible characters as none', async () => {
+    const client = { documents: { create: vi.fn() } };
+    const v = await renderComponent(
+      <MemoryRouter initialEntries={['/projects/p1']}>
+        <NewDocument projectId="p1" client={client} canManage={false} />
+      </MemoryRouter>,
+    );
+    await v.step(() => byText(v.container, 'button', 'New document').click());
+    const field = () => document.body.querySelector('#doc-name');
+    const create = () => byText(document.body, 'button', 'Create');
+    const cp = (...cps) => String.fromCodePoint(...cps);
+    for (const name of [
+      '   ',
+      cp(0x200b),
+      cp(0x200b, 0x200c),
+      cp(0xfeff),
+      cp(0x3164),
+      cp(0xfe0f),
+    ]) {
+      await v.step(() => type(field(), name));
+      expect(create().disabled).toBe(true);
+      await v.step(() =>
+        field().dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })),
+      );
+    }
+    expect(client.documents.create).not.toHaveBeenCalled();
+    // Drawn, though Cf: an end of ayah alone, and a joiner inside a word.
+    for (const name of [cp(0x06dd), cp(0x0915, 0x094d, 0x200d, 0x0937), cp(0x200b, 0x61)]) {
+      await v.step(() => type(field(), name));
+      expect(create().disabled).toBe(false);
+    }
+    await v.unmount();
+  });
 });
