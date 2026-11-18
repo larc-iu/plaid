@@ -337,12 +337,28 @@
 ;; Validation
 ;; ============================================================
 
-(defn assert-valid-name!
-  "Throws ex-info with :code 400 unless `s` passes the project-wide name
-  length limits. Returns true when it does, which no caller reads.
+(def ^:private invisible-only
+  "A string with no visible character: only Unicode White_Space, control
+  (Cc) and format (Cf) characters, and the other Default_Ignorable_Code_Point
+  characters, which Java offers no property for and are listed from Unicode's
+  DerivedCoreProperties: the combining grapheme joiner, the Hangul fillers,
+  the Khmer inherent vowels, the Mongolian and other variation selectors, and
+  the reserved default-ignorables (U+2065, U+FFF0 to U+FFF8, U+E0000 to
+  U+E0FFF, which also holds the tag characters)."
+  #"[\p{IsWhite_Space}\p{Cc}\p{Cf}\x{034F}\x{115F}\x{1160}\x{17B4}\x{17B5}\x{180B}-\x{180D}\x{180F}\x{2065}\x{3164}\x{FE00}-\x{FE0F}\x{FFA0}\x{FFF0}-\x{FFF8}\x{E0000}-\x{E0FFF}]*")
 
-  Call it inside a `submit-operation!` body: validation outside one does
-  not get projected to a structured response."
+(defn visible?
+  "True when `s` holds at least one character that is not whitespace, a
+  control or format character or another default-ignorable code point (see
+  `invisible-only`). The one test of a name that must not be blank."
+  [^String s]
+  (not (re-matches invisible-only s)))
+
+(defn assert-valid-length!
+  "Throws ex-info with :code 400 unless `s` is a string within the
+  project-wide name length limits that a text column can store. Returns true
+  when it is. For a string held to a name's length that is not a name, such
+  as an invite's note. A name goes through `assert-valid-name!`."
   [s]
   (let [name-config (try (:plaid.sql.common/config config) (catch Exception _ nil))
         max-l (or (:max-name-length name-config) 500)
@@ -360,6 +376,20 @@
                       {:code 400 :length (count s) :min-length min-l}))
 
       :else (do (storable/assert-storable! "Name" s) true))))
+
+(defn assert-valid-name!
+  "Throws ex-info with :code 400 unless `s` passes the project-wide name
+  length limits and holds a visible character (`visible?`, Luke 2026-11-18:
+  a name of only invisible characters is blank). Nothing is stripped from a
+  name that has one. Returns true when it passes, which no caller reads.
+
+  Call it inside a `submit-operation!` body: validation outside one does
+  not get projected to a structured response."
+  [s]
+  (assert-valid-length! s)
+  (when-not (visible? s)
+    (throw (ex-info "Name cannot be blank" {:code 400})))
+  true)
 
 (defn counted
   "`n` and `noun`, the noun plural unless `n` is one: \"1 token\", \"3 tokens\".

@@ -89,7 +89,7 @@
   [what v ceiling]
   (when-not (string? v)
     (throw (ex-info (str what " must be a string") {:code 400})))
-  (when (clojure.string/blank? v)
+  (when-not (psc/visible? v)
     (throw (ex-info (str what " cannot be blank") {:code 400})))
   (when (> (count v) ceiling)
     (throw (ex-info (str what " exceeds " ceiling " characters")

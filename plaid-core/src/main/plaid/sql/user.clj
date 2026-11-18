@@ -228,12 +228,13 @@
     (if (clojure.string/blank? local) (str email) local)))
 
 (defn assert-valid-display-name!
-  "Display names are free-form: any non-blank string within the project-wide
-  length limits. Deliberately NOT unique and deliberately not email-shaped.
+  "Display names are free-form: any string within the project-wide length
+  limits that holds a visible character (`psc/visible?`). Deliberately NOT
+  unique and deliberately not email-shaped.
   Throws ex-info with :code 400; call inside `submit-operation!`."
   [display-name]
-  (psc/assert-valid-name! display-name)
-  (when (clojure.string/blank? display-name)
+  (psc/assert-valid-length! display-name)
+  (when-not (psc/visible? display-name)
     (throw (ex-info "Display name cannot be blank" {:code 400})))
   true)
 
@@ -279,8 +280,9 @@
    (let [id (normalize-id id)]
      (assert-valid-email! id)
      (assert-valid-password! password)
-     (let [display-name (or (not-empty (some-> display-name clojure.string/trim))
-                            (default-display-name id))
+     (let [display-name (if (and (string? display-name) (psc/visible? display-name))
+                          (clojure.string/trim display-name)
+                          (default-display-name id))
            _ (assert-valid-display-name! display-name)
            password-hash (hashers/derive password)
            row {:id               id
