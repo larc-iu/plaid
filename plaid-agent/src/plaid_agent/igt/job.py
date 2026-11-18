@@ -3305,6 +3305,13 @@ class IgtRunner:
                     # A row of its own in the work list, saying it failed and
                     # what follows (B5).
                     self.failed_whole(document_id, doc.name, part, e.kind)
+                except Deferred:
+                    # Its write put off: what it would have written remains, so
+                    # the fallback row is kept now, in core, and a worker that
+                    # restarts during the wait works it in stretches too
+                    # (REV-RW-4).
+                    core_job.through_core(job, lambda: self.fall_back(document_id, 'again'))
+                    raise
                 finally:
                     self.whole_taken.add(document_id)
                 continue

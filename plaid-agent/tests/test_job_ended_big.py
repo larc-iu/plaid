@@ -154,10 +154,15 @@ def test_a_worker_that_dies_around_the_closing_write_passes_no_sentence(monkeypa
         return real(self, *a, **kw)
     monkeypatch.setattr(igt_job.IgtRunner, 'write' if at == 'before-write' else 'end_summary', dies)
     use(monkeypatch, _model({'Story': [3]}))
+    r = runner(job)
+    r.plan(job)
     with pytest.raises(_Crash):
-        runner(job).document('d1')
+        r.document('d1')
+    assert hit['n'] == 1
     model = use(monkeypatch, _model({}))
-    assert runner(job).document('d1') == 'done'
+    fresh = runner(job)
+    fresh.plan(job)
+    assert fresh.document('d1') == 'done'
     assert not [c for c in model.calls if c['n'] == 1 and WHOLE in c['asked']]
     taken = sorted(n for _name, ns in _stretches(model) for n in ns)
     # Before the write nothing was written: s3 is worked again too. After it,

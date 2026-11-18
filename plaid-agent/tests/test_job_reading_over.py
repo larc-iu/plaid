@@ -50,7 +50,9 @@ def test_a_reading_tool_after_the_decide_now_line_is_refused_with_the_next_step(
             return reply('Done.')
         return reply(calls=[call(100 + n, 'read_document', {'document': 'Story'})])
     use(monkeypatch, Model(answer))
-    runner(job).document('d1')
+    r = runner(job)
+    r.plan(job)
+    r.document('d1')
     read, made_up = seen['results']
     assert read.startswith(f'Error: {JOB_READING_OVER}'), read
     assert "not one of this job's" in made_up, 'a tool the piece was never offered is refused as before'
