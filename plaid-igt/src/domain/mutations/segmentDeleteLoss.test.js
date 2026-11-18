@@ -66,7 +66,11 @@ const fake = ({ nodes = true, translation = true } = {}) => {
     body: 'aa\nbb cc\ndd',
     vocabularies: {},
     layerInfo: {
-      primaryTextLayer: { tokenLayers: [sentences, words, segments, graph] },
+      // The body where a document has it (IgtDocument `body` reads it there).
+      primaryTextLayer: {
+        text: { body: 'aa\nbb cc\ndd' },
+        tokenLayers: [sentences, words, segments, graph],
+      },
       alignmentTokenLayer: segments,
     },
   };

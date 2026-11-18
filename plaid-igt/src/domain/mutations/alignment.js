@@ -153,6 +153,11 @@ const findTemporalInversion = (tokens, posBegin, timeBegin, excludeId = null) =>
 
 const bodyOf = (info) => info.primaryTextLayer?.text?.body ?? '';
 
+// How much a loss (`segmentDeleteLoss`, `segmentEditLoss`) takes, as one
+// number, to tell whether it grew.
+const lossSize = (loss) =>
+  loss.annotations + loss.links + loss.shortened.annotations + loss.shortened.links;
+
 // The words a text write's answer says the server made on the word layer
 // ("Tokenize new text"), shown in begin order.
 const pushMadeWords = (infoNext, textId, answer) => {
@@ -626,8 +631,11 @@ export const alignmentMutations = {
     // Made again over the segment as stored: a speaker or a time someone else
     // set meanwhile is a change to another field of it, and stays, since only
     // the keys this edit changed are written. The same field changed on both
-    // sides is a conflict.
+    // sides is a conflict. So is an edit that deletes more there than on this
+    // page, where the question before it was asked (someone annotated the
+    // words it deletes meanwhile, H2-1-2): refused, the row asks again.
     const seen = recordingOf(this._raw);
+    const seenLoss = lossSize(this.segmentEditLoss(existingAlignmentId, { text, edits }).loss);
     const timed = setsTimes(rowPatch(mine, was));
     const replan = (fresh, updated) => {
       const refusal = timed ? this._recordingRefusal(seen, updated, 'Segment edit') : null;
@@ -648,7 +656,9 @@ export const alignmentMutations = {
         found.segment,
       );
       const again = overlap ? null : planEdit(fresh, found.segment, gaps, next, timeBegin);
-      return !again || again.error
+      const grew =
+        lossSize(this.segmentEditLoss(found.segment.id, { text, edits }, fresh).loss) > seenLoss;
+      return !again || again.error || grew
         ? { conflict: { stored: over, mine: next } }
         : { plan: { ...again, patch } };
     };
@@ -738,11 +748,12 @@ export const alignmentMutations = {
   // swallows included, so a sentence it completes), whoever made it, with
   // what is on them (REV-N5-APPS R1). The segment itself is what is asked to
   // go and is not counted. `{annotations, links, shortened}`.
-  segmentDeleteLoss(alignmentId) {
-    const info = this.layerInfo;
+  // `info`, the layers it is counted on: the page's, or a document just read.
+  segmentDeleteLoss(alignmentId, info = this.layerInfo) {
     const segment = (info.alignmentTokenLayer?.tokens || []).find((t) => t.id === alignmentId);
     if (!segment) return { annotations: 0, links: 0, shortened: { annotations: 0, links: 0 } };
-    const ranges = planDeleteText(this.body, segment).map((op) => [op.index, op.index + op.value]);
+    const body = bodyOf(info);
+    const ranges = planDeleteText(body, segment).map((op) => [op.index, op.index + op.value]);
     const loss = countTextDeleteLoss(info.primaryTextLayer?.tokenLayers || [], ranges, {
       except: [segment.id],
       vocabLinks: Object.values(this.vocabularies || {}).flatMap((v) => v?.vocabLinks || []),
@@ -757,20 +768,20 @@ export const alignmentMutations = {
   // removedStretches), and `loss`, what is on the tokens wholly inside them,
   // as for a segment deleted with its text (`segmentDeleteLoss`). The segment
   // keeps its id and is not counted.
-  segmentEditLoss(alignmentId, { text, edits = null }) {
+  segmentEditLoss(alignmentId, { text, edits = null }, info = this.layerInfo) {
     const none = { annotations: 0, links: 0, shortened: { annotations: 0, links: 0 } };
-    const info = this.layerInfo;
+    const body = bodyOf(info);
     const segment = (info.alignmentTokenLayer?.tokens || []).find((t) => t.id === alignmentId);
     const trimmed = composeText((text || '').trim()).text;
     if (!segment || !trimmed) return { stretches: [], loss: none };
-    const over = cpSlice(this.body, segment.begin, segment.end);
+    const over = cpSlice(body, segment.begin, segment.end);
     const gaps = rowGaps(over, rowText(over, trimmed), edits).map((g) => ({
       ...g,
       start: g.start + segment.begin,
       end: g.end + segment.begin,
     }));
     const words = (info.primaryTokenLayer?.tokens || []).map((t) => [t.begin, t.end]);
-    const stretches = removedStretches(this.body, gaps, words);
+    const stretches = removedStretches(body, gaps, words);
     if (!stretches.length) return { stretches, loss: none };
     const loss = countTextDeleteLoss(
       info.primaryTextLayer?.tokenLayers || [],
@@ -824,6 +835,8 @@ export const alignmentMutations = {
     const textOps = planDeleteText(this.body, existingAlignment);
     // What the delete takes, for the entity rule when it is refused.
     const over = cpSlice(this.body, existingAlignment.begin, existingAlignment.end);
+    // What it deletes besides, as this page counted it for its question.
+    const seenLoss = lossSize(this.segmentDeleteLoss(alignmentId));
     const planned = this._plannedText();
 
     // The segment is deleted in its own right, then its text. It used to go
@@ -852,11 +865,16 @@ export const alignmentMutations = {
       }
       const results = await this._sendOverSegmentText(state, {
         // Sent again only over the segment as it was: a text changed
-        // meanwhile is refused, and the row comes back with it.
+        // meanwhile is refused, and the row comes back with it. So is a
+        // delete that takes more there than this page counted (someone
+        // annotated its words meanwhile, H2-1-2): the trash asks again.
         replan: (fresh, updated) => {
           const found = segmentConflict(fresh, alignmentId, over, '');
           if (found.conflict) return { conflict: found.conflict };
           const { segment } = found;
+          if (lossSize(this.segmentDeleteLoss(segment.id, fresh)) > seenLoss) {
+            return { conflict: { stored: over, mine: '' } };
+          }
           const ops = planDeleteText(bodyOf(fresh), segment);
           return {
             send: (base) => send(segment.id, ops, base),

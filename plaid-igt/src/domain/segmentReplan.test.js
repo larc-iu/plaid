@@ -341,3 +341,69 @@ describe('a write replayed inside the client’s own resend after someone else w
     });
   }
 });
+
+// H2-1-2: a row edit or a trash with its text, from a page opened before
+// another person glossed the words it deletes. Refused, so the row asks
+// again on the document read, rather than resent with the loss unasked.
+describe('a row write that deletes more than its page counted', () => {
+  const glossed = () => {
+    const raw = buildRawDoc({
+      body: 'uno dos tres',
+      words: [
+        { id: 'w-1', begin: 0, end: 3 },
+        { id: 'w-2', begin: 4, end: 7 },
+        { id: 'w-3', begin: 8, end: 12 },
+      ],
+      alignmentTokens: [seg('a-1', 0, 3, 0, 1), seg('a-2', 4, 7, 1, 2), seg('a-3', 8, 12, 2, 3)],
+    });
+    return segmentServer(raw);
+  };
+  const spans = (server) =>
+    server.stored.textLayers[0].tokenLayers.flatMap((l) =>
+      (l.spanLayers || []).flatMap((sl) => sl.spans.map((x) => x.value)),
+    );
+
+  it('a retype of a word glossed meanwhile is refused, and asks on the document read', async () => {
+    const server = glossed();
+    const doc = open(server);
+    expect(doc.segmentEditLoss('a-2', { text: 'xyz' }).loss.annotations).toBe(0);
+    server.otherGlosses('m-2', 'two');
+    server.otherGlosses('w-2', 'two.w');
+    const outcome = await edit(doc, 'a-2', { text: 'xyz' });
+    await idle(doc);
+    expect(outcome.landed).toBe(false);
+    expect(outcome.error.conflict).toEqual({ stored: 'dos', mine: 'xyz' });
+    expect(server.body).toBe('uno dos tres');
+    expect(spans(server)).toEqual(['two.w', 'two']);
+    // The page now counts what the row's question names.
+    expect(doc.segmentEditLoss('a-2', { text: 'xyz' }).loss.annotations).toBe(2);
+    // Asked and answered on that count, it is saved.
+    const again = await edit(doc, 'a-2', { text: 'xyz' });
+    await idle(doc);
+    expect(again.landed).toBe(true);
+    expect(server.body).toBe('uno xyz tres');
+  });
+
+  it('a retype is still made again when what was added meanwhile is elsewhere', async () => {
+    const server = glossed();
+    const doc = open(server);
+    server.otherGlosses('m-1', 'one');
+    const outcome = await edit(doc, 'a-2', { text: 'xyz' });
+    await idle(doc);
+    expect(outcome.landed).toBe(true);
+    expect(server.body).toBe('uno xyz tres');
+    expect(spans(server)).toEqual(['one']);
+  });
+
+  it('a trash with its text over words glossed meanwhile is refused', async () => {
+    const server = glossed();
+    const doc = open(server);
+    server.otherGlosses('m-2', 'two');
+    expect(await doc.deleteAlignment('a-2', { deleteText: true })).toBe(false);
+    await idle(doc);
+    expect(server.body).toBe('uno dos tres');
+    expect(server.segments()).toHaveLength(3);
+    expect(spans(server)).toEqual(['two']);
+    expect(doc.segmentDeleteLoss('a-2').annotations).toBe(1);
+  });
+});

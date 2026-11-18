@@ -788,6 +788,16 @@ export function segmentServer(raw) {
         return { value: url, ops: [{ description: 'Upload media' }] };
       });
     },
+    // Another user's gloss on the token `id`, as the Analyze tab makes it: a
+    // span on the first span layer of the token's layer. Answers its id.
+    otherGlosses(id, value, user = 'b') {
+      return other(user, () => {
+        const layer = layersOf(stored).find((l) => (l.tokens || []).some((t) => t.id === id));
+        const span = { id: `span-${value}`, tokens: [id], value };
+        layer.spanLayers[0].spans.push(span);
+        return { value: span.id, ops: [{ description: `Create span ${span.id}` }] };
+      });
+    },
     // Another user's save of the whole body in the Baseline tab, as a text
     // edit: `edits` are running ops (plaid-client `applyTextOps`).
     otherSaves(edits, user = 'b') {
