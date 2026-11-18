@@ -75,12 +75,16 @@ const deferred = () => {
 // promise to settle later.
 const sent = [];
 // `versions`: the document's version on the server at each read, the last
-// repeated. Without it the version cannot be read, as from a fake that has
-// no documents.
+// repeated, or HANG for a read that never answers. Without it the version
+// cannot be read, as from a fake that has no documents.
+const HANG = Symbol('a read that never answers');
 const fakeClient = ({ services = [], answer = () => ({}), versions = null } = {}) => ({
   ...(versions && {
     documents: {
-      get: vi.fn(async () => ({ version: versions.length > 1 ? versions.shift() : versions[0] })),
+      get: vi.fn(() => {
+        const v = versions.length > 1 ? versions.shift() : versions[0];
+        return v === HANG ? new Promise(() => {}) : Promise.resolve({ version: v });
+      }),
     },
   }),
   messages: {
@@ -541,6 +545,55 @@ describe('a run that stopped or dropped says whether the document changed', () =
         message: 'Service disconnected. Nothing was written.',
       },
     ]);
+  });
+});
+
+// A version read that never answers must not hold up the run or its lock: it
+// gives up after a short time and the old copy is used (REV-G5-R2-1).
+describe('a version read that never answers', () => {
+  afterEach(() => vi.useRealTimers());
+
+  it('at the start, does not keep the request from going out', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    const view = await mount({
+      client: fakeClient({ services: [parseService()], versions: [HANG] }),
+    });
+    let running;
+    await view.step(() => {
+      running = view.api().parse.start();
+    });
+    expect(seq).not.toContain('request:send');
+    await view.step(async () => {
+      await vi.advanceTimersByTimeAsync(2100);
+      await running;
+    });
+    expect(seq).toContain('request:send');
+    expect(seq.at(-1)).toBe('lock:release');
+    await view.unmount();
+  });
+
+  it('at the end, does not keep the lock after a failed run', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    const view = await mount({
+      client: fakeClient({
+        services: [parseService()],
+        answer: () => new Error('Service disconnected'),
+        versions: [3, HANG],
+      }),
+    });
+    let running;
+    await view.step(() => {
+      running = view.api().parse.start();
+    });
+    await view.step(async () => {
+      await vi.advanceTimersByTimeAsync(2100);
+      await running;
+    });
+    expect(seq.at(-1)).toBe('lock:release');
+    expect(toasts).toEqual([
+      { kind: 'error', title: 'Failed to parse', message: 'Service disconnected' },
+    ]);
+    await view.unmount();
   });
 });
 

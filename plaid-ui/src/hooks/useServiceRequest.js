@@ -11,13 +11,30 @@ import { uuidv4 } from '../../../plaid-client-js/src/ids.js';
 const changedLine = (changed) =>
   changed ? 'The document changed during the run.' : 'Nothing was written.';
 
-// The document's version on the server, or null when it cannot be read.
+// How long a version read may take before it is given up as unread. It is
+// awaited before the request goes out and before a failed run lets go of the
+// document, so a read that hangs must not hold up either (REV-G5-R2-1). It is
+// not sent beside the request: a read that landed after the service's first
+// write would make "Nothing was written." false.
+const VERSION_READ_MS = 2000;
+
+// The document's version on the server, or null when it cannot be read in
+// time.
 const readVersion = async (client, documentId) => {
+  let timer;
+  const late = new Promise((resolve) => {
+    timer = setTimeout(() => resolve(null), VERSION_READ_MS);
+  });
   try {
-    const v = (await client.documents.get(documentId))?.version;
-    return v === undefined ? null : v;
+    const read = Promise.resolve(client.documents.get(documentId)).then(
+      (d) => (d?.version === undefined ? null : d.version),
+      () => null,
+    );
+    return await Promise.race([read, late]);
   } catch {
     return null;
+  } finally {
+    clearTimeout(timer);
   }
 };
 
