@@ -401,3 +401,40 @@ describe('useServiceRequest: a service that is not running', () => {
     await r.unmount();
   });
 });
+
+// A stopped run that reads the document's version says what it finds, and a
+// caller's own stop words, more exact and still true, win when the document
+// did not change: umr Compare's "No report was written." (REV-G5-R2-2).
+describe('a stopped run that reads the version', () => {
+  const versioned = (versions) => ({
+    ...fakeClient(() => ({ stopped: true })),
+    documents: {
+      get: vi.fn(async () => ({ version: versions.length > 1 ? versions.shift() : versions[0] })),
+    },
+  });
+  const said = () => notify.notifyInfo.mock.calls.map(([message]) => message);
+
+  it.each([
+    [[3, 3], 'No report was written.'],
+    [[3, 4], 'The document changed during the run.'],
+  ])('with its own stop words and versions %o says %s', async (versions, words) => {
+    const r = await mount(versioned(versions));
+    await run(r, { ...COPY, runName: 'Compare', stoppedMessage: 'No report was written.' });
+    expect(said()).toEqual([words]);
+    await r.unmount();
+  });
+
+  it('without its own stop words says nothing was written when nothing changed', async () => {
+    const r = await mount(versioned([3, 3]));
+    await run(r, { ...COPY, runName: 'Draft' });
+    expect(said()).toEqual(['Nothing was written.']);
+    await r.unmount();
+  });
+
+  it('keeps the hedged words when the version cannot be read', async () => {
+    const r = await mount(fakeClient(() => ({ stopped: true })));
+    await run(r, { ...COPY, runName: 'Draft' });
+    expect(said()).toEqual(['Stopped partway. What ran before the stop is in the document.']);
+    await r.unmount();
+  });
+});

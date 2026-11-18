@@ -122,10 +122,14 @@ export const useServiceRequest = (client) => {
     setProgressPercent(stopped ? null : 100);
     setProgressMessage(stopped ? 'Stopped.' : 'Finished.');
     if (stopped) {
-      notifyInfo(
-        changed === null ? copy.stoppedMessage : changedLine(changed),
-        copy.stoppedTitle || copy.successTitle,
-      );
+      // A caller's own stop words are more exact than "Nothing was written."
+      // ("No report was written."), so they stand while the document did not
+      // change, and when its version could not be read (REV-G5-R2-2).
+      const message =
+        changed === true || (changed === false && !copy.ownStopWords)
+          ? changedLine(changed)
+          : copy.stoppedMessage;
+      notifyInfo(message, copy.stoppedTitle || copy.successTitle);
       return;
     }
     // A service reports a per-item failure in its counts rather than by
@@ -256,7 +260,14 @@ export const useServiceRequest = (client) => {
           const changed = result?.stopped === true ? await changedSince() : null;
           succeed(
             result,
-            { successMessage, successTitle, stoppedTitle, stoppedMessage, notice },
+            {
+              successMessage,
+              successTitle,
+              stoppedTitle,
+              stoppedMessage,
+              ownStopWords: options.stoppedMessage !== undefined,
+              notice,
+            },
             changed,
           );
         }

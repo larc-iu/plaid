@@ -54,9 +54,6 @@ export const useUmrServices = ({ client, projectId, doc, project, acquireWriteLo
       errorTitle: 'Failed to draft',
       errorMessage: 'The draft did not run.',
       stoppedTitle: 'Draft',
-      // The write phase is one critical block with no checkpoint in it, so
-      // a run reported as stopped stopped before writing.
-      stoppedMessage: 'Nothing was written.',
       // The words for the counts the service reports. A run that skipped
       // every sentence warns rather than congratulates.
       notice: draftNotice,
@@ -80,6 +77,8 @@ export const useUmrServices = ({ client, projectId, doc, project, acquireWriteLo
       errorTitle: 'Failed to compare',
       errorMessage: 'The comparison did not run.',
       stoppedTitle: 'Compare',
+      // Said while the document is as it was: a stopped run that changed it
+      // says so instead (plaid-ui useServiceRequest).
       stoppedMessage: 'No report was written.',
       notice: compareNotice,
     },
