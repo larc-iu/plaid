@@ -122,10 +122,11 @@ export const review = {
     const from = e.target;
     this._afterABeat(() => {
       // Off the page's last word: the next page's first cell of the tier,
-      // as Enter goes (H2-14-1).
+      // as Enter goes (H2-14-1). Only from a cell still drawn: one the
+      // reload replaced has no place on the page to be last at.
       if (
         !this._advanceToNextWord(from, wordId) &&
-        !this._navAcrossPage(from, this._tierOf(from), 'next')
+        !(from.isConnected && this._navAcrossPage(from, this._tierOf(from), 'next'))
       ) {
         // Last word of the document: commit (blur) but keep the caret here rather
         // than dropping focus to <body> (E2). Re-affirmed after the re-render.
