@@ -28,10 +28,12 @@ test.afterAll(async () => {
   if (ctx) await cleanupDoc(ctx.client, ctx.documentId);
 });
 
+// By its address: the tab is the page's to open, and a click made as the
+// document lands raced its landing tab (FLK3-6).
 async function openMedia(page) {
-  await page.goto(`/#/projects/${ctx.projectId}/documents/${ctx.documentId}`);
+  await page.goto(`/#/projects/${ctx.projectId}/documents/${ctx.documentId}?tab=media`);
+  await expect(page.getByRole('tab', { name: 'Media' })).toHaveAttribute('aria-selected', 'true');
   await page.waitForLoadState('networkidle');
-  await page.getByRole('tab', { name: 'Media' }).click();
 }
 
 test('file picker uploads media and reveals the timeline', async ({ page }) => {
