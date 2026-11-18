@@ -43,7 +43,7 @@ from plaid_client.service import locked_for_writes
 
 from ..core import job as core_job
 from ..core.agent import ModelConfig, Toolkit, TurnCancelled, TurnResult, run_turn, token_counter
-from ..core import garble
+from ..core import docload, garble
 from ..core.garble import seed
 from ..core.trace import plural
 from ..core.guidelines import manual_chars
@@ -67,7 +67,8 @@ from ..core.tools import Refusal, ToolError
 from ..core.version import agent_version
 from . import evidence, jobapply, targets as tg, toolkit
 from .plan import LEXICON_MAINTAINER, REPAIR_OF, PlanOutOfDate, check_entries, execute_plan
-from .project import VIRTUAL_PREFIX, IgtProject, Sentence, Word, is_virtual, load_project, render_sentence
+from .project import (VIRTUAL_PREFIX, IgtProject, Sentence, Word, is_virtual, load_project, parse_document,
+                      render_sentence)
 from .prompt import JOB_SYSTEM, build_job_prompt
 from .tools import trim_ignored_edges
 from .trace import TRACER
@@ -78,6 +79,16 @@ from .vocab import ROLE_GLOSS, ROLE_STATUS
 from .workspace import Workspace
 
 logger = logging.getLogger(__name__)
+
+#: Document bodies a job read whole, by id, :class:`docload.Stamp` and the
+#: layers read, kept for the job's next read of the same version (SCL7-6).
+#: The body, never its parse: each read parses it by the project its caller
+#: holds then, the ignored-token rule and the fields as they are now, which
+#: move no document's version (REV-CU-1). A body is about three times its
+#: parse in memory (4 MB for 500 words, 160 MB for 20,000), so only the few
+#: a job is working on are kept.
+JOB_BODIES_KEPT = 8
+_BODIES = docload.DocCache(JOB_BODIES_KEPT)
 
 #: The phase of the work on the documents (CONTRACT 2.1).
 WORK_PHASE = 'working'
@@ -2623,10 +2634,15 @@ class IgtRunner:
         return project if cfg == project.ignored_cfg else dataclasses.replace(project, ignored_cfg=cfg)
 
     def read(self, project: IgtProject, document_id: str, client=None):
-        """The document as it is now, read afresh, or :class:`Gone`."""
-        ws = Workspace(client or self.job.client(), project)
+        """The document as it is now, or :class:`Gone`, parsed by ``project``.
+        Its record is read first (a few milliseconds), and a body this
+        process read at that version and time of the last write, by the
+        same layers, is parsed again instead of read whole again
+        (:data:`_BODIES`): an unchanged document is read whole once, not four
+        times a piece and twice more before the work starts (SCL7-6). A
+        client that opts out of the cache (``no_doc_cache``) reads afresh."""
         try:
-            doc = ws.load_doc(document_id)
+            doc = parse_document(self.body(client or self.job.client(), project, document_id), project)
         except PlaidAPIError as e:
             # A read core refuses 400 while the project no longer has every
             # layer the job read it by: the project changed (S5-1).
@@ -2635,6 +2651,26 @@ class IgtRunner:
             raise self.refused(e, document_id) from e
         self.names[document_id] = doc.name
         return doc
+
+    @staticmethod
+    def body(client, project: IgtProject, document_id: str) -> Dict[str, Any]:
+        """The document's body as a whole read by ``project``'s layers gives
+        it now (see :meth:`read`)."""
+        layers = project.read_layer_ids()
+        if getattr(client, 'base_url', None) is None or getattr(client, 'no_doc_cache', False):
+            return client.documents.get(document_id, include_body=True, layers=layers)
+        head = client.documents.get(document_id) or {}
+        key = None
+        if head.get('version') is not None and 'time_modified' in head:
+            key = (document_id, docload.Stamp(client.base_url, head['version'], head['time_modified']), tuple(layers))
+        raw = _BODIES.get(key) if key else None
+        if raw is None:
+            raw = client.documents.get(document_id, include_body=True, layers=layers)
+            # Kept only as the version its record named: one written between
+            # the two reads comes back newer.
+            if key and raw.get('version') == head['version']:
+                _BODIES.put(key, raw)
+        return raw
 
     def refused(self, e: PlaidAPIError, document_id: str) -> Exception:
         """What a refusal of a document's read, lock or write means: the

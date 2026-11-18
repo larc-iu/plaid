@@ -14,10 +14,14 @@ that needs the document as a write left it hands that version in
 
 import contextlib
 import copy
+import hashlib
 import json
+import os
 import time
 from datetime import datetime, timezone
 from types import SimpleNamespace
+
+import pytest
 
 from fixtures import FakeClient, GLOSS, MGLOSS, MORPH_LAYER, PID, SENT_LAYER, TEXT_ID, TEXT_LAYER, TRANS, VOCAB, \
     WORD_LAYER, lexicon_raw, project_raw
@@ -147,6 +151,21 @@ class JobClient(FakeClient):
                 return copy.deepcopy(self.after_write[document_id])
             return reads(document_id, **kwargs)
         self.documents.get = get
+        if os.environ.get(DOC_CACHE_ENV):
+            cache_documents(self)
+
+    def stored(self, document_id):
+        """What a whole read of ``document_id`` answers now, read without
+        counting as a read, or None for a document the fake does not hold."""
+        if document_id in self.after_write and self.writes:
+            return self.after_write[document_id]
+        try:
+            docs = self._holder(document_id)['documents']
+        except Exception:  # noqa: BLE001 - not held: the read itself says so
+            return None
+        if isinstance(docs, dict):
+            return docs.get(document_id)
+        return docs[min(len(self.reads), len(docs) - 1)] if docs else None
 
     def note_stamp(self, kind):
         """A write in strict mode moves the client's version of its document
@@ -167,6 +186,87 @@ class JobClient(FakeClient):
             ref = next((t['ref'] for t in reversed(self.operation_tags) if t.get('ref')), None)
             history.append({'id': f'unit-{len(history) + 1}', 'ref': ref,
                             'time': max(newest_after(newest), _iso(time.time())), 'documents': [{'id': doc}]})
+
+
+#: Set, every JobClient opts into the documents kept between reads
+#: (``cache_documents``): the job tests run with them as on a real core.
+DOC_CACHE_ENV = 'PLAID_AGENT_TEST_JOB_DOC_CACHE'
+
+
+def _content_stamp(doc):
+    return hashlib.sha256(json.dumps(doc, sort_keys=True, default=str).encode()).hexdigest()
+
+
+def cache_documents(client):
+    """``client`` keeps documents between reads as a client of a real core
+    does (``no_doc_cache`` off), and lexicons too. The fake moves no version
+    or time when a document or a lexicon changes, and core moves them for
+    every change, so here a document's record and listing, and a lexicon's
+    record, give as their time of the last write a digest of what a whole
+    read answers now: the stamp moves exactly when the content does. What
+    the process keeps is emptied first."""
+    _forget_kept()
+    client.no_doc_cache = False
+    vocab_layers = type(client).vocab_layers
+
+    class Kept(type(client)):
+        @property
+        def vocab_layers(self):
+            layers = vocab_layers.fget(self)
+            whole = layers.get
+
+            def get(vid, include_items=None, **kw):
+                layer = whole(vid, include_items=include_items, **kw)
+                if not isinstance(layer, dict):
+                    return layer
+                return {**layer, 'time_modified': _content_stamp(layer)}
+            layers.get = get
+            return layers
+    client.__class__ = Kept
+    whole = client.documents.get
+
+    def get(document_id, **kwargs):
+        doc = None if kwargs.get('include_body') else client.stored(document_id)
+        if doc is None:
+            return whole(document_id, **kwargs)
+        return {**{k: v for k, v in doc.items() if k != 'text_layers'}, 'time_modified': _content_stamp(doc)}
+    client.documents.get = get
+    listing = client.projects.list_documents
+
+    def list_documents(project_id):
+        out = listing(project_id)
+        for d in out:
+            doc = client.stored(d['id'])
+            if doc is not None:
+                d['time_modified'] = _content_stamp(doc)
+        return out
+    client.projects.list_documents = list_documents
+    return client
+
+
+@pytest.fixture(params=['read afresh', 'kept'])
+def both_ways(request, monkeypatch):
+    """A test that needs a fresh read run twice: with every read afresh, as
+    the fake reads, and with documents kept between reads as on a real core
+    (:func:`cache_documents`, for every JobClient the test makes)."""
+    if request.param == 'kept':
+        monkeypatch.setenv(DOC_CACHE_ENV, '1')
+    else:
+        monkeypatch.delenv(DOC_CACHE_ENV, raising=False)
+    yield request.param
+    _forget_kept()
+
+
+def _forget_kept():
+    """Empty what this process keeps between reads: parsed documents, the
+    job's document bodies and whole lexicons."""
+    from plaid_agent.igt import job as igt_job, workspace
+    workspace.Workspace.DOC_CACHE.clear()
+    if getattr(igt_job, '_BODIES', None) is not None:
+        igt_job._BODIES.clear()
+    if getattr(workspace, '_LEXICONS', None) is not None:
+        with workspace._LEXICONS_LOCK:
+            workspace._LEXICONS.clear()
 
 
 def _iso(seconds):

@@ -3,12 +3,19 @@ works, so a word the piece was shown is now ignored (hidden from the grid).
 Nothing is written on it: the write reads the document by the rule as it is
 now, the word's sentence reads as changed, and the walk takes it again."""
 
+import pytest
+
+from job_fixtures import both_ways  # noqa: F401 (the pytestmark below)
 from job_fixtures import JobClient, Model, call, document, reply, runner, start, use
 
 from fixtures import MGLOSS, WORD_LAYER
 from plaid_agent.core.job import run_job
 
 J = 'JIG'
+
+# Each test also runs with documents kept between reads as on a real core
+# (SCL7-6, REV-CU-2): the reads that must be fresh are fresh there too.
+pytestmark = pytest.mark.usefixtures('both_ways')
 
 
 def test_a_word_ignored_while_the_piece_worked_gets_no_value(monkeypatch):

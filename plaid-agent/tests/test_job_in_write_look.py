@@ -9,11 +9,18 @@ first two tests."""
 
 from datetime import datetime, timezone
 
+import pytest
+
+from job_fixtures import both_ways  # noqa: F401 (the pytestmark below)
 from job_fixtures import JobClient, Model, call, document, reply, runner, start, targets_named, use
 
 from fixtures import MGLOSS
 from plaid_agent.core.job import StretchFailed, run_job
 from plaid_agent.igt import job as igt_job
+
+# Each test also runs with documents kept between reads as on a real core
+# (SCL7-6, REV-CU-2): the reads that must be fresh are fresh there too.
+pytestmark = pytest.mark.usefixtures('both_ways')
 
 
 def _iso(t):

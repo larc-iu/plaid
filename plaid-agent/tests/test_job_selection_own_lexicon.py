@@ -9,12 +9,17 @@ import copy
 
 import pytest
 
+from job_fixtures import both_ways  # noqa: F401 (the pytestmark below)
 from job_fixtures import JobClient, Model, call, document, reply, runner, start, use
 
 from plaid_agent.core.job import run_job
 
 J = 'JSL'
 SELECTION = 'Your piece: the whole selection'
+
+# Each test also runs with documents kept between reads as on a real core
+# (SCL7-6, REV-CU-2): the reads that must be fresh are fresh there too.
+pytestmark = pytest.mark.usefixtures('both_ways')
 
 
 def _docs():

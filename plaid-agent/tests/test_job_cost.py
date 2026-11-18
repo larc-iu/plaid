@@ -35,7 +35,10 @@ def test_a_three_document_job_reads_each_other_document_once_and_a_lexicon_once_
             self.inner = inner
 
         def get(self, vid, **kw):
-            lexicons[vid] += 1
+            # The lexicon read whole: a client that keeps lexicons reads the
+            # vocabulary's record first, a few bytes (SCL2-6).
+            if kw.get('include_items'):
+                lexicons[vid] += 1
             return self.inner.get(vid, **kw)
 
         def __getattr__(self, name):
