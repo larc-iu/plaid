@@ -1,5 +1,8 @@
+import hashlib
 import importlib.util
+import os
 import re
+import tempfile
 import sys
 from pathlib import Path
 
@@ -71,6 +74,35 @@ def release_code_workers(monkeypatch):
     yield
     for session in held:
         session.close()
+
+
+# A module whose tests claim a job: core leases one job at a time across the
+# whole server, and such a test claims "the next job" and expects its own.
+CLAIMS_JOBS = re.compile(r'jobs\.claim\(|\.once\(|plaid_agent\.jobworker|from test_job_live\w* import')
+_claims: dict = {}
+
+
+@pytest.fixture(autouse=True)
+def one_job_claimer_per_core(request):
+    """Runs that share one core (``PLAID_TEST_URL``) take turns at the tests
+    that claim a job, under a file lock named for the core's URL, so one run's
+    test never claims another run's job. A private core is the run's own and
+    needs no lock."""
+    url = os.environ.get('PLAID_TEST_URL')
+    path = getattr(request.node, 'path', None)
+    if url and path not in _claims:
+        try:
+            _claims[path] = bool(CLAIMS_JOBS.search(path.read_text()))
+        except (OSError, AttributeError):
+            _claims[path] = False
+    if not url or not _claims[path]:
+        yield
+        return
+    import fcntl
+    lock = Path(tempfile.gettempdir()) / f'plaid-agent-jobs-{hashlib.sha256(url.encode()).hexdigest()[:16]}.lock'
+    with open(lock, 'a') as f:
+        fcntl.flock(f, fcntl.LOCK_EX)
+        yield
 
 
 @pytest.fixture(params=['single', 'items'])
