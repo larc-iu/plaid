@@ -1400,8 +1400,12 @@ class JobWorkspace(Workspace):
         #: the piece's closing call is under way: a budget ran out while it
         #: held staged work, and no tool is offered (BRIEF RW B2)
         self.closing = False
-        #: the piece ended by its closing call (its summary says so)
-        self.closed = False
+        #: the piece ended without finishing, with work staged: the kind of
+        #: what ended it (``budget``: its closing call, BRIEF RW B2), None
+        #: when it ended by itself
+        self.ended: Optional[str] = None
+        #: the sentences of such a piece it did not get to (``unreached``)
+        self.unreached: List[Sentence] = []
         #: a piece of a plan in sentences, offered the short list of tools
         self.in_sentences = False
         #: the job's plan says it may change the text (plan_work's
@@ -2781,7 +2785,7 @@ class IgtRunner:
             core_job.through_core(job, lambda: self.fall_back(SELECTION, 'failed'), gave_up=lambda: None)
             return False
         key = analysis_key(canonical({'document': None, 'first': None, 'whole': True}))
-        self.begin_summary(key, None, None, [], True, note, self.refused_of(ws, None), closed=ws.closed)
+        self.begin_summary(key, None, None, [], True, note, self.refused_of(ws, None), closed=ws.ended is not None)
         # The piece's note and tables, tried again on their own: a passing
         # error on their row never runs the model context again (REV-JG3-9).
         core_job.through_core(job, lambda: self.record_piece(
@@ -3439,8 +3443,29 @@ class IgtRunner:
         if staged is not None:
             *staged, key = staged
             self.write(project, document_id, *staged, summary=key)
+            self.unfinished(document_id, staged[0], staged[1])
             self.end_summary(key)
             self.after_text(project, document_id)
+
+    def unreached(self, ws: JobWorkspace, doc, part: List[Sentence], st: Stretch, whole: bool) -> List[Sentence]:
+        """The sentences of a piece that ended without finishing that it did
+        not get to (THE rule after such a piece, CONTRACT "Added by RW"): in
+        a stretch, each sentence it staged nothing in."""
+        if whole:
+            return []
+        from .jobapply import sentence_of
+        staged = {getattr(sentence_of(op, doc), 'id', None) for op in ws.ops}
+        return [s for s in part if s.id not in staged]
+
+    def unfinished(self, document_id: str, ws: JobWorkspace, doc) -> None:
+        """After the write of a piece that ended without finishing: in a
+        stretch, each sentence it did not get to is skipped as failed with
+        what ended it, so it is counted, never passed as worked, and the
+        cursor passes no sentence left uncounted (REV-RW-2)."""
+        if ws.ended is None:
+            return
+        for s in ws.unreached:
+            self.skip(document_id, doc, s.id, 'failed', ws.ended)
 
     def after_text(self, project: IgtProject, document_id: str) -> None:
         """The piece after a text edit (RPF3-B): the sentences whose text the
@@ -3520,7 +3545,7 @@ class IgtRunner:
                     self.after_text_failed(document_id, doc, part, piece, kind)
                     return
             self.begin_summary(key, document_id, doc.name, part, False, note, self.refused_of(ws, document_id),
-                               closed=ws.closed,
+                               closed=ws.ended is not None,
                                after_text='added' if self.only_new() is not None else 'edited')
             self.record_piece(project, piece, note, ws.tables, doc, part)
             self.record_refusals(ws, document_id)
@@ -3592,7 +3617,7 @@ class IgtRunner:
         piece = {'document': document_id, 'first': part[0].id if part else None, 'whole': whole}
         key = analysis_key(canonical(piece))
         self.begin_summary(key, document_id, doc.name, part, whole, note, self.refused_of(ws, document_id),
-                           closed=ws.closed)
+                           closed=ws.ended is not None)
         if ws.answered_nothing:
             # Asked twice, it staged nothing and said nothing: its sentences
             # are skipped with a reason of their own, never counted worked.
@@ -3603,6 +3628,13 @@ class IgtRunner:
         self.record_piece(project, piece, note, ws.tables, doc, part,
                           findings=ws.reply if self.fills_nothing() else None)
         self.record_refusals(ws, document_id)
+        if ws.ended is not None:
+            # A piece that ended without finishing writes what it staged; what
+            # it did not get to is left out of its write, for the piece's
+            # kind to handle after it (:meth:`unfinished`).
+            ws.unreached = self.unreached(ws, doc, part, st, whole)
+            gone = {s.id for s in ws.unreached}
+            part = [s for s in part if s.id not in gone]
         # The piece as its writing rows name it: a whole document's is the
         # same whatever sentence it starts from, so the piece run again
         # after an interruption is known as the same.
@@ -3720,13 +3752,13 @@ class IgtRunner:
                 raise
             # The closing call answered with a tool call, and no call may
             # follow it: the piece ends with what it staged (BRIEF RW B2).
-            ws.closed = True
+            ws.ended = BUDGET
             return TurnResult('', [], [])
         if pace.closed:
             # Whatever the closing call answered, or however it failed, the
             # piece ends with what it staged. Its note is the answer's text,
             # none when the call failed.
-            ws.closed = True
+            ws.ended = BUDGET
             return dataclasses.replace(result, text='', failure=None) if result.failure is not None else result
         if result.failure is not None:
             raise result.failure

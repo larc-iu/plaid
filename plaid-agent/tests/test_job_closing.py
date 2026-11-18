@@ -126,22 +126,28 @@ def test_a_piece_out_of_calls_with_nothing_staged_fails_as_before(monkeypatch):
                                           'kind': 'budget'}]
 
 
-def test_what_the_closing_write_leaves_empty_is_counted_and_never_passed_silently(monkeypatch):
-    """The piece of s1 to s3 stages s2 alone and runs out: s2 is written, and
-    s1 and s3 are finished with it, counted blank (worked, nothing written),
-    never asked again, and a worker taken up again asks for nothing."""
-    client = JobClient({'d1': document('d1', 'Story', blank(3))})
-    job = start(client, id=J, plan='sentences')
-    model = use(monkeypatch, _model(stage=lambda asked: _analyse(asked, only=[2])))
+@pytest.mark.parametrize('only_empty', [False, True])
+def test_a_closed_stretchs_unstaged_sentences_are_skipped_failed_and_counted(monkeypatch, only_empty):
+    """REV-RW-2 (the reviewer's P1): a stretch of s1 to s5 stages s1 and s2
+    and runs out. s1 and s2 are written. s3 to s5, with nothing staged, are
+    skipped failed with the budget's kind and counted as skipped, never as
+    worked, never asked again, and a worker taken up again asks for nothing:
+    no sentence of the stretch is passed uncounted."""
+    client = JobClient({'d1': document('d1', 'Story', blank(5))})
+    job = start(client, id=J, plan='sentences', only_empty=only_empty)
+    model = use(monkeypatch, _model(stage=lambda asked: _analyse(asked, only=[1, 2])))
     finished = run_job(job, runner(job))
     assert len([c for c in model.calls if c['n'] == 1]) == 1, 'never asked again'
     (doc,) = finished['report']['documents']
-    assert doc['state'] == 'done' and doc['skipped'] == [] and doc['counts']['words'] == 1
+    assert doc['state'] == 'done' and doc['counts']['words'] == 2
+    assert [(s['sentence'], s['reason'], s['kind']) for s in doc['skipped']] == [
+        ('s3', 'failed', 'budget'), ('s4', 'failed', 'budget'), ('s5', 'failed', 'budget')]
     (blank_row,) = [b for b in doc['counts']['blank'] if b['target'] == 'segmentation']
-    # s2's second word (left, in a sentence it wrote in), both words of s1
-    # and of s3 (untouched): every empty word counted, none not reached.
+    # s1 and s2's second words (left), s3 to s5's words (skipped): none
+    # untouched, none not reached.
     assert (blank_row['left'], blank_row['untouched'], blank_row['not_reached'], blank_row['skipped']) == \
-        (1, 4, 0, 0), blank_row
+        (2, 0, 0, 6), blank_row
+    assert finished['report']['totals']['skipped_failed'] == 3
     r = runner(job)
     project = r.project()
     assert r.pending(r.read(project, 'd1'), project, 'd1', every=r.every_sentence()) == []
