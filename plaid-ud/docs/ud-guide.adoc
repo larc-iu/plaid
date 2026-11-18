@@ -563,14 +563,14 @@ To make a list binding, turn on the switch beneath it: **Refuse tags outside thi
 * **Dependency relations**: the base relation must be on the list, so `nsubj:pass` is allowed wherever `nsubj` is.
 * **Features**: the key must be in the inventory and the value in that key's list. A key listed with no values accepts any value.
 
-A value off a closed list is refused where you type it, and from an assistant plan or a script.
+A UPOS, XPOS or relation value off a closed list is refused where you type it, and from an assistant plan or a script.
 Values from an import, a copy or a restore, and a parser's unconfirmed predictions, are kept anyway, and the **Validation** tab lists them.
 **Accept predictions** skips a prediction that is off the list and names it.
 
 A UPOS, XPOS or relation list cannot be closed, or a value removed from a closed one, while the project's annotations hold a value off it that a person entered or confirmed.
 The message names one such value. Change those values first, or add them to the list.
 
-A closed feature inventory is checked only where you type a feature, on a page opened after it was closed, and in an assistant plan.
+A closed feature inventory is checked where you type a feature or run a rewrite rule, on a page opened after it was closed, and in an assistant plan.
 A script can still write a feature off it, and closing it does not check the features already stored.
 The **Validation** tab lists every feature off it.
 

@@ -428,6 +428,22 @@ test('plan: an off-list value the rule DOES write still refuses the row', async 
   assert.match(row.error, /GADGET/);
 });
 
+// REV-U1-3: the guide says a closed feature inventory is checked where a rule
+// writes a feature, so a rule writing a pair off it refuses the row.
+test('plan: a rule that writes a feature off a closed inventory refuses the row', async () => {
+  const { client, project } = closedUposSetup({ closed: false });
+  const feats = project.textLayers[0].tokenLayers[2].spanLayers.find((l) => l.config.ud.features);
+  feats.config.ud.inventory = [{ key: 'Case', values: ['Nom'] }];
+  feats.config.ud.vocabMode = 'closed';
+  const layerInfo = getUdLayerInfo({ textLayers: project.textLayers });
+  const grs = parseGrs('pattern { X [upos=DET] } without { X [Case] } commands { X.Case = "Acc" }');
+  const plan = await planRewrite(client, { project, user: null, layerInfo, grs });
+  assert.match(plan.rows[0]?.error || '', /Case=Acc is not in this project's feature list/);
+  const ok = parseGrs('pattern { X [upos=DET] } without { X [Case] } commands { X.Case = "Nom" }');
+  const fine = await planRewrite(client, { project, user: null, layerInfo, grs: ok });
+  assert.equal(fine.rows[0]?.error, null);
+});
+
 // H17-1: a feature value holding `|` is several FEATS pairs filed as one,
 // refused under an open list as the cell refuses it.
 test('plan: a rule that writes a FEATS bundle as one value refuses the row', async () => {
