@@ -101,8 +101,8 @@ describe('the Arabic frame file', () => {
 
   it('offers every roleset for its lemma typed bare, a lemma--NN one after the plain', () => {
     const lemma = (id) => id.replace(/-\d+$/, '').replace(/-$/, '');
-    // One lookup per lemma, not per id: each scans the whole file, and once
-    // per id this took seconds and timed out on a busy machine.
+    // One lookup per lemma, not per id: 7,445 lookups rather than 10,041, at
+    // about 0.16 ms each. The check is still a second of work on its own.
     const byLemma = Map.groupBy(Object.keys(arabic), lemma);
     const missed = [...byLemma].flatMap(([word, ids]) => {
       const offered = new Set(sensesFor(arabic, word).map((s) => s.id));
