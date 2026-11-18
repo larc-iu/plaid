@@ -24,8 +24,7 @@ def _reason(error):
     return reason
 
 
-GONE = ('document "Story A" no longer exists or can no longer be read '
-        '(deleted, or access removed, since the plan was made)')
+GONE = 'document "Story A" was deleted, or can no longer be read, since the plan was made'
 
 
 def test_a_deleted_document_is_named_gone_without_a_status_or_a_privilege():

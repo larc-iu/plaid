@@ -65,8 +65,8 @@ def stale_documents(client, documents: list, reread=None) -> list:
             # Core answers 403 for an id it does not know (on purpose), so a
             # deleted document and one taken out of reach read alike (H2-4-2).
             if getattr(e, 'status', None) in (403, 404):
-                out.append(f'{_named(d.get("name"))} no longer exists or can no longer be read '
-                           '(deleted, or access removed, since the plan was made)')
+                out.append(f'{_named(d.get("name"))} was deleted, or can no longer be read, '
+                           'since the plan was made')
             else:
                 out.append(f'{_named(d.get("name"))} could not be read ({requester_message(e)})')
             continue

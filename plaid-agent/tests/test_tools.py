@@ -459,7 +459,7 @@ def test_stale_documents_refuse_a_plan_made_against_older_data():
     assert 'recorded without a version' in out[0] and 'cannot identify' in out[1]
     # Core answers an id it does not know as it answers one out of reach (H2-4-2).
     out = stale_documents(c, [{'id': 'nope', 'name': 'Gone', 'version': 1}])
-    assert len(out) == 1 and 'no longer exists or can no longer be read' in out[0]
+    assert len(out) == 1 and 'was deleted, or can no longer be read, since' in out[0]
 
 
 def test_citations_resolve_to_interlinear_examples():
