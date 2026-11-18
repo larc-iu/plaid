@@ -228,6 +228,10 @@ export const humanizeError = (error, fallback = 'Something went wrong.') => {
   if (statusOf(error) === 400 && /\bdepends on was not saved\b/i.test(errorText(error))) {
     return 'Depends on an edit that was not saved.';
   }
+  // A link picked on a page opened before the vocabulary was unlinked.
+  if (statusOf(error) === 400 && /\bnot linked to the vocab layer\b/.test(errorText(error))) {
+    return 'This vocabulary is no longer linked to the project.';
+  }
   // A request the server could not read (a malformed id, a missing field): a
   // fault of the page, which nothing on screen can explain.
   if (statusOf(error) === 400 && /\bRequest validation failed\b/i.test(errorText(error))) {

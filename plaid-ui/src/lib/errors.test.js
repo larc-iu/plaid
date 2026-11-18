@@ -292,6 +292,16 @@ describe('a write whose answer was lost', () => {
     expect(humanizeError(e)).toBe('Depends on an edit that was not saved.');
   });
 
+  // H2-12-6: a link picked on a page opened before the vocabulary was
+  // unlinked from the project.
+  it('says a vocabulary is no longer linked to the project', () => {
+    const e = Object.assign(
+      new Error('HTTP 400 Cannot create vocab link: project is not linked to the vocab layer'),
+      { status: 400 },
+    );
+    expect(humanizeError(e)).toBe('This vocabulary is no longer linked to the project.');
+  });
+
   // Q1-IGT-POLISH-1: a comment on an unanalyzed word's morpheme sent its
   // derived id, and the 400 was read as a refused create the user never made.
   it('reads a request the server could not parse as the caller fallback, not a lost edit', () => {
