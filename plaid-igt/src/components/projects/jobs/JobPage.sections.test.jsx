@@ -182,6 +182,16 @@ describe('the sections of an ended job', () => {
     await w.unmount();
   });
 
+  it('ties the section shown to its tab', async () => {
+    const v = await mount(clientOf(ENDED, [piece(1, 2)]), '?view=skipped');
+    const shown = panel(v.container);
+    const trigger = tab(v.container, 'Skipped');
+    expect(trigger.id).toBeTruthy();
+    expect(shown.getAttribute('aria-labelledby')).toBe(trigger.id);
+    expect(trigger.getAttribute('aria-controls')).toBe(shown.id);
+    await v.unmount();
+  });
+
   it('keeps each section in the address, a link of its own, and drops a list’s page on leaving it', async () => {
     const v = await mount(clientOf(ENDED, [piece(1, 2)]), '?view=blank&page=2');
     expect(tab(v.container, 'Notes').getAttribute('href')).toBe('/projects/p1/jobs/j1?view=notes');

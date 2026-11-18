@@ -8,7 +8,7 @@ import { Badge } from '@ui/components/ui/badge';
 import { useConfirm } from '@ui/components/shared/ConfirmProvider';
 import { DataTable } from '@ui/components/shared/data-table';
 import { SegmentedControl } from '@ui/components/shared/SegmentedControl.jsx';
-import { Tabs, TabsList, TabsTrigger } from '@ui/components/ui/tabs';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@ui/components/ui/tabs';
 import { LoadError } from '@ui/components/shared/LoadError.jsx';
 import { Loading } from '@ui/components/shared/Loading.jsx';
 import { SectionHeader } from '@ui/components/shared/SectionHeader.jsx';
@@ -313,8 +313,8 @@ export const JobPage = ({ project, projectId, jobId, client }) => {
           onUndone={afterUndo}
         />
       )}
-      <div className="mb-6 border-b">
-        <Tabs value={view} onValueChange={setView}>
+      <Tabs value={view} onValueChange={setView}>
+        <div className="mb-6 border-b">
           <TabsList className="border-b-0" aria-label="Sections">
             {sections.map((s) => (
               <TabsTrigger key={s.key} value={s.key} to={viewHref(at, s.key)}>
@@ -327,41 +327,42 @@ export const JobPage = ({ project, projectId, jobId, client }) => {
               </TabsTrigger>
             ))}
           </TabsList>
-        </Tabs>
-      </div>
-      <div role="tabpanel" data-view={view}>
-        {view === 'overview' && (
-          <>
-            <Instructions text={job.instructions} />
-            <JobSetup job={job} projectId={projectId} user={user} />
-            {active ? (
-              <>
-                <JobProgress job={job} readAt={readAt} />
-                {plan && (
-                  <p className="mt-3 max-w-3xl text-sm" data-testid="job-plan">
-                    <span className="text-muted-foreground">Plan </span>
-                    {planText(plan)}
-                  </p>
-                )}
-                <JobActivity job={job} projectId={projectId} pieces={pieces} />
-              </>
-            ) : (
-              <ReportOverview job={job} sectionHref={sectionHref} sections={keys} />
-            )}
-          </>
-        )}
-        {view === 'documents' && <JobDocuments job={job} projectId={projectId} plan={plan} />}
-        {view === 'notes' && <JobActivity job={job} projectId={projectId} pieces={pieces} />}
-        {!PAGE_SECTIONS.includes(view) && job.report && (
-          <ReportSection
-            view={view}
-            report={job.report}
-            projectId={projectId}
-            vocabs={project?.vocabs || []}
-          />
-        )}
-        {view === 'setup' && <JobFacts job={job} readAt={readAt} plan={plan} />}
-      </div>
+        </div>
+        {/* The section shown, its tab's panel. */}
+        <TabsContent value={view} className="mt-0" data-view={view}>
+          {view === 'overview' && (
+            <>
+              <Instructions text={job.instructions} />
+              <JobSetup job={job} projectId={projectId} user={user} />
+              {active ? (
+                <>
+                  <JobProgress job={job} readAt={readAt} />
+                  {plan && (
+                    <p className="mt-3 max-w-3xl text-sm" data-testid="job-plan">
+                      <span className="text-muted-foreground">Plan </span>
+                      {planText(plan)}
+                    </p>
+                  )}
+                  <JobActivity job={job} projectId={projectId} pieces={pieces} />
+                </>
+              ) : (
+                <ReportOverview job={job} sectionHref={sectionHref} sections={keys} />
+              )}
+            </>
+          )}
+          {view === 'documents' && <JobDocuments job={job} projectId={projectId} plan={plan} />}
+          {view === 'notes' && <JobActivity job={job} projectId={projectId} pieces={pieces} />}
+          {!PAGE_SECTIONS.includes(view) && job.report && (
+            <ReportSection
+              view={view}
+              report={job.report}
+              projectId={projectId}
+              vocabs={project?.vocabs || []}
+            />
+          )}
+          {view === 'setup' && <JobFacts job={job} readAt={readAt} plan={plan} />}
+        </TabsContent>
+      </Tabs>
     </div>
   );
 };
