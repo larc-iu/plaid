@@ -258,11 +258,22 @@ def test_every_read_tool_answered_at_least_once():
     an exception fails them; but a REFUSAL is caught, and a tool that refuses
     everything the sweep asks has had none of its body run. That is the shape
     the sweep exists to catch, so it is asserted rather than assumed.
+
+    A tool no case of this run has answered yet gets its cases run here, so
+    the verdict is the same alone, in any order, or after the whole sweep
+    (which leaves nothing to run).
     """
-    for app, cases, tools, writes in (('igt', IGT_PROJECT + IGT_IN_DOC, IGT_TOOLS, IGT_WRITES),
-                                      ('ud', UD_PROJECT + UD_IN_DOC, UD_TOOLS, UD_WRITES),
-                                      ('umr', UMR_PROJECT + UMR_IN_DOC, UMR_TOOLS, UMR_WRITES)):
+    sweeps = {'igt': (IGT_IMPL, ((IGT_PROJECT, lambda: _igt(empty_engine=True)), (IGT_IN_DOC, _igt))),
+              'ud': (UD_IMPL, ((UD_PROJECT, lambda: _ud(empty_engine=True)), (UD_IN_DOC, _ud))),
+              'umr': (UMR_IMPL, ((UMR_PROJECT, lambda: _umr(empty_engine=True)), (UMR_IN_DOC, _umr)))}
+    for app, tools, writes in (('igt', IGT_TOOLS, IGT_WRITES), ('ud', UD_TOOLS, UD_WRITES),
+                               ('umr', UMR_TOOLS, UMR_WRITES)):
         reads = {t['function']['name'] for t in tools} - set(writes) - set(SKIP)
+        impl, groups = sweeps[app]
+        for cases, workspace in groups:
+            for name, args in cases:
+                if name not in ANSWERED[app] and name not in NEVER_ANSWERS[app]:
+                    _run(app, impl, workspace(), name, args)
         silent = reads - ANSWERED[app] - NEVER_ANSWERS[app]
         assert not silent, (f'{app}: these read tools refused every call the sweep made, so none of '
                             f'their bodies ran: {sorted(silent)}')
