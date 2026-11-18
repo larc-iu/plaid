@@ -1170,8 +1170,11 @@ def state_text(d: Dict[str, Any], left_out: Iterable[str] = ()) -> str:
         # One that holds the job's changes is never "not reached" (RPF3-D2).
         return f'stopped partway, {d.get("done"):,} of {d.get("targets") or 0:,} sentences done'
     if d.get('state') == 'done' and (d.get('counts') or {}).get(ONE_STEP) is True:
-        # Ended in the whole-selection piece's one step.
-        return 'done in the one step over all the documents'
+        # Ended in the whole-selection piece's one step, which may have read
+        # none of it: its blanks are then no choice the step made (S2-3).
+        if (d.get('counts') or {}).get(NOT_ALL_READ) is True:
+            return 'done in the one step, which did not read all of it'
+        return 'done in the one step'
     if no_match(d):
         return 'done, the plan\'s search found no sentence of it: not worked'
     return str(d.get('state'))
@@ -1287,7 +1290,8 @@ def summary_message(report: Dict[str, Any], setup: Optional[str] = None) -> str:
                         if d.get('left_unread') else ''))
     lines.append('In the documents, "left" counts the words and morphemes still blank at the end in sentences the '
                  'job wrote in (the report\'s Left blank), "untouched" those in sentences it worked and wrote nothing '
-                 'in, which its instructions may have told it to leave, "not_reached" those in sentences the job did '
+                 'in, which its instructions may have told it to leave (in a document the one step did not read all '
+                 'of, also those in sentences it never read), "not_reached" those in sentences the job did '
                  'not reach, and "left blank" what is still blank of each thing the job fills.')
     proposed = len(report.get('proposed') or []) + (report.get('proposed_more') or 0)
     lines += ['', f'Changes listed for a person, not written (project setup and the like): {proposed:,}.', '',

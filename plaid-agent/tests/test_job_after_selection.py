@@ -139,6 +139,14 @@ def test_empties_in_documents_it_never_opened_make_no_call_after_its_piece(monke
     assert sum(sum(v for k, v in b.items() if isinstance(v, int)) for b in blank.values()) > 0, blank
     assert report['notice'].endswith('The job worked on all 2 documents in one step and changed 1 of them. It did '
                                      'not read every sentence.'), report['notice']
+    # S2-3: the final context is told which documents the step did not read
+    # all of, whose blanks it never saw, never that they were worked.
+    lines = {ln.split('"')[1]: ln for ln in igt_job.summary_message(report).splitlines()
+             if ln.startswith('- "Story ')}
+    assert lines['Story 2'].startswith('- "Story 2": done in the one step, which did not read all of it'), lines
+    assert 'over all the documents' not in igt_job.summary_message(report)
+    assert 'in a document the one step did not read all of, also those in sentences it never read' in \
+        igt_job.summary_message(report)
 
 
 def test_a_check_makes_no_call_after_its_piece(monkeypatch):
@@ -176,6 +184,9 @@ def test_a_step_that_read_every_sentence_does_not_say_it_did_not(monkeypatch):
     assert [d['state'] for d in report['documents']] == ['done', 'done']
     assert report['notice'] == 'The job worked on all 2 documents in one step and changed none of them.', \
         report['notice']
+    # S2-3: a document the step read all of is said done in it, no more.
+    assert '- "Story 2": done in the one step\n' in igt_job.summary_message(report)
+    assert 'did not read all of it' not in igt_job.summary_message(report)
 
 
 def _sentences(n, blank_at=None):
