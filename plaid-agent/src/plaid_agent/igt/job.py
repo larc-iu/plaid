@@ -3802,6 +3802,14 @@ class IgtRunner:
             self.begin_summary(key, document_id, doc.name, part, False, note, self.refused_of(ws, document_id),
                                ended=ws.ended,
                                after_text='added' if self.only_new() is not None else 'edited')
+            if ws.answered_nothing:
+                # Asked twice, it staged nothing and said nothing: its
+                # sentences are skipped with that reason, as any piece's are
+                # (REV-DAY-S-16, complexity-5).
+                for s in part:
+                    self.skip(document_id, doc, s.id, NO_ANSWER, None, cursor=False)
+                core_job.through_core(job, lambda: self.end_summary(key))
+                return
             # Each step after the model tried again on its own: a passing
             # error never runs the model context again (D21).
             core_job.through_core(job, lambda: self.record_piece(project, piece, note, ws.tables, doc, part))
