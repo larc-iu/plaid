@@ -115,7 +115,7 @@ Each document is built up on its tabs, which the rest of this chapter walks thro
 The **Details** tab holds the document's name and its document-level fields, such as speaker, date, and notes.
 Which fields appear is configured per project (see <<_annotation>>), and a field can be held to a tagset, so that a genre is always one of a fixed set (see <<_tagsets>>).
 This is also where a document is renamed, copied, and deleted.
-**Copy** makes a second document in the same project, with the same text, annotations, vocabulary links, and recording, but no comments.
+**Copy** makes a second document in the same project, with the same text, annotations, vocabulary links, and recording, but no comments. A recording the server cannot copy is left out, and the message after the copy says so.
 
 **Text direction** says which way the document's words are laid out.
 On **Automatic**, a document written in Arabic, Hebrew, or any other right-to-left script lays its words out right to left in the Analyze grid, with the row labels on the right.
@@ -1206,7 +1206,7 @@ Five formats are supported:
 
 * **FieldWorks (FLEx) backup** (`.fwbackup`): a whole FLEx project, with its texts, words, morphemes, glosses, translations, the full lexicon, and what each text's Info tab holds. The backup's writing systems become the project's languages and each field's language, so a later FLEx export is tagged the way FLEx expects. Words that cannot be aligned to their baseline are listed before the import and skipped.
 * **FieldWorks (FLEx) interlinear texts** (`.flextext`): one or more files exported from FLEx with **File > Export Interlinear**, with their texts and analyses but no lexicon. A `.flextext` holds only what the Interlinear view showed, so turn on every line you want before exporting. An analysis FLEx marks as a guess arrives as machine work to review.
-* **CLDF** (`.zip`): a Cross-Linguistic Data Formats dataset. Its examples become interlinear texts, its lexicon a vocabulary, and its language the project's identity.
+* **CLDF** (`.zip`): a Cross-Linguistic Data Formats dataset. Its examples become interlinear texts, its lexicon a vocabulary, and its language the project's identity. A text's recording is the first audio or video file the dataset lists for it.
 * **ELAN** (`.eaf`): a set of annotation files in which each tier means the same thing in every file. Each file becomes a document, with its tiers, speakers, time alignment, and its recording when you choose that alongside.
 * **Plaid IGT archive** (`.zip`): recreates a project exactly, with its vocabularies, media, comments, and guidelines. Which members' work is reviewed is not carried, since it names people.
 
@@ -1279,6 +1279,7 @@ A segment that crosses a sentence break is left out, and the export says how man
 * **LaTeX book** (`.zip`): LaTeX source for a book of the texts, to compile with LuaLaTeX.
 See <<_latex_book>>.
 * **Plaid IGT JSON** (`.zip`): a lossless archive you can import again later.
+A project with two vocabularies of one name is refused: rename one first.
 
 An export holds everything its preset names, or it fails, and the export panel says what could not be read.
 
