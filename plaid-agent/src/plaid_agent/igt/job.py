@@ -1650,6 +1650,17 @@ def first_request(e: BaseException) -> bool:
     return not isinstance(e, (Deferred, Gone)) and not hasattr(e, 'wrote_any')
 
 
+def _lock_lost(e: Optional[BaseException]) -> bool:
+    """Whether ``e`` is, or was caused by, the document's lock lost
+    (``DocumentLockLost``): the write is put off, whatever the renewal met
+    (REV-JR1-R2-2)."""
+    while e is not None:
+        if isinstance(e, DocumentLockLost):
+            return True
+        e = e.__cause__ or e.__context__
+    return False
+
+
 def _status(e: BaseException) -> int:
     """The status of core's refusal in ``e`` or in what caused it (a lost
     lock's renewal included), else 0."""
@@ -4871,7 +4882,8 @@ class IgtRunner:
             # 409, a 423, something gone) goes up as the put-off.
             if not w.done or not isinstance(e, Exception):
                 raise
-            if isinstance(e, Deferred) or (isinstance(e, PlanError) and (_status(e) in (409, 423) or _gone_now(e))):
+            if isinstance(e, Deferred) or _lock_lost(e) \
+                    or (isinstance(e, PlanError) and (_status(e) in (409, 423) or _gone_now(e))):
                 put_off = e if isinstance(e, Deferred) else Deferred(document_id)
                 put_off.__cause__ = put_off.__cause__ or e
             else:

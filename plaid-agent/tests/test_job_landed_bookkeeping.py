@@ -25,7 +25,8 @@ def _setup():
 
 
 @pytest.mark.parametrize('where', ['added-row', 'read-after', 'later-try-put-off', 'record-blip', 'update-blip',
-                                   'later-try-502', 'later-try-500', 'later-try-401', 'lock-lost'])
+                                   'later-try-502', 'later-try-500', 'later-try-401', 'lock-lost',
+                                   'later-try-lock-lost'])
 def test_the_word_a_landed_text_edit_added_is_filled_whatever_core_does_after_the_send(monkeypatch, where):
     text_edits(monkeypatch)
     client = JobClient({'d1': document('d1', 'Story', [{'words': ['sc', 'tqmc']}, {'words': ['pa', 'ro']}])})
@@ -42,6 +43,14 @@ def test_the_word_a_landed_text_edit_added_is_filled_whatever_core_does_after_th
             words[2]['id'], words[3]['id'], words[4]['id'] = 'd1-zz', 'd1-s2w1', 'd1-s2w2'
             client._holder('d1')['documents']['d1'] = raw
             state['edited'] = True
+        elif where == 'later-try-lock-lost' and state['edited'] and not state['failed'] \
+                and any(o['kind'] == 'delete_sentence' for o in ops):
+            # REV-JR1-R2-2: the lock's keep-alive failed during the write
+            # (core no longer knows the lock): put off as before round 2.
+            from plaid_client import DocumentLockLost
+            state['failed'] = True
+            raise DocumentLockLost('The lock on document d1 lapsed.', document_id='d1',
+                                   cause=None)
         elif where.startswith('later-try-') and where != 'later-try-put-off' and state['edited'] \
                 and not state['failed'] and any(o['kind'] == 'delete_sentence' for o in ops):
             # REV-JR1-4: the later try fails any other way (core's trouble
