@@ -23,8 +23,9 @@
 // project read holds for it. The project read lists every document's version
 // first, and a document opened later whose version differs, or that the list
 // did not name, reads the project again. A failed project read has no base
-// at all, so the editor ranks on the document alone, and so does a read the
-// server cut at its cap (`cut`, see fetchRows), which is kept like any other.
+// at all, so the editor ranks on the document alone. A part of a read the
+// server cut at its cap (`cut`, see fetchRows) is left out of every row
+// folded here, so the document alone counts for those slots.
 //
 // A history snapshot takes no part: it is a past state, not the document
 // whose rows the project holds.
@@ -77,11 +78,13 @@
 
 import {
   createTally,
+  dropCut,
   foldDocument,
   foldProject,
   linkPrecedentQueries,
   mergeTally,
   valuePrecedentQueries,
+  wholeParts,
 } from './precedent.js';
 import { clearStored, closeStore, loginHash, readStored, writeStored } from './precedentStore.js';
 
@@ -141,10 +144,10 @@ function entryFor(doc, create = true) {
 }
 
 // Both query families, run together. `docId` scopes them to one document.
-// An answer the server cut at its cap (`truncated`) holds only the groups
-// before the cut, and folded as if whole it would rank by part of the project
-// (SCL3-2). Such a read is kept as `cut`, with no rows: an answer like any
-// other, kept and held to the versions until the project changes, never
+// A part the server cut at its cap is left out, and named in `cut`
+// (`wholeParts`): on a large project the link counts, while the value counts
+// come back whole and still count (REV-CP-2). Such a read is an answer like
+// any other, kept and held to the versions until the project changes, never
 // asked again on a timer (REV-CP-1).
 async function fetchRows(doc, docId = null) {
   const client = doc.client;
@@ -160,8 +163,7 @@ async function fetchRows(doc, docId = null) {
       ),
     ),
   ]);
-  const cut = links.some((r) => r?.truncated) || values.some((v) => v.results?.truncated);
-  return cut ? { links: [], values: [], cut: true } : { links, values };
+  return wholeParts({ links, values });
 }
 
 // The version this model of the document holds: the last one a write of its
@@ -586,8 +588,6 @@ export function precedentBase(doc, ignoredCfg = null) {
   if (doc?.asOf) return null;
   const entry = entryFor(doc, false);
   if (!entry?.project?.results || entry.project.failed) return null;
-  // A cut count: the document alone.
-  if (entry.project.results.cut) return null;
   const own = entry.docs.get(doc.id);
   if (!own?.results || outOfStep(entry.project, own, doc.id)) return null;
   const cfgKey = JSON.stringify(ignoredCfg ?? null);
@@ -597,11 +597,16 @@ export function precedentBase(doc, ignoredCfg = null) {
   }
   const tally = foldProject(createTally(), entry.project.results, ignoredCfg);
   mergeTally(tally, foldProject(createTally(), own.results, ignoredCfg), -1);
+  const cuts = [entry.project.results.cut, own.results.cut];
   for (const [docId, rec] of entry.docs) {
     if (docId === doc.id || !rec.overlay || !rec.results) continue;
     mergeTally(tally, foldProject(createTally(), rec.results, ignoredCfg), -1);
     mergeTally(tally, rec.overlay, 1);
+    cuts.push(rec.results.cut);
   }
+  // A slot cut in the project's rows or in any document's goes by the open
+  // document alone: nothing taken out, nothing put back.
+  dropCut(tally, ...cuts);
   entry.memo = { generation: entry.generation, docId: doc.id, cfgKey, tally };
   return tally;
 }

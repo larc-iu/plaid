@@ -1,5 +1,12 @@
 import { describe, it, expect, vi } from 'vitest';
-import { createTally, foldDocument, mergeTally, precedentCounts } from './precedent.js';
+import {
+  KINDS,
+  SLOT_LINK,
+  createTally,
+  foldDocument,
+  mergeTally,
+  precedentCounts,
+} from './precedent.js';
 import { leavePrecedent, openPrecedent, precedentBase } from './precedentCache.js';
 
 const layerInfo = {
@@ -334,7 +341,7 @@ describe('precedentCache', () => {
     const now = vi.spyOn(Date, 'now').mockReturnValue(2_000_000);
     const a = docOf(client, 'a', [['kai', 'go']]);
     await openPrecedent(a);
-    expect(precedentBase(a)).toBeNull();
+    expect(gloss(precedentBase(a))).toBeNull();
     expect(gloss(editorTally(a))).toEqual(new Map([['go', 1]]));
     const calls = client.query.mock.calls.length;
     now.mockReturnValue(2_000_000 + 61_000);
@@ -344,7 +351,7 @@ describe('precedentCache', () => {
     now.mockReturnValue(2_000_000 + 5 * 60_000 + 1_000);
     await openPrecedent(a);
     expect(client.query.mock.calls.length).toBe(calls);
-    expect(precedentBase(a)).toBeNull();
+    expect(gloss(precedentBase(a))).toBeNull();
     client.projects.listDocuments.mockImplementation(async () => [
       { id: 'a', version: 1 },
       { id: 'b', version: 2 },
@@ -359,6 +366,45 @@ describe('precedentCache', () => {
     );
     now.mockRestore();
     warn.mockRestore();
+  });
+
+  // REV-CP-2: only the link count passes the cap on a large project. The
+  // value counts came back whole and still count: the link family alone goes
+  // by the open document, in the project's rows and in the document's own.
+  it('a cut link count leaves out the links only, and the values still count', async () => {
+    const glossByDoc = { a: [['kai', 'go']], b: [['kai', 'eat']] };
+    const linkByDoc = { a: [['kai', 'e1']], b: [['kai', 'e2']] };
+    const client = fakeClient(glossByDoc);
+    const values = client.query.getMockImplementation();
+    client.query.mockImplementation(async (q) => {
+      if (q.where[0][0] !== 'vocab') return values(q);
+      const doc = q.where[3][2].doc;
+      const counts = new Map();
+      for (const [d, rows] of Object.entries(linkByDoc)) {
+        if (doc && d !== doc) continue;
+        for (const [form, item] of rows) {
+          const k = `${item}\u0000${form}`;
+          counts.set(k, (counts.get(k) || 0) + 1);
+        }
+      }
+      const results = [...counts].map(([k, n]) => {
+        const [item, form] = k.split('\u0000');
+        return [item, form, null, KINDS.WORD, null, null, null, n];
+      });
+      // Cut where the rows reach the second entry.
+      return doc ? { results } : { results: results.filter((r) => r[0] === 'e1'), truncated: true };
+    });
+    const a = { ...docOf(client, 'a', [['kai', 'go']]), vocabularies: { v1: {} } };
+    a.sentences[0].tokens[0].vocabItem = { id: 'e1' };
+    await openPrecedent(a);
+    const tally = editorTally(a);
+    expect(gloss(tally)).toEqual(
+      new Map([
+        ['go', 1],
+        ['eat', 1],
+      ]),
+    );
+    expect(precedentCounts(tally, KINDS.WORD, 'kai', SLOT_LINK)).toEqual(new Map([['e1', 1]]));
   });
 
   it('a document whose own read failed is not asked again on every render', async () => {

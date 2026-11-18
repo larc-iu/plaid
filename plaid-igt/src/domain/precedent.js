@@ -119,6 +119,46 @@ export function wholeAnswer(res) {
   return res;
 }
 
+/**
+ * A fetch of both query families (`{ links, values }`, as foldProject takes
+ * it) with every part the server cut at its cap (`truncated`) left out whole.
+ * Grouped rows come back in key order, entry id first, so a cut part leaves
+ * out every group past the cut, and folded as if whole it makes a rarer entry
+ * of a form look like the only one (SCL3-2). The link counts are one part,
+ * cut together, and each value field is one. `cut` names the slots left out
+ * (`cutSlot`), so `dropCut` can leave the same slots out of every tally put
+ * beside these rows (REV-CP-2).
+ */
+export function wholeParts({ links = [], values = [] }) {
+  const cut = [];
+  let whole = links;
+  if (links.some((r) => r?.truncated)) {
+    whole = [];
+    cut.push(cutSlot(ANY, SLOT_LINK));
+  }
+  const kept = values.map((v) => {
+    if (!v.results?.truncated) return v;
+    cut.push(cutSlot(v.kind, v.field));
+    return { ...v, results: { results: [] } };
+  });
+  return { links: whole, values: kept, cut };
+}
+
+// Links pool under ANY too, so a cut link count names them all.
+const cutSlot = (kind, slot) =>
+  slot === SLOT_LINK ? `${ANY}\u0000${SLOT_LINK}` : `${kind}\u0000${slot}`;
+
+/** `tally` without the slots any of `cuts` (wholeParts' `cut` lists) names. */
+export function dropCut(tally, ...cuts) {
+  const gone = new Set(cuts.flatMap((c) => c || []));
+  if (!gone.size) return tally;
+  for (const k of [...tally.keys()]) {
+    const [kind, , slot] = k.split('\u0000');
+    if (gone.has(cutSlot(kind, slot))) tally.delete(k);
+  }
+  return tally;
+}
+
 // One grouped query per vocab: how often each (form, item) pairing has been
 // linked, split by the kind of token that carries the link and by the link's
 // provenance. Row shape: [itemId, tokenValue, morphForm, role, morphType,
