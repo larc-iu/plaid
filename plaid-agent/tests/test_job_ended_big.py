@@ -165,3 +165,22 @@ def test_a_worker_that_dies_around_the_closing_write_passes_no_sentence(monkeypa
     assert taken == ([1, 2, 3, 4, 5, 6, 7] if at == 'before-write' else [1, 2, 4, 5, 6, 7]), taken
     row = job.rows['d1']
     assert row['done'] == 7 and not row.get('skipped'), row
+
+
+def _summaries(client):
+    import json
+    from plaid_agent.igt.job import PIECE_FORM
+    return [json.loads(r['analysis']) for (f, _k), r in client.jobs.decision_rows.get(J, {}).items()
+            if f == PIECE_FORM]
+
+
+@pytest.mark.parametrize('plan', ['document', 'selection'])
+def test_the_row_of_a_big_piece_that_ended_says_how_many_documents_the_rest_went_to(monkeypatch, plan):
+    """REV-RW-7: the work list says "The rest worked in stretches" only from
+    the worker's own count of documents it sent there."""
+    client = JobClient(dict(THREE) if plan == 'selection' else {'d1': document('d1', 'Story', blank(4))})
+    job = start(client, id=J, plan=plan)
+    use(monkeypatch, _model({'Story': [1]}))
+    run_job(job, runner(job))
+    first = _summaries(client)[0]
+    assert first['ended'] == 'budget' and first['rest'] == (3 if plan == 'selection' else 1), first

@@ -2832,6 +2832,9 @@ class IgtRunner:
         # not shown all of it.
         ending: Dict[str, bool] = {}
         left_of = self.selection_unreached(project, ws, live, nothing) if ws.ended is not None else {}
+        if left_of:
+            # Its row says how many documents the rest went to stretches in.
+            self.unsummed[key]['rest'] = len(left_of)
         for d in live:
             job.check()
             # What a piece that ended without finishing did not get to here is
@@ -3747,6 +3750,9 @@ class IgtRunner:
             # it did not get to is left out of its write, for the piece's
             # kind to handle after it (:meth:`unfinished`).
             ws.unreached = self.unreached(ws, doc, part, st, whole)
+            if whole and ws.unreached:
+                # Its row says the rest went to stretches (REV-RW-7).
+                self.unsummed[key]['rest'] = 1
             gone = {s.id for s in ws.unreached}
             part = [s for s in part if s.id not in gone]
         # The piece as its writing rows name it: a whole document's is the
@@ -5219,6 +5225,7 @@ class IgtRunner:
                  **({'findings': p['findings']} if p.get('findings') else {}),
                  **({'after_text': p['after_text']} if p.get('after_text') else {}),
                  **({'ended': p['ended']} if p.get('ended') else {}),
+                 **({'rest': p['rest']} if p.get('rest') else {}),
                  **({'failed': p['failed']} if p.get('failed') else {}),
                  **({'matching': p['matching']} if p.get('matching') else {})}
         row = self.summary_row(p['seq'], value, p['document'], p['first_id'])

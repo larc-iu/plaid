@@ -476,6 +476,65 @@ const FAILURE_TEXT = {
   repeating: 'model repeated itself',
 };
 
+// What follows a piece of the whole document or of all the documents in
+// stretches is not done in a document that ended in use, deleted or not
+// reached: those say so (REV-RW-7).
+const NOT_AGAIN = {
+  'in-use': 'Not worked again: in use.',
+  gone: 'Not worked again: deleted.',
+  'not-reached': 'Not worked again: the job ended.',
+};
+
+// How a piece that did not finish ended and what followed it, each line
+// true whatever happened after (the worker's `failed`, `ended` and `rest`,
+// BRIEF RW, REV-RW-7). `states`: each document's state by id.
+export const pieceEndLines = (piece, states = new Map()) => {
+  const out = [];
+  if (piece.failed) {
+    out.push(
+      piece.failed === 'no-answer'
+        ? 'No answer from the assistant.'
+        : `${skippedText({ reason: 'failed', kind: piece.failed })}.`,
+    );
+  }
+  if (piece.ended) {
+    const what = piece.ended === 'output' ? 'Answer too long' : 'Steps used up';
+    out.push(
+      (piece.counts?.changes ?? 0) > 0
+        ? `${what}: written as staged.`
+        : `${what}: what it had staged was not written.`,
+    );
+  }
+  // Its documents then worked in stretches: after a failure, or for what
+  // an unfinished piece left (`rest`, how many documents).
+  if (piece.failed || piece.rest) {
+    if (piece.document) {
+      const state = states.get(piece.document);
+      out.push(
+        NOT_AGAIN[state] ??
+          (piece.failed
+            ? 'Worked again in stretches of sentences.'
+            : 'The rest worked in stretches of sentences.'),
+      );
+    } else {
+      const all = [...states.values()];
+      const going = all.filter((s) => !NOT_AGAIN[s]).length;
+      const of = piece.failed ? all.length : Math.min(piece.rest, all.length);
+      const n = Math.min(going, of);
+      if (n > 0) {
+        out.push(
+          piece.failed
+            ? n === all.length
+              ? 'Worked again in stretches of sentences.'
+              : `${countOf(n, 'document')} of ${all.length.toLocaleString()} worked again in stretches of sentences.`
+            : `The rest worked in stretches of sentences in ${countOf(n, 'document')}.`,
+        );
+      } else out.push('Not worked again.');
+    }
+  }
+  return out;
+};
+
 // Why a sentence was left: `{reason, kind}` of a skipped entry.
 export const skippedText = ({ reason, kind }) => {
   if (reason === 'too-long') return 'Too long';

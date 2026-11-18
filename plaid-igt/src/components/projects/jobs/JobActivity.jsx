@@ -8,7 +8,13 @@ import { TALL_LIST_PAGE_SIZE } from '@ui/hooks/usePagedList.js';
 import { isJobActive } from '@ui/domain/jobs.js';
 import { APP_ROUTES } from '@/appRoutes.js';
 import { JobWritten } from './JobReport.jsx';
-import { pieceWrittenText, piecesFallShort, refusedText, skippedText } from './jobText.js';
+import {
+  pieceEndLines,
+  pieceWrittenText,
+  piecesFallShort,
+  refusedText,
+  skippedText,
+} from './jobText.js';
 
 /**
  * What a job has done so far (`jobs.piecesPage`, CONTRACT, added by LV): a row
@@ -65,6 +71,7 @@ export const JobActivity = ({ client, job, projectId, readAt, onPlan = () => {} 
   // Not "Activity": the project's tab of that name is on the same screen.
   const heading = active ? 'Work so far' : 'Work, in order';
   const names = new Map((job.documents || []).map((d) => [d.documentId, d.name]));
+  const states = new Map((job.documents || []).map((d) => [d.documentId, d.state]));
   return (
     <section aria-label={heading}>
       <h3 className={`${TYPE.card} mb-2 mt-8`}>{heading}</h3>
@@ -85,6 +92,7 @@ export const JobActivity = ({ client, job, projectId, readAt, onPlan = () => {} 
               piece={piece}
               projectId={projectId}
               names={names}
+              states={states}
               findingsShown={reportHoldsFindings(job?.report)}
             />
           </li>
@@ -200,7 +208,7 @@ const PieceFindings = ({ findings }) => {
 const reportHoldsFindings = (report) =>
   typeof report?.findings === 'string' && report.findings !== '' && !(report.findingsCut > 0);
 
-const PieceRow = ({ piece, projectId, names, findingsShown = false }) => {
+const PieceRow = ({ piece, projectId, names, states, findingsShown = false }) => {
   const skipped = piece.skipped || [];
   const refused = piece.refused || [];
   return (
@@ -210,17 +218,13 @@ const PieceRow = ({ piece, projectId, names, findingsShown = false }) => {
         <Ended piece={piece} />
       </div>
       <p>{pieceWrittenText(piece)}</p>
-      {/* A piece of the whole document or of all of them that failed: its
-          documents went to stretches (the worker's `failed`, BRIEF RW). */}
-      {piece.failed && (
-        <p data-testid="piece-failed">
-          {skippedText({ reason: 'failed', kind: piece.failed })}. Worked again in stretches of
-          sentences.
+      {/* How a piece that did not finish ended, and what followed it
+          (the worker's `failed`, `ended` and `rest`, BRIEF RW). */}
+      {pieceEndLines(piece, states).map((line) => (
+        <p key={line} data-testid="piece-end">
+          {line}
         </p>
-      )}
-      {/* A piece whose steps ran out with its work staged: written as it
-          stood (the worker's `closed`, BRIEF RW). */}
-      {piece.closed && <p data-testid="piece-closed">Steps used up: written as staged.</p>}
+      ))}
       {(skipped.length > 0 || piece.skippedMore > 0) && (
         <>
           <p className="mt-1">Skipped:</p>

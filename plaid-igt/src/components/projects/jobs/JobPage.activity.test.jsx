@@ -242,32 +242,91 @@ describe('the job page’s list of its work', () => {
     await v.unmount();
   });
 
-  // BRIEF RW B5: a failed whole piece and a piece closed at its step limit
-  // each say so on their row.
-  it('says a whole piece failed and a piece ended when its steps ran out', async () => {
-    const failed = {
-      seq: '000003',
-      piece: {
-        ...FIRST.piece,
-        piece: 'k3',
-        first: null,
-        last: null,
-        firstId: null,
-        whole: true,
-        counts: {},
-        fields: [],
-        note: '',
-        failed: 'budget',
-      },
+  // BRIEF RW B5, REV-RW-7: a piece that did not finish says how it ended and
+  // what followed it, true whatever happened after.
+  it('says how a piece that did not finish ended and what followed it', async () => {
+    const whole = {
+      ...FIRST.piece,
+      first: null,
+      last: null,
+      firstId: null,
+      whole: true,
+      fields: [],
     };
-    const closed = { seq: '000004', piece: { ...FIRST.piece, piece: 'k4', closed: true } };
-    const v = await mount(clientOf([jobOf()], [page([closed, failed])]));
-    const [c, f] = rows(v.container).map(text);
-    expect(f).toContain('Story A');
-    expect(f).toContain('Nothing written.');
-    expect(f).toContain('Failed: over budget. Worked again in stretches of sentences.');
-    expect(c).toContain('Steps used up: written as staged.');
-    expect(c).not.toContain('Failed');
+    const at = (seq, piece) => ({ seq, piece: { ...piece, piece: `k${seq}` } });
+    const v = await mount(
+      clientOf(
+        [jobOf()],
+        [
+          page([
+            at('000010', { ...whole, counts: {}, note: '', failed: 'budget' }),
+            at('000011', { ...whole, counts: {}, note: '', failed: 'no-answer' }),
+            at('000012', { ...FIRST.piece, ended: 'budget' }),
+            at('000013', { ...FIRST.piece, counts: {}, fields: [], ended: 'budget' }),
+            at('000014', { ...whole, ended: 'output', rest: 1 }),
+            at('000015', { ...whole, document: null, counts: {}, note: '', failed: 'budget' }),
+          ]),
+        ],
+      ),
+    );
+    const lines = rows(v.container).map((r) =>
+      all(r, '[data-testid="piece-end"]').map((p) => text(p)),
+    );
+    expect(lines).toEqual([
+      ['Failed: over budget.', 'Worked again in stretches of sentences.'],
+      ['No answer from the assistant.', 'Worked again in stretches of sentences.'],
+      ['Steps used up: written as staged.'],
+      ['Steps used up: what it had staged was not written.'],
+      ['Answer too long: written as staged.', 'The rest worked in stretches of sentences.'],
+      // d2 of the job's two documents is deleted.
+      ['Failed: over budget.', '1 document of 2 worked again in stretches of sentences.'],
+    ]);
+    await v.unmount();
+  });
+
+  it('says a document that then ended in use or deleted was not worked again', async () => {
+    const whole = {
+      ...FIRST.piece,
+      first: null,
+      last: null,
+      firstId: null,
+      whole: true,
+      fields: [],
+    };
+    const job = jobOf({
+      documents: [{ ...jobOf().documents[0], state: 'in-use' }, jobOf().documents[1]],
+    });
+    const v = await mount(
+      clientOf(
+        [job],
+        [
+          page([
+            {
+              seq: '000020',
+              piece: { ...whole, piece: 'k20', counts: {}, note: '', failed: 'budget' },
+            },
+            {
+              seq: '000021',
+              piece: {
+                ...whole,
+                piece: 'k21',
+                document: 'd2',
+                counts: {},
+                note: '',
+                failed: 'output',
+              },
+            },
+          ]),
+        ],
+      ),
+    );
+    const lines = rows(v.container).map((r) =>
+      all(r, '[data-testid="piece-end"]').map((p) => text(p)),
+    );
+    expect(lines).toEqual([
+      ['Failed: over budget.', 'Not worked again: in use.'],
+      ['Failed: answer too long.', 'Not worked again: deleted.'],
+    ]);
     await v.unmount();
   });
 

@@ -1514,19 +1514,19 @@ describe('the job page', () => {
     await w.unmount();
   });
 
-  // BRIEF RW B5: the report counts the parts whose steps ran out.
-  it('counts the parts that ended when their steps ran out', async () => {
-    const job = jobOf({ state: 'done', report: { ...REPORT, piecesClosed: 2 } });
+  // BRIEF RW B5, REV-RW-6: the report counts the parts that ended unfinished.
+  it('counts the parts that ended unfinished', async () => {
+    const job = jobOf({ state: 'done', report: { ...REPORT, piecesEnded: 2 } });
     const v = await mount(clientOf(job));
     expect(
       totals(v.container.querySelector('section[aria-label="Report"]'))[
-        'Parts ended when their steps ran out'
+        'Parts that ended unfinished'
       ],
     ).toBe('2');
     await v.unmount();
     const w = await mount(clientOf(jobOf({ state: 'done', report: REPORT })));
     expect(
-      'Parts ended when their steps ran out' in
+      'Parts that ended unfinished' in
         totals(w.container.querySelector('section[aria-label="Report"]')),
     ).toBe(false);
     await w.unmount();
