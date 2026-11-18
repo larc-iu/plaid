@@ -116,3 +116,35 @@ def test_the_job_retypes_a_sentence_then_a_person_merges_it_into_another(monkeyp
     (d,) = finished['report']['documents']
     gloss = next(b for b in d['counts']['blank'] if b['target'] == 'Morph Gloss')
     assert not gloss.get('not_reached'), (d['counts']['blank'], d.get('left'))
+
+
+def test_a_job_that_edits_no_text_neither_stores_nor_reads_added_words(monkeypatch):
+    """What telling the job's added words from a person's costs a job that
+    edits no text and meets no person's words: no row of added words stored
+    and none read back for the report (JOIN19, REV-SJ2-R2-2)."""
+    from fixtures import MGLOSS
+    from job_fixtures import JobClient, Model, call, reply, start, use
+    from plaid_agent.igt.job import ADDED_FORM
+    client = JobClient({f'd{i}': document(f'd{i}', f'Story {i}', [{'words': ['ka', 'lo']}, {'words': ['sa']}])
+                        for i in (1, 2)})
+    job = start(client, 'Gloss every word.', plan='sentences', fills=(MGLOSS,))
+    r = runner(job)
+    reads = []
+    real = r.added
+
+    def counting():
+        reads.append(1)
+        return real()
+    monkeypatch.setattr(r, 'added', counting)
+
+    def answer(asked, n, kwargs):
+        if n > 1:
+            return reply('Done.')
+        doc = asked.split('"')[1]
+        return reply(calls=[call(1, 'set_field', {'document': doc, 'refs': ['s1.w1.m1'], 'field': 'Morph Gloss',
+                                                  'value': 'go'})])
+    use(monkeypatch, Model(answer))
+    finished = run_job(job, r)
+    assert finished['state'] == 'done', finished.get('state')
+    assert not [x for x in client.jobs.decisions(job.id) if str(x.get('form') or '').startswith(ADDED_FORM)]
+    assert reads == [], len(reads)

@@ -7075,7 +7075,10 @@ class IgtRunner:
                 out[d] = None
                 continue
             lists = out.setdefault(d, {'left': [], 'untouched': [], 'not_reached': [], 'blank': []})
-            added = core_job.through_core(job, self.added)[0]
+            # Read only when a word may be a person's: a job that meets none
+            # reads no rows for it (JOIN19).
+            def added():
+                return core_job.through_core(job, self.added)[0]
             tally = {t.id: {k: 0 for k in BLANK_WHERE} for t in fill}
             for s in doc.sentences:
                 if s.id in wrote or wrote_in(s, wrote_known):
@@ -7107,7 +7110,7 @@ class IgtRunner:
                 # (S5-3, REV-SJ2-10).
                 # A word a landed text edit of the job added is the job's
                 # (``record_added``), decided by word (REV-SJ2-R2-2).
-                newcomers = ({f'w{w.index}' for w in s.words if word_tag(w.id) not in known and w.id not in added}
+                newcomers = ({f'w{w.index}' for w in s.words if word_tag(w.id) not in known and w.id not in added()}
                              if where in ('left', 'untouched') and wrote_in(s, known) else set())
                 begins = {f'w{w.index}': w.begin for w in s.words}
                 # One entry per unit as the Empty line names it (targets.units:
