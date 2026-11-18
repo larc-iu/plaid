@@ -457,11 +457,13 @@
     ;; Under aggregation every branch projects the SAME entity columns, and by
     ;; ruling those are the ones EVERY branch binds: what an alternative binds
     ;; alone does not make a match distinct, so a row satisfying two
-    ;; alternatives is counted once. The set travels with each branch.
+    ;; alternatives is counted once. A padded group-key var is projected too,
+    ;; null where unbound, so a count under its keys counts its matches
+    ;; (REV-CQ2-1). The set travels with each branch.
     ;; `some?`, not `seq`: an empty set is a real answer (alternatives sharing
     ;; no entity var), and means project no entity columns at all.
     (let [align (when (and agg? (> (count branch-wheres) 1))
-                  (desugar/aggregate-branch-entities branch-wheres))]
+                  (desugar/aggregate-branch-entities branch-wheres (or padded #{})))]
       (mapv (fn [w]
               (cond-> (validate/validate (cond-> (assoc base :where (vec w))
                                            (some? padded) (assoc ::padded-vars padded)))

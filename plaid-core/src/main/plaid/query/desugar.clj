@@ -229,10 +229,16 @@
   extra variables either of them happens to bind. Sorted by name, which is the
   order the columns are emitted in.
 
+  A padded group-key var (`aggregate-padded-vars`) that is an entity or layer
+  var is projected too, null in the branches that do not bind it, so a count
+  under its keys counts its matches. Without it, alternatives that share no
+  variable answered 1 for every group: the union merged the matches of one
+  group into one row.
+
   May be EMPTY (alternatives sharing no entity var at all), which is not the
   same as absent: an empty vector means project no entity columns, where nil
   means this is not a multi-branch aggregate and every var is projected."
-  [branch-wheres]
+  [branch-wheres padded]
   ;; Compare the vars actually PROJECTED per branch: positive (non-:not) entity/
   ;; layer vars — exactly the ids the distinct-match key emits. Keying off
   ;; `clauses/infer-kinds` instead would fold in `:not`-existential vars, so a var
@@ -242,6 +248,7 @@
                             (let [kinds (clauses/infer-kinds {:where w})]
                               (set (remove #(= :scalar (get kinds %)) (clauses/positive-binding-vars w)))))
                           branch-wheres)]
-    (vec (sort-by name (apply set/intersection entity-sets)))))
+    (vec (sort-by name (into (apply set/intersection entity-sets)
+                             (filter padded) (apply set/union entity-sets))))))
 
 

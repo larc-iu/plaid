@@ -288,3 +288,39 @@
     (testing "an aggregate's source must still be bound in every alternative"
       (is (= 400 (try (run {"group" [] "aggregates" [["sum" "?t.begin"]]}) nil
                       (catch clojure.lang.ExceptionInfo e (:code (ex-data e)))))))))
+
+(deftest padded-count-counts-what
+  ;; REV-CQ2-1: alternatives that share no variable, grouped as query.adoc's
+  ;; example under `or` groups them. A `count` counts the matches of each
+  ;; alternative's own variable, as the same count on one layer does. It
+  ;; used to answer 1 for every group, because the union merged rows that
+  ;; differ only in the token.
+  (let [pid   (h/create-test-project admin-request "PaddedCount")
+        txtl  (id (h/create-text-layer admin-request pid "text"))
+        words (id (h/create-token-layer admin-request txtl "words"))
+        morph (id (h/create-token-layer admin-request txtl "morphemes"))
+        mk (fn [dname body toks]
+             (let [doc (h/create-test-document admin-request pid dname)
+                   tx (id (h/create-text admin-request txtl doc body))]
+               (doseq [[layer b e form] toks]
+                 (h/create-token admin-request ({:w words :m morph} layer) tx b e nil
+                                 (when form {"form" form})))))
+        _ (mk "d1" "ab ab cd" [[:w 0 2] [:w 3 5] [:w 6 8] [:m 0 1 "a"] [:m 1 2 "b"] [:m 6 8 "cd"]])
+        _ (mk "d2" "cd ab" [[:w 0 2] [:w 3 5] [:m 3 5 "ab"]])
+        _ (mk "d3" "ab 😀ab" [[:w 0 2] [:w 3 6] [:m 3 4 "😀"] [:m 4 6]])
+        run (fn [where group] (set (:results (qe/run db "admin@example.com"
+                                                     {"scope" {"project-ids" [pid]} "where" where
+                                                      "return" {"group" group "aggregates" [["count"]]}}))))
+        either [["or" [["token" "?w" {"layer" words}]] [["token" "?m" {"layer" morph}]]]]
+        alone-w (run [["token" "?t" {"layer" words}]] ["?t.value"])
+        alone-m (run [["token" "?t" {"layer" morph}]] ["?t.metadata.form"])]
+    (is (= #{["ab" 4] ["cd" 2] ["😀ab" 1]} alone-w))
+    (is (= #{["a" 1] ["b" 1] ["cd" 1] ["ab" 1] ["😀" 1] [nil 1]} alone-m))
+    (testing "each group counts its own tokens"
+      (is (= (into (set (map (fn [[v n]] [v nil n]) alone-w))
+                   (map (fn [[v n]] [nil v n]) alone-m))
+             (run either ["?w.value" "?m.metadata.form"]))))
+    (testing "a padded null and a real null of the other alternative's key are one group (REV-CQ2-2)"
+      ;; no word has metadata x, and one morpheme has no form
+      (is (= #{[nil nil 8] [nil "a" 1] [nil "b" 1] [nil "cd" 1] [nil "ab" 1] [nil "😀" 1]}
+             (run either ["?w.metadata.x" "?m.metadata.form"]))))))
