@@ -36,7 +36,7 @@ from collections import Counter
 from datetime import datetime, timezone
 from typing import Any, Callable, Dict, Iterable, List, Optional, Tuple
 
-from plaid_client import DocumentLockLost, PlaidAPIError
+from plaid_client import DocumentLockLost, PlaidAPIError, read_ignored_tokens
 from plaid_client.ids import uuid7
 from plaid_client.provenance import PROV_CONFIRMED_KEY, PROV_DETAIL_KEY, project_role, prov_state, service_source
 from plaid_client.service import locked_for_writes
@@ -2538,6 +2538,17 @@ class IgtRunner:
     def project(self) -> IgtProject:
         return load_project(self.job.client(), self.job.project_id)
 
+    @staticmethod
+    def ignored_now(client, project: IgtProject) -> IgtProject:
+        """``project`` with the ignored-token rule as its word layer holds it
+        now: one read of the project's layers (no guideline, nothing parsed
+        again but that rule, S5-4, REV-SJ2-5)."""
+        p = client.projects.get(project.id) or {}
+        layer = next((kl for tl in p.get('text_layers') or [] for kl in tl.get('token_layers') or []
+                      if kl.get('id') == project.word_layer_id), {})
+        cfg = read_ignored_tokens(layer.get('config'))
+        return project if cfg == project.ignored_cfg else dataclasses.replace(project, ignored_cfg=cfg)
+
     def read(self, project: IgtProject, document_id: str, client=None):
         """The document as it is now, read afresh, or :class:`Gone`."""
         ws = Workspace(client or self.job.client(), project)
@@ -3645,12 +3656,16 @@ class IgtRunner:
         self.read_people(project)
         if (job.rows.get(document_id) or {}).get('state') != 'working':
             job.update_row(document_id, state='working')
+        turns = 0
         while True:
             job.check()
             client = job.client()
-            # The project as it is now, as each write reads it: a word the
-            # ignored-token rule hides since is not offered again (S5-4).
-            project = load_project(client, job.project_id)
+            if turns:
+                # The ignored-token rule as it is now, as each write reads it:
+                # a word it hides since is not offered again (S5-4,
+                # REV-SJ2-5). The first turn has just loaded the project.
+                project = self.ignored_now(client, project)
+            turns += 1
             doc = self.read(project, document_id, client)
             if self.in_use(self.newest_change(client, document_id), self.own_ref):
                 return self.defer(document_id)
@@ -5192,7 +5207,7 @@ class IgtRunner:
         # Read by the ignored-token rule as the project holds it now: a word
         # it hides since the piece read the document is not in this read, so
         # its sentence reads as changed and nothing is written there (S5-4).
-        fresh = self.read(load_project(client, job.project_id), document_id, client)
+        fresh = self.read(self.ignored_now(client, project), document_id, client)
         kept, counts, changed, proposed = self.recheck(ws, project, fresh, st, prints, ops)
         counts['repeated'] += repeated
         counts['changed'] += undone
