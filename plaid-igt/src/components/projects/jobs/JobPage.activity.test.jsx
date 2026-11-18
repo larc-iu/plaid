@@ -329,6 +329,43 @@ describe('the job page’s list of its work', () => {
     await v.unmount();
   });
 
+  // REV-RW-R3-3: past the 50 documents a summary lists, no outcome is
+  // claimed, only how many documents the rest went to.
+  it('states no outcome past the documents the summary lists', async () => {
+    const ids = Array.from({ length: 60 }, (_, i) => `d${i + 1}`);
+    const states = ids.map((id, i) => doc(id, i >= 50 ? 'in-use' : 'done'));
+    const at = (seq, extra) => ({
+      seq,
+      piece: {
+        ...whole,
+        piece: `k${seq}`,
+        document: null,
+        rest: 60,
+        restDocuments: ids.slice(0, 50),
+        ...extra,
+      },
+    });
+    const v = await mount(
+      clientOf(
+        [ended(states)],
+        [
+          page([
+            at('000040', { counts: {}, note: '', failed: 'budget' }),
+            at('000041', { ended: 'budget' }),
+          ]),
+        ],
+      ),
+    );
+    expect(ends(v.container)).toEqual([
+      ['Failed: over budget.', 'Then 60 documents went to stretches of sentences.'],
+      [
+        'Steps used up: written as staged.',
+        'The rest went to stretches of sentences in 60 documents.',
+      ],
+    ]);
+    await v.unmount();
+  });
+
   it('says a document that then ended in use or deleted was not worked again', async () => {
     const v = await mount(
       clientOf(

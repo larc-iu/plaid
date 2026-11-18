@@ -561,11 +561,17 @@ export const pieceEndLines = (piece, states = new Map(), active = false) => {
   // documents (REV-RW-R2-6): while it runs that work is still to come.
   if (piece.rest > 0 && !active) {
     const listed = piece.restDocuments || [];
-    const going =
-      listed.filter((d) => !NOT_AGAIN[states.get(d)]).length +
-      Math.max(0, piece.rest - listed.length);
+    const going = listed.filter((d) => !NOT_AGAIN[states.get(d)]).length;
     const what = piece.failed ? 'Worked again' : 'The rest worked';
-    if (piece.document) {
+    if (!piece.document && listed.length < piece.rest) {
+      // Past the documents the summary lists, no outcome is claimed: only
+      // how many the rest went to (REV-RW-R3-3).
+      out.push(
+        piece.failed
+          ? `Then ${countOf(piece.rest, 'document')} went to stretches of sentences.`
+          : `The rest went to stretches of sentences in ${countOf(piece.rest, 'document')}.`,
+      );
+    } else if (piece.document) {
       out.push(NOT_AGAIN[states.get(piece.document)] ?? `${what} in stretches of sentences.`);
     } else if (going === 0) {
       out.push('Not worked again.');
