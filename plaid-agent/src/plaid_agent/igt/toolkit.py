@@ -787,8 +787,9 @@ def plan_size(pieces: str, worked: List[Dict[str, Any]], skip: bool,
     planning's counts of each document's sentences: "This plan is 187 pieces
     over 45 documents." ("at most" for one that skips filled sentences), and
     for a plan limited by a search from the sentences it matches: "This plan
-    is 9 pieces over 24 documents: 33 sentences match." None for a
-    selection, one piece, and where nothing is counted."""
+    is 9 pieces over 24 documents: 33 sentences match." A selection is one
+    piece (BRIEF RW B4: a planner told nothing planned one piece to fill a
+    whole text). None where nothing is counted."""
     from ..core.limits import JOB_DOCUMENT_PIECE_MAX_CHARS, JOB_STRETCH_SENTENCES
     if pieces == 'document':
         # A document longer than one piece takes is worked in stretches, as
@@ -799,6 +800,8 @@ def plan_size(pieces: str, worked: List[Dict[str, Any]], skip: bool,
         n = sum(-(-len(ids) // JOB_STRETCH_SENTENCES) for ids in matched.values())
     elif pieces == 'sentences':
         n = sum(-(-int(d.get('sentences') or 0) // JOB_STRETCH_SENTENCES) for d in worked)
+    elif pieces == 'selection':
+        n = 1 if worked else 0
     else:
         return None
     if not n:

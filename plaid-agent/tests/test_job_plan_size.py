@@ -49,7 +49,7 @@ def test_plan_work_says_how_many_pieces_a_sentences_or_document_plan_is():
     out = toolkit.job_plan_call(_planning(DOCS[:1]), 'plan_work', {'pieces': 'document', 'fills': ['Morph Gloss']})
     assert 'This plan is 1 piece over 1 document.' in out, out
     out = toolkit.job_plan_call(_planning(DOCS), 'plan_work', {'pieces': 'selection', 'fills': ['Morph Gloss']})
-    assert 'This plan is' not in out and out.endswith(toolkit.PLAN_END), out
+    assert out == f'The plan is kept. This plan is 1 piece over 45 documents. {toolkit.PLAN_END}', out
 
 
 def test_plan_work_may_be_called_again_and_the_last_plan_is_kept():
@@ -93,3 +93,16 @@ def test_the_rules_say_nothing_more_is_worked_after_a_selection():
     the planner must not count on a walk to finish it."""
     rules = JOB_PLAN_RULES.replace('\n', ' ')
     assert 'Nothing more is worked after it: what it leaves empty stays empty.' in rules, rules
+
+
+def test_the_rules_steer_filling_word_by_word_to_sentences():
+    """BRIEF RW B4: a planner chose one selection piece to fill a 179-word
+    text from nothing because a piece in sentences has "no search or code"
+    (plan round 7 of the measured run): the rules now say what a sentences
+    piece is handed instead, and where word-by-word filling goes."""
+    from plaid_agent.core.limits import JOB_STRETCH_MAX_ROUNDS
+    rules = JOB_PLAN_RULES.replace('\n', ' ')
+    assert ('no search or code: each piece is handed how its words\' forms were analysed before and the lexicon '
+            'entries spelled in them.') in rules, rules
+    assert (f'- To fill what is empty word by word, plan "sentences": a piece makes at most {JOB_STRETCH_MAX_ROUNDS} '
+            'model calls, too few for a whole text.') in rules, rules

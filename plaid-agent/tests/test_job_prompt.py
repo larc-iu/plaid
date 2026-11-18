@@ -462,7 +462,7 @@ def test_plan_work_refuses_a_plan_that_does_not_say_what_it_fills():
     ('sentences', f'This plan is 1 piece over 1 document. {FILLS_NOTHING} Its pieces are offered only set_field and '
                   'reads.'),
     ('document', f'This plan is 1 piece over 1 document. {FILLS_NOTHING}'),
-    ('selection', FILLS_NOTHING),
+    ('selection', f'This plan is 1 piece over 1 document. {FILLS_NOTHING}'),
 ])
 def test_a_plan_that_fills_nothing_is_kept_and_says_so(pieces, said):
     """REV-DF-D-1: an empty fills is a plan that fills nothing (a check, a
