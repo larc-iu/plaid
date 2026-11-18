@@ -51,21 +51,16 @@ export const planText = (plan) => {
   } else if (plan.pieces === 'sentences' && plan.onlyEmpty) {
     text += ', only those with something empty';
   }
-  // The documents worked apart: smaller than planned, or, after all of them
-  // at once, each worked on its own, by the fallback's own kind (REV-SF2-5):
-  // after a selection whose piece failed every document as a whole, after a
-  // write put off that document, and either way one too long for one piece
-  // in stretches of sentences.
+  // The documents worked apart, in stretches of sentences, whatever the
+  // fallback's reason (too long for one piece, its piece failed, its write
+  // after the step over all the documents put off), and every document once
+  // that step failed (BRIEF RW).
   const fallback = plan.fallback || [];
   if (plan.pieces === 'selection' && fallback.length) {
     const failed = fallback.some((f) => f.documentId === null || f.documentId === undefined);
-    const tooLong = fallback.filter((f) => f.documentId && f.reason === 'too-long').length;
-    const apart = fallback.filter((f) => f.documentId && f.reason !== 'too-long').length;
-    if (failed) text += ', then each document as a whole';
-    else if (apart) text += `, then ${apart.toLocaleString()} as a whole`;
-    if (tooLong) {
-      text += `, ${tooLong.toLocaleString()} ${failed || apart ? 'of them ' : ''}in stretches of sentences`;
-    }
+    const apart = fallback.filter((f) => f.documentId).length;
+    if (failed) text += ', then in stretches of sentences';
+    else if (apart) text += `, then ${apart.toLocaleString()} in stretches of sentences`;
   } else if (fallback.length) {
     text += `, ${fallback.length.toLocaleString()} in smaller parts`;
   }

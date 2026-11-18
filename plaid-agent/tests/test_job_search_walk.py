@@ -333,16 +333,18 @@ def test_each_matched_sentence_of_a_piece_sees_the_two_before_it(monkeypatch):
 
 
 def test_the_plan_line_says_how_a_selection_fallen_back_was_worked():
-    """REV-SF2-5: a selection whose piece failed is worked one document at a
-    time, each whole unless too long: never "in stretches of sentences"."""
+    """REV-SF2-5, BRIEF RW: a selection whose piece failed is worked in
+    stretches of sentences, and so is a document with a fallback row of its
+    own, whatever its reason (whole_document)."""
     from plaid_agent.igt import jobread
     plan = {'pieces': 'selection', 'fills_names': ['Gloss'],
             'fallback': [{'document_id': None, 'reason': 'failed'}]}
     assert jobread.plan_line({'plan': plan}) == (
-        'Worked in one part for all the documents, then each document as a whole. Fills: Gloss.')
+        'Worked in one part for all the documents, then in stretches of sentences. Fills: Gloss.')
     plan['fallback'].append({'document_id': 'd2', 'reason': 'too-long'})
     assert jobread.plan_line({'plan': plan}) == (
-        'Worked in one part for all the documents, then each document as a whole, 1 of them in stretches of '
-        'sentences. Fills: Gloss.')
-    put_off = {'pieces': 'selection', 'fallback': [{'document_id': 'd1', 'reason': 'in-use'}]}
-    assert jobread.plan_line({'plan': put_off}) == 'Worked in one part for all the documents, then 1 as a whole.'
+        'Worked in one part for all the documents, then in stretches of sentences. Fills: Gloss.')
+    put_off = {'pieces': 'selection', 'fallback': [{'document_id': 'd1', 'reason': 'in-use'},
+                                                   {'document_id': 'd2', 'reason': 'too-long'}]}
+    assert jobread.plan_line({'plan': put_off}) == (
+        'Worked in one part for all the documents, then 2 in stretches of sentences.')

@@ -2701,7 +2701,8 @@ class IgtRunner:
         document, each through THE write (:meth:`write`: the gate, the lock,
         the apply rule, the record). The walk then finishes every document
         (:meth:`work`). True when the piece ran, False when it failed (the
-        documents are then worked one piece each, and the report says so).
+        documents are then worked in stretches of sentences, never as a
+        whole again, and the report says so: BRIEF RW).
 
         Every call to core in it goes through ``core_job.through_core``, as
         the walk's do (REV-JG2-3): its start, the piece (taken again from
@@ -2812,7 +2813,8 @@ class IgtRunner:
                 if self.write_piece(project, d, ws, ws._docs[d], by_doc.get(d, []) + carried, note, shown, key):
                     loose = []
             except Deferred:
-                # Its writes were dropped: it is worked again as a piece of its own.
+                # Its writes were dropped: it is worked again in stretches
+                # (its fallback row, ``whole_document``).
                 core_job.through_core(job, lambda: (self.fall_back(d, 'in-use'), self.defer(d)))
                 # What a landed try of it wrote is never sent again nor
                 # listed: the rest goes with the next write.
@@ -3204,6 +3206,16 @@ class IgtRunner:
             part = pending if whole else pending[:JOB_STRETCH_SENTENCES]
             job.set(message=self.matching_line(doc, part) if self.searched() is not None else
                     self.progress_line(doc.name, whole, part[0].index, part[-1].index, len(doc.sentences)))
+            if whole:
+                # The whole document is asked once. A failure is never halved
+                # into the same whole document again (its halves would each be
+                # the whole document, BRIEF RW): the document falls back to
+                # stretches of sentences, kept in core so a resumed job does too.
+                try:
+                    self.attempt(project, document_id, [s.id for s in part])
+                except StretchFailed:
+                    core_job.through_core(job, lambda: self.fall_back(document_id, 'failed'))
+                continue
             halve([s.id for s in part], lambda ids: self.attempt(project, document_id, ids),
                   lambda sid, kind: self.failed_piece(document_id, doc, sid, kind))
 
@@ -3265,11 +3277,16 @@ class IgtRunner:
         ``document``, and the document as the piece's message renders it
         fits JOB_DOCUMENT_PIECE_MAX_CHARS. A document larger than that is
         worked in stretches of sentences, which the report says (a fallback
-        row among the job's decisions)."""
+        row among the job's decisions). So is a document with a fallback
+        row of any reason (its whole-document piece failed, its write after
+        the selection's piece was put off), and every document once the
+        selection's piece failed (BRIEF RW: a failed piece larger than a
+        stretch is followed by stretches, never by the same work as a
+        whole)."""
         plan = self.plan_made or {}
         if plan.get('pieces') not in (DOCUMENT, SELECTION):
             return False
-        if doc.id in self.fallen_back():
+        if doc.id in self.fallen_back() or SELECTION in self.fallen_back():
             return False
         size = sum(len(render_sentence(s, project)) + 1 for s in doc.sentences)
         if size <= JOB_DOCUMENT_PIECE_MAX_CHARS:

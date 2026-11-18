@@ -1005,7 +1005,7 @@ An entry a job created that ends with no links is listed in its report under **E
 A job first plans how to cut the work, and the **Plan** line on its page says how from the moment planning ends:
 
 * **Worked in stretches of sentences**: a few sentences at a time. The plan may take only the sentences with something empty of what the job fills, and the line then adds **only those with something empty**.
-* **Worked one document at a time**.
+* **Worked one document at a time**. A document whose part fails, or is too long for one part, is worked in stretches of sentences instead, and the line counts it, such as **1 in smaller parts**.
 * **Worked on all the documents at once**: one step over every document.
 
 The line then names what the job fills, such as **Fills: segmentation, Morph Gloss.** or **Fills nothing.**, and ends **Text may be edited.** when the job may edit the text.
@@ -1021,7 +1021,7 @@ A step over all the documents is the job's only step, and nothing more is worked
 Only a write put off while a person edited, a sentence a person changed meanwhile, and the sentences its text edits changed are taken again.
 Each document it covered is done, and its row reads **Worked in the one step**.
 That step may not have read every sentence, and the report's first line then says so, such as **The job worked on all 45 documents in one step and changed 24 of them. It did not read every sentence.**
-When the step itself fails, each document is worked on its own, and the Plan line adds **then each document as a whole**.
+When the step itself fails, it is not asked again: each document is worked in stretches of sentences, and the Plan line adds **then in stretches of sentences**.
 
 When planning ends with no plan, the job fails having written nothing, and the Plan line says why, such as **Planning ended with no plan. Nothing was written.** or **The assistant's model failed during planning. Nothing was written.**
 A job set up from a card ends the same way when every field its card names has been deleted.

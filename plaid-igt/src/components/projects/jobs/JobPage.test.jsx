@@ -1514,7 +1514,7 @@ describe('the job page', () => {
     await w.unmount();
   });
 
-  // REV-SF2-5: a selection whose piece failed: each document as a whole.
+  // REV-SF2-5, BRIEF RW: a selection whose piece failed: each document in stretches.
   it('says how a selection whose piece failed was worked', async () => {
     const plan = {
       pieces: 'selection',
@@ -1528,7 +1528,7 @@ describe('the job page', () => {
     const job = jobOf({ state: 'done', report: { ...REPORT, plan } });
     const v = await mount(clientOf(job));
     expect(totals(v.container).Plan).toBe(
-      'Worked on all the documents at once, then each document as a whole, 1 of them in stretches of sentences. Fills: Gloss.',
+      'Worked on all the documents at once, then in stretches of sentences. Fills: Gloss.',
     );
     await v.unmount();
   });
@@ -2431,13 +2431,13 @@ describe('the job page', () => {
     let v = await mount(clientOf(jobOf({ state: 'done', report: { ...REPORT, plan: plan([]) } })));
     expect(totals(v.container).Plan).toBe('Worked on all the documents at once. Fills: Gloss.');
     await v.unmount();
-    // Five documents whose write was put off, each worked on its own after it.
+    // Five documents whose write was put off, each worked in stretches after it.
     const fallback = [1, 2, 3, 4, 5].map((n) => ({ documentId: `d${n}`, reason: 'in-use' }));
     v = await mount(
       clientOf(jobOf({ state: 'done', report: { ...REPORT, plan: plan(fallback) } })),
     );
     expect(totals(v.container).Plan).toBe(
-      'Worked on all the documents at once, then 5 as a whole. Fills: Gloss.',
+      'Worked on all the documents at once, then 5 in stretches of sentences. Fills: Gloss.',
     );
     await v.unmount();
   });

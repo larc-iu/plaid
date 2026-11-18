@@ -269,16 +269,15 @@ def plan_line(report: Dict[str, Any]) -> Optional[str]:
     line += search_part(plan)
     fallback = plan.get('fallback') or []
     if plan.get('pieces') == 'selection' and fallback:
-        # By the fallback's own kind, as the page says it (REV-SF2-5).
+        # As the page says it (REV-SF2-5): a document with a fallback row is
+        # worked in stretches, whatever its reason, and so is every document
+        # once the selection's piece failed (BRIEF RW).
         failed = any(f.get('document_id') is None for f in fallback)
-        too_long = sum(1 for f in fallback if f.get('document_id') and f.get('reason') == 'too-long')
-        apart = sum(1 for f in fallback if f.get('document_id') and f.get('reason') != 'too-long')
+        apart = sum(1 for f in fallback if f.get('document_id'))
         if failed:
-            line += ', then each document as a whole'
+            line += ', then in stretches of sentences'
         elif apart:
-            line += f', then {apart:,} as a whole'
-        if too_long:
-            line += f', {too_long:,} {"of them " if failed or apart else ""}in stretches of sentences'
+            line += f', then {apart:,} in stretches of sentences'
     elif fallback:
         line += f', {len(fallback):,} of them in smaller parts'
     line += '.'
