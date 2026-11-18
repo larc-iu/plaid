@@ -82,6 +82,19 @@ test.afterAll(async () => {
   registration?.stop();
   if (documentId) await client.documents.delete(documentId).catch(() => {});
   await client.messages.discardService(projectId, SERVICE.serviceId).catch(() => {});
+  // The id is new every run, so its claim is let go as well, or one more
+  // offline service is listed on the fixture project after every run
+  // (FLK3-8). Refused (409) until the channel has closed.
+  await expect
+    .poll(
+      () =>
+        client.messages.releaseService(projectId, SERVICE.serviceId).then(
+          () => 'released',
+          (e) => (e.status === 409 ? 'connected' : 'none held'),
+        ),
+      { timeout: 15000 },
+    )
+    .not.toBe('connected');
 });
 
 // Let the oldest held request answer.

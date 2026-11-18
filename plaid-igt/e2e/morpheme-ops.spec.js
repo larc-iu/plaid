@@ -1,5 +1,5 @@
 import { test, expect, seedAuth, collectClientErrors } from './fixtures.js';
-import { getFixture, makeClient } from './fixtureProject.js';
+import { getFixture, makeClient, roleOf } from './fixtureProject.js';
 
 // Exercises the morpheme structural keyboard ops in the island as a clean
 // round-trip: split a morpheme with '-' (caret mid-string) then merge it back
@@ -12,6 +12,23 @@ async function openAnalyze(page, projectId, documentId) {
   await page.getByRole('tab', { name: 'Analyze' }).click();
   await page.locator('.igt-island .igt-token-col').first().waitFor({ state: 'visible' });
 }
+
+// Retyping the first morpheme's form, as the tests below do to put it back,
+// writes metadata.form, which a seeded morpheme does not have: the form of an
+// unsplit morpheme is the text under it. So the first word's morphemes are put
+// back as seeded, with no metadata, after each test (FLK3-8).
+test.afterEach(async () => {
+  const { documentId } = await getFixture();
+  const client = makeClient();
+  const raw = await client.documents.get(documentId, true);
+  const layers = raw.textLayers[0].tokenLayers;
+  const layer = (role) => layers.find((l) => roleOf(l) === role);
+  const [word] = [...layer('word').tokens].sort((a, b) => a.begin - b.begin);
+  for (const m of layer('morpheme').tokens) {
+    const inWord = m.begin >= word.begin && m.end <= word.end;
+    if (inWord && Object.keys(m.metadata || {}).length) await client.tokens.deleteMetadata(m.id);
+  }
+});
 
 test('split a morpheme with "-" then merge it back', async ({ page }) => {
   const { projectId, documentId } = await getFixture();
