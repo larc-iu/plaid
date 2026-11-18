@@ -1721,10 +1721,16 @@ export class ConlluDocument extends DocumentModel {
     // born faded, with no enhanced head and nothing on screen saying why.
     // A relabel of the relation it replaces (a suppressor and the extras over
     // its pair, enhancedGraph.js) moves to the new head with it, so the word
-    // keeps its enhanced label. Those rows are kept, not swept.
-    const relabel = incomingRelations.flatMap((rel) =>
-      relabelRowsOver(rel, info.enhancedRelationLayer?.relations),
-    );
+    // keeps its enhanced label. Those rows are kept, not swept. A root is no
+    // head to move a relabel to or from: made the root, a word's relabel
+    // stays with its old head, as when its relation is deleted (the
+    // suppressor goes, the extras stay), and `obl:on` never becomes a root.
+    const relabel =
+      resolvedSourceId === resolvedTargetId
+        ? []
+        : incomingRelations
+            .filter((rel) => rel.source !== rel.target)
+            .flatMap((rel) => relabelRowsOver(rel, info.enhancedRelationLayer?.relations));
     const relabelIds = new Set(relabel.map((r) => r.id));
     const moved = relabel.filter((r) => r.source !== resolvedSourceId);
     // A moved extra is the writer's, as the re-pointed relation is.

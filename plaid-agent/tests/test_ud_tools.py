@@ -145,6 +145,25 @@ def test_a_new_head_takes_the_relabel_along():
     assert len(ws.client.batches) == 1, 'in the same batch as the relation itself'
 
 
+def test_a_word_made_the_root_leaves_its_relabel_with_the_old_head():
+    """The root is no head (H3-4-1): moved there, ``obl:a`` read ``0:obl:a``
+    and the new root was left out of the graph. As the editor's
+    ``createRelation`` does, the suppressor goes, as for a delete, and the
+    extra stays with the old head. (A second root, which the tool asks to be
+    settled first, is staged directly here.)"""
+    from plaid_agent.ud.tools import _stage_head, _words
+    ws = _enhanced_ws([suppressor('e-1', 'sp-l1', 'sp-l3'),
+                       {'id': 'e-2', 'source': 'sp-l1', 'target': 'sp-l3', 'value': 'obl:a'}])
+    doc = ws.doc('Viaje')
+    word = _words(ws, doc, ['s1.w4'])[0]
+    _stage_head(ws, doc, word, ws.sentence_of(doc, word), 0, 'root')
+    assert 'moved_ids' not in ws.ops[0]
+    execute_plan(ws.client, ws.ops, source='s', label='l', project=ws.project)
+    assert ws.client.payloads('relations.set_source') == []
+    deleted = ws.client.payloads('relations.delete')
+    assert 'e-1' in deleted and 'e-2' not in deleted
+
+
 def test_a_new_head_for_a_word_left_out_of_the_graph_takes_the_suppressor():
     """A suppressor with no extra beside it is no relabel: the word was left
     out of the enhanced graph, and the suppressor goes with its relation."""

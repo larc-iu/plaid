@@ -730,8 +730,10 @@ def _stage_head(ws: Workspace, doc: UdDoc, word: Word, sentence: Sentence, head,
     # pair. A new head moves them along, so the word keeps its enhanced label
     # under it (Luke, 2026-11-09), as the editor's `createRelation` does
     # (``relabelRowsOver``). A suppressor with no extra beside it is a word
-    # left out of the graph, and goes with its relation as before.
-    extras = [] if relabel or not word.suppressor_id else [
+    # left out of the graph, and goes with its relation as before. The root is
+    # no head to move a relabel to or from (H3-4-1): made the root, the word's
+    # extras stay with the old head and the suppressor goes, as a delete.
+    extras = [] if relabel or head == 0 or word.head == 0 or not word.suppressor_id else [
         rid for h, rid in word.extra_edges if h == word.head]
     moved = [word.suppressor_id, *extras] if extras else []
     stale = [] if relabel else [

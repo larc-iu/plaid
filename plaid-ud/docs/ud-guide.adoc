@@ -224,6 +224,7 @@ The tree is drawn above the words and the enhanced relations below them.
 Changes to the tree carry over to the enhanced graph.
 A word given a new head, by hand or by a rewrite rule, keeps its relabel there: an `obl` relabelled `obl:on` moves to the new head as `obl:on`.
 A second head the enhanced graph gives the word stays where it is.
+A word made the root leaves its relabel with the old head, as when its relation is deleted.
 On export, DEPS lists every relation of the enhanced graph for each word.
 Empty nodes are not supported, so an elided predicate cannot be added, and gapping stays as the tree's `orphan` relation.
 

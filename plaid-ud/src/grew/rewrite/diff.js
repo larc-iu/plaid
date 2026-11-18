@@ -492,6 +492,9 @@ function withRelabelsMoved(before, after) {
   for (const [id, b] of before.edges) {
     const a = after.edges.get(id);
     if (!a || isEnhancedLabel(b.label) || isEnhancedLabel(a.label)) continue;
+    // The root is no head to move a relabel to or from (H3-4-1), as in the
+    // editor: the relabel stays where it was.
+    if (a.src === ANCHOR || b.src === ANCHOR) continue;
     if (a.tgt === b.tgt && a.src !== b.src && suppressed.has(pair(b))) newHead.set(pair(b), a.src);
   }
   if (!newHead.size) return after;

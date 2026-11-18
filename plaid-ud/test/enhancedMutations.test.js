@@ -275,10 +275,58 @@ test('a new head takes the relabelled enhanced edge along, in one write', async 
   assert.equal(rows().find((r) => r.id === second.id).source, lemma('on'));
 });
 
-test('a new head that is the root takes the relabel along too', async () => {
-  const { doc, lemma } = open(CASED);
+// A root is no head (H3-4-1): moved there, `obl:on` read `0:obl:on`, the new
+// root was faded as left out of the graph, and a self-loop `obl:on` hung under
+// the word. Made the root, the word's relabel stays with its old head, as when
+// the tree relation is deleted: the suppressor goes, the extra stays.
+test('a word made the root leaves its relabel with the old head', async () => {
+  const { doc, log, lemma, rows } = open(CASED);
+  const extra = rows().find((r) => r.value === 'obl:on');
+  const suppressor = rows().find(isSuppressor);
   await doc.createRelation(lemma('land'), lemma('land'), 'root');
-  assert.equal(depsOf(doc, 'land'), '0 root 0:obl:on|4:dep');
+  assert.equal(depsOf(doc, 'land'), '0 root 0:root|2:obl:on|4:dep');
+  assert.ok(!log.some((l) => l.op === 'source'));
+  assert.ok(log.some((l) => l.op === 'delete' && l.id === suppressor.id));
+  assert.equal(rows().find((r) => r.id === extra.id).source, lemma('examine'));
+});
+
+test('a Grew rule that hangs a relabelled word off the root leaves its relabel too', () => {
+  const doc = new ConlluDocument({ raw: rawDocFromConllu(CASED, 'e', { enhanced: true }) });
+  const before = graphFromSentence(doc.sentences[0]);
+  const { graph: after, applications } = rewriteSentence(
+    parseGrs(
+      'pattern { A [form="__0__"]; V [lemma="examine"]; V -[obl]-> W } commands { shift_out V =[obl]=> A }',
+    ),
+    before,
+  );
+  assert.equal(applications.length, 1);
+  const { writes } = diffGraphs(before, after, doc.layerInfo);
+  const rows = doc.layerInfo.enhancedRelationLayer.relations;
+  const suppressor = rows.find(isSuppressor);
+  const obl = doc.layerInfo.relationLayer.relations.find((r) => r.value === 'obl');
+  // The tree edge goes to the root and the suppressor over its old pair
+  // goes: the extra is not written at all, as the editor leaves it.
+  assert.deepEqual(
+    writes.main.map((w) => [w.op, w.id]),
+    [
+      ['setSource', obl.id],
+      ['deleteRelation', suppressor.id],
+    ],
+  );
+});
+
+test('a root given a head moves no relabel of the root', async () => {
+  // The other way round: a root's suppressor and extra over its self-loop
+  // are no relabel to carry to a head.
+  const ROOTED = CASED.replace('0\troot\t0:root', '0\troot\t0:root:top');
+  // (The stub client refuses no cycle, so any word serves as the head.)
+  const { doc, log, lemma, rows } = open(ROOTED);
+  const rootSuppressor = rows().find((r) => isSuppressor(r) && r.source === r.target);
+  assert.ok(rootSuppressor);
+  await doc.createRelation(lemma('land'), lemma('examine'), 'parataxis');
+  assert.ok(!log.some((l) => l.op === 'source'));
+  assert.equal(depsOf(doc, 'examine'), '5 parataxis 0:root:top|5:parataxis');
+  assert.ok(!rows().some((r) => r.id === rootSuppressor.id));
 });
 
 test('the same head drawn again keeps the relabel', async () => {
