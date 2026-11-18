@@ -100,7 +100,7 @@ export const outsideSum = (report) => outsideRows(report).reduce((n, f) => n + f
 // with nothing in it. The values the job set in each field follow the words
 // it analyzed, one row per field ("Thematic role: 107 values"), then what is
 // still blank of each thing the job fills, in the worked sentences and in
-// those it did not reach ("Role left blank: 7 words"), so the rows sum.
+// those it did not reach ("Role left blank in sentences the job changed: 7 words"), so the rows sum.
 export const totalRows = (report) => {
   const t = report.totals || {};
   // The documents as the table says them, one function with read_job's
@@ -152,7 +152,7 @@ export const totalRows = (report) => {
     // is said beside the field's morphemes, so the row adds up with the
     // list (RPF3-B).
     rows.push([
-      `${b.target} left blank`,
+      `${b.target} left blank in sentences the job changed`,
       unitCount(b.left ?? 0, b.unit) +
         (b.unsegmented > 0 ? ` and ${unitCount(b.unsegmented, 'word')} not segmented` : ''),
     ]);

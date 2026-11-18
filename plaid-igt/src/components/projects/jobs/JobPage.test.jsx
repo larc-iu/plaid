@@ -1108,9 +1108,9 @@ describe('the job page', () => {
     // The totals sum the documents' rows, per target, a row each even at
     // nothing left, so they add up on screen.
     const sums = totals(section);
-    expect(sums['segmentation left blank']).toBe('1 word');
+    expect(sums['segmentation left blank in sentences the job changed']).toBe('1 word');
     expect(sums['segmentation blank in sentences not reached']).toBe('13 words');
-    expect(sums['Translation left blank']).toBe('0 sentences');
+    expect(sums['Translation left blank in sentences the job changed']).toBe('0 sentences');
     expect(sums['Translation blank in sentences not reached']).toBe('1 sentence');
     await v.unmount();
   });
@@ -1157,8 +1157,8 @@ describe('the job page', () => {
     const section = v.container.querySelector('section[aria-label="Report"]');
     const sums = totals(section);
     expect(sums['Morph POS']).toBe('6 values');
-    expect(sums['Morph POS left blank']).toBe('6 morphemes');
-    expect(sums['segmentation left blank']).toBe('4 words');
+    expect(sums['Morph POS left blank in sentences the job changed']).toBe('6 morphemes');
+    expect(sums['segmentation left blank in sentences the job changed']).toBe('4 words');
     expect(text(section)).toContain('s1.w2.m2 ta Morph POS');
     const row = v.container.querySelector('table tbody tr');
     expect(text(row)).toContain('4 words, 2 morphemes, 1 sentence');
@@ -1186,7 +1186,7 @@ describe('the job page', () => {
     };
     const v = await mount(clientOf(jobOf({ state: 'done', report })));
     const section = v.container.querySelector('section[aria-label="Report"]');
-    expect(totals(section)['Role left blank']).toBe('0 words');
+    expect(totals(section)['Role left blank in sentences the job changed']).toBe('0 words');
     expect(totals(section)['Role blank in skipped sentences']).toBe('4 words');
     expect(text(section)).toContain('Story ABlank in skipped sentences: Role 4 words.');
     await v.unmount();
@@ -1222,7 +1222,7 @@ describe('the job page', () => {
     });
     const v = await mount(clientOf(job));
     const section = v.container.querySelector('section[aria-label="Report"]');
-    expect(totals(section)['Role left blank']).toBe('7 words');
+    expect(totals(section)['Role left blank in sentences the job changed']).toBe('7 words');
     expect(totals(section)).not.toHaveProperty('Role blank in sentences not reached');
     // The documents table: "40 of 40" with how many places are left blank.
     const row = v.container.querySelector('[data-testid="job-documents"] tbody tr, table tbody tr');
@@ -1626,8 +1626,10 @@ describe('the job page', () => {
     const v = await mount(clientOf(job));
     const section = v.container.querySelector('section[aria-label="Report"]');
     const sums = totals(section);
-    expect(sums['segmentation left blank']).toBe('1 word');
-    expect(sums['Gloss left blank']).toBe('0 morphemes and 1 word not segmented');
+    expect(sums['segmentation left blank in sentences the job changed']).toBe('1 word');
+    expect(sums['Gloss left blank in sentences the job changed']).toBe(
+      '0 morphemes and 1 word not segmented',
+    );
     const headings = all(section, 'h3').map((h) => h.textContent);
     expect(headings).toContain('Respelled, analysis kept: check its morphemes');
     expect(text(section)).toContain('Story A s2.w3 kIvalaxar was kvalaxar, morphemes kvalax ar');
@@ -2304,7 +2306,7 @@ describe('the job page', () => {
     const v = await mount(clientOf(jobOf({ state: 'done', report })));
     const section = v.container.querySelector('section[aria-label="Report"]');
     const sums = totals(section);
-    expect(sums['Word class left blank']).toBe('2 words');
+    expect(sums['Word class left blank in sentences the job changed']).toBe('2 words');
     expect(sums['Word class blank in sentences the job did not change']).toBe('45 words');
     expect(text(section)).toContain(
       'Blank in sentences the job did not change: Word class 45 words.',
