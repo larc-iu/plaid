@@ -19,8 +19,9 @@ import {
 
 // The count servers before H20-2 made: clojure.data.json escaping non-ASCII as
 // \uXXXX and "/" as \/. The measure keeps it as an upper bound of today's UTF-8
-// count. This is the same arithmetic plaid_agent/core/conversation.py `_bytes`
-// does, written out the long way so the two can be checked against it.
+// count, so a part is never too big, only smaller than it need be. It is the
+// arithmetic plaid_agent/core/files.py `_cost` does (not conversation.py
+// `_bytes`, which counts UTF-8 as core does), written out the long way.
 // A picked file, as the browser hands one over: bytes, not a string. The
 // decode is the reader's, which is the point of the test below.
 const fileOf = (name, text) => ({

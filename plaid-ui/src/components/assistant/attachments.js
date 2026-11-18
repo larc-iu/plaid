@@ -110,10 +110,11 @@ export const refuse = (file) => {
 //
 // The store counts the UTF-8 bytes of its JSON. Servers before H20-2 counted
 // that JSON with every non-ASCII character escaped as \uXXXX and every "/" as
-// \/, so a Cyrillic table weighed six times what its characters suggest. This
-// counts the old way, which is never less than the new, so a part cut here fits
-// either server. (plaid_agent/core/files.py and conversation.py count the same
-// way, for the same reason.)
+// \/. This still counts that old way, which is never less than the new, so a
+// part cut here fits and is only smaller than it need be. plaid_agent's
+// core/files.py cuts a fetched file the same way. The conversation record is
+// weighed at core's own UTF-8 count (conversation.py `_bytes`, H2-4-1): no
+// limit is compared across the two measures.
 const costOf = (code) => {
   if (code > 0x7e) return 6; // \uXXXX, and a surrogate pair is two of them
   if (code === 0x22 || code === 0x5c || code === 0x2f) return 2; // " \ /

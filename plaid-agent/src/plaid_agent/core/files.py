@@ -416,7 +416,9 @@ def _cost(ch: str) -> int:
     string. The same measure as ``storedBytes`` in plaid-ui's attachments.js:
     the store counts UTF-8 bytes, and servers before H20-2 counted every
     non-ASCII character as \\uXXXX (two of them past the BMP), and ``"``,
-    ``\\`` and ``/`` with a backslash. Counting the old way fits either."""
+    ``\\`` and ``/`` with a backslash. Counting the old way fits either, and
+    only cuts a part smaller than it need be. The conversation record is weighed
+    at core's own UTF-8 count instead (conversation.py ``_bytes``, H2-4-1)."""
     o = ord(ch)
     if o > 0xffff:
         return 12
