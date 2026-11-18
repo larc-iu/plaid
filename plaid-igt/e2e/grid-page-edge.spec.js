@@ -133,3 +133,27 @@ test('Tab then Shift+Tab at once comes back to the field, and focus stays', asyn
   await page.keyboard.type('stays');
   await expect(inSentence(page, 25, 'sa:').first()).toHaveValue(/stays$/);
 });
+
+// H2-14-1: the review keys go on across a page's edge too. A machine gloss in
+// sentence 26 only (page 2): Ctrl+Shift+Down from sentence 25's last word turns
+// the page, lands on it and tells the URL.
+test('Ctrl+Shift+Down from the last word of a page goes to the next unverified word', async ({
+  page,
+}) => {
+  const raw = await client.documents.get(documentId, true);
+  const base = raw.textLayers.find((l) => roleOf(l) === ROLES.BASELINE);
+  const morphs = base.tokenLayers.find((l) => roleOf(l) === ROLES.MORPHEME);
+  const gloss = morphs.spanLayers[0];
+  const first26 = [...morphs.tokens].sort((a, b) => a.begin - b.begin)[50];
+  await client.spans.create(gloss.id, [first26.id], 'MACH', {
+    prov: 'inferred',
+    provSource: 'service:e2e',
+  });
+  await openAnalyze(page);
+  const last = inSentence(page, 25, 'wa:').last();
+  await last.click();
+  await page.keyboard.press('ControlOrMeta+Shift+ArrowDown');
+  await expect(page.locator('.igt-pager__label').first()).toHaveText('26–26 of 26');
+  await expect.poll(() => focused(page)).toMatchObject({ sentence: sentenceIds[25] });
+  await expect(page).toHaveURL(/page=2|page%3D2/);
+});
