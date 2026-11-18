@@ -291,6 +291,22 @@ def test_a_plan_that_only_removes_heads_offers_no_choice():
     assert ws.plan_payload()['stamp_choice'] is False
 
 
+def test_a_plan_that_only_discards_named_words_offers_no_choice():
+    """REV-U4-2: a discard by word deletes spans and relations and leaves a
+    kept lemma the machine's, so it writes no value either button could
+    mark, yet its set_span rows offered both buttons and then read
+    "Approved as verified." with nothing stamped. A value written beside it
+    keeps both buttons."""
+    from plaid_agent.ud.toolkit import call_tool as ud_call
+    from test_contributor_confirm import _ud_ws
+    ws = _ud_ws()
+    ud_call(ws, 'discard_predictions', {'document': 'Viaje', 'refs': ['s1.w4']})
+    assert [op['kind'] for op in ws.ops] == ['set_span']
+    assert ws.plan_payload()['stamp_choice'] is False
+    ud_call(ws, 'set_field', {'document': 'Viaje', 'refs': ['s1.w1'], 'field': 'lemma', 'value': 'andar'})
+    assert 'stamp_choice' not in ws.plan_payload()
+
+
 def test_the_plan_contract_says_the_user_chooses_and_nothing_of_the_assistant_deciding():
     assert ('When they approve, the user chooses whether the changes are recorded as verified or as unverified '
             'proposals.') in PLAN_CONTRACT
