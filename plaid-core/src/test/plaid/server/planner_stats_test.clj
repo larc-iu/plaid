@@ -403,7 +403,7 @@
           (.execute stmt "CREATE TABLE spans (id INTEGER PRIMARY KEY, span_layer_id TEXT, value TEXT)")
           (.execute stmt "CREATE INDEX idx_spans_layer_value ON spans (span_layer_id, value)"))
         (with-open [ps (.prepareStatement conn "INSERT INTO spans (span_layer_id, value) VALUES (?, ?)")]
-          ;; layer a: 1,000 unique values; layer b: 3,000 spans of 3 values
+          ;; layer a: 1,000 unique values, layer b: 3,000 spans of 3 values
           (dotimes [r 1000]
             (.setString ps 1 "a") (.setString ps 2 (str "gloss-" r)) (.addBatch ps))
           (dotimes [r 3000]

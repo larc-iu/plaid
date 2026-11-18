@@ -132,7 +132,7 @@
 
 (deftest within-joins-on-the-document-too
   ;; SCL7-2: with the text alone SQLite found the child through every layer's
-  ;; tokens of the text; the document lets it seek the child's own layer
+  ;; tokens of the text, and the document lets it seek the child's own layer
   (let [sql (sql-of (qc/compile-query
                      (resolved {"find" ["?w" "?s"]
                                 "where" [["token" "?w" {"layer" "w"}]
