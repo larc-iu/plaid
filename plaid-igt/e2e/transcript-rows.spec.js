@@ -95,17 +95,19 @@ test.beforeAll(async () => {
 
 test.afterAll(async () => {
   if (projectId) await admin.projects.delete(projectId).catch(() => {});
-  if (other) await admin.users.delete(other.email).catch(() => {});
+  // Deleting an account takes a signed-in session, not an API token: with
+  // the token the 403 was swallowed and every run left its user (FLK4-7).
+  if (other) await (await signInAdmin(CORE)).users.delete(other.email).catch(() => {});
 });
 
 // A user's page on the document's Media tab, counting the writes it sends.
+// Opened by its address: a click on the tab as the document lands raced its
+// landing tab (FLK4-6).
 async function openAs(browser, auth = undefined) {
   const tab = await countingTab(browser);
   const { page } = tab;
   await seedAuth(page, auth);
-  await page.goto(`/#/projects/${projectId}/documents/${documentId}`);
-  await page.waitForLoadState('networkidle');
-  await page.getByRole('tab', { name: 'Media' }).click();
+  await page.goto(`/#/projects/${projectId}/documents/${documentId}?tab=media`);
   await expect(page.getByLabel('Segment 3 text')).toBeVisible({ timeout: 15000 });
   return tab;
 }
@@ -122,13 +124,17 @@ test("two users edit the same row: each edit keeps the segment and the word's gl
   browser,
 }) => {
   const before = await segments();
-  const A = await openAs(browser);
-  const B = await openAs(browser, {
-    token: other.token,
-    userId: other.email,
-    displayName: 'Rows B',
-    isAdmin: false,
-  });
+  // Both pages load at once: one after the other they took most of the
+  // budget on a loaded machine (FLK4-2).
+  const [A, B] = await Promise.all([
+    openAs(browser),
+    openAs(browser, {
+      token: other.token,
+      userId: other.email,
+      displayName: 'Rows B',
+      isAdmin: false,
+    }),
+  ]);
   try {
     // A types "!" at the end of row 2. The segment keeps its id and holds
     // the "!", and the word keeps its morpheme and gloss (M1). The "!" stays
@@ -182,7 +188,6 @@ test("two users edit the same row: each edit keeps the segment and the word's gl
     expect((await segments()).map(([id]) => id)).toEqual(before.map(([id]) => id));
     // A sees it too once the page reads the document again.
     await A.page.reload();
-    await A.page.getByRole('tab', { name: 'Media' }).click();
     await expect(A.page.getByLabel('Segment 2 text')).toHaveValue('DOS', { timeout: 15000 });
   } finally {
     await A.ctx.close();

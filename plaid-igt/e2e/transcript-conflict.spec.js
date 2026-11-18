@@ -65,23 +65,26 @@ const storedText = async (timeBegin) => {
   return segment ? cpSlice(textLayer.text.body, segment.begin, segment.end) : null;
 };
 
-// A tab on the document's Media tab, counting the writes it sends.
+// A tab on the document's Media tab, counting the writes it sends. Opened by
+// its address: a click on the tab as the document lands raced its landing
+// tab (FLK4-6).
 async function openTab(browser) {
   const tab = await countingTab(browser);
   const { page } = tab;
   await seedAuth(page);
-  await page.goto(`/#/projects/${projectId}/documents/${documentId}`);
-  await page.waitForLoadState('networkidle');
-  await page.getByRole('tab', { name: 'Media' }).click();
+  await page.goto(`/#/projects/${projectId}/documents/${documentId}?tab=media`);
   await expect(page.getByLabel('Segment 3 text')).toBeVisible({ timeout: 15000 });
   return tab;
 }
 
+// Two of them, loaded at once: one after the other they took most of the
+// budget on a loaded machine (FLK4-2).
+const openTwo = (browser) => Promise.all([openTab(browser), openTab(browser)]);
+
 test("a row's edit that lost to another tab's edit of the same segment shows the stored text with its own under it, leaving writes nothing, and Enter stores it", async ({
   browser,
 }) => {
-  const A = await openTab(browser);
-  const B = await openTab(browser);
+  const [A, B] = await openTwo(browser);
   try {
     // A's edit lands first, on the same segment.
     const rowA = A.page.getByLabel('Segment 2 text');
@@ -124,8 +127,7 @@ test("a row's edit that lost to another tab's edit of the same segment shows the
 test('an edit of another segment made meanwhile does not stop a row saving', async ({
   browser,
 }) => {
-  const A = await openTab(browser);
-  const B = await openTab(browser);
+  const [A, B] = await openTwo(browser);
   try {
     const rowA = A.page.getByLabel('Segment 1 text');
     await rowA.click();
@@ -155,8 +157,7 @@ test('an edit of another segment made meanwhile does not stop a row saving', asy
 test('a row edit refused after its segment was merged elsewhere says the segment changed', async ({
   browser,
 }) => {
-  const A = await openTab(browser);
-  const B = await openTab(browser);
+  const [A, B] = await openTwo(browser);
   try {
     const before = await storedText(0);
     const rowA = A.page.getByLabel('Segment 1 text');
