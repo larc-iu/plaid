@@ -306,11 +306,12 @@ JOB_PLAN_SEARCH_PATTERN_MAX_CHARS = 200
 # 2026-11-13, fixer JG). Every part a model context is given has a budget.
 #: The largest document worked as one piece, as its message renders it, in
 #: the tokens the piece's budget counts (D23: in characters, a document in a
-#: script of several tokens a letter passed and then failed before any call):
-#: a quarter of JOB_CALL_MAX_PROMPT_TOKENS, which leaves room for the prompt,
-#: the tool list and the reads. A larger one is worked in stretches of
+#: script of several tokens a letter passed and then failed before any call).
+#: 10,000 is what the old gate of 40,000 characters let through of Latin
+#: text (about 4 characters a token), so Latin documents are worked whole
+#: exactly as before (REV-JR1-1). A larger one is worked in stretches of
 #: sentences, and the report says so.
-JOB_DOCUMENT_PIECE_MAX_TOKENS = JOB_CALL_MAX_PROMPT_TOKENS // 4
+JOB_DOCUMENT_PIECE_MAX_TOKENS = 10000
 #: The documents the planning context is told of, one line each.
 JOB_PLAN_DOCUMENT_LINES = 200
 #: The most targets a planning message's document line names as holding
