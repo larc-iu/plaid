@@ -170,10 +170,10 @@ def test_a_write_of_three_tries_whose_middle_answer_is_lost_sends_nothing_twice(
     """A document piece glosses ka, deletes the doubled sentence and renames
     gam: three tries, one request each. The deletion's lands and its answer
     is lost, so the rename is never sent. Taken again, core says the gloss
-    and the deletion landed: the piece is asked again over what is left, its
-    other gloss of s1 (went, a value on the morpheme ka keeps) is left out as
-    written before (repeated, REV-L2B-9), it finds no doubled sentence, and
-    the rename is sent once."""
+    and the deletion landed: what is left is asked again as a stretch, since
+    a whole document is asked once whatever follows (REV-RW-3). It finds no
+    doubled sentence, its other gloss of s1 (went) revises the job's own
+    value, and the rename is sent once."""
     admin = _admin()
     writer, s = _world(admin, 'document')
     try:
@@ -197,16 +197,13 @@ def test_a_write_of_three_tries_whose_middle_answer_is_lost_sends_nothing_twice(
         finished = run_job(job, _runner(job))
         assert finished['state'] == 'done', (finished.get('reason'), job.status.get('message'))
         assert lost
-        assert sent == [['set_analysis'], ['delete_sentence'], ['rename_entry']], sent
-        assert len(asked) == 2, 'asked again over what is left'
+        assert sent == [['set_analysis'], ['delete_sentence'], ['set_span'], ['rename_entry']], sent
+        assert len(asked) == 2 and 'Your piece: s' in asked[1], 'asked again over what is left, as a stretch'
         body, _sentences, _words = _read(admin, s)
         assert body == 'ka ta. sa.', body
         assert len(_morphs(admin, s)) == 1 and _forms(admin, s) == ['gaam']
         report = finished['report']
         assert report['documents'][0]['skipped'] == [] and report['proposed'] == []
-        # The other gloss of s1, asked again in a sentence the piece's own
-        # landed write wrote: left out, counted repeated (REV-L2B-9).
-        assert report['totals']['repeated'] == 1, report['totals']
         assert (report['totals']['words'], report['totals']['deletions']) == (1, 1), report['totals']
     finally:
         s.delete()
