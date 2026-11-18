@@ -26,3 +26,4 @@ def test_words_merged_into_a_sentence_the_job_wrote_in_count_as_not_reached(monk
     seg = next(b for b in d['counts']['blank'] if b['target'] == 'segmentation')
     assert seg['not_reached'] == 2, seg
     assert d['done'] < d['targets'], d
+

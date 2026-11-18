@@ -6983,6 +6983,9 @@ class IgtRunner:
                 out[d] = None
                 continue
             lists = out.setdefault(d, {'left': [], 'untouched': [], 'not_reached': [], 'blank': []})
+            rows, landed = self.view(d)
+            edited = {r.get('sentence') for r in rows if landed(r)
+                      and any(o.get('kind') in jobapply.TEXT_KINDS for o in r.get('ops') or [])}
             tally = {t.id: {k: 0 for k in BLANK_WHERE} for t in fill}
             for s in doc.sentences:
                 if s.id in wrote or wrote_in(s, wrote_known):
@@ -7012,8 +7015,10 @@ class IgtRunner:
                 # walk never takes that sentence again (REV-B4-1), so they
                 # are blank where the job did not reach, never left by it
                 # (S5-3, REV-SJ2-10).
+                # A word the job's own text edit added there is the job's.
                 newcomers = ({f'w{w.index}' for w in s.words if word_tag(w.id) not in known}
-                             if where in ('left', 'untouched') and wrote_in(s, known) else set())
+                             if where in ('left', 'untouched') and wrote_in(s, known) and s.id not in edited
+                             else set())
                 begins = {f'w{w.index}': w.begin for w in s.words}
                 # One entry per unit as the Empty line names it (targets.units:
                 # a word, a morpheme sN.wK.mJ, a sentence field), with every
