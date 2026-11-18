@@ -210,7 +210,7 @@ test('a job that edits the text and writes over a person: its line, its counts i
     'job-summary',
   ]);
   await expect(report.getByTestId('job-headline')).toHaveText(
-    'Changed 3 sentences in 1 of 1 document.',
+    'Changed 3 sentences in its one document.',
   );
   // What to check: the places left blank, the blanks in the sentence it did
   // not change, the person's value the job wrote over, the form left
@@ -218,18 +218,19 @@ test('a job that edits the text and writes over a person: its line, its counts i
   await expect(report.getByTestId('job-to-check').locator('li > span')).toHaveText([
     '4 morphemes with Gloss left blank in sentences the job changed, in 1 document',
     '2 morphemes with Gloss blank in sentences the job did not change, in 1 document',
-    '1 value, morpheme or link people wrote, changed or removed, in 1 document',
+    '1 value, morpheme or link people wrote that the job changed or removed, in 1 document',
+    '1 document with text the job changed',
     '1 form left inconsistent',
   ]);
   await expect(report.getByTestId('job-summary')).toHaveText(
     'The job glossed kai twice and retyped sentence 3.',
   );
   await expect(report.getByTestId('job-summary').locator('strong')).toHaveText('kai');
-  // The Left blank section, from its row in the To check list.
+  // The Blank section, from its row in the To check list.
   await report.getByRole('link', { name: /^Show: 4 morphemes with Gloss left blank/ }).click();
   await expect(page).toHaveURL(/view=blank/);
   await expect(
-    report.getByText('Blank in sentences the job did not change: Gloss 2 morphemes.'),
+    report.getByText('Gloss blank in sentences the job did not change: 2 morphemes.'),
   ).toBeVisible();
   const leftList = report.getByRole('listitem').filter({ hasText: /^s\d/ });
   await expect(leftList).toHaveText([
@@ -483,7 +484,7 @@ test('a job set up to fill only the words it adds is refused a value on a word i
   await expect(report.getByTestId('job-to-check')).toContainText('1 change not done, refused');
   await page
     .getByRole('tablist', { name: 'Sections' })
-    .getByRole('tab', { name: /^Left blank/ })
+    .getByRole('tab', { name: /^Blank/ })
     .click();
   await expect(report.getByText('Not done, refused:')).toBeVisible();
   await expect(report.getByRole('listitem').filter({ hasText: /^s2 / })).toHaveText(

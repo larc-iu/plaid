@@ -250,12 +250,12 @@ test('a job scoped in the chat is started from its card, and a second card is di
     await expect(page.getByTestId('job-setup')).toHaveText(
       'Set up to fill Gloss. Text unchanged. Open conversation',
     );
-    // What it left blank, in the page's Left blank section.
+    // What it left blank, in the page's Blank section.
     await page
       .getByRole('tablist', { name: 'Sections' })
-      .getByRole('tab', { name: /^Left blank/ })
+      .getByRole('tab', { name: /^Blank/ })
       .click();
-    await expect(report.getByRole('heading', { name: 'Left blank' })).toBeVisible();
+    await expect(report.getByText('Left blank in sentences the job changed:')).toBeVisible();
     await expect(report.getByRole('link', { name: 's1.w2' })).toHaveAttribute(
       'href',
       `#/projects/${projectId}/documents/${documentId}?tab=analyze&focusSentence=${encodeURIComponent(sentenceId)}&focusWord=4`,

@@ -146,7 +146,7 @@ test('a job is discussed from its page, and a gloss for the word it left blank i
       .toBe(true);
     await page.goto(`/#/projects/${projectId}/jobs/${jobId}?view=blank`);
     const report = page.getByRole('region', { name: 'Report' });
-    await expect(report.getByRole('heading', { name: 'Left blank' })).toBeVisible();
+    await expect(report.getByText('Left blank in sentences the job changed:')).toBeVisible();
 
     // The panel opens on a new conversation about the job.
     await page.getByRole('button', { name: 'Discuss with the assistant' }).click();
