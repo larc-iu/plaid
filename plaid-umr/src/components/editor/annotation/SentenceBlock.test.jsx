@@ -2422,6 +2422,49 @@ describe('SentenceBlock a node started on a word', () => {
     await r.unmount();
   });
 
+  // H3-9-2: another app split a sentence before this one while the page was
+  // open, so the number the node was asked under now names another sentence.
+  it('keeps its word when refused after the sentences before it moved', async () => {
+    const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+    const { sentence, nodesById } = fixture();
+    const before = { ...sentence, tokenId: 't0', words: [{ ...sentence.words[2], id: 'w9' }] };
+    const calls = [];
+    const doc = {
+      graph: {},
+      canConfirmSentence: () => false,
+      canDiscardSentence: () => false,
+      canConfirm: () => false,
+      node: () => null,
+      edge: () => null,
+      sentences: [before, { ...sentence, index: 2 }],
+      sentence: (i) => [before, { ...sentence, index: 2 }][i - 1] || null,
+      createNode: async (args) => {
+        calls.push(args);
+        await wait(5);
+        if (calls.length === 1) args.onRefused?.();
+        return calls.length > 1;
+      },
+    };
+    const r = await renderComponent(
+      <SentenceBlock
+        doc={doc}
+        dataVersion={1}
+        readOnly={false}
+        sentence={sentence}
+        nodesById={nodesById}
+      />,
+    );
+    await r.step(() => dblclick(word(r.container, 1)));
+    await typeOver(r, input(r.container), 'kalam');
+    await r.step(() => press(input(r.container), 'Enter'));
+    await r.step(() => wait(20));
+    expect(input(r.container)?.value).toBe('kalam');
+    await r.step(() => press(input(r.container), 'Enter'));
+    await r.step(() => wait(20));
+    expect(calls.map((c) => c.wordIds)).toEqual([['w1'], ['w1']]);
+    await r.unmount();
+  });
+
   it('starts over on the word double-clicked while a refused concept is open', async () => {
     const { r, doc } = await mount();
     await r.step(() => dblclick(word(r.container, 1)));

@@ -694,7 +694,9 @@ export const SentenceBlock = React.memo(function SentenceBlock({
   const newNodeAgain = (newNode, at) =>
     offerAgain(() => {
       if (newNode.parentId && !doc.node(newNode.parentId)) return null;
-      const words = doc.sentence(newNode.sentenceIndex)?.words || [];
+      // By this block's sentence, not by its number: a split in another app
+      // moves the numbers of the sentences after it (H3-9-2).
+      const words = doc.sentences?.find((x) => x.tokenId === sentence.tokenId)?.words || [];
       const wordIds = newNode.wordIds.filter((id) => words.some((w) => w.id === id));
       return {
         kind: 'new',
