@@ -493,7 +493,8 @@ export function SentenceSplitWords({ loss }) {
     <>
       {gone ? (
         <p>
-          Splitting the sentence here deletes <strong>{gone}</strong> that cross the new break.
+          Splitting the sentence here deletes <strong>{gone}</strong> that{' '}
+          {(loss.annotations || 0) + (loss.links || 0) === 1 ? 'crosses' : 'cross'} the new break.
         </p>
       ) : null}
       {mweSplitLines(loss).map(([count, rest]) => (

@@ -249,7 +249,7 @@ describe('the sentence split confirmation', () => {
   it('says only what it deletes when it cuts no multi-word expression', async () => {
     const view = await render({ ...none, links: 1 });
     expect(lines(view)).toEqual([
-      'Splitting the sentence here deletes 1 vocabulary link that cross the new break.',
+      'Splitting the sentence here deletes 1 vocabulary link that crosses the new break.',
     ]);
     await view.unmount();
   });
@@ -262,7 +262,7 @@ describe('the sentence split confirmation', () => {
     expect(segmentSplitDescription(1, 1, { ...none, annotations: 1, partialMwes: 2 })).toBe(
       '1 sentence break will be added where segments start.' +
         ' 1 segment starts inside a word and is left alone.' +
-        ' Deletes 1 annotation that cross the new break.' +
+        ' Deletes 1 annotation that crosses the new break.' +
         ' 2 multi-word expressions will be shown only in part until the sentences are merged again.',
     );
     expect(segmentSplitDescription(3, 0, none)).toBe(

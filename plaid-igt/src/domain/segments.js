@@ -58,7 +58,9 @@ export const segmentSplitDescription = (n, insideWord, loss) => {
     (insideWord
       ? ` ${countOf(insideWord, 'segment')} ${insideWord === 1 ? 'starts' : 'start'} inside a word and ${insideWord === 1 ? 'is' : 'are'} left alone.`
       : '') +
-    (lost ? ` Deletes ${lost} that cross the new ${plural(n, 'break')}.` : '') +
+    (lost
+      ? ` Deletes ${lost} that ${(loss.annotations || 0) + (loss.links || 0) === 1 ? 'crosses' : 'cross'} the new ${plural(n, 'break')}.`
+      : '') +
     (mweSplitLines(loss).length ? ` ${mweSplitSentences(loss)}` : '')
   );
 };
