@@ -2772,7 +2772,10 @@ class IgtRunner:
         walk, which puts off what core does not take."""
         def begin():
             project_ = self.project()
-            live_ = [d for d in order if (job.rows.get(d) or {}).get('state') not in ROW_FINAL]
+            # Not a document the selection put off to stretches: a resumed
+            # worker never asks it whole again (D18).
+            off = self.fallen_back()
+            live_ = [d for d in order if (job.rows.get(d) or {}).get('state') not in ROW_FINAL and d not in off]
             for d in live_:
                 if (job.rows.get(d) or {}).get('state') != 'working':
                     job.update_row(d, state='working')
