@@ -49,8 +49,9 @@ def test_the_constants_are_the_contracts():
     assert (limits.JOB_MODEL_RETRY_S, limits.JOB_YIELD_POLL_S, limits.JOB_YIELD_QUIET_S, limits.JOB_PERSON_QUIET_S,
             limits.JOB_LOCK_TRIES, limits.JOB_LOCK_WAIT_S, limits.JOB_DEFER_ROUNDS, limits.JOB_DEFER_WAIT_S,
             limits.HARMONIZE_MAJORITY, limits.JOB_REPORT_LIST_MAX) == (300, 10, 60, 600, 3, 10, 3, 600, (2, 3), 500)
-    assert shared.JOB_DECIDE_NOW == ('(system) Decide now with what you have: stage your work on the piece and end '
-                                     'with your note.')
+    assert shared.JOB_DECIDE_NOW == ('(system) Decide now with what you have: reading is over for this piece, and '
+                                     'only the tools that stage changes are left. Stage your work and end with your '
+                                     'note.')
     assert (limits.JOB_DOCUMENT_PIECE_MAX_CHARS, limits.JOB_NOTE_MAX_CHARS, limits.JOB_CHANGES_MAX,
             limits.JOB_CHANGE_VALUE_CHARS, limits.JOB_SUMMARY_MAX_CHARS) == (40000, 400, 500, 300, 3000)
 

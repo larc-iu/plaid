@@ -1560,9 +1560,14 @@ def _run_turn(cfg, kit, ws, system, transcript, on_progress, cancelled, on_text,
             return _complete(cfg, {**kwargs, 'messages': messages()}, text_seen, cancelled, on_thinking, on_busy,
                              **ladder)
 
+    # A job's line sent with this call (its pace's: decide now, a cut call
+    # asked again), kept as the call's round's ``asked`` so the trace shows
+    # every message the model was given (BRIEF RW B3).
+    carried: Optional[str] = None
     while True:
         if cancelled():
             raise TurnCancelled()
+        told_now, carried = carried, None
         ws.model_round = {'n': rounds + 1, 'began': now_iso(), 'waiting': False}
         on_progress(min(85, 8 + rounds * 5), 'Thinking…' if rounds == 0 else 'Thinking more…')
         kwargs: Dict[str, Any] = dict(**_provider_kwargs(cfg), tools=kit.tools_for(ws), tool_choice='auto',
@@ -1574,6 +1579,7 @@ def _run_turn(cfg, kit, ws, system, transcript, on_progress, cancelled, on_text,
         if pace is not None:
             note = pace.note(rounds, kwargs)
             if note:
+                told_now = note if told_now is None else f'{told_now}\n\n{note}'
                 new.append({'role': 'user', 'content': note})
                 kwargs['messages'] = [{'role': 'system', 'content': system}] + history + sent(new)
                 kwargs['tools'] = kit.tools_for(ws)
@@ -1605,7 +1611,7 @@ def _run_turn(cfg, kit, ws, system, transcript, on_progress, cancelled, on_text,
                     except Exception:  # noqa: BLE001 - a count is never a reason to lose the piece
                         traceback.print_exc()
                 if keeper is not None:
-                    kept = new_round(rounds + 1, cfg.model, asked if rounds == 0 else None)
+                    kept = new_round(rounds + 1, cfg.model, asked if rounds == 0 else told_now)
                     kept['cut_at_tokens'] = cut_at
                     if thought:
                         kept['thinking'] = thought
@@ -1615,6 +1621,7 @@ def _run_turn(cfg, kit, ws, system, transcript, on_progress, cancelled, on_text,
                     keeper.thinking = ''
                 live['text'] = ''
                 new.append({'role': 'user', 'content': again})
+                carried = again
                 rounds += 1
                 continue
             # What the failed call wrote and reasoned, which the reader saw
@@ -1623,7 +1630,7 @@ def _run_turn(cfg, kit, ws, system, transcript, on_progress, cancelled, on_text,
             partial = ended['partial']
             kept_round = None
             if keeper is not None and (thought or partial or (pace is not None and cut_at)):
-                kept = new_round(rounds + 1, cfg.model, asked if rounds == 0 else None)
+                kept = new_round(rounds + 1, cfg.model, asked if rounds == 0 else told_now)
                 if pace is not None and cut_at:
                     kept['cut_at_tokens'] = cut_at
                 if thought:
@@ -1641,7 +1648,7 @@ def _run_turn(cfg, kit, ws, system, transcript, on_progress, cancelled, on_text,
             thoughts[id(d)] = thinking
         new.append(d)
         calls = d.get('tool_calls') or []
-        rnd = new_round(rounds + 1, cfg.model, asked if rounds == 0 else None)
+        rnd = new_round(rounds + 1, cfg.model, asked if rounds == 0 else told_now)
         if thinking:
             rnd['thinking'] = thinking
         if not calls:

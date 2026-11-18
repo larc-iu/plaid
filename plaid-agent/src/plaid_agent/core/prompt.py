@@ -434,9 +434,13 @@ last message, with no tool call, and the person reads it as you wrote it. Nobody
 JOB_EXAMPLE = '''- A WHOLE PIECE, FOR EXAMPLE. {did} Then you ended with the note:\n\n{note}'''
 
 #: The line a piece's model is sent once it has used most of its calls or
-#: its prompt has grown near its cap (CONTRACT 1). The calls after it are
-#: offered the plan tools alone.
-JOB_DECIDE_NOW = '(system) Decide now with what you have: stage your work on the piece and end with your note.'
+#: its prompt has grown near its cap (CONTRACT 1). The call it goes with and
+#: those after it are offered the plan tools alone, and it says so (BRIEF RW
+#: B3: a model not told called its reading tools to the end).
+JOB_DECIDE_NOW = ('(system) Decide now with what you have: reading is over for this piece, and only the tools that '
+                  'stage changes are left. Stage your work and end with your note.')
+#: A piece's refusal of a tool it was offered until the decide-now line.
+JOB_READING_OVER = 'Reading is over for this piece: stage what you have and end.'
 
 #: What a piece's model is told in place of a refusal's chat advice (a later
 #: turn, an approval, discard_plan), which a job cannot follow
@@ -482,6 +486,8 @@ JOB_PLAN_WRITTEN_CALL_NEXT = 'Call the tool itself now, or end with plan_work.'
 #: Sent once to a planning context that ended without plan_work, and as the
 #: planning context's decide-now line (its budget's, ``core.job.Pace``).
 JOB_PLAN_NOW = '(system) End the planning now: call plan_work.'
+#: The planning context's refusal of a tool it was offered until JOB_PLAN_NOW.
+JOB_PLAN_READING_OVER = 'Reading is over for the planning: call plan_work now.'
 
 #: The final context's contract when several pieces of a job that fills
 #: nothing each wrote findings: one report of them (RPF-A5).
