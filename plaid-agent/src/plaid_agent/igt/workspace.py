@@ -16,6 +16,8 @@ text the way the editor does.
 import copy
 import functools
 import re
+import threading
+from collections import OrderedDict
 from contextlib import contextmanager, nullcontext
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -140,6 +142,20 @@ def virtual_at(project: IgtProject, w: Word) -> Dict[str, Any]:
 # Parsed documents, shared across turns and users of this process. See
 # plaid_agent.core.docload for what the key covers and what it does not.
 _DOC_CACHE = docload.DocCache()
+
+# Lexicons read whole, shared across turns, job pieces and users of this
+# process, by server and vocabulary id: ``(time_modified, items)``. Core moves
+# a vocabulary's time on every change to it or to any of its entries, so a
+# copy is reused only while the vocabulary's record (a few milliseconds to
+# read) gives the time it was filed under, as plaid-igt's vocabCache.js does.
+# The time is read BEFORE the entries: a change landing between the two reads
+# leaves the copy under the older time, and the next read takes it again. A
+# job read an 8,000-entry lexicon (1.6 MB) twice a piece, 1,367 times in one
+# job (SCL2-6). Every reader is handed a list of its own over the same entry
+# dicts, which no reader edits (a plan's edits go to ``item_patches``).
+_LEXICONS: 'OrderedDict[tuple, tuple]' = OrderedDict()
+_LEXICONS_LOCK = threading.Lock()
+LEXICONS_KEPT = 8
 
 
 # The kinds that rewrite the text itself.
@@ -523,10 +539,34 @@ class Workspace(BaseWorkspace):
 
     def lexicon(self, vocab: dict) -> List[dict]:
         if vocab['id'] not in self._lexicons:
-            self.on_progress(f'Reading lexicon "{vocab["name"]}"…')
-            layer = self.client.vocab_layers.get(vocab['id'], include_items=True)
-            self._lexicons[vocab['id']] = list(layer.get('items') or [])
+            self._lexicons[vocab['id']] = self._read_lexicon(vocab)
         return self._lexicons[vocab['id']]
+
+    def _read_lexicon(self, vocab: dict) -> List[dict]:
+        """Every entry of ``vocab``: the copy kept in this process while the
+        vocabulary's time says it has not changed (``_LEXICONS``), else read
+        whole. A client that opts out of the document cache (``no_doc_cache``,
+        test doubles that reuse ids) or has no address never keeps one."""
+        server = getattr(self.client, 'base_url', None)
+        keep = server is not None and not getattr(self.client, 'no_doc_cache', False)
+        key, time = (server, vocab['id']), None
+        if keep:
+            time = (self.client.vocab_layers.get(vocab['id']) or {}).get('time_modified')
+            with _LEXICONS_LOCK:
+                kept = _LEXICONS.get(key)
+                if time is not None and kept is not None and kept[0] == time:
+                    _LEXICONS.move_to_end(key)
+                    return list(kept[1])
+        self.on_progress(f'Reading lexicon "{vocab["name"]}"…')
+        layer = self.client.vocab_layers.get(vocab['id'], include_items=True)
+        items = list(layer.get('items') or [])
+        if keep and time is not None:
+            with _LEXICONS_LOCK:
+                _LEXICONS[key] = (time, tuple(items))
+                _LEXICONS.move_to_end(key)
+                while len(_LEXICONS) > LEXICONS_KEPT:
+                    _LEXICONS.popitem(last=False)
+        return items
 
     def patch_item(self, item_id: str, metadata: dict) -> None:
         """Record the metadata an entry will have once the plan runs."""
