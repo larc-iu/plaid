@@ -121,8 +121,13 @@ export const review = {
     this._pulseWord(wordId);
     const from = e.target;
     this._afterABeat(() => {
-      if (!this._advanceToNextWord(from, wordId)) {
-        // Last word on the page: commit (blur) but keep the caret here rather
+      // Off the page's last word: the next page's first cell of the tier,
+      // as Enter goes (H2-14-1).
+      if (
+        !this._advanceToNextWord(from, wordId) &&
+        !this._navAcrossPage(from, this._tierOf(from), 'next')
+      ) {
+        // Last word of the document: commit (blur) but keep the caret here rather
         // than dropping focus to <body> (E2). Re-affirmed after the re-render.
         const key = from.dataset.cellKey;
         from.blur();
@@ -253,12 +258,15 @@ export const review = {
     }
     e.target.dataset.suppressCommit = '1';
     this.doc.discardWordAnalysis(wordId);
-    if (this._advanceToNextWord(e.target, wordId)) {
+    if (
+      this._advanceToNextWord(e.target, wordId) ||
+      this._navAcrossPage(e.target, this._tierOf(e.target), 'next')
+    ) {
       const key = document.activeElement?.dataset?.cellKey;
       if (key) this._pendingFocus = { cellKey: key };
     } else {
-      // Last word on the page: stay here rather than dropping focus to <body>,
-      // as confirm does. The reload may remove this very cell (a discarded
+      // Last word of the document: stay here rather than dropping focus to
+      // <body>, as confirm does. The reload may remove this very cell (a discarded
       // machine morpheme takes its gloss cells with it), so the word's first
       // remaining cell is the fallback.
       const key = e.target.dataset.cellKey;
@@ -356,6 +364,54 @@ export const review = {
       /* not selectable */
     }
     return true;
+  },
+
+  // A sweep key with no stop left on this page goes on to the next
+  // ('next') or previous pages, as Enter and Tab do at a page's edge
+  // (H2-14-1): each page in turn until `stops()` lists one there, and the
+  // first (going back, the last) takes focus. Only the page landed on is told
+  // to the URL. With no stop in the rest of the document the page and focus
+  // stay as they were and false is returned. The cell being left is committed
+  // first, and a value it refuses keeps the page (REV-HFT-1).
+  _sweepAcrossPages(dir, stops) {
+    const pageCount = Math.ceil((this.doc.sentences || []).length / this.constructor.PAGE_SIZE);
+    const from = this._page;
+    const step = dir === 'next' ? 1 : -1;
+    if (from + step < 0 || from + step >= pageCount) return false;
+    const active = document.activeElement;
+    const inGrid = this.container.contains(active);
+    const key = inGrid ? (active.dataset?.cellKey ?? null) : null;
+    const opener = inGrid ? (active.dataset?.vocabOpener ?? null) : null;
+    this._refusedLeave = null;
+    if (inGrid) active.blur();
+    if (this._refusedLeave) {
+      this._refusedLeave = null;
+      return true;
+    }
+    for (let p = from + step; p >= 0 && p < pageCount; p += step) {
+      this._setPage(p, false, { tell: false });
+      const found = stops();
+      const el = dir === 'next' ? found[0] : found[found.length - 1];
+      if (!el) continue;
+      this._tell(p, {});
+      this._navAnchor = null;
+      el.focus();
+      try {
+        el.scrollIntoView({ block: 'nearest' });
+        el.select?.();
+      } catch {
+        /* not selectable */
+      }
+      return true;
+    }
+    this._setPage(from, false, { tell: false });
+    const back = key
+      ? cellByKey(this.container, key)
+      : opener
+        ? this.container.querySelector(`[data-vocab-opener="${opener}"]`)
+        : null;
+    if (back) back.focus();
+    return false;
   },
 
   // Focus the first cell after `el` (DOM order) that sits on the same tier but
@@ -482,7 +538,11 @@ export const review = {
     // sweep that pairs with Ctrl+Enter (confirm) and Ctrl+Backspace (discard).
     const jump = keys.which(['analyze.nextUnverified', 'analyze.prevUnverified'], e);
     if (jump) {
-      if (this._jumpToUnverifiedWord(jump === 'analyze.nextUnverified' ? 'next' : 'prev'))
+      const dir = jump === 'analyze.nextUnverified' ? 'next' : 'prev';
+      if (
+        this._jumpToUnverifiedWord(dir) ||
+        this._sweepAcrossPages(dir, () => this._unverifiedWordAnchors().map((a) => a.el))
+      )
         e.preventDefault();
       return;
     }
@@ -490,10 +550,12 @@ export const review = {
     // chord when suggestions exist (else leave Cmd+Arrow's default scroll alone).
     const hop = keys.which(['analyze.nextLink', 'analyze.prevLink'], e);
     if (hop) {
-      if (!this._inferredChips().length) return;
-      e.preventDefault();
-      const chip = this._adjacentChip(hop === 'analyze.nextLink' ? 'next' : 'prev');
+      const dir = hop === 'analyze.nextLink' ? 'next' : 'prev';
+      const here = this._inferredChips().length > 0;
+      const chip = here ? this._adjacentChip(dir) : null;
       if (chip) chip.focus();
+      else if (this._sweepAcrossPages(dir, () => this._inferredChips())) e.preventDefault();
+      if (here) e.preventDefault();
       return;
     }
     // Accept/reject the focused suggestion (Space/click still opens the popover

@@ -25,7 +25,9 @@ afterEach(() => {
 
 const LEIPZIG = { delimiters: '.', mode: 'closed', values: [{ value: 'PL' }] };
 
-function mount({ closed = false, wordless = false, told = null } = {}) {
+const MACHINE = { prov: 'inferred', provSource: 'service:test' };
+
+function mount({ closed = false, wordless = false, told = null, machine = null, links = [] } = {}) {
   const raw = buildRawDoc({
     body: 'the cat sat down',
     words: [
@@ -43,6 +45,13 @@ function mount({ closed = false, wordless = false, told = null } = {}) {
       { id: 's-2', begin: 8, end: 16 },
     ],
   });
+  // `machine`: the words whose POS a service proposed (unverified).
+  for (const w of machine || []) {
+    raw.textLayers[0].tokenLayers
+      .flatMap((tl) => tl.spanLayers || [])
+      .find((sl) => sl.id === 'wsl-0')
+      .spans.push({ id: `pos-${w}`, tokens: [w], value: 'N', metadata: { ...MACHINE } });
+  }
   if (closed) {
     raw.textLayers[0].tokenLayers
       .flatMap((tl) => tl.spanLayers || [])
@@ -53,6 +62,24 @@ function mount({ closed = false, wordless = false, told = null } = {}) {
   const doc = makeIgtDoc({
     raw,
     client,
+    ...(links.length
+      ? {
+          project: { id: 'proj-1', vocabs: [{ id: 'v1' }], config: { plaid: {} } },
+          vocabularies: {
+            v1: {
+              id: 'v1',
+              name: 'Lexicon',
+              items: [{ id: 'i-cat', form: 'cat', metadata: { morphType: 'stem' } }],
+              vocabLinks: links.map((t, i) => ({
+                id: `lk-${i}`,
+                tokens: [t],
+                vocabItem: { id: 'i-cat', form: 'cat' },
+                metadata: { ...MACHINE },
+              })),
+            },
+          },
+        }
+      : {}),
     ...(closed
       ? {
           project: {
@@ -203,5 +230,84 @@ describe('Enter and Tab at the edge of a page', () => {
     key(pos('cat'), { key: 'Tab' });
     editor.setPage(0, { pop: true });
     expect(editor._page).toBe(0);
+  });
+});
+
+// H2-14-1: the review keys stopped at a page's edge without a word, while
+// Enter and Tab went on. They go on to the next (previous) page's first (last)
+// stop, and stay put when the rest of the document has none.
+describe('the review keys at the edge of a page', () => {
+  const sweep = (el, key, shiftKey = false) =>
+    el.dispatchEvent(
+      new KeyboardEvent('keydown', {
+        key,
+        ctrlKey: true,
+        shiftKey,
+        bubbles: true,
+        cancelable: true,
+      }),
+    );
+  const wordOf = (el) => el?.closest?.('[data-word-col]')?.dataset.wordCol;
+
+  it('Ctrl+Shift+Down from the last word on a page goes to the next unverified word on the next', () => {
+    IgtEditor.PAGE_SIZE = 1;
+    mount({ machine: ['w-2', 'w-4'] });
+    pos('cat').focus();
+    sweep(pos('cat'), 'ArrowDown', true);
+    expect(editor._page).toBe(1);
+    expect(wordOf(document.activeElement)).toBe('w-4');
+  });
+
+  it('Ctrl+Shift+Up from the first word on a page goes back to the last unverified word before it', () => {
+    IgtEditor.PAGE_SIZE = 1;
+    mount({ machine: ['w-1', 'w-3'] });
+    editor._setPage(1);
+    pos('sat').focus();
+    sweep(pos('sat'), 'ArrowUp', true);
+    expect(editor._page).toBe(0);
+    expect(wordOf(document.activeElement)).toBe('w-1');
+  });
+
+  it('tells the page only the page it lands on, and stays put when nothing is left', () => {
+    IgtEditor.PAGE_SIZE = 1;
+    const told = [];
+    mount({ machine: ['w-2'], told });
+    pos('cat').focus();
+    sweep(pos('cat'), 'ArrowDown', true);
+    expect(editor._page).toBe(0);
+    expect(document.activeElement).toBe(pos('cat'));
+    expect(told).toEqual([]);
+  });
+
+  it('Ctrl+Down from the last link on a page goes to the first on the next', () => {
+    IgtEditor.PAGE_SIZE = 1;
+    mount({ links: ['w-1', 'w-4'] });
+    const chip = host.querySelector('button.igt-vocab__hint--machine');
+    expect(chip).not.toBeNull();
+    chip.focus();
+    sweep(chip, 'ArrowDown');
+    expect(editor._page).toBe(1);
+    expect(document.activeElement.matches('button.igt-vocab__hint--machine')).toBe(true);
+    expect(wordOf(document.activeElement)).toBe('w-4');
+  });
+
+  it('Ctrl+Down from the last link of the document stays on it', () => {
+    IgtEditor.PAGE_SIZE = 1;
+    mount({ links: ['w-1'] });
+    const chip = host.querySelector('button.igt-vocab__hint--machine');
+    chip.focus();
+    sweep(chip, 'ArrowDown');
+    expect(editor._page).toBe(0);
+    expect(document.activeElement.dataset.vocabOpener).toBe(chip.dataset.vocabOpener);
+  });
+
+  it('Ctrl+Enter on the last word on a page accepts it and goes on to the next page', async () => {
+    IgtEditor.PAGE_SIZE = 1;
+    mount({ machine: ['w-2', 'w-3'] });
+    pos('cat').focus();
+    sweep(pos('cat'), 'Enter');
+    editor._flushBeat();
+    expect(editor._page).toBe(1);
+    expect(document.activeElement).toBe(pos('sat'));
   });
 });
