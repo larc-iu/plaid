@@ -427,13 +427,9 @@ describe('a run someone stopped', () => {
 
     await view.step(() => view.api().tokenize.start('some text'));
 
-    expect(toasts).toEqual([
-      {
-        kind: 'info',
-        title: 'Tokenize',
-        message: 'Stopped partway. What ran before the stop is in the document.',
-      },
-    ]);
+    // The bundled tokenizer writes in one critical block, as the parser does,
+    // so a stop it honours lands before any write (H2-9-4).
+    expect(toasts).toEqual([{ kind: 'info', title: 'Tokenize', message: 'Nothing was written.' }]);
     await view.unmount();
   });
 

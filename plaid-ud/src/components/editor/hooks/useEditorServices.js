@@ -94,6 +94,10 @@ export const useEditorServices = ({ client, projectId, doc, project, acquireWrit
       errorTitle: 'Failed to tokenize',
       errorMessage: 'The tokenizer did not run.',
       stoppedTitle: 'Tokenize',
+      // The bundled tokenizer writes in one critical block with no checkpoint
+      // in it, as the parser does, so a run it reports as stopped stopped
+      // before writing (H2-9-4).
+      stoppedMessage: 'Nothing was written.',
       notice: tokenizeNotice,
     },
   });
