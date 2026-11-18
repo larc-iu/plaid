@@ -17,8 +17,10 @@ import { createRoot } from 'react-dom/client';
 const mounted = new Set();
 const running = new Set();
 
+// React's act() returns a thenable that pops its scope on every `then`, so it
+// is wrapped in a promise once and only the promise is awaited after that.
 async function inAct(fn) {
-  const done = act(fn);
+  const done = Promise.resolve(act(fn));
   running.add(done);
   try {
     await done;
@@ -38,9 +40,16 @@ async function unmountView(view) {
 // As @testing-library/react does: after each test of any file that mounts
 // through here, let a step still running finish, then unmount what the test
 // left. `afterEach` is a global (the apps' vitest configs set `globals: true`).
+// A step still running belongs to a test that failed or timed out: its next
+// step may start just after this one settles, so wait a task before looking
+// again.
+// A passing test leaves nothing running and waits for nothing here.
 if (typeof globalThis.afterEach === 'function') {
   globalThis.afterEach(async () => {
-    while (running.size) await Promise.allSettled([...running]);
+    while (running.size) {
+      await Promise.allSettled([...running]);
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    }
     for (const view of [...mounted]) await unmountView(view);
   });
 }
