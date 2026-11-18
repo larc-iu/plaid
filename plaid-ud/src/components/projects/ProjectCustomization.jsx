@@ -265,6 +265,16 @@ export const ProjectCustomization = () => {
       );
       return;
     }
+    // An empty list is stored as no list, and the shipped one stands in for
+    // it (readVocab), so the page would say saved and show it emptied (H3-7-2).
+    const empty = [
+      [uposVocab, 'UPOS tags'],
+      [deprelVocab, 'Dependency relations'],
+    ].find(([list]) => !list.length);
+    if (empty) {
+      notifyError(`${empty[1]}: the list is empty.`, 'UD settings not saved');
+      return;
+    }
     setSaving(true);
     const current = {
       uposVocab,

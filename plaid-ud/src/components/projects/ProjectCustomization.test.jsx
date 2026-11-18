@@ -128,6 +128,35 @@ describe('UD customization', () => {
     await view.unmount();
   });
 
+  // H3-7-2: an emptied list was saved as [], which reads as no list, so the
+  // full default came back after a reload while the page said "saved" and
+  // stayed unsaved. An empty UPOS or relation list is refused, by name.
+  for (const [tag, card] of [
+    ['NOUN', 'UPOS tags'],
+    ['nsubj', 'Dependency relations'],
+  ]) {
+    it(`refuses to save an empty ${card} list, and says which`, async () => {
+      feedback.notifyError.mockClear();
+      const view = await mount();
+      const chips = () => [...view.container.querySelectorAll('[aria-label^="Remove "]')];
+      const others = { NOUN: ['VERB'], nsubj: [] }[tag];
+      for (const t of [tag, ...others]) {
+        await view.step(() =>
+          chips()
+            .find((b) => b.getAttribute('aria-label') === `Remove ${t}`)
+            .click(),
+        );
+      }
+      await view.step(() => button(view.container, 'Save').click());
+      expect(feedback.notifyError).toHaveBeenCalledWith(
+        `${card}: the list is empty.`,
+        'UD settings not saved',
+      );
+      expect(managed.current.fetchProject).not.toHaveBeenCalled();
+      await view.unmount();
+    });
+  }
+
   // REV-HFU-4: a colour whose tag is no longer listed has no box to correct
   // it in, so it does not hold Save back.
   it('saves past a bad colour on a tag no longer listed', async () => {
