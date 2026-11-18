@@ -169,6 +169,8 @@ def test_a_job_that_lost_its_starters_access_says_so_by_its_reason(monkeypatch):
     def locked(document_id, **kw):
         raise PlaidAPIError('HTTP 403', status=403, response_data={'error': 'Write access required.'})
     client.documents.locked = locked
+    # Core says so at the heartbeat the refusal is checked by (S9-1).
+    client.jobs.can_write = lambda user_id, project_id: False
     finished = run_job(job, runner(job))
     assert finished['reason'] == 'starter-access'
     assert client.jobs.rows[job.id]['message'] is None, 'the app words it by the reason, not a progress line'

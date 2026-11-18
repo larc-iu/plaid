@@ -50,13 +50,21 @@ def test_a_token_revoked_while_the_starter_still_writes_is_renewed_and_the_job_e
     assert [r['state'] for r in client.jobs.rows[job.id]['documents']] == ['done', 'done']
 
 
-def test_a_token_refused_again_after_its_renewal_fails_the_job_starter_access(monkeypatch):
-    client = _client()
-    job = start(client)
-    use(monkeypatch, Model(_analyse))
-    _refuse_reads(client, set(range(3, 1000)))
-    finished = run_job(job, runner(job))
-    assert finished['state'] == 'failed' and finished['reason'] == 'starter-access'
+def test_a_token_refused_again_after_its_renewal_fails_the_job_by_what_core_says(monkeypatch):
+    """The heartbeat decides (S9-1): starter-access only when core says the
+    starter no longer writes, else the refusal's own words."""
+    for writes, reason in ((False, 'starter-access'), (True, 'worker-error')):
+        client = _client()
+        job = start(client)
+        use(monkeypatch, Model(_analyse))
+        _refuse_reads(client, set(range(3, 1000)))
+        if not writes:
+            client.jobs.can_write = lambda user_id, project_id, n={'beats': 0}: (
+                n.__setitem__('beats', n['beats'] + 1) or n['beats'] < 2)
+        finished = run_job(job, runner(job))
+        assert finished['state'] == 'failed' and finished['reason'] == reason, (writes, finished.get('reason'))
+        if writes:
+            assert 'HTTP 401' in client.jobs.rows[job.id]['message']
 
 
 class _Client:
