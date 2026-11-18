@@ -81,11 +81,11 @@ const headlineWhat = (f) => {
   if (f.findings)
     return ended ? `Wrote findings, then ${ended}.` : 'Wrote findings, changed nothing.';
   // Its report counts no change and History holds some: a worker that died
-  // after a write and before it recorded it (S3-1).
-  if (f.wrote && f.state !== 'undone') {
-    if (f.state === 'cancelled') return 'Stopped after writing changes not counted here.';
-    if (f.state === 'failed') return 'Failed after writing changes not counted here.';
-    return 'Wrote changes not counted here.';
+  // after a write and before it recorded it, then a report the server wrote
+  // from the rows (S3-1). Only a stopped or failed job: a done job's report
+  // is its worker's, which counts what landed (REV-SJ1-14).
+  if (f.wrote && (f.state === 'cancelled' || f.state === 'failed')) {
+    return `${f.state === 'cancelled' ? 'Stopped' : 'Failed'} after writing changes its report does not count.`;
   }
   if (f.state === 'cancelled') return 'Stopped before changing anything.';
   if (f.state === 'failed') return 'Failed before changing anything.';

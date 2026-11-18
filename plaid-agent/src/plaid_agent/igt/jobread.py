@@ -376,10 +376,11 @@ def summary(job: Dict[str, Any], note_chars: Optional[int] = JOB_SUMMARY_NOTE_CH
         # and of the text (RPF-A4, the owner's R4), and what its one step over
         # all the documents did.
         lines.append(f'The report\'s top line{whose}: "{top}"')
-    if report.get('stopped') == 'without-worker':
-        # Core's report counts the rows its worker last recorded: History may
-        # hold more (S3-1, the page's own line).
-        lines.append('Stopped with no worker running.' + (
+    stopped = report.get('stopped') == 'without-worker'
+    if stopped or (job.get('reason') in ('worker-lost', 'starter-access') and 'notice' not in report):
+        # A report core wrote from the rows its worker last recorded: History
+        # may hold more (S3-1, REV-SJ1-10, the page's own line).
+        lines.append(('Stopped with no worker running.' if stopped else 'Ended by the server.') + (
             ' The counts are what its worker recorded before it stopped, and History holds every change it wrote.'
             if job.get('wrote') else ''))
     planned = plan_line(report)

@@ -86,18 +86,20 @@ describe('the headline', () => {
     [
       'a job stopped whose report counts nothing History holds',
       { ...NOTHING, state: 'cancelled', wrote: true },
-      'Stopped after writing changes not counted here.',
+      'Stopped after writing changes its report does not count.',
     ],
     [
       'a job failed whose report counts nothing History holds',
       { ...NOTHING, state: 'failed', wrote: true },
-      'Failed after writing changes not counted here.',
+      'Failed after writing changes its report does not count.',
     ],
     [
       'an undone job whose report counts nothing',
       { ...NOTHING, state: 'undone', wrote: true },
       'Undone.',
     ],
+    // A done job's report is its worker's, which counts what landed.
+    ['a done job whose report counts nothing', { ...NOTHING, wrote: true }, 'Changed nothing.'],
   ])('%s', (_, facts, said) => {
     expect(headlineText(facts)).toBe(said);
   });

@@ -20,6 +20,7 @@ import {
 } from './JobReport.jsx';
 import { blankDocuments, noticeOf, skippedDocuments } from './jobTotals.js';
 import { jobHeadline, toCheckRows } from './jobOverview.js';
+import { serverEndLine } from './jobText.js';
 
 // The job page's sections past its Overview that list what the report holds,
 // one each (`?view=`), and the report's part of the Overview of an ended job.
@@ -156,12 +157,10 @@ export const ReportOverview = ({ job, sectionHref, sections }) => {
       <p className="max-w-3xl text-base font-medium" data-testid="job-headline">
         {jobHeadline(job)}
       </p>
-      {report?.stopped === 'without-worker' && (
-        <p className="mt-1 text-sm text-muted-foreground">
-          Stopped with no worker running.
-          {/* Core's report counts the rows its worker last recorded (S3-1). */}
-          {job.wrote && ' The counts are what its worker recorded before it stopped.'}
-        </p>
+      {/* A report the server wrote from the rows its worker last recorded
+          (S3-1, REV-SJ1-10). */}
+      {serverEndLine(job) && (
+        <p className="mt-1 text-sm text-muted-foreground">{serverEndLine(job)}</p>
       )}
       {/* The worker's own line, from its counts, where the job changed
           people's work or the text (R4). */}

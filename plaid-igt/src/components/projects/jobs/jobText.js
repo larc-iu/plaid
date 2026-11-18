@@ -147,6 +147,23 @@ export const jobEditedText = (job) =>
 // change in its totals, none in any document, and nothing harmonize changed.
 // Not known (false) for a started job with no report, or one whose totals
 // count no changes.
+// The line under the headline of a job the server ended with a report of
+// its own, made from the rows its worker last recorded: one stopped with no
+// worker running, or one the server failed (`worker-lost`, or `starter-access`
+// at a claim) whose report has no worker's `notice`. What ended it, and,
+// when History holds its writes, that the counts may be short (S3-1,
+// REV-SJ1-10). Null for any other.
+export const serverEndLine = (job) => {
+  const report = job?.report;
+  if (!report) return null;
+  const stopped = report.stopped === 'without-worker';
+  const failed =
+    ['worker-lost', 'starter-access'].includes(job.reason) && report.notice === undefined;
+  if (!stopped && !failed) return null;
+  const first = stopped ? 'Stopped with no worker running.' : 'Ended by the server.';
+  return job.wrote ? `${first} The counts are what its worker recorded before it stopped.` : first;
+};
+
 export const wroteNothing = (job) => {
   if (job && !job.startedAt && !isJobActive(job)) return true;
   const report = job?.report;

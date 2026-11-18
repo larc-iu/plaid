@@ -500,3 +500,17 @@ def test_a_job_stopped_with_no_worker_says_its_counts_may_be_short_when_history_
            'History holds every change it wrote.' in said
     said = '\n'.join(jobread.summary({**job, 'wrote': False}))
     assert 'Stopped with no worker running.' in said and 'History holds' not in said
+
+
+def test_a_job_the_server_failed_says_so_and_that_its_counts_may_be_short():
+    """REV-SJ1-10: worker-lost and a claim's starter-access have core's
+    report too; a worker's own starter-access report (with its notice) not."""
+    base = {'id': 'j1', 'state': 'failed', 'started_by_name': 'Wren', 'documents': [], 'instructions': 'Gloss.',
+            'wrote': True}
+    for reason in ('worker-lost', 'starter-access'):
+        said = '\n'.join(jobread.summary({**base, 'reason': reason,
+                                          'report': {'stopped': None, 'totals': {'changes': 0}, 'documents': []}}))
+        assert 'Ended by the server. The counts are what its worker recorded before it stopped' in said
+    said = '\n'.join(jobread.summary({**base, 'reason': 'starter-access',
+                                      'report': {'stopped': None, 'notice': None, 'totals': {}, 'documents': []}}))
+    assert 'Ended by the server.' not in said

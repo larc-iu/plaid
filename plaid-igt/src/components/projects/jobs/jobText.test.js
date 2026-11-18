@@ -5,6 +5,7 @@ import {
   documentSentencesText,
   pieceEndLines,
   planParts,
+  serverEndLine,
   skippedText,
 } from './jobText.js';
 
@@ -105,5 +106,36 @@ describe('the Plan line', () => {
     ]);
     expect(JSON.stringify(parts)).not.toMatch(/[⁦-⁩]/);
     expect(planParts({ by: 'none', reason: 'failed' })).toHaveLength(1);
+  });
+});
+
+// REV-SJ1-10: every end the server writes the report of from the rows.
+describe('the line of a job the server ended', () => {
+  const core = (over) => ({ report: { totals: { changes: 0 }, ...over } });
+  it('says what ended it, and that the counts may be short when History holds its writes', () => {
+    const hedge = ' The counts are what its worker recorded before it stopped.';
+    expect(serverEndLine({ ...core({ stopped: 'without-worker' }), wrote: true })).toBe(
+      `Stopped with no worker running.${hedge}`,
+    );
+    expect(serverEndLine({ ...core({ stopped: 'without-worker' }), wrote: false })).toBe(
+      'Stopped with no worker running.',
+    );
+    for (const reason of ['worker-lost', 'starter-access']) {
+      expect(serverEndLine({ ...core({ stopped: null }), reason, wrote: true })).toBe(
+        `Ended by the server.${hedge}`,
+      );
+    }
+  });
+  it('says nothing of a report its worker wrote', () => {
+    expect(serverEndLine({ report: { notice: null, stopped: null }, wrote: true })).toBe(null);
+    expect(
+      serverEndLine({
+        report: { notice: null, stopped: null },
+        reason: 'starter-access',
+        wrote: true,
+      }),
+    ).toBe(null);
+    expect(serverEndLine({ report: { stopped: null }, state: 'done', wrote: true })).toBe(null);
+    expect(serverEndLine({ report: null })).toBe(null);
   });
 });
