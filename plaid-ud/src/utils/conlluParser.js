@@ -36,6 +36,13 @@ export function splitConlluByNewdoc(text) {
     .filter((d) => d.text.length > 0);
 }
 
+// Where a refusal points: the sentence's number in the document and its
+// sent_id when it has one, which is what a person can search the file for.
+const sentenceName = (n, metadata) =>
+  typeof metadata?.sent_id === 'string'
+    ? `sentence ${n} (sent_id ${metadata.sent_id})`
+    : `sentence ${n}`;
+
 const hasSpaceAfterNo = (misc) => (misc || '').split('|').includes('SpaceAfter=No');
 // Whether a row's MISC holds anything the import drops: every value but
 // `SpaceAfter=No`, which the body holds (see the word rows below).
@@ -59,6 +66,8 @@ export function parseCoNLLU(text) {
   // A sentence holds one comment of each name, so a second `# comment = ...`
   // (or a bare line said twice) is dropped and counted, and the first stays.
   let repeatedComments = 0;
+  // The sentence the row being read belongs to.
+  const here = () => sentenceName(sentences.length + 1, currentMetadata);
   const comment = (key, value) => {
     if (Object.hasOwn(currentMetadata, key)) repeatedComments += 1;
     else currentMetadata[key] = value;
@@ -147,7 +156,7 @@ export function parseCoNLLU(text) {
       const end = parseInt(endStr);
 
       if (isNaN(start) || isNaN(end) || start <= 0 || end <= 0 || start >= end) {
-        throw new Error(`Invalid multi-word token range: ${id}`);
+        throw new Error(`Invalid multi-word token range in ${here()}: ${id}`);
       }
 
       if (dropsMisc(misc)) droppedMiscTokens += 1;
@@ -163,8 +172,11 @@ export function parseCoNLLU(text) {
     // Validate ID is a positive integer
     const idNum = parseInt(id);
     if (isNaN(idNum) || idNum <= 0) {
-      throw new Error(`Invalid token ID: ${id}`);
+      throw new Error(`Invalid token ID in ${here()}: ${id}`);
     }
+    // A word's FORM is never empty (`_` is the form `_`, below). One that is
+    // would be a token of no width, which the server refuses in its own terms.
+    if (form === '') throw new Error(`Empty FORM in ${here()}, ID ${id}.`);
 
     // The MISC column is deliberately unsupported (it often carries annotations
     // like entity info that tokenization changes would silently corrupt; see
@@ -183,7 +195,7 @@ export function parseCoNLLU(text) {
     // relation, whatever its DEPREL says: null, never 0.
     const headNum = head === '_' ? null : parseInt(head);
     if (headNum !== null && (isNaN(headNum) || headNum < 0)) {
-      throw new Error(`Invalid HEAD value: ${head}`);
+      throw new Error(`Invalid HEAD value in ${here()}: ${head}`);
     }
 
     // DEPS, the enhanced graph's incoming edges (see domain/enhancedGraph.js).
@@ -237,13 +249,19 @@ export function parseCoNLLU(text) {
   // not sorted: the importer reads a relation's target by array position and
   // its head by id, so rows that are complete but out of order would wire the
   // tree to the wrong words. Sorting first hid exactly that.
-  for (const sentence of sentences) {
+  // An ID 1 after other rows is where a blank line between two sentences
+  // is missing, which is said as such.
+  sentences.forEach((sentence, s) => {
     sentence.tokens.forEach((t, i) => {
-      if (t.id !== i + 1) {
-        throw new Error(`Invalid token ordering: expected continuous IDs starting from 1`);
-      }
+      if (t.id === i + 1) return;
+      const where = sentenceName(s + 1, sentence.metadata);
+      throw new Error(
+        t.id === 1
+          ? `Invalid token ordering in ${where}: ID 1 follows ID ${sentence.tokens[i - 1].id} with no blank line before it.`
+          : `Invalid token ordering in ${where}: expected ID ${i + 1}, found ${t.id}.`,
+      );
     });
-  }
+  });
 
   return {
     sentences,

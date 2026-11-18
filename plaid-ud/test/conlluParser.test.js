@@ -123,3 +123,38 @@ test('a unit placed past the text it cannot be found in starts after a space, no
   const [, mwt] = h.sentences[0].words;
   assert.equal(h.text.slice(mwt.begin, mwt.end), 'dul');
 });
+
+// H3-5-10: a refusal named neither the sentence nor the cause, and an empty
+// FORM reached the server, whose refusal spoke of nested token layers.
+test('a refusal names its sentence and what is wrong in CoNLL-U terms', () => {
+  const row = (id, form = 'w') => `${id}\t${form}\t_\tX\t_\t_\t_\t_\t_\t_`;
+  const refusal = (lines) => {
+    try {
+      parseCoNLLU(conllu(lines));
+    } catch (e) {
+      return e.message;
+    }
+    return null;
+  };
+  // Two sentences with no blank line between them.
+  assert.equal(
+    refusal(['# sent_id = a', row(1), row(2), row(3), '# sent_id = b', row(1), row(2)]),
+    'Invalid token ordering in sentence 1 (sent_id a): ID 1 follows ID 3 with no blank line before it.',
+  );
+  // A duplicate ID in the second sentence, and a gap.
+  assert.equal(
+    refusal([row(1), '', '# sent_id = x-2', row(1), row(2), row(2)]),
+    'Invalid token ordering in sentence 2 (sent_id x-2): expected ID 3, found 2.',
+  );
+  assert.equal(
+    refusal([row(1), row(2), row(4)]),
+    'Invalid token ordering in sentence 1: expected ID 3, found 4.',
+  );
+  assert.equal(refusal([row(1), '', row(1, '')]), 'Empty FORM in sentence 2, ID 1.');
+  assert.equal(refusal([row(1), '', row('x')]), 'Invalid token ID in sentence 2: x');
+  assert.equal(refusal(['1\tw\t_\tX\t_\t_\tx\tdep\t_\t_']), 'Invalid HEAD value in sentence 1: x');
+  assert.equal(
+    refusal(['1-1\tw\t_\t_\t_\t_\t_\t_\t_\t_', row(1)]),
+    'Invalid multi-word token range in sentence 1: 1-1',
+  );
+});
