@@ -146,7 +146,8 @@
 
   `readable?`, a predicate on a project id, says which projects the reader
   may read. Another project is named to no one who cannot read it: it is
-  left out of `:op/project` and `:audit/projects`, and an operation whose
+  left out of `:op/project` and `:audit/projects`, its documents out of
+  `:op/document` and `:audit/documents`, and an operation whose
   description names it (`named_project_id`) is described by its
   `anonymous_description` instead. A vocabulary's History is read by every
   project that borrows it, and its operations belong to its home. Nil reads
@@ -156,7 +157,11 @@
         by-unit   (group-by row-unit member-rows)
         users     (batch-fetch-by-ids db :users (mapv :user_id member-rows))
         projects  (batch-fetch-by-ids db :projects (mapv :project_id member-rows) live-project)
-        documents (batch-fetch-by-ids db :documents (mapv :document_id member-rows) in-live-project)
+        ;; A document is named only to a reader of its project, as a project
+        ;; is: an undo of P's rows filed elsewhere must not name P's document
+        ;; to that project's members (ACL8-1).
+        documents (into {} (filter (fn [[_ d]] (readable? (:project_id d))))
+                        (batch-fetch-by-ids db :documents (mapv :document_id member-rows) in-live-project))
         tokens    (batch-fetch-by-ids db :api_tokens (mapv :token_id member-rows))
         groups    (batch-fetch-by-ids db :operation_groups (mapv :group_id member-rows))
         batch-end (batch-ends db (keep :batch_id member-rows))
