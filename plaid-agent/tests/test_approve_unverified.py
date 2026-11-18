@@ -274,7 +274,21 @@ def test_which_kinds_carry_no_stamp_choice_is_declared_per_kind():
     assert not UMR['delete_node'].stamped and not IGT['split_sentence'].stamped
     assert IGT['set_span'].stamped and UD['set_head'].stamped and UMR['create_node'].stamped
     # A kind that leaves the stamp to the approver says so by default.
-    assert IGT['bulk_scope'].stamped and UD['del_relation'].stamped
+    assert IGT['bulk_scope'].stamped and UD['set_deprel'].stamped
+
+
+def test_a_plan_that_only_removes_heads_offers_no_choice():
+    """H3-10-3: ud's del_relation writes no value, as umr's delete_edge
+    writes none, yet it offered both buttons and then read "Approved as
+    verified." with nothing stamped."""
+    from test_contributor_confirm import _ud_ws
+    from plaid_agent.ud.plan import KIND as UD
+    from plaid_agent.ud.toolkit import call_tool as ud_call
+    assert not UD['del_relation'].stamped
+    ws = _ud_ws()
+    ud_call(ws, 'del_relation', {'document': 'Viaje', 'refs': ['s1.w5']})
+    assert [op['kind'] for op in ws.ops] == ['del_relation']
+    assert ws.plan_payload()['stamp_choice'] is False
 
 
 def test_the_plan_contract_says_the_user_chooses_and_nothing_of_the_assistant_deciding():

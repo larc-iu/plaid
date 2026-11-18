@@ -639,7 +639,7 @@ KIND = ok.registry([
            token_keys=('word_id',), extra={'entity': _relation_entity},
            deletes=lambda op: [op['relation_id']] + list(op.get('suppressor_ids') or []),
            compact_each=('word_id', 'relation_id', 'suppressor_ids', 'ref'),
-           compact_label=_del_relation_label),
+           compact_label=_del_relation_label, stamped=False),
     # A confirmation writes to the span or the relation it names, so one whose
     # subject another change in the same plan throws away is refused as the
     # plan is built rather than dropped from a card the user approved.
