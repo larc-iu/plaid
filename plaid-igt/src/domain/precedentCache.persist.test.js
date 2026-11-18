@@ -322,6 +322,10 @@ describe('precedent kept across reloads', () => {
   });
 
   it('signing out forgets the counts in memory and in the browser', async () => {
+    // A sign-out lasts until the page reloads, so it gets a module of its
+    // own: the tests after it, in any order, start signed in.
+    vi.resetModules();
+    const { forgetPrecedent, openPrecedent, precedentBase } = await import('./precedentCache.js');
     const srv = server({ a: [['kai', 'go']], b: [] });
     const first = tab(srv);
     await openPrecedent(docOf(first, 'a'));
