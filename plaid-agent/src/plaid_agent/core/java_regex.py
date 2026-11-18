@@ -1021,8 +1021,8 @@ def compile_decomposed(pattern: str, **kw):
     also matches such a pattern decomposed with the value in NFD, so a tone
     mark searched for on its own, typed or by escape, finds it inside a
     composed letter (Luke, 2026-10-16). Cached as :func:`compile_local` is:
-    a caller that asks :func:`matcher` once a value (umr search) paid a
-    translation a value (SCL7-5)."""
+    a caller that asks :func:`matcher` once a value paid a translation a
+    value (SCL7-5)."""
     try:
         sent = translate(pattern, **kw).server
     except PatternError:
