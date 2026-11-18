@@ -14,9 +14,12 @@ import { DELETE_BUTTON_CLASS } from '@ui/lib/destructive.js';
 import { useConfirm } from '@ui/components/shared/ConfirmProvider';
 import { lossPhrase } from '@ui/domain/annotationLoss.js';
 import { notifySuccess } from '@/utils/feedback';
-import { segmentSplitDescription, splitPointsFromSegments } from '@/domain/segments.js';
+import {
+  mweSplitLines,
+  segmentSplitDescription,
+  splitPointsFromSegments,
+} from '@/domain/segments.js';
 import { clearSentencesFits, TOO_MANY_SENTENCES } from '@/domain/mutations/sentences.js';
-import { mweSplitLines } from '@/domain/mwe.js';
 import { useDocumentCtx } from '../contexts/DocumentContext.jsx';
 import { useDocumentModel } from '@ui/domain/useDocumentModel.js';
 import { TokenizeDialog } from './TokenizeDialog.jsx';

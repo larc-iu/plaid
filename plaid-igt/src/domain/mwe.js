@@ -9,7 +9,6 @@
 
 import { provState, provOrigin } from '@larc-iu/plaid-client';
 import { itemsById, linkedItem } from './vocabLookup.js';
-import { countOf } from '@ui/lib/plural.js';
 
 const isMweLink = (link) =>
   Array.isArray(link?.tokens) && link.tokens.length >= 2 && !!link.vocabItem;
@@ -115,16 +114,3 @@ export const joinMweForm = (surfaces) =>
     .map((s) => (s ?? '').trim())
     .filter(Boolean)
     .join(' ');
-
-/**
- * What a sentence split's confirmation says about the MWEs it hides or shows
- * in part (`sentenceSplitLoss`'s `hiddenMwes` and `partialMwes`): one
- * `[count, rest]` pair per kind that has any, the count to be set apart.
- */
-export const mweSplitLines = ({ hiddenMwes = 0, partialMwes = 0 } = {}) =>
-  [
-    [hiddenMwes, 'will not be shown until the sentences are merged again.'],
-    [partialMwes, 'will be shown only in part until the sentences are merged again.'],
-  ]
-    .filter(([n]) => n > 0)
-    .map(([n, rest]) => [countOf(n, 'multi-word expression'), rest]);
