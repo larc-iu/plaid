@@ -91,6 +91,8 @@ beforeEach(() => {
       const rec = (bundle) => ({
         setConfig: (id, ns, key, value, audit, options) =>
           ops.push({ cell: `${bundle}:${id}/${ns}.${key}`, value, audit, options }),
+        deleteConfig: (id, ns, key, audit, options) =>
+          ops.push({ cell: `${bundle}:${id}/${ns}.${key}`, value: undefined, audit, options }),
         setConstraints: (id) => ops.push({ cell: `${bundle}:${id}/constraints` }),
         repairConstraints: (id) => ops.push({ cell: `${bundle}:${id}/repair` }),
       });
@@ -149,6 +151,13 @@ describe('UD Validation, Add', () => {
           audit: undefined,
           options: { expected: ['NOUN', 'VERB'] },
         },
+        // The mode the list's rule is made of, read absent (H3-7-6).
+        {
+          cell: 'span:upos/ud.vocabMode',
+          value: undefined,
+          audit: undefined,
+          options: { expected: null },
+        },
       ],
       [
         {
@@ -156,6 +165,13 @@ describe('UD Validation, Add', () => {
           value: ['NOUN', 'VERB', 'ADJ', 'X'],
           audit: undefined,
           options: { expected: ['NOUN', 'VERB', 'ADJ'] },
+        },
+        // The mode the list's rule is made of, read absent (H3-7-6).
+        {
+          cell: 'span:upos/ud.vocabMode',
+          value: undefined,
+          audit: undefined,
+          options: { expected: null },
         },
       ],
     ]);

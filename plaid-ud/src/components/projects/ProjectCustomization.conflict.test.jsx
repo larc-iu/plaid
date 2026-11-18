@@ -70,6 +70,8 @@ beforeEach(() => {
       const rec = (bundle) => ({
         setConfig: (id, ns, key, value, audit, options) =>
           ops.push({ cell: `${bundle}:${id}/${key}`, value, options }),
+        deleteConfig: (id, ns, key, audit, options) =>
+          ops.push({ cell: `${bundle}:${id}/${key}`, value: undefined, options }),
         setConstraints: (id) => ops.push({ cell: `${bundle}:${id}/constraints` }),
       });
       await fn({
@@ -134,7 +136,14 @@ describe('UD settings Save refused by a save elsewhere', () => {
       'span:xpos/vocabMode',
       'rel:deprel/vocabMode',
       'span:upos/vocabMode',
+      // The lists those rules are made of, each as read (H3-7-6).
+      'span:xpos/vocab',
+      'rel:deprel/vocab',
+      'span:upos/vocab',
     ]);
+    for (const o of batches[1].filter((x) => x.cell.endsWith('/vocab'))) {
+      expect(o.options).toEqual({ expected: o.value ?? null });
+    }
     await view.unmount();
   });
 

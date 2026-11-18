@@ -104,6 +104,15 @@ describe('UD settings Save', () => {
         value: 'closed',
         options: { expected: undefined },
       },
+      // The list the rule is made of, as the tab read it (H3-7-6).
+      {
+        bundle: 'spanLayers',
+        id: 'upos',
+        ns: 'ud',
+        key: 'vocab',
+        value: ['NOUN', 'VERB'],
+        options: { expected: ['NOUN', 'VERB'] },
+      },
     ]);
     expect(managed.current.fetchProject).toHaveBeenCalled();
     await view.unmount();
