@@ -4690,8 +4690,9 @@ class IgtRunner:
         keeps a respelled word's morpheme tokens and their forms as they
         were, for a person's edit in the editor too (one rule for every
         token layer, plaid_text_edit_token_rules): the forms still spell the
-        old word, which the report lists for a person to check. Nothing is
-        re-segmented."""
+        old word, which the report lists for a person to check. Not listed:
+        a word whose forms, together, spell it as it now is (a lone morpheme
+        that followed the word, S7-3). Nothing is re-segmented."""
         had = {w.id: w for s in before.sentences for w in s.words}
         rows = []
         for s in after.sentences:
@@ -4699,6 +4700,8 @@ class IgtRunner:
                 old = had.get(w.id)
                 stored = [m for m in w.morphemes if not m.virtual]
                 if old is None or old.surface == w.surface or not stored:
+                    continue
+                if ''.join(m.form or '' for m in stored) == w.surface:
                     continue
                 text = canonical({'document': document_id, 'sentence_id': s.id, 'sentence': f's{s.index}',
                                   'ref': f's{s.index}.w{w.index}', 'form': w.surface, 'old': old.surface,

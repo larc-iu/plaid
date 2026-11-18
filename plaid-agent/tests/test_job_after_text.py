@@ -20,9 +20,9 @@ AFTER = [{'words': [('sa', [('sa', 'one')], 'human'), 'xosan', ('jut', [('jut', 
          {'words': [('kIvalaxar', [('kvalax', 'work'), ('ar', 'PL')], 'human')]}]
 
 
-def _job(monkeypatch, answer, after=AFTER):
+def _job(monkeypatch, answer, after=AFTER, before=BEFORE):
     text_edits(monkeypatch)
-    client = JobClient({'d1': document('d1', 'Story', BEFORE)})
+    client = JobClient({'d1': document('d1', 'Story', before)})
     job = start(client, 'Insert xosan in s1, respell kvalaxar as kIvalaxar, and segment and gloss the new word.',
                 id=J, plan='document')
     sent = []
@@ -83,6 +83,26 @@ def test_a_respelled_word_that_kept_its_analysis_is_listed_for_a_person_to_check
                                     'morphemes': ['kvalax', 'ar']}], report.get('respelled')
     message = igt_job.summary_message(report)
     assert '"Story" s2.w1 kvalaxar to kIvalaxar' in message
+
+
+def test_a_respelled_word_whose_lone_morpheme_followed_it_is_not_listed(monkeypatch):
+    """S7-3: a word of one morpheme whose form followed the respelling
+    (pele to pelle, the morpheme pelle) spells the new word: it is not
+    listed to check, and the final context is not told its forms spell the
+    old word."""
+    before = [BEFORE[0], {'words': [('pele', [('pele', 'bird')], 'human')]}]
+    after = [BEFORE[0], {'words': [('pelle', [('pelle', 'bird')], 'human')]}]
+
+    def answer(asked, n, kwargs):
+        if 'Instructions from' not in asked:
+            return reply('Done.')
+        if n == 1:
+            return reply(calls=[call(1, 'retype_sentence', {'document': 'Story', 'ref': 's2', 'text': 'pelle.'})])
+        return reply('Respelled.')
+    _client, job, _model, _sent = _job(monkeypatch, answer, after=after, before=before)
+    report = run_job(job, runner(job))['report']
+    assert not report.get('respelled'), report.get('respelled')
+    assert 'still spell the old word' not in igt_job.summary_message(report)
 
 
 def test_no_piece_follows_when_nothing_is_empty_in_the_sentences_the_edit_changed(monkeypatch):
