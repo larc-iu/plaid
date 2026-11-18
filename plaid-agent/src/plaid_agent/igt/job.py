@@ -3228,9 +3228,10 @@ class IgtRunner:
                 # into the same whole document again (its halves would each be
                 # the whole document, BRIEF RW): the document falls back to
                 # stretches of sentences, kept in core so a resumed job does too.
-                # What a piece that ran leaves (a sentence a person changed
-                # meanwhile, one its write did not finish) is worked in
-                # stretches too: never the whole document a second time.
+                # Whatever follows the ask (a failure, a write put off for a
+                # person, a passing core error, a sentence a person changed
+                # meanwhile), what remains is worked in stretches: never the
+                # whole document a second time in this run (REV-RW-3).
                 try:
                     self.attempt(project, document_id, [s.id for s in part])
                 except StretchFailed as e:
@@ -3238,7 +3239,8 @@ class IgtRunner:
                     # A row of its own in the work list, saying it failed and
                     # what follows (B5).
                     self.failed_whole(document_id, doc.name, part, e.kind)
-                self.whole_taken.add(document_id)
+                finally:
+                    self.whole_taken.add(document_id)
                 continue
             halve([s.id for s in part], lambda ids: self.attempt(project, document_id, ids),
                   lambda sid, kind: self.failed_piece(document_id, doc, sid, kind))

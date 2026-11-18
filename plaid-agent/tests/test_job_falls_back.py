@@ -21,7 +21,8 @@ SELECTION = 'Your piece: the whole selection'
 def _stage(asked):
     name = asked.split('"')[1]
     return reply(calls=[call(10 * n, 'set_analysis', {'document': name, 'ref': f's{n}.w1', 'morphemes': [
-        {'form': f'ka{n}', 'type': 'stem', 'fields': {'Morph Gloss': 'go'}}]}) for n in targets_named(asked)])
+        {'form': f'ka{n}', 'type': 'stem', 'fields': {'Morph Gloss': 'go'}}]})
+        for n in ([k for k in range(1, 50) if f'[s{k}]' in asked] if WHOLE in asked else targets_named(asked))])
 
 
 def _reads(n):
@@ -157,3 +158,28 @@ def test_a_failed_big_piece_has_a_row_saying_it_failed(monkeypatch, plan):
     assert rows[0]['document'] == ('d1' if plan == 'document' else None)
     assert not any(r.get('failed') for r in rows[1:])
     assert 'Nothing' not in str(rows[0].get('note'))
+
+
+@pytest.mark.parametrize('how', ['put-off', 'core'])
+def test_a_whole_piece_whose_write_is_put_off_or_hit_by_core_is_not_asked_whole_again(monkeypatch, how):
+    """REV-RW-3: the whole piece ran, and its write was put off (a person in
+    the document) or failed on a passing core error: what remains is taken
+    in stretches, never as the whole document again."""
+    from plaid_client import PlaidAPIError
+    client = JobClient({'d1': document('d1', 'Story', blank(3))})
+    job = start(client, id=J, plan='document')
+    real, once = igt_job.IgtRunner.write, {'n': 0}
+
+    def write(self, *a, **kw):
+        if not once['n']:
+            once['n'] = 1
+            if how == 'put-off':
+                raise igt_job.Deferred('d1')
+            raise PlaidAPIError('HTTP 502', status=502, method='POST')
+        return real(self, *a, **kw)
+    monkeypatch.setattr(igt_job.IgtRunner, 'write', write)
+    model = use(monkeypatch, _model(big_fails=False))
+    finished = run_job(job, runner(job))
+    assert len(_firsts(model, WHOLE)) == 1, [c['asked'].splitlines()[-1] for c in model.calls if c['n'] == 1]
+    (doc,) = finished['report']['documents']
+    assert doc['counts']['words'] == 3, doc
