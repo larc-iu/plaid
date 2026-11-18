@@ -3097,6 +3097,8 @@ class IgtRunner:
         if row.get('state') in ROW_FINAL:
             return
         if how == UNANSWERED:
+            # Never also "written as staged" (REV-JOIN18-3).
+            self.ran_out.pop(document_id, None)
             self.job.update_row(document_id, state='not-reached',
                                 counts={**(row.get('counts') or {}), UNANSWERED: True})
             return
@@ -3388,6 +3390,8 @@ class IgtRunner:
         job did not finish it, and goes on (REV-JG-4's job that ends done,
         never in use for it, REV D14)."""
         if document_id in self.server_off and self.unanswered[document_id] >= JOB_DEFER_ROUNDS:
+            # Never also "written as staged" (REV-JOIN18-3).
+            self.ran_out.pop(document_id, None)
             row = self.job.rows.get(document_id) or {}
             core_job.through_core(self.job, lambda: self.job.update_row(
                 document_id, state='not-reached', counts={**(row.get('counts') or {}), UNANSWERED: True}))

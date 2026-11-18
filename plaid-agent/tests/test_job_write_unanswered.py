@@ -73,3 +73,25 @@ def test_a_write_core_never_answers_for_ends_its_document_unanswered(monkeypatch
     notice = finished['report']['notice'] or ''
     assert '1 document was not worked: the server did not answer.' in notice, notice
     assert 'someone was editing' not in notice and "the job's step" not in notice, notice
+
+
+# REV-JOIN18-3: a document ended unanswered keeps no in-memory "written as
+# staged" mark, so its tally never says both.
+@pytest.mark.parametrize('how', ['end_unworked', 'end_if_unanswered'])
+def test_a_document_ended_unanswered_is_never_tallied_as_written_as_staged(how):
+    from plaid_agent.core.limits import JOB_DEFER_ROUNDS
+    from plaid_agent.igt.job import RAN_OUT
+    from plaid_agent.igt.project import load_project
+    client = JobClient({'d1': document('d1', 'Story', [{'words': ['blank']}])})
+    job = start(client, 'Check every gloss.', plan='document', fills=())
+    r = runner(job)
+    r.ran_out['d1'] = 'written'
+    if how == 'end_unworked':
+        r.end_unworked(load_project(client, job.project_id), 'd1', UNANSWERED)
+    else:
+        r.server_off['d1'] = RuntimeError('502')
+        r.unanswered['d1'] = JOB_DEFER_ROUNDS
+        r.end_if_unanswered('d1')
+    assert job.rows['d1']['state'] == 'not-reached'
+    counts = r.tally('d1', None).get('counts') or {}
+    assert counts.get(UNANSWERED) is True and RAN_OUT not in counts, counts
