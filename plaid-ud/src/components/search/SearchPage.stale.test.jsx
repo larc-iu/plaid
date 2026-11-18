@@ -128,7 +128,34 @@ const previewed = async () => {
   return view;
 };
 
-describe('a rewrite preview', () => {});
+describe('a rewrite preview', () => {
+  it('goes once the box no longer holds its rules, and comes back with them', async () => {
+    const view = await previewed();
+    await type(view, NUM);
+    expect(view.container.querySelector('[data-preview]')).toBe(null);
+    await type(view, 'pattern { X [upos=DET] }');
+    expect(view.container.querySelector('[data-preview]')).toBe(null);
+    expect(view.container.textContent).not.toContain('matching sentence');
+    await type(view, PRON);
+    expect(view.container.querySelector('[data-preview]')).not.toBe(null);
+    await view.unmount();
+  });
+
+  it('re-previews the rules it applied, not what the box says after', async () => {
+    const view = await previewed();
+    let finish;
+    runner.apply = vi.fn(() => new Promise((ok) => (finish = ok)));
+    await click(view, '[data-apply]');
+    await type(view, 'pattern { X [upos=DET] }');
+    await view.step(async () => finish({ failed: null }));
+    await view.step(async () => {});
+    expect(runner.plan).toHaveBeenCalledTimes(2);
+    const [first, second] = runner.plan.mock.calls.map((c) => c[1].grs);
+    expect(second).toBe(first);
+    expect(notes).toEqual([['ok', 'Changed.']]);
+    await view.unmount();
+  });
+});
 
 describe('the search results', () => {
   const HITS = Array.from({ length: 30 }, (_, i) => ({
@@ -137,6 +164,20 @@ describe('the search results', () => {
     text: `Sentence ${i + 1}.`,
     highlights: [],
   }));
+
+  it('counts the search shown, not the pattern typed since', async () => {
+    compiled.fn = vi.fn(() => ({ query: {}, warnings: [], nodes: ['X'], edges: [] }));
+    query.fn = async () => ({ results: HITS.slice(0, 1), count: 1 });
+    const view = await mount();
+    await type(view, 'pattern { X [upos=NOUN] }');
+    await press(view, 'Search');
+    await type(view, 'pattern { X [upos=VERB] }');
+    await click(view, '[data-count]');
+    const last = compiled.fn.mock.calls.at(-1);
+    expect(last[2].countBy).toEqual({ node: 'X', field: 'upos' });
+    expect(last[0]).toBe('pattern { X [upos=NOUN] }');
+    await view.unmount();
+  });
 
   it('keeps its page in the URL, and a new request opens on page 1', async () => {
     compiled.fn = () => ({ query: {}, warnings: [], nodes: [], edges: [] });

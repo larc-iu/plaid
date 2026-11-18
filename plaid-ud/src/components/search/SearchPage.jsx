@@ -70,7 +70,9 @@ export const SearchPage = () => {
   const [progress, setProgress] = useState('');
   const [applying, setApplying] = useState(false);
 
-  // Count-by: what the last search's pattern named, and the counts if asked for.
+  // Count-by: what the last search's pattern named and its text, and the
+  // counts if asked for. Counting and narrowing read that text, not the box,
+  // which may hold a pattern not yet run.
   const [patternParts, setPatternParts] = useState(null);
   const [counts, setCounts] = useState(null);
   const [counting, setCounting] = useState(false);
@@ -112,7 +114,7 @@ export const SearchPage = () => {
       limits: await getClient().server.limits(),
     });
     setWarnings(warns || []);
-    setPatternParts({ nodes, edges });
+    setPatternParts({ nodes, edges, text: queryText });
     setCounts(null);
     if (impossible) {
       setGroups([]);
@@ -137,7 +139,7 @@ export const SearchPage = () => {
       setCounting(true);
       setError(null);
       try {
-        const { query, impossible } = parseAndCompile(queryText, layerInfo, {
+        const { query, impossible } = parseAndCompile(patternParts.text, layerInfo, {
           projectId,
           countBy: spec,
           limits: await getClient().server.limits(),
@@ -154,16 +156,20 @@ export const SearchPage = () => {
         setCounting(false);
       }
     },
-    [queryText, layerInfo, projectId, getClient, reportError],
+    [patternParts, layerInfo, projectId, getClient, reportError],
   );
 
-  const runPreview = useCallback(async () => {
-    const grs = parseGrs(queryText);
-    const result = await planRewrite(getClient(), { project, user, layerInfo, grs }, setProgress);
-    const rows = result.rows.map((r) => ({ ...r, key: `${r.docId}:${r.id}` }));
-    setPlan({ ...result, rows, grs });
-    setSelected(new Set(rows.filter((r) => !r.error).map((r) => r.key)));
-  }, [queryText, project, user, layerInfo, getClient]);
+  // A preview is of the rules it was made from (`text`), and is shown only
+  // while the box still holds them.
+  const runPreview = useCallback(
+    async (grs, text) => {
+      const result = await planRewrite(getClient(), { project, user, layerInfo, grs }, setProgress);
+      const rows = result.rows.map((r) => ({ ...r, key: `${r.docId}:${r.id}` }));
+      setPlan({ ...result, rows, grs, text });
+      setSelected(new Set(rows.filter((r) => !r.error).map((r) => r.key)));
+    },
+    [project, user, layerInfo, getClient],
+  );
 
   const run = useCallback(async () => {
     if (!queryText.trim() || running) return;
@@ -185,7 +191,7 @@ export const SearchPage = () => {
     setSearched(false);
     setCounts(null);
     try {
-      if (isRewrite) await runPreview();
+      if (isRewrite) await runPreview(parseGrs(queryText), queryText);
       else await runSearch();
     } catch (err) {
       // The last search's results and notes are not this one's. They stay on
@@ -216,12 +222,12 @@ export const SearchPage = () => {
   // the quick box's does.
   const refine = useCallback(
     (node, field, value) => {
-      const next = refinePattern(queryText, node, field, value);
+      const next = refinePattern(patternParts.text, node, field, value);
       if (!next) return;
       setQueryText(next);
       setPendingRun(true);
     },
-    [queryText],
+    [patternParts],
   );
 
   useEffect(() => {
@@ -260,8 +266,9 @@ export const SearchPage = () => {
       const summary = applySummary(out, (failed) => humanizeError(failed));
       if (out.failed) notifyError(summary, 'Failed to apply the changes');
       else notifySuccess(summary);
-      // Show what the rules would still change now that these are applied.
-      await runPreview();
+      // Show what the same rules would still change now that these are
+      // applied.
+      await runPreview(plan.grs, plan.text);
     } catch (err) {
       notifyError(err, 'Failed to apply the changes');
     } finally {
@@ -315,15 +322,17 @@ export const SearchPage = () => {
             />
             {progress && <p className="text-sm text-muted-foreground">{progress}</p>}
             {plan ? (
-              <RewritePreview
-                rows={plan.rows}
-                selected={selected}
-                onSelect={setSelected}
-                hrefFor={sentenceHref}
-                canApply={canManage}
-                busy={applying}
-                onApply={apply}
-              />
+              plan.text === queryText && (
+                <RewritePreview
+                  rows={plan.rows}
+                  selected={selected}
+                  onSelect={setSelected}
+                  hrefFor={sentenceHref}
+                  canApply={canManage}
+                  busy={applying}
+                  onApply={apply}
+                />
+              )
             ) : (
               <>
                 {searched && patternParts && (
