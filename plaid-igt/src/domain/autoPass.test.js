@@ -368,6 +368,25 @@ describe('runBuiltinAnalysis: link precedent', () => {
     expect(doc.bulkLinkVocab.mock.calls[0][0].map((p) => p.vocabItemId)).toEqual(['kai1']);
   });
 
+  // SCL3-2: the server cuts a grouped count at its cap and says `truncated`.
+  // The rows are in entry-id order, so the cut drops the later entries
+  // whole: here kai1, linked twice for kai2's once. Linking on what is left
+  // would write kai2.
+  it('fails the run on a count the server cut, rather than linking on part of it', async () => {
+    const server = { a: ['kai1', 'kai1', 'kai2'], b: [] };
+    const doc = makeLinkDoc(server);
+    const whole = doc.client.query.getMockImplementation();
+    doc.client.query.mockImplementation(async (q) => {
+      const res = await whole(q);
+      if (!q.where.some((c) => c[0] === 'link-item')) return res;
+      return { results: res.results.filter((r) => r[0] !== 'kai1'), truncated: true };
+    });
+    await expect(runBuiltinAnalysis(doc, { copy: false, link: true })).rejects.toThrow(
+      'Too many links in the project to count.',
+    );
+    expect(doc.bulkLinkVocab).not.toHaveBeenCalled();
+  });
+
   it('fails the run when the project cannot be asked, rather than linking without it', async () => {
     const server = { b: ['kai2', 'kai2'] };
     const doc = makeLinkDoc(server);

@@ -99,6 +99,26 @@ const addLink = (tally, kind, form, itemId, n, machine) => {
 
 // ---- project queries ----
 
+/** A count the server cut at its cap (`truncated`): see `wholeAnswer`. */
+export class PrecedentTooLarge extends Error {
+  constructor() {
+    super('Too many links in the project to count.');
+    this.name = 'PrecedentTooLarge';
+  }
+}
+
+/**
+ * `res`, an answer to one of the queries below, or a throw when the server
+ * cut it at its cap. Grouped rows come back in key order, entry id first, so
+ * a cut answer leaves out every entry past the cut, and folded as if whole it
+ * makes a rarer entry of a form look like the only one (SCL3-2). A count is
+ * whole or it is not used.
+ */
+export function wholeAnswer(res) {
+  if (res?.truncated) throw new PrecedentTooLarge();
+  return res;
+}
+
 // One grouped query per vocab: how often each (form, item) pairing has been
 // linked, split by the kind of token that carries the link and by the link's
 // provenance. Row shape: [itemId, tokenValue, morphForm, role, morphType,

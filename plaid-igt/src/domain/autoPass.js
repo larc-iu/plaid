@@ -41,7 +41,7 @@ import {
   computeAutoLinkProposals,
   computeMweProposals,
 } from './autoLink.js';
-import { linkPrecedentQueries, createTally, foldLinkRows } from './precedent.js';
+import { linkPrecedentQueries, createTally, foldLinkRows, wholeAnswer } from './precedent.js';
 import { countOf } from '@ui/lib/plural.js';
 import { builtinDetail, builtinRun } from './builtinVersion.js';
 import { BUILTIN_ANALYSIS_COPY, BUILTIN_LINK_PRECEDENT } from './serviceDefaults.js';
@@ -229,10 +229,12 @@ async function remoteTalliesFor(
 // after the copy phase already holds what that phase wrote. Not the editor's
 // shared read (precedentCache.js), which can be minutes old and would write
 // by links since changed or entries since deleted. A failed query fails the
-// run: linking without the project's precedent would link by smallest id.
+// run: linking without the project's precedent would link by smallest id. So
+// does an answer the server cut at its cap (`wholeAnswer`), which would link
+// a form to whichever of its entries the cut left in.
 async function linkPrecedentFor(doc, vocabIds, ignoredCfg) {
   const queries = linkPrecedentQueries(vocabIds, { projectId: doc.projectId });
-  const results = await Promise.all(queries.map((q) => doc.client.query(q)));
+  const results = await Promise.all(queries.map((q) => doc.client.query(q).then(wholeAnswer)));
   return foldLinkRows(createTally(), results, ignoredCfg);
 }
 

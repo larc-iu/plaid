@@ -319,6 +319,39 @@ describe('precedentCache', () => {
     warn.mockRestore();
   });
 
+  // SCL3-2: an answer the server cut at its cap holds only the groups before
+  // the cut. Folded as if whole it would rank by part of the project, so it
+  // counts as no read, and is asked again only as often as a change is.
+  it('a count the server cut is no count, and is asked again only every few minutes', async () => {
+    const client = fakeClient({ a: [['kai', 'go']], b: [['kai', 'eat']] });
+    const real = client.query.getMockImplementation();
+    client.query.mockImplementation(async (q) => {
+      const res = await real(q);
+      return q.where[0][2].doc ? res : { ...res, truncated: true };
+    });
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const now = vi.spyOn(Date, 'now').mockReturnValue(2_000_000);
+    const a = docOf(client, 'a', [['kai', 'go']]);
+    await openPrecedent(a);
+    expect(precedentBase(a)).toBeNull();
+    expect(gloss(editorTally(a))).toEqual(new Map([['go', 1]]));
+    const calls = client.query.mock.calls.length;
+    now.mockReturnValue(2_000_000 + 61_000);
+    expect(openPrecedent(a)).toBeNull();
+    expect(client.query.mock.calls.length).toBe(calls);
+    client.query.mockImplementation(real);
+    now.mockReturnValue(2_000_000 + 5 * 60_000 + 1_000);
+    await openPrecedent(a);
+    expect(gloss(editorTally(a))).toEqual(
+      new Map([
+        ['go', 1],
+        ['eat', 1],
+      ]),
+    );
+    now.mockRestore();
+    warn.mockRestore();
+  });
+
   it('a document whose own read failed is not asked again on every render', async () => {
     const client = fakeClient({ a: [['kai', 'go']] });
     const real = client.query.getMockImplementation();

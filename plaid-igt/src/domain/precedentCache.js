@@ -75,12 +75,14 @@
 // during every count would count the project on every keystroke.
 
 import {
+  PrecedentTooLarge,
   createTally,
   foldDocument,
   foldProject,
   linkPrecedentQueries,
   mergeTally,
   valuePrecedentQueries,
+  wholeAnswer,
 } from './precedent.js';
 import { clearStored, closeStore, loginHash, readStored, writeStored } from './precedentStore.js';
 
@@ -92,6 +94,10 @@ const CHECK_EVERY_MS = 5 * 60_000;
 // asks on every render, and a server that is failing should not hear about
 // every keystroke.
 const RETRY_AFTER_FAIL_MS = 60_000;
+
+// A project too large to count (PrecedentTooLarge) is the same size a
+// minute later: it is asked again only as often as a change is looked for.
+const retryAfter = (project) => (project.tooLarge ? CHECK_EVERY_MS : RETRY_AFTER_FAIL_MS);
 
 // login -> Map(key -> entry). Keyed by server and token, not by the client
 // object: the editor builds a client per document (StrictModeContext), and
@@ -140,17 +146,21 @@ function entryFor(doc, create = true) {
 }
 
 // Both query families, run together. `docId` scopes them to one document.
+// An answer the server cut at its cap fails the read (`wholeAnswer`).
 async function fetchRows(doc, docId = null) {
   const client = doc.client;
   const [links, values] = await Promise.all([
     Promise.all(
       linkPrecedentQueries(vocabIdsOf(doc), { projectId: doc.projectId, docId }).map((q) =>
-        client.query(q),
+        client.query(q).then(wholeAnswer),
       ),
     ),
     Promise.all(
       valuePrecedentQueries(doc.layerInfo, { docId }).map(({ kind, field, query }) =>
-        client.query(query).then((results) => ({ kind, field, results })),
+        client
+          .query(query)
+          .then(wholeAnswer)
+          .then((results) => ({ kind, field, results })),
       ),
     ),
   ]);
@@ -444,6 +454,7 @@ function readProject(entry, doc, { restore = false, listed = null } = {}) {
     .catch((err) => {
       console.warn('Project precedent unavailable; using this document only:', err);
       next.failed = true;
+      next.tooLarge = err instanceof PrecedentTooLarge;
     })
     .finally(() => {
       next.promise = null;
@@ -525,7 +536,7 @@ export function openPrecedent(doc, { check = false } = {}) {
   const rec = entry.docs.get(doc.id);
   const stale =
     !project ||
-    (project.failed && !project.promise && Date.now() - project.fetchedAt > RETRY_AFTER_FAIL_MS) ||
+    (project.failed && !project.promise && Date.now() - project.fetchedAt > retryAfter(project)) ||
     outOfStep(project, rec, doc.id);
   if (stale) {
     // The project and this document are read side by side, so the rows
