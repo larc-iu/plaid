@@ -38,6 +38,8 @@ test('a document metadata value off its list is located', async ({ page }) => {
       }
     }
     await expect(row).toBeVisible();
+    // Bulk Edit cannot change a document's metadata (H2-12-4).
+    await expect(row.getByRole('link', { name: 'Fix in Bulk Edit' })).toHaveCount(0);
     await row.locator('button[title="Show occurrences"]').click();
     await expect(page.getByRole('link', { name: docName })).toBeVisible({ timeout: 10_000 });
     await expect(page.getByText('Failed to search for this value')).toHaveCount(0);

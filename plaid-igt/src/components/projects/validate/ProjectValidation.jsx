@@ -58,17 +58,15 @@ const locateMetadata = async (client, projectId, field, value) => {
   };
 };
 
+// Only an annotation field or a morpheme form can be replaced in Bulk Edit.
+const bulkFixable = (domain) => domain?.kind === 'span' || domain?.kind === 'morpheme';
+
 // Bulk Edit's field replace, filled in for one row: the field (or the morpheme
 // form), the value matched whole, and a replacement when the row has one.
-// Only a field or a morpheme form can be replaced there.
 const bulkFixHref = (projectId, domain, value, replacement = '') => {
-  const p = new URLSearchParams({ tab: 'bulk', op: 'field' });
-  if (domain?.kind === 'span' || domain?.kind === 'morpheme') {
-    p.set('in', domain.id);
-    p.set('q', value);
-    p.set('match', 'exact');
-    if (replacement) p.set('repl', replacement);
-  }
+  const p = new URLSearchParams({ tab: 'bulk', op: 'field', in: domain.id, q: value });
+  p.set('match', 'exact');
+  if (replacement) p.set('repl', replacement);
   return `/projects/${projectId}?${p}`;
 };
 
@@ -473,9 +471,11 @@ export const ProjectValidation = ({ project, projectId, client, onProjectUpdate 
                 <Plus className="h-3.5 w-3.5" /> Add to tagset
               </Button>
             )}
-            <Button size="sm" variant="ghost" asChild>
-              <Link to={bulkFixHref(projectId, g.domain, row.value)}>Fix in Bulk Edit</Link>
-            </Button>
+            {bulkFixable(g.domain) && (
+              <Button size="sm" variant="ghost" asChild>
+                <Link to={bulkFixHref(projectId, g.domain, row.value)}>Fix in Bulk Edit</Link>
+              </Button>
+            )}
           </div>
         </div>
 
