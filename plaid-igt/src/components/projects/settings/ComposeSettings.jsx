@@ -8,7 +8,12 @@ import { sortRows } from '@ui/lib/sortRows.js';
 import { timeAgo, fullTimestamp } from '@ui/lib/formatTime.js';
 import { usePagedList, TALL_LIST_PAGE_SIZE } from '@ui/hooks/usePagedList';
 import { notifyError } from '@/utils/feedback';
-import { expectStored, isConfigConflict } from '@ui/domain/configCells.js';
+import {
+  CHANGED_ELSEWHERE,
+  expectStored,
+  isConfigConflict,
+  withStoredConfig,
+} from '@ui/domain/configCells.js';
 import { IGT_NAMESPACE, readCompose } from '@/domain/igtConfig';
 import {
   builtInRow,
@@ -36,7 +41,13 @@ let nextUid = 0;
 const withUid = (row) => ({
   ...row,
   uid: `row-${nextUid++}`,
-  was: { code: row.code, char: row.char, description: row.description, modified: row.modified },
+  was: {
+    code: row.code,
+    char: row.char,
+    description: row.description,
+    origin: row.origin,
+    modified: row.modified,
+  },
 });
 
 // What a list of rows says, without the row identities or the order rows
@@ -45,8 +56,48 @@ const withUid = (row) => ({
 // saved and the list read back after it still compare equal.
 const rowsKey = (rows) =>
   JSON.stringify(
-    rows.map(({ uid: _uid, was: _was, modified: _modified, ...row }) => row).sort(byCode),
+    rows
+      .map(({ uid: _uid, was: _was, modified: _modified, elsewhere: _elsewhere, ...row }) => row)
+      .sort(byCode),
   );
+
+const sameRow = (a, b) =>
+  a.code === b.code &&
+  a.char === b.char &&
+  (a.description || '') === (b.description || '') &&
+  a.origin === b.origin;
+
+// The list read again (`now`) with this page's own edits on it. A row the
+// page did not change shows what is stored now. A row it changed keeps what
+// was typed, with what is stored now as `elsewhere` when someone else changed
+// it too. A row the page added stays, and one it deleted stays deleted.
+// `before` is the list the edits were made on, and `ours` says `now` is what
+// this page itself stored (so nobody else changed a row).
+const rebase = (draft, before, now, ours) => {
+  const mine = new Map(draft.filter((d) => d.was).map((d) => [d.was.code, d]));
+  const added = draft.filter((d) => !d.was);
+  const rows = [];
+  for (const n of now) {
+    const d = mine.get(n.code);
+    if (!d) {
+      if (!before.some((b) => b.code === n.code)) rows.push(n);
+      continue;
+    }
+    if (sameRow(d, d.was)) rows.push({ ...n, uid: d.uid });
+    else
+      rows.push({
+        ...d,
+        was: n.was,
+        elsewhere: ours || sameRow(n, d.was) || sameRow(n, d) ? null : n,
+      });
+  }
+  // A row changed here whose code is stored no more stays, as a new one.
+  for (const d of mine.values()) {
+    if (!sameRow(d, d.was) && !now.some((n) => n.code === d.was.code))
+      added.push({ ...d, was: null });
+  }
+  return [...added, ...rows];
+};
 
 const SORTS = {
   code: { sort: (r) => r.was.code },
@@ -75,6 +126,14 @@ const clashText = (other) => {
   return `${DUPLICATE_CODE.slice(0, -1)}: \\${other.code}${what}.`;
 };
 
+// "Changed elsewhere to ʔ (by Ana)." under a row someone else changed too.
+const elsewhereText = (r) => {
+  if (r.origin === 'removed') return 'Deleted elsewhere.';
+  const note = r.description || '';
+  const cut = note.length > NOTE_SHOWN ? `${note.slice(0, NOTE_SHOWN)}…` : note;
+  return `Changed elsewhere to ${r.char}${cut ? ` (${cut})` : ''}.`;
+};
+
 const edited = (r) =>
   !r.was ||
   r.code !== r.was.code ||
@@ -99,15 +158,19 @@ export const ComposeSettings = ({ project, projectId, client, onProjectUpdate })
   const [saving, setSaving] = useState(false);
   const [q, setQ] = useState('');
 
-  // Re-sync when the project reloads, unless the list holds edits not saved
-  // yet: those stay.
+  // Re-sync when the project reloads. Edits not saved yet stay, on the list
+  // as stored now.
   const prevSaved = useRef(saved);
+  // The list this page last stored, as rowsKey gives it.
+  const wrote = useRef(null);
   useEffect(() => {
-    const prev = rowsKey(prevSaved.current);
+    const before = prevSaved.current;
     prevSaved.current = saved;
     setDraft((d) => {
       const key = rowsKey(d);
-      return key === prev || key === rowsKey(saved) ? saved : d;
+      return key === rowsKey(before) || key === rowsKey(saved)
+        ? saved
+        : rebase(d, before, saved, rowsKey(saved) === wrote.current);
     });
   }, [saved]);
 
@@ -252,13 +315,17 @@ export const ComposeSettings = ({ project, projectId, client, onProjectUpdate })
       const stamped = draft.map((r) =>
         r.origin !== 'removed' && edited(r) ? { ...r, modified: now } : r,
       );
+      const value = { ...existing, ...rowsToConfig(stamped) };
       await client.projects.setConfig(
         projectId,
         IGT_NAMESPACE,
         'compose',
-        { ...existing, ...rowsToConfig(stamped) },
+        value,
         undefined,
         expectStored(project, IGT_NAMESPACE, 'compose'),
+      );
+      wrote.current = rowsKey(
+        composeRows(withStoredConfig(project, IGT_NAMESPACE, 'compose', value).config),
       );
       // Save stays held until the project is read again, so a next save
       // expects what this one stored. The save has landed by now, so a read
@@ -268,8 +335,8 @@ export const ComposeSettings = ({ project, projectId, client, onProjectUpdate })
       );
     } catch (err) {
       console.error('Failed to save the project codes:', err);
-      notifyError(err, 'Failed to save the codes');
-      // Someone else saved since: show what is stored now.
+      // Someone else saved since: show what is stored now, the edits on it.
+      notifyError(isConfigConflict(err) ? CHANGED_ELSEWHERE : err, 'Failed to save the codes');
       if (isConfigConflict(err)) onProjectUpdate?.();
     } finally {
       setSaving(false);
@@ -401,6 +468,11 @@ export const ComposeSettings = ({ project, projectId, client, onProjectUpdate })
                       </Button>
                     </div>
                   </div>
+                  {row.elsewhere && (
+                    <p className="px-3 pt-1 text-xs text-muted-foreground">
+                      {elsewhereText(row.elsewhere)}
+                    </p>
+                  )}
                   {problems.map((p) => {
                     const other = p === DUPLICATE_CODE ? clashOf(row) : null;
                     return (

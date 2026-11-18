@@ -4,7 +4,12 @@ import { Button } from '@ui/components/ui/button';
 import { Input } from '@ui/components/ui/input';
 import { Label } from '@ui/components/ui/label';
 import { notifyError } from '@/utils/feedback';
-import { expectStored, isConfigConflict } from '@ui/domain/configCells.js';
+import {
+  CHANGED_ELSEWHERE,
+  expectStored,
+  isConfigConflict,
+  sameConfig,
+} from '@ui/domain/configCells.js';
 import { readLanguages, IGT_NAMESPACE } from '@/domain/igtConfig';
 import { isLangTag } from '@/domain/fieldNames';
 import { TYPE } from '@ui/lib/typeScale.js';
@@ -42,7 +47,30 @@ const asStored = (draft) => {
   return { object: one(draft.object), meta: one(draft.meta) };
 };
 
-const Field = ({ id, label, value, onChange, placeholder, hint, invalid }) => (
+// The form read again (`now`) with this page's own edits on it. A field the
+// page did not change shows what is stored now. A field it changed keeps what
+// was typed, and `elsewhere` holds what is stored now when someone else
+// changed it too. `before` is what the edits were made on.
+const rebase = (draft, before, now) => {
+  const mine = asStored(draft);
+  const next = {
+    object: { ...now.object },
+    meta: { ...now.meta },
+    elsewhere: { object: {}, meta: {} },
+  };
+  for (const g of ['object', 'meta']) {
+    for (const k of Object.keys(now[g])) {
+      if (sameConfig(mine[g][k], before[g][k])) continue;
+      next[g][k] = draft[g][k];
+      if (!sameConfig(now[g][k], before[g][k]) && !sameConfig(now[g][k], mine[g][k])) {
+        next.elsewhere[g][k] = now[g][k];
+      }
+    }
+  }
+  return next;
+};
+
+const Field = ({ id, label, value, onChange, placeholder, hint, invalid, elsewhere }) => (
   <div className="flex flex-col gap-1.5">
     <Label htmlFor={id} className="text-xs font-normal text-muted-foreground">
       {label}
@@ -56,11 +84,19 @@ const Field = ({ id, label, value, onChange, placeholder, hint, invalid }) => (
       aria-invalid={invalid || undefined}
     />
     {invalid && hint && <p className="text-xs text-muted-foreground">{hint}</p>}
+    {elsewhere !== undefined && (
+      <p className="text-xs text-muted-foreground">
+        {elsewhere === null || elsewhere === ''
+          ? 'Cleared elsewhere.'
+          : `Changed elsewhere to ${elsewhere}.`}
+      </p>
+    )}
   </div>
 );
 
-const LanguageGroup = ({ prefix, title, description, lang, onChange, coordinates }) => {
+const LanguageGroup = ({ prefix, title, description, lang, onChange, coordinates, elsewhere }) => {
   const set = (patch) => onChange({ ...lang, ...patch });
+  const theirs = (k) => (Object.hasOwn(elsewhere, k) ? elsewhere[k] : undefined);
   return (
     <div
       role="group"
@@ -75,6 +111,7 @@ const LanguageGroup = ({ prefix, title, description, lang, onChange, coordinates
       </div>
       <Field
         id={`${prefix}-name`}
+        elsewhere={theirs('name')}
         label="Name"
         value={lang.name}
         placeholder="e.g. Lezgian"
@@ -83,6 +120,7 @@ const LanguageGroup = ({ prefix, title, description, lang, onChange, coordinates
       <div className="grid grid-cols-3 gap-3">
         <Field
           id={`${prefix}-tag`}
+          elsewhere={theirs('tag')}
           label="Writing system tag"
           value={lang.tag}
           placeholder="e.g. lez"
@@ -92,6 +130,7 @@ const LanguageGroup = ({ prefix, title, description, lang, onChange, coordinates
         />
         <Field
           id={`${prefix}-glottocode`}
+          elsewhere={theirs('glottocode')}
           label="Glottocode"
           value={lang.glottocode}
           placeholder="e.g. lezg1247"
@@ -101,6 +140,7 @@ const LanguageGroup = ({ prefix, title, description, lang, onChange, coordinates
         />
         <Field
           id={`${prefix}-iso`}
+          elsewhere={theirs('iso639P3')}
           label="ISO 639-3"
           value={lang.iso639P3}
           placeholder="e.g. lez"
@@ -113,6 +153,7 @@ const LanguageGroup = ({ prefix, title, description, lang, onChange, coordinates
         <div className="grid grid-cols-2 gap-3">
           <Field
             id={`${prefix}-lat`}
+            elsewhere={theirs('latitude')}
             label="Latitude"
             value={lang.latitude ?? ''}
             placeholder="e.g. 41.5"
@@ -122,6 +163,7 @@ const LanguageGroup = ({ prefix, title, description, lang, onChange, coordinates
           />
           <Field
             id={`${prefix}-lon`}
+            elsewhere={theirs('longitude')}
             label="Longitude"
             value={lang.longitude ?? ''}
             placeholder="e.g. 48.0"
@@ -146,13 +188,13 @@ export const LanguagesSettings = ({ project, projectId, client, onProjectUpdate 
   const [draft, setDraft] = useState(saved);
   const [saving, setSaving] = useState(false);
 
-  // Re-sync when the project reloads, so the form shows what the server has,
-  // unless the form holds edits not saved yet: those stay.
+  // Re-sync when the project reloads, so the form shows what the server has.
+  // Edits not saved yet stay, on what is stored now.
   const prevSaved = useRef(saved);
   useEffect(() => {
-    const prev = JSON.stringify(prevSaved.current);
+    const before = prevSaved.current;
     prevSaved.current = saved;
-    setDraft((d) => (JSON.stringify(asStored(d)) === prev ? saved : d));
+    setDraft((d) => (sameConfig(asStored(d), before) ? saved : rebase(d, before, saved)));
   }, [saved]);
 
   const stored = asStored(draft);
@@ -174,6 +216,8 @@ export const LanguagesSettings = ({ project, projectId, client, onProjectUpdate 
         undefined,
         expectStored(project, IGT_NAMESPACE, 'languages'),
       );
+      // What the edits made after this save are made on.
+      prevSaved.current = stored;
       // Save stays held until the project is read again, so a next save
       // expects what this one stored. The save has landed by now, so a read
       // that fails is not a failed save.
@@ -182,8 +226,8 @@ export const LanguagesSettings = ({ project, projectId, client, onProjectUpdate 
       );
     } catch (err) {
       console.error('Failed to save project languages:', err);
-      notifyError(err, 'Failed to save the languages');
-      // Someone else saved since: show what is stored now.
+      // Someone else saved since: show what is stored now, the edits on it.
+      notifyError(isConfigConflict(err) ? CHANGED_ELSEWHERE : err, 'Failed to save the languages');
       if (isConfigConflict(err)) onProjectUpdate?.();
     } finally {
       setSaving(false);
@@ -214,6 +258,7 @@ export const LanguagesSettings = ({ project, projectId, client, onProjectUpdate 
             title="Object language"
             description="The language of the baseline text."
             lang={draft.object}
+            elsewhere={draft.elsewhere?.object ?? {}}
             coordinates
             onChange={(object) => setDraft((d) => ({ ...d, object }))}
           />
@@ -222,6 +267,7 @@ export const LanguagesSettings = ({ project, projectId, client, onProjectUpdate 
             title="Meta language"
             description="The language glosses and translations are written in."
             lang={draft.meta}
+            elsewhere={draft.elsewhere?.meta ?? {}}
             onChange={(meta) => setDraft((d) => ({ ...d, meta }))}
           />
         </div>

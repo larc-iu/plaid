@@ -29,6 +29,11 @@ export const expectStored = (entity, namespace, key) => ({
 /** A write refused because the cell changed since it was read. */
 export const isConfigConflict = (error) => statusOf(error) === 409;
 
+/** What a form says of such a refusal when it shows what is stored now with
+ * the person's own edits on it. */
+export const CHANGED_ELSEWHERE =
+  'Changed elsewhere. Now showing the latest version with your edit. Save again.';
+
 // JSON with every object's keys in order, which is how the server compares
 // two config values.
 const canonical = (value) =>
