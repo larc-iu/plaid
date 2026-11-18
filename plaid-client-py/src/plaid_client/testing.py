@@ -1126,6 +1126,9 @@ class FakeClient:
         #: {'kind', 'ref'} each operation was begun with, index for index
         #: with ``operations``
         self.operation_tags = []
+        #: the group ids of the operations something was written in, as the
+        #: audit log holds them (a job read's ``wrote``)
+        self.written_groups = set()
         #: {'tokens.bulk_create': <exception>} -- raised when that call is made.
         self.fails = dict(fails or {})
         self.project = project
@@ -1451,6 +1454,8 @@ class FakeClient:
             if self._operation_depth == 0 and not any(
                     kind not in _NOT_WRITES for kind, _ in self.calls[start:]):
                 self.operation_labels[op._index] = message
+            if any(kind not in _NOT_WRITES for kind, _ in self.calls[start:]):
+                self.written_groups.add(op.id)
 
     @property
     def audit(self):
@@ -2233,7 +2238,10 @@ class _FakeJobs:
 
     def get(self, job_id):
         self.calls.append(('get', {'job_id': job_id}))
-        return self._shape(self._job(job_id, 'GET', f'/api/v1/jobs/{job_id}'))
+        job = self._job(job_id, 'GET', f'/api/v1/jobs/{job_id}')
+        # As core's: History holds a write under a group the job's rows name.
+        groups = {g for r in job['documents'] for g in (r.get('gloss_group'), r.get('harmonize_group')) if g}
+        return {**self._shape(job), 'wrote': bool(groups & getattr(self._client, 'written_groups', set()))}
 
     def pieces(self, job_id):
         """What the job has done so far, newest first: its decision rows of
