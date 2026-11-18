@@ -223,6 +223,22 @@ describe('the Overview of an ended job', () => {
     await v.unmount();
   });
 
+  it('draws no To check list for an undone job', async () => {
+    const undone = {
+      ...ENDED,
+      undone: { operation: 'op1', time: '2026-11-12T12:00:00Z', user: 'w' },
+    };
+    const client = clientOf(undone);
+    client.documents = { auditPage: vi.fn(async () => ({ entries: [] })) };
+    const v = await mount(client);
+    expect(text(v.container.querySelector('[data-testid="job-headline"]'))).toBe(
+      `Changed 58 sentences in ${N - 1} of ${N} documents, then undone.`,
+    );
+    expect(byText(v.container, 'h3', 'To check')).toBeNull();
+    expect(byText(v.container, 'h3', 'What the job had written')).not.toBeNull();
+    await v.unmount();
+  });
+
   it('says Nothing. when nothing needs a person', async () => {
     const clean = {
       ...ENDED,

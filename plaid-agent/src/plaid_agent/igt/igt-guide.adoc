@@ -1122,7 +1122,7 @@ Under a document in **Left blank**, **Not done, refused:** lists the changes the
 * **Outside the part's own sentences**: the change was in a sentence the part was not given.
 
 A job that fills nothing, such as a check, shows its **Findings** first in its report, in full, with **Copy** and **Written by the assistant, not checked against the counts below.**
-A job that is undone says so in its state line and its opening sentence, and its totals read **What the job had written**.
+A job that is undone says so in its state line and its opening sentence, has no **To check** list, and its totals read **What the job had written**.
 
 == A job's changes
 

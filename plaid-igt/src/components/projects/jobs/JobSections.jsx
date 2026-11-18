@@ -166,7 +166,10 @@ export const ReportOverview = ({ job, sectionHref, sections }) => {
       {findings && (
         <JobFindings findings={findings} pieces={report.findingsPieces} cut={report.findingsCut} />
       )}
-      <ToCheck rows={toCheckRows(job)} sectionHref={sectionHref} sections={sections} />
+      {/* An undone job's writes are taken back: nothing of them is to check. */}
+      {!job.undone && (
+        <ToCheck rows={toCheckRows(job)} sectionHref={sectionHref} sections={sections} />
+      )}
       {report && <TotalsList report={report} undone={job.undone ?? null} />}
       {report && <AssistantSummary report={report} />}
     </section>
