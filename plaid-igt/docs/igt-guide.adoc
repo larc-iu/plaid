@@ -858,7 +858,8 @@ One run by anyone else answers only the person who runs it.
 A reply lands whether or not the page stays open, so you can leave, reload, or close the browser and find the answer when you come back.
 A conversation is worked on in one tab at a time.
 Opened in a second tab it is read-only, and **Continue here** moves it to that tab.
-**Stop** ends a turn early, even while the model is still working on its answer, and **Retry** sends the question again. After a turn that failed, Retry continues from the steps that turn had done.
+**Stop** ends a turn early, even while the model is still working on its answer, and **Retry** sends the question again.
+After a turn that failed, Retry continues from the steps that turn had done.
 
 Conversations are private to you, though your server's administrators can read them.
 They are kept per project, listed on the left of the tab, and each has its own link. **All projects** widens the list.

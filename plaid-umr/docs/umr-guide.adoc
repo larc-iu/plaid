@@ -397,7 +397,8 @@ Ask again to have it planned on the current text.
 A plan that stops partway reads **Partly applied**, and the assistant can be asked to finish it.
 
 A reply is saved as it arrives, so it is there when the conversation is next opened, even if you closed the tab.
-**Stop** ends a turn early, even while the model is still working on its answer, and **Retry** asks the question again. After a turn that failed, Retry continues from the steps that turn had done.
+**Stop** ends a turn early, even while the model is still working on its answer, and **Retry** asks the question again.
+After a turn that failed, Retry continues from the steps that turn had done.
 A conversation is open for writing in one tab at a time, and **Continue here** in another tab moves it there.
 
 Conversations are private to you and kept per project, though your server's administrator can read them.
