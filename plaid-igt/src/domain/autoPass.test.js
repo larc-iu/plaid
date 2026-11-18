@@ -76,6 +76,7 @@ describe('runBuiltinAnalysis: stopping', () => {
       copiedWordIds: [],
       linked: 0,
       linkCut: false,
+      unranked: 0,
       ok: true,
       stopped: true,
     });
@@ -140,6 +141,7 @@ describe('runBuiltinAnalysis: stopping', () => {
       copiedWordIds: [],
       linked: 0,
       linkCut: false,
+      unranked: 0,
       ok: true,
       stopped: false,
     });
@@ -387,14 +389,17 @@ describe('runBuiltinAnalysis: link precedent', () => {
   // whole: here kai1, linked twice for kai2's once. Linking on what is left
   // would write kai2.
   // REV-CP-3: the run still ends, says the count was cut, and links the
-  // multi-word expressions, which need no project count.
-  it('links no word on a count the server cut, and ends saying so', async () => {
+  // multi-word expressions, which need no project count. A form with one
+  // entry is linked, a form with several (kai) is counted and left.
+  it('links only forms with one entry on a count the server cut, and ends saying so', async () => {
     const server = { a: ['kai1', 'kai1', 'kai2'], b: ['kai1'] };
     const doc = makeLinkDoc(server);
     doc.vocabularies.v1.items = [
       ...items,
+      { id: 'ri1', form: 'ri' },
       { id: 'mwe1', form: 'kai kai', metadata: { morphType: 'phrase' } },
     ];
+    doc.sentences[0].tokens.push({ id: 't-ri', content: 'ri', vocabItem: null, morphemes: [] });
     doc.bulkLinkMwes.mockImplementation(async (proposals) => proposals.length);
     const whole = doc.client.query.getMockImplementation();
     doc.client.query.mockImplementation(async (q) => {
@@ -403,8 +408,8 @@ describe('runBuiltinAnalysis: link precedent', () => {
       return { results: res.results.filter((r) => r[0] !== 'kai1'), truncated: true };
     });
     const res = await runBuiltinAnalysis(doc, { copy: false, link: true });
-    expect(res).toMatchObject({ ok: true, linked: 1, linkCut: true });
-    expect(doc.bulkLinkVocab).not.toHaveBeenCalled();
+    expect(res).toMatchObject({ ok: true, linked: 2, linkCut: true, unranked: 1 });
+    expect(doc.bulkLinkVocab.mock.calls[0][0].map((p) => p.vocabItemId)).toEqual(['ri1']);
     expect(doc.bulkLinkMwes.mock.calls[0][0].map((p) => p.vocabItemId)).toEqual(['mwe1']);
   });
 

@@ -143,12 +143,14 @@ function dropCoveredHeadwords(maps, parentOf) {
 
 // Resolution tiers, first hit wins: exact precedent (same kind, then any) >
 // exact item > casefolded precedent > casefolded item. Among multiple items
-// sharing a form, the lexicographically smallest id is taken. A word token
+// sharing a form, the lexicographically smallest id is taken, or with
+// `soleOnly` none: SEVERAL says the form has more than one. A word token
 // sees no bound-form entry at any tier, and no single token sees a
 // phrase-typed one (those are for multi-word expressions, see
 // computeMweProposals). Returns null only when nothing matches at any tier.
 const smallestId = (ids) => (ids && ids.length ? ids.reduce((a, b) => (b < a ? b : a)) : null);
-function resolveForm(form, kind, precedent, items) {
+const SEVERAL = Symbol('several entries');
+function resolveForm(form, kind, precedent, items, soleOnly = false) {
   // `known`: a precedent read before an entry was deleted or merged away
   // still names it, and a link to it would be a link to nothing.
   const ok = (id) =>
@@ -158,7 +160,10 @@ function resolveForm(form, kind, precedent, items) {
     !items.phrase.has(id)
       ? id
       : null;
-  const pick = (ids) => smallestId((ids || []).filter((id) => ok(id)));
+  const pick = (ids) => {
+    const fit = (ids || []).filter((id) => ok(id));
+    return soleOnly && fit.length > 1 ? SEVERAL : smallestId(fit);
+  };
   const p = ok(precedentFor(precedent, form, kind));
   if (p) return p;
   const exact = pick(items.exact.get(nfc(form)));
@@ -211,17 +216,26 @@ function hasForm(items, id, form) {
 // links came with their glosses as one analysis (H17-IGT-EDIT-2). What such a
 // word or morpheme has no link for is filled like any other, so one run links
 // what a second run would (H5-5).
+//
+// `soleOnly`: the project's link count was cut at the server's cap, so no
+// precedent ranks the entries of a form. A form with exactly one entry is
+// linked, and a form with several is not (REV-CP-3, the owner's option b).
+// Each word or morpheme so left without a link goes into `unranked` (a Set),
+// a word whose only morpheme went in already not again.
 export function computeAutoLinkProposals({
   sentences,
   vocabularies,
   precedent,
   ignoredCfg = null,
   leave = [],
+  soleOnly = false,
+  unranked = new Set(),
 }) {
   const left = new Set(leave);
+  const tally = soleOnly ? null : precedent;
   const items = buildItemIndex(vocabularies);
   const proposals = [];
-  const consider = (entity, form, kind, keepLinks = false) => {
+  const consider = (entity, form, kind, keepLinks = false, counted = false) => {
     if (keepLinks && entity.vocabItem) return;
     // A zero morph is never auto-linked. Its form carries no information to
     // match on, so with one ∅ entry in the lexicon every zero in the project
@@ -231,7 +245,11 @@ export function computeAutoLinkProposals({
     if (isZeroMorph(form)) return;
     const { open, currentItemId } = linkTarget(entity, form ?? '', items);
     if (!open) return;
-    const itemId = resolveForm(form ?? '', kind, precedent, items);
+    const itemId = resolveForm(form ?? '', kind, tally, items, soleOnly);
+    if (itemId === SEVERAL) {
+      if (!currentItemId && !counted) unranked.add(entity.id);
+      return;
+    }
     if (!itemId || itemId === currentItemId) return;
     proposals.push({ tokenId: entity.id, vocabItemId: itemId, form, kind });
   };
@@ -252,7 +270,13 @@ export function computeAutoLinkProposals({
     // Word forms lose edge punctuation by the project's ignore rule (the
     // same trim the popover's "+ Create" applies): `derechos.` links to
     // `derechos`. Morpheme forms are used verbatim.
-    consider(t, trimIgnoredEdges(t.content ?? '', ignoredCfg), KINDS.WORD, left.has(t.id));
+    consider(
+      t,
+      trimIgnoredEdges(t.content ?? '', ignoredCfg),
+      KINDS.WORD,
+      left.has(t.id),
+      ms.length === 1 && unranked.has(ms[0].id),
+    );
   }
   return proposals;
 }

@@ -379,7 +379,7 @@ export const AutoAnalyzeDialog = ({ open, onOpenChange, doc }) => {
           builtinStep('link');
           const {
             linked,
-            linkCut,
+            unranked,
             ok,
             stopped: wasStopped,
           } = await runBuiltinAnalysis(doc, {
@@ -397,8 +397,10 @@ export const AutoAnalyzeDialog = ({ open, onOpenChange, doc }) => {
             parts.push(`linked ${countOf(linked, 'word')}/${plural(linked, 'morpheme')}`);
             wrote = true;
           }
-          if (linkCut) {
-            parts.push('did not link words or morphemes: too many links in the project to count');
+          if (unranked) {
+            parts.push(
+              `did not link ${countOf(unranked, 'word')}/${plural(unranked, 'morpheme')} whose form has several entries: too many links in the project to count`,
+            );
           }
         } else {
           at('link');

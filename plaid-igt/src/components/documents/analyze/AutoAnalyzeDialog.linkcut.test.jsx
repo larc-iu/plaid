@@ -95,14 +95,14 @@ describe('Auto-analyze on a link count the server cut', () => {
     steps({ translate: false, copy: true, analyze: false, link: true });
     runBuiltinAnalysis
       .mockResolvedValueOnce({ ok: true, copied: 2, copiedWordIds: ['w1', 'w2'], linked: 0 })
-      .mockResolvedValueOnce({ ok: true, linked: 0, linkCut: true });
+      .mockResolvedValueOnce({ ok: true, linked: 4, linkCut: true, unranked: 3 });
     const { view } = await mount();
     await view.step(() => view.container.querySelector('[data-run]').click());
     await view.step(async () => {});
     expect(runBuiltinAnalysis).toHaveBeenCalledTimes(2);
     expect(notifyError).not.toHaveBeenCalled();
     expect(notifySuccess.mock.calls[0][0]).toBe(
-      'Copied previous analyses onto 2 words, did not link words or morphemes: too many links in the project to count. Shown in violet until confirmed.',
+      'Copied previous analyses onto 2 words, linked 4 words/morphemes, did not link 3 words/morphemes whose form has several entries: too many links in the project to count. Shown in violet until confirmed.',
     );
     await view.unmount();
   });

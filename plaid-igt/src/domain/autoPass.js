@@ -66,9 +66,11 @@ const checkpoint = (shouldStop) => {
 //   leave        — words whose links (and their morphemes') the link phase
 //                  keeps, filling only what has none: the ones a copy phase
 //                  run before analyzed (H17-IGT-EDIT-2, H5-5)
-// Returns { copied, copiedWordIds, linked, linkCut, ok, stopped }. `linkCut`
-// says the project's link count was cut at the server's cap, so the link
-// phase linked no single word or morpheme (see linkPhase). `copiedWordIds` names
+// Returns { copied, copiedWordIds, linked, linkCut, unranked, ok, stopped }.
+// `linkCut` says the project's link count was cut at the server's cap, so the
+// link phase linked only forms with one entry, and `unranked` counts the words
+// and morphemes it left unlinked for having several (see linkPhase).
+// `copiedWordIds` names
 // the words the copy phase wrote, so the dialog can tell the model step to
 // leave them. Copy runs first so the linker doesn't
 // re-handle words a copy just analyzed; a phase that fails (the mutation
@@ -98,6 +100,7 @@ export async function runBuiltinAnalysis(
   let copiedWordIds = [];
   let linked = 0;
   let linkCut = false;
+  let unranked = 0;
   try {
     if (copy) {
       const res = await runCopyPhase(doc, copyContents, onProgress, shouldStop);
@@ -108,13 +111,13 @@ export async function runBuiltinAnalysis(
     if (link) {
       const res = await runLinkPhase(doc, onProgress, shouldStop, [...leave, ...copiedWordIds]);
       if (res === false) return { copied, copiedWordIds, linked, ok: false, stopped: false };
-      ({ linked, cut: linkCut } = res);
+      ({ linked, cut: linkCut, unranked } = res);
     }
   } catch (err) {
     if (!(err instanceof Stopped)) throw err;
-    return { copied, copiedWordIds, linked, linkCut, ok: true, stopped: true };
+    return { copied, copiedWordIds, linked, linkCut, unranked, ok: true, stopped: true };
   }
-  return { copied, copiedWordIds, linked, linkCut, ok: true, stopped: false };
+  return { copied, copiedWordIds, linked, linkCut, unranked, ok: true, stopped: false };
 }
 
 // { copied, copiedWordIds } (the count and the words it was proposed for), or
@@ -258,10 +261,13 @@ async function runLinkPhase(doc, onProgress, shouldStop, leave = []) {
   );
 }
 
-// { linked, cut }: the number of links written, and whether the project's
-// link count was cut (then no single word or morpheme is linked, and the
-// multi-word expressions, which need no project count, still are). False on
-// mutation failure. Throws Stopped as the copy phase does. The two writes below are each preceded by a checkpoint, so a
+// { linked, cut, unranked }: the number of links written, whether the
+// project's link count was cut, and then how many words and morphemes were
+// left unlinked. On a cut count a form with one entry is linked and a form
+// with several is not, since nothing ranks them (computeAutoLinkProposals'
+// `soleOnly`), and the multi-word expressions, which need no project count,
+// are linked as always. False on mutation failure. Throws Stopped as the copy
+// phase does. The two writes below are each preceded by a checkpoint, so a
 // stop lands between them rather than inside one.
 async function linkPhase(
   doc,
@@ -271,19 +277,20 @@ async function linkPhase(
   leave = [],
 ) {
   const vocabIds = Object.keys(doc.vocabularies || {});
-  if (!vocabIds.length) return { linked: 0, cut: false };
+  if (!vocabIds.length) return { linked: 0, cut: false, unranked: 0 };
   onProgress({ percent: null, message: 'Reading the lexicon…' });
   const ignoredCfg = readIgnoredTokens(doc.layerInfo.primaryTokenLayer?.config);
   const precedent = await linkPrecedentFor(doc, vocabIds, ignoredCfg);
-  const proposals = precedent
-    ? computeAutoLinkProposals({
-        sentences: doc.sentences,
-        vocabularies: doc.vocabularies,
-        precedent,
-        ignoredCfg,
-        leave,
-      })
-    : [];
+  const unranked = new Set();
+  const proposals = computeAutoLinkProposals({
+    sentences: doc.sentences,
+    vocabularies: doc.vocabularies,
+    precedent,
+    ignoredCfg,
+    leave,
+    soleOnly: !precedent,
+    unranked,
+  });
   const stamp = { detail: await builtinDetail(BUILTIN_LINK_PRECEDENT), ...run };
   let linked = 0;
   if (proposals.length) {
@@ -307,5 +314,5 @@ async function linkPhase(
     if (n === false) return false;
     linked += n;
   }
-  return { linked, cut: !precedent };
+  return { linked, cut: !precedent, unranked: unranked.size };
 }

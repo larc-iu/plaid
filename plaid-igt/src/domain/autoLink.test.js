@@ -56,6 +56,33 @@ describe('computeAutoLinkProposals', () => {
     ]);
   });
 
+  // On a link count the server cut, nothing ranks one entry of a form over
+  // another: a form with one entry is linked, a form with several is left
+  // unlinked and named in `unranked` (one per word or morpheme, a word whose
+  // only morpheme is named not named again). A link already there stays.
+  it('with soleOnly, links a form with one entry and leaves one with several', () => {
+    const unranked = new Set();
+    const sentences = sentence([
+      word('w1', 'Todos'),
+      word('w2', 'se'),
+      word('w3', 'se', null, [morph('m3', 'se')]),
+      word('w4', 'se', { id: 'i-se2', prov: 'machine', provSource: AUTO_LINK_SOURCE }),
+      word('w5', 'prec'),
+    ]);
+    const proposals = computeAutoLinkProposals({
+      sentences,
+      vocabularies: VOCABS,
+      precedent: precedentOf(res([['i-se2', 'se', null, 'word', null, null, null, 5]])),
+      soleOnly: true,
+      unranked,
+    });
+    expect(proposals.map((p) => [p.tokenId, p.vocabItemId])).toEqual([
+      ['w1', 'i-all'],
+      ['w5', 'i-prec'],
+    ]);
+    expect([...unranked].sort()).toEqual(['m3', 'w2']);
+  });
+
   it('leaves the words the same run just copied an analysis onto, with their morphemes (H17-IGT-EDIT-2)', () => {
     // The copy phase linked "se" to i-se2 with its glosses. The project's
     // precedent for "se" is i-se1, which would otherwise relink it.
