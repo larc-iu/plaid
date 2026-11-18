@@ -17,7 +17,10 @@
 ;; is fragile across JDBC pools).
 (defonce ^:private shared-db-file
   (let [f (java.io.File/createTempFile "plaid-test-" ".db")]
-    (.deleteOnExit f)
+    ;; The pool is never closed, so SQLite leaves its -wal and -shm beside the
+    ;; database: those go at exit too, or every run leaves up to a gigabyte.
+    (doseq [suffix ["" "-wal" "-shm"]]
+      (.deleteOnExit (java.io.File. (str (.getAbsolutePath f) suffix))))
     (.delete f)
     (.getAbsolutePath f)))
 
