@@ -411,10 +411,10 @@
         (is (= #{(str doc-id ".mp3") (str new-id ".mp3")} (media-files))
             "the copy has its own file")))))
 
-(deftest a-copy-says-its-media-was-not-copied-with-or-without-an-idempotency-key
-  ;; H2-6-1: a single write sent with a key runs in a transaction of its
-  ;; own, which holds the media copy for the commit, and the media-error
-  ;; was read before the copy ran. Both clients send a key with every write.
+(deftest a-copy-that-could-not-take-its-media-answers-as-documented
+  ;; H2-6-1: without an Idempotency-Key the copy answers media-error. With
+  ;; one it runs in a transaction of its own, its media copy waits for the
+  ;; commit, and its answer says nothing: the copy's media-url does.
   (with-temp-media-dir
     (fn []
       (let [proj (create-test-project admin-request "CopyMedia")
@@ -425,7 +425,9 @@
                                 (-> (admin-request :post (str "/api/v1/documents/" doc-id "/copy"))
                                     (mock/json-body {:name name})
                                     (mock/header "Idempotency-Key" key)))]
-                      {:status (:status resp) :body (parse-response-body resp)}))]
+                      {:status (:status resp) :body (parse-response-body resp)}))
+            media-url (fn [id] (-> (api-call admin-request {:method :get :path (str "/api/v1/documents/" id)})
+                                   :body :document/media-url))]
         (with-redefs [media/copy-media-file! (fn [_ _] {:success false
                                                         :error "Could not copy the media file."})]
           (let [plain (copy! admin-request doc-id {:name "Plain"})
@@ -433,10 +435,9 @@
             (assert-created plain)
             (assert-created with-key)
             (is (= "Could not copy the media file." (-> plain :body :media-error)))
-            (is (= "Could not copy the media file." (-> with-key :body :media-error)))
-            (is (some? (-> with-key :body :id)))))
-        (testing "a copy that takes its media says nothing, with a key too"
+            (is (nil? (-> with-key :body :media-error)))
+            (is (nil? (media-url (-> with-key :body :id))))))
+        (testing "a keyed copy that takes its media reads back with it"
           (let [ok (keyed "Keyed fine" "copy-key-0002")]
             (assert-created ok)
-            (is (nil? (-> ok :body :media-error)))
-            (is (contains? (media-files) (str (-> ok :body :id) ".mp3")))))))))
+            (is (some? (media-url (-> ok :body :id))))))))))

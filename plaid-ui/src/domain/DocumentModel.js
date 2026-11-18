@@ -446,7 +446,8 @@ export class DocumentModel {
    * Copy the document into the same project. NOT optimistic and not a patch of
    * this document: the copy is a different document with a server-minted id,
    * and the caller navigates to it. Resolves to `{ id, name }` for the copy,
-   * or null when it failed (the screen has already been told).
+   * or null when it failed (the screen has already been told). `mediaError`
+   * is set when this document has a recording and the copy has none.
    *
    * Names are unique in a project. A blank `name` asks the server for the
    * first free one after this document's ("Story (2)"), and the result names
@@ -486,7 +487,21 @@ export class DocumentModel {
       null,
       { shown: false },
     );
-    return ok && created?.id ? { ...created, name: created.name ?? next } : null;
+    if (!ok || !created?.id) return null;
+    const copy = { ...created, name: created.name ?? next };
+    // The server copies the recording after the copy commits and answers no
+    // error for it when the request carried an Idempotency-Key (every request
+    // the client sends) or was answered again after a lost answer, so the
+    // copy is read to see whether it has one (H2-6-1).
+    if (this.raw?.mediaUrl && !copy.mediaError) {
+      try {
+        const read = await this._client.documents.get(copy.id);
+        if (!read?.mediaUrl) copy.mediaError = 'The recording was not copied.';
+      } catch {
+        // Unknown either way: the copy is made, and nothing is said of its recording.
+      }
+    }
+    return copy;
   }
 
   /**

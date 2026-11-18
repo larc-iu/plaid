@@ -414,8 +414,10 @@ export function documentsApi(client) {
      * the vocabulary entries its links name, and holds the source's texts,
      * tokens, spans, relations and vocab links under fresh ids, with their
      * metadata. Comments do not travel. The media file does, unless
-     * `includeMedia` is false. Resolves to `{ id, name }`, plus `mediaError` when
-     * the source had media the copy could not take with it. A name another
+     * `includeMedia` is false. Resolves to `{ id, name }`. The server answers
+     * `mediaError` for media the copy could not take only to a request sent
+     * without an Idempotency-Key, and this client sends one with every write:
+     * read the copy (`get`) and check its `mediaUrl` instead. A name another
      * document of the project holds, ignoring case, is refused with 422 and `name-taken`,
      * unless `freeName`, which takes the first free "name (2)", "name (3)"
      * and on.

@@ -181,20 +181,12 @@
                 {:check (fn [tx] (when-let [row (idem/lookup tx user key)] (answer-from muuntaja row fp)))
                  :store! (fn [tx response] (store-if-success! tx muuntaja request user key fp response))}]
         (handler request))
-      ;; Work held for the commit may add to the response body
-      ;; (op/*after-commit-response*), as it would have run at once with no
-      ;; key: a copy's media-error (H2-6-1).
-      (let [extra (atom nil)
-            response (binding [op/*after-commit-response* extra]
-                       (batch/with-atomic-tx
-                         (:db request)
-                         (fn [tx]
-                           (or (when-let [row (idem/lookup tx user key)] (answer-from muuntaja row fp))
-                               (store-if-success! tx muuntaja request user key fp
-                                                  (handler (assoc request :db tx)))))))]
-        (if (and @extra (map? (:body response)))
-          (update response :body merge @extra)
-          response)))))
+      (batch/with-atomic-tx
+        (:db request)
+        (fn [tx]
+          (or (when-let [row (idem/lookup tx user key)] (answer-from muuntaja row fp))
+              (store-if-success! tx muuntaja request user key fp
+                                 (handler (assoc request :db tx)))))))))
 
 (defn- refuses-key [route-data]
   (false? (:plaid/idempotency route-data)))

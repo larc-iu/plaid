@@ -2346,9 +2346,11 @@ class DocumentsResource(_MetadataMethods, _Resource):
         The copy lands in the same project, sharing the source's layers and
         the vocabulary entries its links name, and holds the source's texts,
         tokens, spans, relations and vocab links under fresh ids, with their
-        metadata. Comments do not travel. Returns ``{'id': ..., 'name': ...}``,
-        plus ``media_error`` when the source had media the copy could not take
-        with it. Writers only. A name another document of the project holds, ignoring case, is
+        metadata. Comments do not travel. Returns ``{'id': ..., 'name': ...}``.
+        The server answers ``media_error`` for media the copy could not take
+        only to a request sent without an Idempotency-Key, and this client
+        sends one with every write: read the copy (``get``) and check its
+        ``media_url`` instead. Writers only. A name another document of the project holds, ignoring case, is
         refused with 422 and ``name-taken``, unless ``free_name``, which takes
         the first free "name (2)", "name (3)" and on.
 

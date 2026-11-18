@@ -145,6 +145,56 @@ describe('what every document can do as a document', () => {
     expect(errors[0]).toMatch(/“Two” already exists/);
   });
 
+  describe('a document with a recording (H2-6-1)', () => {
+    // The copy is read again, since a keyed copy, and an answer sent again
+    // after a lost one, carry no media-error.
+    const withMedia = ({ copyHasMedia, answer = {} }) => {
+      const client = recordingClient();
+      const copy = client.documents.copy;
+      client.documents.copy = async (...args) => ({ ...(await copy(...args)), ...answer });
+      client.documents.get = async (id, includeBody) => {
+        client.calls.push(['get', id, includeBody]);
+        return { id, name: 'One (copy)', ...(copyHasMedia ? { mediaUrl: `/m/${id}?v=1` } : {}) };
+      };
+      const doc = new Doc({
+        raw: { id: 'd1', name: 'One', metadata: {}, mediaUrl: '/m/d1?v=1' },
+        client,
+      });
+      return { doc, client };
+    };
+
+    it('says the recording was not copied when the copy has none', async () => {
+      const { doc, client } = withMedia({ copyHasMedia: false });
+      expect(await doc.copyTo('One (copy)')).toEqual({
+        id: 'd2',
+        name: 'One (copy)',
+        mediaError: 'The recording was not copied.',
+      });
+      // Read without its body.
+      expect(client.calls.at(-1)).toEqual(['get', 'd2', undefined]);
+    });
+
+    it('says nothing when the copy has its recording', async () => {
+      const { doc } = withMedia({ copyHasMedia: true });
+      expect(await doc.copyTo('One (copy)')).toEqual({ id: 'd2', name: 'One (copy)' });
+    });
+
+    it('keeps the error a copy sent without a key answers, and reads nothing', async () => {
+      const { doc, client } = withMedia({
+        copyHasMedia: false,
+        answer: { mediaError: 'Could not copy the media file.' },
+      });
+      expect((await doc.copyTo('One (copy)')).mediaError).toBe('Could not copy the media file.');
+      expect(client.calls.some(([c]) => c === 'get')).toBe(false);
+    });
+
+    it('reads nothing for a document with no recording', async () => {
+      const { doc, client } = load();
+      await doc.copyTo('One (copy)');
+      expect(client.calls.some(([c]) => c === 'get')).toBe(false);
+    });
+  });
+
   it('answers with null when the copy failed', async () => {
     const { doc, errors } = load({ failCopy: true });
     expect(await doc.copyTo('One (copy)')).toBe(null);
