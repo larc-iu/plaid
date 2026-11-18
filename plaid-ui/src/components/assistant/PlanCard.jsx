@@ -99,6 +99,11 @@ export const PlanCard = ({
   const [asHuman, setAsHuman] = useState(!!recordedAsHuman);
   const humanId = `plan-human-${plan.id}`;
   const shown = expanded ? { groups, hidden: 0 } : collapseGroups(groups);
+  // A document's count is all of its changes, folded or not (REV-RL1-R2-1).
+  const groupChanges = useMemo(
+    () => new Map(groups.map((g) => [g.key, changeCount(g.rows)])),
+    [groups],
+  );
   const undecided = status === null;
   // Refused because what it changes has changed since: approving again would
   // only be refused again.
@@ -271,9 +276,9 @@ export const PlanCard = ({
                           shows, above "and n more changes". */}
                       {/* Changes only: a kept value, or a corpus-wide change
                           settled to none, writes nothing. */}
-                      {changeCount(g.rows) > 0 && (
+                      {groupChanges.get(g.key) > 0 && (
                         <span className="ml-1.5 font-normal text-muted-foreground">
-                          {changeCount(g.rows).toLocaleString('en-US')}
+                          {groupChanges.get(g.key).toLocaleString('en-US')}
                           {omitted > 0 && ' shown'}
                         </span>
                       )}

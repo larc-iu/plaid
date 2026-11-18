@@ -101,7 +101,15 @@ describe('the card counts changes, as the line does', () => {
   ]) {
     for (const status of [null, 'applied', 'partial']) {
       it(`agrees with the line: ${name}, ${status ?? 'undecided'}`, async () => {
-        const view = await draw(make(), status);
+        const plan = make();
+        const view = await draw(plan, status);
+        // As first drawn, folded at twelve rows: a document's count is the
+        // whole document's, and a cut plan's last line is not drawn yet, so
+        // its remainder is the record's (REV-RL1-R2-1).
+        const drawn = view.container.querySelector('[data-testid=rows-omitted]')
+          ? 0
+          : (plan.omitted?.changes ?? 0);
+        expect(cardTotal(view.container) + drawn).toBe(staged(view.container));
         const button = showButton(view.container);
         if (button && !/Show where/.test(button.textContent)) await view.step(() => button.click());
         expect(cardTotal(view.container)).toBe(staged(view.container));
@@ -109,6 +117,14 @@ describe('the card counts changes, as the line does', () => {
       });
     }
   }
+
+  it('heads each document with all its changes while the card is folded', async () => {
+    const view = await draw(folded());
+    expect(showButton(view.container).textContent.trim()).toBe('Show all 797');
+    const heads = all(view.container, 'th[scope=colgroup]').map((t) => t.textContent);
+    expect(heads).toEqual(['Text 136', 'Text 2761']);
+    await view.unmount();
+  });
 
   it('says how many changes "Show all" opens', async () => {
     const view = await draw(folded());
