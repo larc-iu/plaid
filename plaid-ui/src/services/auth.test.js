@@ -58,8 +58,16 @@ const session = () => ({
   avatarHash: localStorage.getItem('avatarHash'),
 });
 
+// The module keeps its client (and a token adopted into it) between tests:
+// each starts signed out, whatever ran before it.
+const startSignedOut = () => {
+  vi.spyOn(window.location, 'reload').mockImplementation(() => {});
+  authService.logout();
+};
+
 describe('authService', () => {
   beforeEach(() => {
+    startSignedOut();
     localStorage.clear();
     sessionStorage.clear();
     vi.clearAllMocks();
@@ -275,6 +283,7 @@ describe('authService', () => {
 // tab hands this one its token. Without, it signs out as it always did.
 describe('a 401', () => {
   beforeEach(() => {
+    startSignedOut();
     localStorage.clear();
     sessionStorage.clear();
     vi.clearAllMocks();
@@ -400,6 +409,7 @@ describe('reading the account again on load', () => {
     throw err;
   };
   beforeEach(() => {
+    startSignedOut();
     localStorage.clear();
     sessionStorage.clear();
     vi.clearAllMocks();
