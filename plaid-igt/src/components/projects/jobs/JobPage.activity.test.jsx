@@ -573,7 +573,7 @@ describe('the job page’s list of its work', () => {
     };
     v = await mount(clientOf([jobOf()], [page([step, named])]));
     expect(text(rows(v.container)[0])).toMatch(/^2 documents of the plan/);
-    expect(text(planLine(v.container))).toContain('Worked on 2 documents at once.');
+    expect(text(planLine(v.container))).toContain('Worked on 2 documents in one part.');
     await v.unmount();
   });
 

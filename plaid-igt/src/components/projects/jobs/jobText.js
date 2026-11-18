@@ -45,7 +45,7 @@ export const planParts = (plan) => {
   // A one-step plan over some of the job's documents (the worker's
   // `documents_named`, S2-2).
   if (plan.pieces === 'selection' && plan.documentsNamed > 0)
-    text = `Worked on ${countOf(plan.documentsNamed, 'document')} at once`;
+    text = `Worked on ${countOf(plan.documentsNamed, 'document')} in one part`;
   if (plan.pieces === 'sentences' && plan.search) {
     // Only the sentences the plan's search matched, said by the worker's
     // words for it (`search.said`, CONTRACT, added by SF), as read_job says it.

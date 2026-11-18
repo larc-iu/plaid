@@ -1355,7 +1355,7 @@ def test_a_selection_limited_to_some_documents_says_how_many_it_named(monkeypatc
             if f == ' piece']
     # Stored as core keeps a row's keys.
     assert [r['plan'].get('documents-named') for r in rows if 'plan' in r] == [2]
-    assert plan_line(finished['report']).startswith('Worked in one part for 2 documents.')
+    assert plan_line(finished['report']).startswith('Worked on 2 documents in one part.')
 
 
 def test_a_selection_over_every_document_names_no_count(monkeypatch):
@@ -1366,3 +1366,10 @@ def test_a_selection_over_every_document_names_no_count(monkeypatch):
     finished = run_job(job, runner(job))
     assert 'documents_named' not in finished['report']['plan']
     assert plan_line(finished['report']).startswith('Worked in one part for all the documents.')
+
+
+def test_a_plan_naming_one_document_reads_as_the_page_reads_it():
+    """REV-SJ3-6: the assistant and the page say one plan line."""
+    from plaid_agent.igt.jobread import plan_line
+    report = {'plan': {'by': 'model', 'pieces': 'selection', 'documents_named': 1, 'fills_names': ['Gloss']}}
+    assert plan_line(report) == 'Worked on 1 document in one part. Fills: Gloss.'

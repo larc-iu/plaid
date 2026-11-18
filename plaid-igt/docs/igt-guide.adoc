@@ -1009,7 +1009,7 @@ A job first plans how to cut the work, and the **Plan** line on its page says ho
 
 * **Worked in stretches of sentences**: a few sentences at a time. The plan may take only the sentences with something empty of what the job fills, and the line then adds **only those with something empty**.
 * **Worked one document at a time**. A document whose part fails, or is too long for one part, is worked in stretches of sentences instead, and the line counts it, such as **1 in smaller parts**.
-* **Worked on all the documents at once**: one step over every document. A plan that names only some of the documents says how many, such as **Worked on 2 documents at once**, and the others are left out by the plan.
+* **Worked on all the documents at once**: one step over every document. A plan that names only some of the documents says how many, such as **Worked on 2 documents in one part**, and the others are left out by the plan.
 
 The line then names what the job fills, such as **Fills: segmentation, Morph Gloss.** or **Fills nothing.**, and ends **Text may be edited.** when the job may edit the text.
 A word, a morpheme or a sentence is empty for a field when the field holds no value on it, and a word is empty for segmentation when it has no morpheme analysis.

@@ -111,10 +111,10 @@ describe('the Plan line', () => {
   // S2-2: a one-step plan over some of the job's documents never says "all".
   it('says how many documents a one-step plan named when it named fewer than all', () => {
     expect(planParts({ pieces: 'selection', documentsNamed: 2, fillsNames: ['Gloss'] })).toEqual([
-      'Worked on 2 documents at once. Fills: Gloss.',
+      'Worked on 2 documents in one part. Fills: Gloss.',
     ]);
     expect(planParts({ pieces: 'selection', documentsNamed: 1, fillsNames: ['Gloss'] })).toEqual([
-      'Worked on 1 document at once. Fills: Gloss.',
+      'Worked on 1 document in one part. Fills: Gloss.',
     ]);
     expect(planParts({ pieces: 'selection', fillsNames: ['Gloss'] })).toEqual([
       'Worked on all the documents at once. Fills: Gloss.',

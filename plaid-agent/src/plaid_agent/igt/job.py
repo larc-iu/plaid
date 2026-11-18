@@ -6961,7 +6961,7 @@ class IgtRunner:
     def documents_named(job, plan: Dict[str, Any]) -> Dict[str, Any]:
         """``documents_named``: how many of the job's documents a plan that
         names fewer than all of them names, for the job page and read_job
-        ("Worked on 2 documents at once.", S2-2). Nothing when it names none
+        ("Worked on 2 documents in one part.", S2-2). Nothing when it names none
         or every one."""
         order = set(job.order)
         named = {d for d in plan.get('documents') or [] if d in order}

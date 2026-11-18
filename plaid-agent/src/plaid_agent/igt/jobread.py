@@ -281,7 +281,8 @@ def plan_line(report: Dict[str, Any]) -> Optional[str]:
     named = plan.get('documents_named')
     if plan.get('pieces') == 'selection' and isinstance(named, int):
         # A plan of one step over some of the job's documents (S2-2).
-        line = f'Worked in one part for {named:,} document{"" if named == 1 else "s"}'
+        # As the page says it (REV-SJ3-6).
+        line = f'Worked on {named:,} document{"" if named == 1 else "s"} in one part'
     line += search_part(plan)
     fallback = plan.get('fallback') or []
     if plan.get('pieces') == 'selection' and fallback:
