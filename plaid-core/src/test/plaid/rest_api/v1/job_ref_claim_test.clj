@@ -9,6 +9,8 @@
             [plaid.fixtures :as fix :refer [with-db with-mount-states with-clean-db
                                             with-rest-handler with-admin with-test-users]]
             [plaid.rest-api.v1.job-helpers :as jh :refer [as call start! job-id claim! finish!]]
+            [plaid.rest-api.v1.middleware :as mw]
+            [plaid.sql.common :as psc]
             [plaid.test-helpers :as h]))
 
 (use-fixtures :once with-db with-mount-states with-rest-handler with-admin with-test-users)
@@ -61,3 +63,32 @@
     (testing "P's job does not read undone"
       (is (nil? (undone r job)))
       (is (nil? (undone a job))))))
+
+(deftest a-line-break-in-a-ref-gets-nothing-past
+  ;; REV-CA-3: the ref was matched with `.`, which stops at a line
+  ;; terminator, so `job:<P's job>/doc:x` with a newline, a carriage return
+  ;; or U+2028 at the end or inside matched no job and was taken from anyone.
+  ;; plaid-agent reads `job:<id>/doc:` as a prefix, so the job took that
+  ;; person's write for its own. A group ref holding a control character or
+  ;; a line terminator is now refused outright (400), and the job rule reads
+  ;; any ref that starts `job:`.
+  (let [{:keys [p d1 st m]} (jh/world!)
+        job (job-id (start! st p))
+        refs [(str "job:" job "/doc:x/pass:gloss\n")
+              (str "job:" job "/doc:x\r")
+              (str "job:" job "/doc:x" (char 0x2028) "y")]]
+    (doseq [ref refs]
+      (testing (pr-str ref)
+        (is (= 400 (rename m d1 ref)) "a maintainer of P, not the starter")
+        (is (= 400 (rename st d1 ref)) "the starter too: a ref is one line")))
+    (testing "any ref, not only a job's"
+      (doseq [c [\newline \return (char 0x2028) (char 0x2029) (char 0x85) (char 1) \tab]]
+        (is (= 400 (rename st d1 (str "action:vocab" c "x"))) (pr-str c)))
+      (is (= 200 (rename st d1 "action:vocab x ñ")) "a space and a letter are fine"))
+    (testing "the job rule itself reads across a line terminator"
+      (let [refuse (fn [ref] (#'mw/job-ref-refusal fix/db ref "maintainer@example.com"))]
+        (doseq [ref refs]
+          (is (some? (refuse ref)) (pr-str ref)))
+        (is (some? (refuse (str "job:" job "\n/undo"))))))
+    (testing "no such ref was stored"
+      (is (empty? (psc/q fix/db {:select [:ref] :from [:operation_groups] :where [:like :ref "job:%"]}))))))

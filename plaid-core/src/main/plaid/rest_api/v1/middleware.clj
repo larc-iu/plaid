@@ -882,7 +882,8 @@
   "Why `?group-kind=` / `?group-ref=` on a request cannot be taken, or nil.
   Both describe a group, so either one without `?group-id=` is refused
   rather than dropped: a study reads these, and a silently lost kind reads
-  as an operation that had none."
+  as an operation that had none. A ref is one line with no control
+  character: programs match it by prefix (REV-CA-3)."
   [gid kind ref]
   (cond
     (and (nil? gid) (or kind ref))
@@ -892,7 +893,10 @@
     (str "group-kind must be one of " (str/join ", " (sort og/kinds)))
 
     (and ref (> (count ref) og/ref-max-length))
-    (str "group-ref must be at most " og/ref-max-length " characters")))
+    (str "group-ref must be at most " og/ref-max-length " characters")
+
+    (and ref (re-find #"[\p{Cc}\x{2028}\x{2029}]" ref))
+    "group-ref must be one line without control characters"))
 
 (defn- job-ref-refusal
   "Why the request's `?group-ref=` `ref` may not be taken from `user-id`, or
@@ -902,9 +906,12 @@
   taken only from that job's starter, the account every token of the job
   writes as (`plaid.rest-api.v1.auth/issue-job-token!`), and `job:<id>/undo`
   and `job:<id>/redo` from nobody, since core writes them itself on an undo
-  (ACL7-1). Any other ref is a label core never reads."
+  (ACL7-1). Any other ref is a label core never reads. A ref is judged by
+  its `job:` prefix and read across line terminators, so no line break lets
+  one past (REV-CA-3), and `group-structure-error` refuses those anyway."
   [db ref user-id]
-  (when-let [[_ job tail] (some->> ref (re-matches #"job:([^/]*)(/.*)?"))]
+  (when-let [[_ job tail] (when (some-> ref (str/starts-with? "job:"))
+                            (re-matches #"(?s)job:([^/]*)(/.*)?" ref))]
     (when (or (contains? #{"/undo" "/redo"} tail)
               (not= (some-> user-id str)
                     (some-> (psc/q1 db {:select [:started_by] :from [:jobs] :where [:= :id job]})
