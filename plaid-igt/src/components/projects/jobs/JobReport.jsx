@@ -168,6 +168,9 @@ const totalRows = (report) => {
   // One definition of a change, said in its parts (RP-3, RP-6).
   if (t.changes > 0) rows.push(['Changes written', changesText(t.changes, changeParts(report))]);
   optional('Deletions', t.deletions);
+  // Parts whose steps ran out with their work staged, written as it stood
+  // (the worker's `pieces_closed`, BRIEF RW).
+  optional('Parts ended when their steps ran out', report.piecesClosed);
   // What the job changed of what people wrote, by provenance, and of the
   // text: each document's History entry shows the changes (REV-DAY-S-3).
   optional('People’s values, morphemes and links changed or removed', t.peoplesValuesChanged);

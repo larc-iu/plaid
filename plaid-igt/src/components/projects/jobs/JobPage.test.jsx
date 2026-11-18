@@ -1514,6 +1514,24 @@ describe('the job page', () => {
     await w.unmount();
   });
 
+  // BRIEF RW B5: the report counts the parts whose steps ran out.
+  it('counts the parts that ended when their steps ran out', async () => {
+    const job = jobOf({ state: 'done', report: { ...REPORT, piecesClosed: 2 } });
+    const v = await mount(clientOf(job));
+    expect(
+      totals(v.container.querySelector('section[aria-label="Report"]'))[
+        'Parts ended when their steps ran out'
+      ],
+    ).toBe('2');
+    await v.unmount();
+    const w = await mount(clientOf(jobOf({ state: 'done', report: REPORT })));
+    expect(
+      'Parts ended when their steps ran out' in
+        totals(w.container.querySelector('section[aria-label="Report"]')),
+    ).toBe(false);
+    await w.unmount();
+  });
+
   // REV-SF2-5, BRIEF RW: a selection whose piece failed: each document in stretches.
   it('says how a selection whose piece failed was worked', async () => {
     const plan = {

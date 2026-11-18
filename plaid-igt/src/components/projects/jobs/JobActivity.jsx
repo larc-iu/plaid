@@ -210,6 +210,17 @@ const PieceRow = ({ piece, projectId, names, findingsShown = false }) => {
         <Ended piece={piece} />
       </div>
       <p>{pieceWrittenText(piece)}</p>
+      {/* A piece of the whole document or of all of them that failed: its
+          documents went to stretches (the worker's `failed`, BRIEF RW). */}
+      {piece.failed && (
+        <p data-testid="piece-failed">
+          {skippedText({ reason: 'failed', kind: piece.failed })}. Worked again in stretches of
+          sentences.
+        </p>
+      )}
+      {/* A piece whose steps ran out with its work staged: written as it
+          stood (the worker's `closed`, BRIEF RW). */}
+      {piece.closed && <p data-testid="piece-closed">Steps used up: written as staged.</p>}
       {(skipped.length > 0 || piece.skippedMore > 0) && (
         <>
           <p className="mt-1">Skipped:</p>

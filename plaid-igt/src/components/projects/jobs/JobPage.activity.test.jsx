@@ -242,6 +242,35 @@ describe('the job page’s list of its work', () => {
     await v.unmount();
   });
 
+  // BRIEF RW B5: a failed whole piece and a piece closed at its step limit
+  // each say so on their row.
+  it('says a whole piece failed and a piece ended when its steps ran out', async () => {
+    const failed = {
+      seq: '000003',
+      piece: {
+        ...FIRST.piece,
+        piece: 'k3',
+        first: null,
+        last: null,
+        firstId: null,
+        whole: true,
+        counts: {},
+        fields: [],
+        note: '',
+        failed: 'budget',
+      },
+    };
+    const closed = { seq: '000004', piece: { ...FIRST.piece, piece: 'k4', closed: true } };
+    const v = await mount(clientOf([jobOf()], [page([closed, failed])]));
+    const [c, f] = rows(v.container).map(text);
+    expect(f).toContain('Story A');
+    expect(f).toContain('Nothing written.');
+    expect(f).toContain('Failed: over budget. Worked again in stretches of sentences.');
+    expect(c).toContain('Steps used up: written as staged.');
+    expect(c).not.toContain('Failed');
+    await v.unmount();
+  });
+
   // RPF3-B: the piece after a text edit is a row of its own, named by what it
   // took.
   it('names a piece after a text edit by what it took', async () => {
