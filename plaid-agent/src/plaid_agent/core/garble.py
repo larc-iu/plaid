@@ -233,14 +233,20 @@ def _excerpt(s: str, at: int) -> str:
 
 _COPY = ('Do not type it: copy it in run_code from the data that holds it (load, query, or file_rows of a '
          'file the user attached, never of one you saved), and stage the change from there.')
+#: The same step for an unattended job's piece, which may have no run_code,
+#: has no attached file and no one to ask (D25).
+JOB_COPY = ('Do not type it: copy it from where a read or your message prints it, and stage the change from there, '
+            'or leave it and say so in your note.')
 
 
-def refusal(value: Any, seen: Seen, more: Optional[Callable[[], Iterable[str]]] = None) -> Optional[str]:
+def refusal(value: Any, seen: Seen, more: Optional[Callable[[], Iterable[str]]] = None,
+            job: bool = False) -> Optional[str]:
     """Why ``value`` may not be staged, or None.
 
     ``more`` gives further text the turn could copy from (the attached files), read
     only when a character is in doubt, so a plan with nothing rare in it never reads a
-    four-megabyte table to find that out.
+    four-megabyte table to find that out. ``job``: worded for an unattended
+    job's piece (:data:`JOB_COPY`).
     """
     asked = False
     for s in strings(value):
@@ -250,8 +256,9 @@ def refusal(value: Any, seen: Seen, more: Optional[Callable[[], Iterable[str]]] 
             ch, i = m.group(), m.start()
             if 0xD800 <= ord(ch) <= 0xDFFF:
                 return (f'"{_excerpt(s, i)}" holds half of a character (U+{ord(ch):04X}) without its other '
-                        'half, which cannot be stored. Write the whole character, or copy the value in '
-                        'run_code from the data that holds it.')
+                        'half, which cannot be stored. Write the whole character, or copy the value '
+                        + ('from where a read or your message prints it.' if job
+                           else 'in run_code from the data that holds it.'))
             k = key(ch)
             if k is None or k in seen.scripts or k in NEVER_CHECKED:
                 continue
@@ -264,11 +271,12 @@ def refusal(value: Any, seen: Seen, more: Optional[Callable[[], Iterable[str]]] 
             if k == BROKEN:
                 return (f'"{_excerpt(s, i)}" has a broken character in it (\ufffd), and nothing you have read '
                         'holds one. It is what a letter of a rare script becomes when it is typed out and '
-                        f'comes out wrong. {_COPY}')
+                        f'comes out wrong. {JOB_COPY if job else _COPY}')
             return (f'"{_excerpt(s, i)}" has {_described(k, ch)}, which appear in nothing you have read that '
                     'it could have been copied from. A form in a rare script that is typed out often comes '
-                    f'out in another script entirely. {_COPY} If it really is new text the user gave you, '
-                    'ask them to paste it into the chat.')
+                    'out in another script entirely. '
+                    + (JOB_COPY if job else f'{_COPY} If it really is new text the user gave you, ask them to '
+                       'paste it into the chat.'))
     return None
 
 

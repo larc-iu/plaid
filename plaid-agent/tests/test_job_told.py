@@ -297,3 +297,26 @@ def test_two_text_changes_that_cannot_stand_together_are_left_with_the_jobs_line
         assert chat not in out
     assert ws.ops == held and len(ws.left_by_refusal) == 1
 
+
+
+# --- D25: the garble refusal in a job names no run_code and no user -------------------------------
+
+def test_a_value_in_a_rare_script_never_read_is_refused_with_a_step_a_piece_can_take():
+    ws = _job_ws()
+    why = ws.garbled({'document': 'Text 1', 'refs': ['s1.w1'], 'field': 'Gloss', 'value': '\U0001E900\U0001E901'})
+    assert why is not None
+    for chat in ('run_code', 'user', 'paste', 'file_rows', 'attached'):
+        assert chat not in why, why
+    assert why.endswith('Do not type it: copy it from where a read or your message prints it, and stage the change '
+                        'from there, or leave it and say so in your note.'), why
+    out = toolkit.job_piece_call(ws, 'set_field', {'document': 'Text 1', 'field': 'Gloss', 'items': [
+        {'ref': 's1.w1', 'value': '\U0001E900\U0001E901'}]})
+    assert 'run_code' not in out and 'paste' not in out, out
+
+
+def test_the_chat_is_still_told_to_copy_in_run_code_or_ask_the_user():
+    from plaid_agent.igt.workspace import Workspace
+    c = FakeClient()
+    ws = Workspace(c, load_project(c, 'p1'))
+    why = ws.garbled({'value': '\U0001E900\U0001E901'})
+    assert 'run_code' in why and 'paste it into the chat' in why

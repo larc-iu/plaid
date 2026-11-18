@@ -43,6 +43,7 @@ from plaid_client.service import locked_for_writes
 
 from ..core import job as core_job
 from ..core.agent import ModelConfig, Toolkit, TurnCancelled, TurnResult, run_turn, token_counter
+from ..core import garble
 from ..core.garble import seed
 from ..core.trace import plural
 from ..core.guidelines import manual_chars
@@ -1632,7 +1633,8 @@ class JobWorkspace(Workspace):
         garbled item never refuses the rest (``items.stage_items``)."""
         if isinstance(args, dict) and 'items' in args:
             args = {k: v for k, v in args.items() if k != 'items'}
-        return super().garbled(args)
+        # Worded for a piece: no run_code, file or user named (D25).
+        return garble.refusal(args, self.seen, self._file_texts, job=True)
 
     def result_line(self) -> str:
         held, proposed = self.staged_count(), self.proposed_count()
