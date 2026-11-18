@@ -3,7 +3,8 @@
   hand-constructed (with ::qr/scope and ::qr/layer-ids attached) so no DB is
   needed. Assertions are structural (aliases are generated, so we search the
   compiled tree rather than compare exact maps)."
-  (:require [clojure.test :refer [deftest is testing]]
+  (:require [clojure.string :as str]
+            [clojure.test :refer [deftest is testing]]
             [honey.sql :as hsql]
             [plaid.query.ast :as ast]
             [plaid.sql.query.compile :as qc]
@@ -128,6 +129,40 @@
     ;; order (no LIMIT 1 subquery)
     (is (re-find #"text_id = .*text_id" sql))
     (is (re-find #"\(.*begin.*precedence.*end_.*id\) < \(.*begin.*precedence.*end_.*id\)" sql))))
+
+(defn- surface-sql
+  "The SQL and params of a token query with `clauses` after the token clause."
+  [cmap & clauses]
+  (hsql/format (qc/compile-query
+                (resolved {"find" ["?t"]
+                           "where" (into [["token" "?t" (merge {"layer" "w"} cmap)]] clauses)}
+                          #{"P1"} ["L1"]))))
+
+(def ^:private guard #"\(t_1\.end_ - t_1\.begin\) (=|IN)")
+
+(deftest a-surface-equality-reads-the-token-length-first
+  ;; SCL6-4: every token's SUBSTR walks its text from the start, so the length
+  ;; of the literal in code points is asked of the token row before it
+  (testing "a value in the constraint map, in code points (an astral letter is one)"
+    (let [[sql & params] (surface-sql {"value" "a𐍈b"})]
+      (is (re-find #"\(t_1\.end_ - t_1\.begin\) = \?" sql))
+      (is (some #{3} params))
+      (is (< (str/index-of sql "end_ - t_1.begin") (str/index-of sql "SUBSTR")))))
+  (testing "a list: each length once"
+    (let [[sql & params] (surface-sql {"value" ["ab" "cd" "xyz"]})]
+      (is (re-find #"\(t_1\.end_ - t_1\.begin\) IN \(\?, \?\)" sql))
+      (is (= #{2 3} (set (filter number? params))))))
+  (testing "an = and an in"
+    (is (re-find #"end_ - t_1\.begin\) = \?" (first (surface-sql {} ["=" "?t.value" "ab"]))))
+    (is (re-find #"end_ - t_1\.begin\) IN" (first (surface-sql {} ["in" "?t.value" ["ab" "xyz"]])))))
+  (testing "none where it could drop a match or has nothing to compare"
+    ;; a literal with another spelling compares in NFC, where a decomposed
+    ;; stored letter is longer than the literal
+    (is (not (re-find guard (first (surface-sql {"value" "é"})))))
+    (is (not (re-find guard (first (surface-sql {"value" ["ab" "é"]})))))
+    (is (not (re-find guard (first (surface-sql {"value" {"regex" "^ab$"}})))))
+    (is (not (re-find guard (first (surface-sql {} ["!=" "?t.value" "ab"])))))
+    (is (not (re-find guard (first (surface-sql {} ["=" "?t.value" "?t.metadata.form"])))))))
 
 (deftest relation-source-target
   (let [hq (qc/compile-query

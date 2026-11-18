@@ -273,13 +273,15 @@
    "<id>"
    "1001"]],
  "plaid.sql.query.exec-attrpred-test/in-token-surface-equivalence"
- [["SELECT DISTINCT t_1.id AS t FROM tokens AS t_1, texts AS txt_2 WHERE (t_1.token_layer_id IN (?)) AND (t_1.text_id = txt_2.id) AND (SUBSTR(txt_2.body, t_1.begin + 1, t_1.end_ - t_1.begin) IN (?, ?)) LIMIT ?"
+ [["SELECT DISTINCT t_1.id AS t FROM tokens AS t_1, texts AS txt_2 WHERE (t_1.token_layer_id IN (?)) AND (t_1.text_id = txt_2.id) AND ((t_1.end_ - t_1.begin) = ?) AND (SUBSTR(txt_2.body, t_1.begin + 1, t_1.end_ - t_1.begin) IN (?, ?)) LIMIT ?"
    "<id>"
+   "2"
    "aa"
    "cc"
    "1001"]
-  ["SELECT DISTINCT t_1.id AS t FROM tokens AS t_1, texts AS txt_2 WHERE (t_1.token_layer_id IN (?)) AND (t_1.text_id = txt_2.id) AND (SUBSTR(txt_2.body, t_1.begin + 1, t_1.end_ - t_1.begin) IN (?, ?)) LIMIT ?"
+  ["SELECT DISTINCT t_1.id AS t FROM tokens AS t_1, texts AS txt_2 WHERE (t_1.token_layer_id IN (?)) AND (t_1.text_id = txt_2.id) AND ((t_1.end_ - t_1.begin) = ?) AND (SUBSTR(txt_2.body, t_1.begin + 1, t_1.end_ - t_1.begin) IN (?, ?)) LIMIT ?"
    "<id>"
+   "2"
    "aa"
    "cc"
    "1001"]],
@@ -4583,20 +4585,23 @@
    "<id>"
    "1001"]],
  "plaid.sql.query.exec-scalar-test/token-surface-value"
- [["SELECT DISTINCT t_1.id AS t FROM tokens AS t_1, texts AS txt_2 WHERE (t_1.token_layer_id IN (?)) AND (t_1.text_id = txt_2.id) AND (SUBSTR(txt_2.body, t_1.begin + 1, t_1.end_ - t_1.begin) = ?) LIMIT ?"
+ [["SELECT DISTINCT t_1.id AS t FROM tokens AS t_1, texts AS txt_2 WHERE (t_1.token_layer_id IN (?)) AND (t_1.text_id = txt_2.id) AND ((t_1.end_ - t_1.begin) = ?) AND (SUBSTR(txt_2.body, t_1.begin + 1, t_1.end_ - t_1.begin) = ?) LIMIT ?"
    "<id>"
+   "2"
    "aa"
    "1001"]
-  ["SELECT DISTINCT t_1.id AS t FROM tokens AS t_1, texts AS txt_2 WHERE (t_1.token_layer_id IN (?)) AND (t_1.text_id = txt_2.id) AND (SUBSTR(txt_2.body, t_1.begin + 1, t_1.end_ - t_1.begin) = ?) LIMIT ?"
+  ["SELECT DISTINCT t_1.id AS t FROM tokens AS t_1, texts AS txt_2 WHERE (t_1.token_layer_id IN (?)) AND (t_1.text_id = txt_2.id) AND ((t_1.end_ - t_1.begin) = ?) AND (SUBSTR(txt_2.body, t_1.begin + 1, t_1.end_ - t_1.begin) = ?) LIMIT ?"
    "<id>"
+   "2"
    "bb"
    "1001"]
   ["SELECT COUNT(*) AS n FROM (SELECT * FROM (SELECT DISTINCT t_1.id AS t FROM tokens AS t_1, texts AS txt_2 WHERE (t_1.token_layer_id IN (?)) AND (t_1.text_id = txt_2.id) AND (SUBSTR(txt_2.body, t_1.begin + 1, t_1.end_ - t_1.begin) REGEXP ?)) AS _u LIMIT ?) AS _c"
    "<id>"
    "."
    "100001"]
-  ["SELECT COUNT(*) AS n FROM (SELECT * FROM (SELECT DISTINCT t_1.id AS t FROM tokens AS t_1, texts AS txt_2 WHERE (t_1.token_layer_id IN (?)) AND (t_1.text_id = txt_2.id) AND (SUBSTR(txt_2.body, t_1.begin + 1, t_1.end_ - t_1.begin) IN (?, ?))) AS _u LIMIT ?) AS _c"
+  ["SELECT COUNT(*) AS n FROM (SELECT * FROM (SELECT DISTINCT t_1.id AS t FROM tokens AS t_1, texts AS txt_2 WHERE (t_1.token_layer_id IN (?)) AND (t_1.text_id = txt_2.id) AND ((t_1.end_ - t_1.begin) = ?) AND (SUBSTR(txt_2.body, t_1.begin + 1, t_1.end_ - t_1.begin) IN (?, ?))) AS _u LIMIT ?) AS _c"
    "<id>"
+   "2"
    "aa"
    "bb"
    "100001"]],

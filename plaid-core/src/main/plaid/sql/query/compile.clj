@@ -349,6 +349,28 @@
   [kind k]
   (and (= kind :token) (= k :value)))
 
+(defn- surface-length-guard
+  "For token alias `a` whose surface must equal literal `v` (a string, or a
+  vector of them for `in`), the term `end - begin` = the literal's length in
+  code points, or nil when no such term is sound.
+
+  SUBSTR walks the text from its first character to the token's offset, so
+  comparing every token's surface with a literal costs the length of each
+  text once per token (SCL6-4). The guard reads only the token's row, so the
+  SUBSTR runs for the tokens of the right length alone. It can drop no
+  match: SQLite's substr counts code points, as offsets do, and a token lies
+  inside its text. A literal with another spelling (`canonical?`) is
+  compared in NFC, where a stored decomposed letter has more code points
+  than the literal, so any such literal leaves the guard off."
+  [a v]
+  (let [lits (if (vector? v) v [v])]
+    (when (and (seq lits) (every? string? lits) (not-any? canonical? lits))
+      (let [span [:- (col a :end_) (col a :begin)]
+            lens (vec (distinct (map #(.codePointCount ^String % 0 (count %)) lits)))]
+        (if (= 1 (count lens))
+          [:= span (first lens)]
+          [:in span lens])))))
+
 (defn- emit-entity-filters!
   "Emit the value/form/doc/begin/end/name/body/id/metadata predicates from one
   entity constraint map (`kind` is the host entity's kind, for metadata's
@@ -368,6 +390,9 @@
     (cond
       (surface-field? kind k)
       (let [surf (token-surface-sql st a)]
+        ;; a map is a regex or a variable, which no length bounds
+        (when-not (map? v)
+          (add-where! st (surface-length-guard a v)))
         (emit-field! st surf v identity surf false))
       ;; a link's :item by id(s); a vocab VARIABLE there is a join, emitted by
       ;; compile-relation-inline! (it needs the constraints to ensure the var)
@@ -1118,7 +1143,7 @@
       (cond
         ;; a token's :value is the surface substring (no column), not a JSON annotation
         (surface-field? kind (:attr res))
-        {:sql (token-surface-sql st a) :enc identity}
+        {:sql (token-surface-sql st a) :enc identity :surface-of a}
         :else
         (let [{:keys [column json? id?]} (clauses/field-columns (:attr res))]
           {:sql (if json? [:json_extract (col a column) [:inline "$"]] (col a column))
@@ -1189,6 +1214,8 @@
                                        (not= (cls t other) (cls other t)))
                                 (typeless s)
                                 s)))]
+    (when (and (= op :=) lit (:surface-of other))
+      (add-where! st (surface-length-guard (:surface-of other) (:lit lit))))
     (cond
       (and (#{:= :!=} op) lit (:sql other) (canonical? (:lit lit)))
       (add-where! st [(pred-honeysql-op op) (canonical-text (typed other lit)) (canonical/nfc (:lit lit))])
@@ -1223,7 +1250,9 @@
   the constraint-map path's raw-column-vs-JSON-encoded-members `IN`."
   [st clause]
   (let [[_ lhs members] clause
-        {:keys [sql enc]} (resolve-term st lhs)]
+        {:keys [sql enc surface-of]} (resolve-term st lhs)]
+    (when surface-of
+      (add-where! st (surface-length-guard surface-of (vec members))))
     (add-where! st (atomic-pred sql (vec members) (or enc identity) sql))))
 
 ;; ---------------------------------------------------------------------------
