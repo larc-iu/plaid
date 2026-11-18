@@ -379,6 +379,9 @@ def fit_line(text: Optional[str]) -> Optional[str]:
         return len(t.encode('utf-16-le')) // 2
     if units(text) <= JOB_LINE_MAX:
         return text
+    # Every code point is one unit or two: nothing past the first
+    # JOB_LINE_MAX of them can fit (REV-JR1-5, a line of megabytes).
+    text = text[:JOB_LINE_MAX]
     while units(text) > JOB_LINE_MAX - 1:
         text = text[:-1]
     return text + '…'

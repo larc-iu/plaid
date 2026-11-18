@@ -53,3 +53,13 @@ def test_a_line_is_cut_to_300_units_with_an_ellipsis():
     cut = fit_line(ADLAM * 200)
     assert units(cut) <= 300 and cut.endswith('…') and cut.startswith(ADLAM)
     assert units(error_line(RuntimeError(ADLAM * 200))) <= 300
+
+
+def test_a_huge_line_is_cut_at_once():
+    """REV-JR1-5: an error whose text is megabytes long (a response body)
+    is cut in a moment, never one code point at a time."""
+    import time
+    began = time.monotonic()
+    cut = error_line(RuntimeError('x' * 2_000_000))
+    assert time.monotonic() - began < 1.0
+    assert units(cut) <= 300 and cut.endswith('…')
