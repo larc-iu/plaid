@@ -20,6 +20,12 @@
 
 (def ^:private n-sentences 400)
 (def ^:private per-sentence 10)
+;; The treebank a timing is compared to: a tenth of the size. `X ->> Y` takes
+;; about 50 times as long on the big one today (its `within` joins every word
+;; of the one text to every sentence, so it grows with the square of the
+;; sentences), and the fault the namespace guards against (a closure run per
+;; candidate pair) ran past the 30 s limit, thousands of times the small one.
+(def ^:private small-sentences 40)
 
 (defn- ids-of [r]
   (assert-created r)
@@ -31,56 +37,57 @@
   sentence token over each sentence and a UPOS span on each word (VERB on
   every third word, else NOUN), for the shapes ud's Grew search compiles to.
   Returns the layers and the expected (ancestor, descendant) pairs."
-  []
-  (let [rnd (java.util.Random. 7)
-        pid (h/create-test-project admin-request "Treebank")
-        txtl (id (h/create-text-layer admin-request pid "text"))
-        tokl (id (h/create-token-layer admin-request txtl "words"))
-        sentl (id (h/create-token-layer admin-request txtl "sentences"))
-        upos (id (h/create-span-layer admin-request tokl "upos"))
-        pos (id (h/create-span-layer admin-request tokl "pos"))
-        dep (id (h/create-relation-layer admin-request pos "dep"))
-        doc (h/create-test-document admin-request pid "d1")
-        n (* n-sentences per-sentence)
-        words (mapv #(str "w" (mod % 89)) (range n))
-        body (str/join " " words)
-        extents (second (reduce (fn [[p acc] w] [(+ p (count w) 1) (conj acc [p (+ p (count w))])])
-                                [0 []] words))
-        text (id (h/create-text admin-request txtl doc body))
-        toks (vec (mapcat (fn [ch] (ids-of (h/bulk-create-tokens
-                                            admin-request
-                                            (mapv (fn [[b e]] {:token-layer-id tokl :text text :begin b :end e}) ch))))
-                          (partition-all 1000 extents)))
-        _ (ids-of (h/bulk-create-tokens
-                   admin-request
-                   (for [s (range n-sentences)]
-                     {:token-layer-id sentl :text text
-                      :begin (first (extents (* s per-sentence)))
-                      :end (second (extents (dec (* (inc s) per-sentence))))})))
-        verb? (fn [i] (zero? (mod i 3)))
-        _ (doseq [ch (partition-all 1000 (map-indexed vector toks))]
-            (ids-of (h/bulk-create-spans
-                     admin-request
-                     (mapv (fn [[i t]] {:span-layer-id upos :tokens [t] :value (if (verb? i) "VERB" "NOUN")}) ch))))
-        spans (vec (mapcat (fn [ch] (ids-of (h/bulk-create-spans
+  ([] (build! n-sentences))
+  ([n-sentences]
+   (let [rnd (java.util.Random. 7)
+         pid (h/create-test-project admin-request "Treebank")
+         txtl (id (h/create-text-layer admin-request pid "text"))
+         tokl (id (h/create-token-layer admin-request txtl "words"))
+         sentl (id (h/create-token-layer admin-request txtl "sentences"))
+         upos (id (h/create-span-layer admin-request tokl "upos"))
+         pos (id (h/create-span-layer admin-request tokl "pos"))
+         dep (id (h/create-relation-layer admin-request pos "dep"))
+         doc (h/create-test-document admin-request pid "d1")
+         n (* n-sentences per-sentence)
+         words (mapv #(str "w" (mod % 89)) (range n))
+         body (str/join " " words)
+         extents (second (reduce (fn [[p acc] w] [(+ p (count w) 1) (conj acc [p (+ p (count w))])])
+                                 [0 []] words))
+         text (id (h/create-text admin-request txtl doc body))
+         toks (vec (mapcat (fn [ch] (ids-of (h/bulk-create-tokens
                                              admin-request
-                                             (mapv (fn [t] {:span-layer-id pos :tokens [t] :value "X"}) ch))))
-                           (partition-all 1000 toks)))
-        heads (into {} (for [s (range n-sentences)
-                             j (range 1 per-sentence)
-                             :let [i (+ (* s per-sentence) j)]]
-                         [i (+ (* s per-sentence) (.nextInt rnd j))]))
-        _ (doseq [ch (partition-all 1000 heads)]
-            (ids-of (h/bulk-create-relations
-                     admin-request
-                     (mapv (fn [[d hd]] {:relation-layer-id dep :source (spans hd) :target (spans d) :value "r"}) ch))))
-        ancestors (fn [i] (take-while some? (rest (iterate heads i))))
-        expected (set (for [i (range n) a (ancestors i)] [(str (spans a)) (str (spans i))]))]
-    {:pid pid :words tokl :sentences sentl :upos upos :pos pos :dep dep :expected expected
-     :toks (mapv str toks) :verb? verb?
-     :ancestors (fn [i] (set (ancestors i)))
-     :leaves (set (map (comp str spans) (remove (set (vals heads)) (range n))))
-     :roots (set (map (comp str spans) (remove (set (keys heads)) (range n))))}))
+                                             (mapv (fn [[b e]] {:token-layer-id tokl :text text :begin b :end e}) ch))))
+                           (partition-all 1000 extents)))
+         _ (ids-of (h/bulk-create-tokens
+                    admin-request
+                    (for [s (range n-sentences)]
+                      {:token-layer-id sentl :text text
+                       :begin (first (extents (* s per-sentence)))
+                       :end (second (extents (dec (* (inc s) per-sentence))))})))
+         verb? (fn [i] (zero? (mod i 3)))
+         _ (doseq [ch (partition-all 1000 (map-indexed vector toks))]
+             (ids-of (h/bulk-create-spans
+                      admin-request
+                      (mapv (fn [[i t]] {:span-layer-id upos :tokens [t] :value (if (verb? i) "VERB" "NOUN")}) ch))))
+         spans (vec (mapcat (fn [ch] (ids-of (h/bulk-create-spans
+                                              admin-request
+                                              (mapv (fn [t] {:span-layer-id pos :tokens [t] :value "X"}) ch))))
+                            (partition-all 1000 toks)))
+         heads (into {} (for [s (range n-sentences)
+                              j (range 1 per-sentence)
+                              :let [i (+ (* s per-sentence) j)]]
+                          [i (+ (* s per-sentence) (.nextInt rnd j))]))
+         _ (doseq [ch (partition-all 1000 heads)]
+             (ids-of (h/bulk-create-relations
+                      admin-request
+                      (mapv (fn [[d hd]] {:relation-layer-id dep :source (spans hd) :target (spans d) :value "r"}) ch))))
+         ancestors (fn [i] (take-while some? (rest (iterate heads i))))
+         expected (set (for [i (range n) a (ancestors i)] [(str (spans a)) (str (spans i))]))]
+     {:pid pid :words tokl :sentences sentl :upos upos :pos pos :dep dep :expected expected
+      :toks (mapv str toks) :verb? verb?
+      :ancestors (fn [i] (set (ancestors i)))
+      :leaves (set (map (comp str spans) (remove (set (vals heads)) (range n))))
+      :roots (set (map (comp str spans) (remove (set (keys heads)) (range n))))})))
 
 (defn- timed [f]
   (let [t (System/nanoTime)
@@ -107,14 +114,28 @@
     (psc/execute! db ["ANALYZE"])
     (evict-pool!)))
 
+(defn- grew-descendants
+  "The query ud's Grew search compiles `X ->> Y` to."
+  [{:keys [pid words sentences pos dep]}]
+  (let [node (fn [x] [["token" (str "?n_" x) {"layer" words}] ["within" (str "?n_" x) "?S"]
+                      ["span" (str "?lem_" x) {"layer" pos}] ["covers" (str "?lem_" x) (str "?n_" x)]])]
+    {"scope" {"project-ids" [pid]}
+     "find" ["?n_X" "?n_Y"]
+     "where" (concat [["token" "?S" {"layer" sentences}]] (node "X") (node "Y")
+                     [["related*" "?lem_X" "?lem_Y" {"layer" dep}] ["!=" "?n_X" "?n_Y"]])
+     "limit" 100000}))
+
 (defn- check-treebank!
   "Every `related*` shape over the treebank, exact and in time. The closure
   is planned the same on any statistics, and so is every query whose only
   starting point is the closure or an id it is pinned to. A Grew query that
   also narrows a node by its UPOS, or whose `without` holds the closure,
   starts from the narrowing clauses as SQLite plans them, like any query
-  without `related*`: `narrowed?` adds those, timed on statistics of the data."
-  [narrowed? {:keys [pid words sentences upos pos dep expected leaves roots toks verb? ancestors]}]
+  without `related*`: `narrowed?` adds those, timed on statistics of the data.
+  `small` is a treebank a tenth of the size in the same database: the slowest
+  query is bounded by a multiple of its time on it, which a loaded machine
+  slows alike (FLK8-3: a fixed 5 s failed at 6.3 s under load)."
+  [narrowed? {:keys [pid words sentences upos pos dep expected leaves roots toks verb? ancestors] :as tb} small]
   (let [q (fn [body] (timed #(qe/run db "admin@example.com" (merge {"scope" {"project-ids" [pid]}} body))))
         pairs (fn [r] (set (map (fn [row] (mapv str row)) (:results r))))
         firsts (fn [r] (set (map (comp str first) (:results r))))]
@@ -176,11 +197,11 @@
           sent ["token" "?S" {"layer" sentences}]
           below (fn [i] (set (filter #(contains? (ancestors %) i) (range n))))]
       (testing "Grew X ->> Y"
-        (let [[r ms] (q {"find" ["?n_X" "?n_Y"]
-                         "where" (concat [sent] (node "X") (node "Y") [(dom "X" "Y") ["!=" "?n_X" "?n_Y"]])
-                         "limit" 100000})]
+        (let [run (fn [t] #(qe/run db "admin@example.com" (grew-descendants t)))
+              [_ small-ms] (h/timed (run small) {:warm 1})
+              [r ms] (h/timed (run tb))]
           (is (= (set (for [d (range n) a (ancestors d)] [(toks a) (toks d)])) (pairs r)))
-          (is (< ms 5000) (str ms " ms"))))
+          (h/within-factor-of 300 small-ms ms {:floor-ms 50 :label "Grew X ->> Y"})))
       (when narrowed?
         (testing "Grew Y [upos=NOUN] without { X ->> Y }"
           (let [[r ms] (q {"find" ["?n_Y"]
@@ -221,17 +242,19 @@
         (is (< ms 5000) (str ms " ms"))))))
 
 (deftest related-star-over-a-treebank
-  (check-treebank! false (build!)))
+  (check-treebank! false (build!) (build! small-sentences)))
 
 (deftest related-star-on-statistics-of-the-treebank
-  (let [tb (build!)]
+  (let [tb (build!)
+        small (build! small-sentences)]
     (psc/execute! db ["ANALYZE"])
     (evict-pool!)
-    (check-treebank! true tb)))
+    (check-treebank! true tb small)))
 
 (deftest related-star-on-statistics-of-a-near-empty-database
   (tiny-statistics!)
-  (let [tb (build!)]
+  (let [tb (build!)
+        small (build! small-sentences)]
     (is (= "3 1" (:stat (psc/q1 db ["SELECT stat FROM sqlite_stat1 WHERE idx = 'sqlite_autoindex_spans_1'"])))
         "the statistics still say three spans")
-    (check-treebank! false tb)))
+    (check-treebank! false tb small)))
