@@ -261,3 +261,30 @@
       (let [r (run {"where" [["token" "?t" {"layer" words}] ["document" "?d" {}] ["=" "?t.doc" "?d"]]
                     "return" {"group" ["?d.metadata.genre"] "aggregates" [["count"]]}})]
         (is (= #{["news" 3] [nil 2]} (set (:results r))))))))
+
+(deftest aggregate-group-key-of-one-alternative-is-null-in-the-others
+  ;; A group key may name a variable that only some `or` alternatives bind:
+  ;; where an alternative does not bind it, the key reads null. So two
+  ;; alternatives can each group by a field of their own variable (igt's link
+  ;; precedent groups a word by its value and a morpheme by its form). Before
+  ;; 2026-11-18 such a key was refused with a 400.
+  (let [{:keys [words pos]} (build!)
+        where [["span" "?s" {"layer" pos}]
+               ["or"
+                [["covers" "?s" "?t"] ["token" "?t" {"layer" words}] ["<" "?t.begin" 4]]
+                [["covers" "?s" "?u"] ["token" "?u" {"layer" words}] [">=" "?u.begin" 4]]]]
+        run (fn [ret] (qe/run db "admin@example.com" {"where" where "return" ret}))]
+    (testing "each alternative's key, null in the other's rows"
+      (let [r (run {"group" ["?t.begin" "?u.end"] "aggregates" [["count"]]})]
+        (is (= ["t_begin" "u_end" "count"] (:columns r)))
+        (is (= #{[0 nil 1] [3 nil 1] [nil 8 1]} (set (:results r))))))
+    (testing "with a value both alternatives share"
+      (let [r (run {"group" ["?s.value" "?t.begin"] "aggregates" [["count"]]})]
+        (is (= #{[10 0 1] [20 3 1] [30 nil 1]} (set (:results r))))))
+    (testing "the variable itself, and a metadata key of it, are keys too"
+      (let [r (run {"group" ["?t" "?t.metadata.k" "?u.end"] "aggregates" [["count"]]})]
+        (is (= 3 (count (:results r))))
+        (is (= 1 (count (filter (fn [[t _ u]] (and (nil? t) (= 8 u))) (:results r)))))))
+    (testing "an aggregate's source must still be bound in every alternative"
+      (is (= 400 (try (run {"group" [] "aggregates" [["sum" "?t.begin"]]}) nil
+                      (catch clojure.lang.ExceptionInfo e (:code (ex-data e)))))))))

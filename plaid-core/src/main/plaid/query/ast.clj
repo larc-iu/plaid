@@ -445,11 +445,15 @@
         base (dissoc parsed :where)
         agg? (clauses/aggregate? parsed)
         ;; the vars projected through the UNION: :find normally, or the aggregate
-        ;; spec's group + source vars in aggregate mode. Every branch must bind them.
+        ;; spec's group + source vars in aggregate mode. Every branch must bind
+        ;; them, except a group-key var some branch binds, which is padded.
         projected (if agg? (clauses/aggregate-vars (:return parsed)) (:find parsed))
-        branch-wheres (desugar/expand-where (vec (:where parsed)))]
+        branch-wheres (desugar/expand-where (vec (:where parsed)))
+        ;; group-key vars only some alternatives bind: null where unbound
+        padded (when (and agg? (> (count branch-wheres) 1))
+                 (desugar/aggregate-padded-vars branch-wheres (:return parsed)))]
     (when (> (count branch-wheres) 1)
-      (desugar/check-branch-consistency! branch-wheres projected))
+      (desugar/check-branch-consistency! branch-wheres (remove (or padded #{}) projected)))
     ;; Under aggregation every branch projects the SAME entity columns, and by
     ;; ruling those are the ones EVERY branch binds: what an alternative binds
     ;; alone does not make a match distinct, so a row satisfying two
@@ -459,6 +463,7 @@
     (let [align (when (and agg? (> (count branch-wheres) 1))
                   (desugar/aggregate-branch-entities branch-wheres))]
       (mapv (fn [w]
-              (cond-> (validate/validate (assoc base :where (vec w)))
+              (cond-> (validate/validate (cond-> (assoc base :where (vec w))
+                                           (some? padded) (assoc ::padded-vars padded)))
                 (some? align) (assoc ::align-entities align)))
             branch-wheres))))

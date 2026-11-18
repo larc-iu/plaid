@@ -194,6 +194,32 @@
                                " — every branch must bind it to the same entity kind")
                 {:var v :kinds (vec ks)}))))))
 
+(defn aggregate-padded-vars
+  "Under aggregation, the group-key vars that SOME branches bind and others do
+  not: in a branch that does not bind one, every group key on it reads null.
+  So two alternatives can each group by a field of their own variable (igt's
+  link precedent groups a word by its value and a morpheme by its form, which
+  keeps a morpheme's groups from splitting by the word they sit in). A var is
+  bound when a branch binds it positively, as `aggregate-branch-entities`
+  reads it. An aggregate SOURCE is not padded: it must be bound in every
+  branch, which `check-branch-consistency!` then says. A padded var must be of
+  one kind wherever it is bound. Returns a set, empty when nothing is padded."
+  [branch-wheres ret]
+  (let [positive (mapv #(set (clauses/positive-binding-vars %)) branch-wheres)
+        sources (set (map #(if (clauses/field-ref? %) (clauses/field-var %) %)
+                          (keep second (:aggregates ret))))
+        group-vars (remove sources (clauses/aggregate-vars {:group (:group ret)}))
+        padded (set (filter (fn [v] (< 0 (count (filter #(contains? % v) positive)) (count positive)))
+                            group-vars))]
+    (doseq [v padded]
+      (let [ks (distinct (keep (fn [[w pos]] (when (contains? pos v) (get (clauses/infer-kinds {:where w}) v)))
+                               (map vector branch-wheres positive)))]
+        (when (> (count ks) 1)
+          (err! :validate (str "Group var " v " has inconsistent kinds across branches: " (vec ks)
+                               ". Every branch that binds it must bind it to the same entity kind.")
+                {:var v :kinds (vec ks)}))))
+    padded))
+
 (defn aggregate-branch-entities
   "Under aggregation, the distinct-match key projects entity/layer var ids, and
   a UNION's branches must project the same columns in the same order. This is

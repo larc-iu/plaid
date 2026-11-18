@@ -604,6 +604,9 @@ The query matches if any group matches.
 
 An `or` needs at least two groups, and every `find` variable must be bound in each of them.
 The clauses outside the `or` apply to every group, and a row that matches two groups appears once.
+Under an <<Aggregates,aggregate>>, a group key may name a variable that only some groups bind, and it is null in the matches of a group that does not bind it.
+So `"group": ["?w.value", "?m.metadata.form"]` over an `or` whose first group binds `?w` and second binds `?m` groups each by its own field.
+An aggregate's source must still be bound in every group.
 For one field taking one of several values, a list such as `{"value": ["NOUN", "PROPN"]}` is simpler and faster.
 
 == Negation (`not`)

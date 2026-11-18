@@ -268,6 +268,31 @@
                       "where" [["or" [["span" "?s" {"value" "A"}]] [["span" "?s" {"value" "B"}]]]
                                ["or" [["token" "?t" {"begin" 0}]] [["token" "?t" {"begin" 5}]]]]}))))))
 
+(deftest aggregate-group-keys-across-alternatives
+  (let [agg (fn [where group & [aggs]]
+              {"where" where "return" {"group" group "aggregates" (or aggs [["count"]])}})
+        alts [["or" [["token" "?w" {"layer" "w"}]] [["token" "?m" {"layer" "m"}]]]]]
+    (testing "a group key may name a var only some alternatives bind, and every branch knows which"
+      (let [bs (ast/expand (agg alts ["?w.value" "?m.metadata.form"]))]
+        (is (= 2 (count bs)))
+        (is (every? #(= '#{?w ?m} (:plaid.query.ast/padded-vars %)) bs))))
+    (testing "a query whose keys every alternative binds pads nothing"
+      (is (every? #(empty? (:plaid.query.ast/padded-vars %))
+                  (ast/expand (agg [["or" [["token" "?t" {"layer" "w"}]] [["token" "?t" {"layer" "m"}]]]]
+                                   ["?t.value"])))))
+    (testing "still refused"
+      (is (= 400 (code-of #(ast/expand (agg alts ["?z.value"]))))
+          "a key no alternative binds")
+      (is (= 400 (code-of #(ast/expand (agg alts ["?w.value"] [["min" "?w.begin"]]))))
+          "an aggregate source some alternative does not bind")
+      (is (= 400 (code-of #(ast/expand (agg [["or" [["token" "?x" {"layer" "w"}]]
+                                              [["span" "?x" {"layer" "p"}]]
+                                              [["token" "?m" {"layer" "m"}]]]]
+                                            ["?x"]))))
+          "a key bound as two kinds")
+      (is (= 400 (code-of #(ast/expand {"find" ["?w"] "where" alts})))
+          "a find var, which is not padded"))))
+
 (deftest or-errors
   (testing ":or author errors are 400"
     (is (= 400 (code-of #(ast/expand {"find" ["?s"] "where" [["or" [["span" "?s" {}]]]]})))

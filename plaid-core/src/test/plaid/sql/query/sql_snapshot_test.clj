@@ -32,6 +32,7 @@
     plaid.sql.query.exec-layerrel-test
     plaid.sql.query.exec-layervar-test
     plaid.sql.query.exec-link-test
+    plaid.sql.query.exec-link-precedent-split-test
     plaid.sql.query.exec-literal-rules-test
     plaid.sql.query.exec-m2-test
     plaid.sql.query.exec-m3-test

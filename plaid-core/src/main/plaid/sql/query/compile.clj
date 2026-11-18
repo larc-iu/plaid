@@ -1358,11 +1358,14 @@
   for every match: `[\"?v\", ..., \"?v.metadata.morphType\"]` reads the
   entry's morph type once per group instead of once per link. On igt's
   project-wide link count that is 94k lookups instead of 346k."
-  [st group-vars]
-  (let [;; entity or layer var -> the index of its (first) group key
+  [st group-vars padded]
+  (let [;; entity or layer var -> the index of its (first) group key. A padded
+        ;; var is left out: it is bound in some branches only, and every
+        ;; branch of the union must defer the same keys.
         entity-group-index (reduce (fn [m [i g]]
                                      (if (and (clauses/var? g)
                                               (get-in @st [:var->alias g])
+                                              (not (contains? padded g))
                                               (not (contains? m g)))
                                        (assoc m g i)
                                        m))
@@ -1397,14 +1400,20 @@
   anything matches and 0 where nothing does. Without the column the SQL is
   `SELECT DISTINCT FROM …`, which SQLite refuses and the endpoint turned
   into a 500."
-  [st ret align]
+  [st ret align padded]
   (let [group-vars (:group ret)
-        deferred (deferred-group-keys st group-vars)
+        deferred (deferred-group-keys st group-vars padded)
         g-cols (mapv #(keyword (str "__g_" %)) (range (count group-vars)))
+        ;; a key on a var another alternative binds and this one does not
+        ;; (`desugar/aggregate-padded-vars`) reads null in this branch
+        unbound? (fn [g] (let [v (if (clauses/field-ref? g) (clauses/field-var g) g)]
+                           (and (contains? padded v)
+                                (not (get-in @st [:var->alias v]))
+                                (not (get-in @st [:scalar-col v])))))
         ;; a deferred key is read after the grouping, so the matches never carry it
         g-proj (keep-indexed (fn [i v]
                                (when-not (contains? deferred i)
-                                 [(group-expr st v) (g-cols i)]))
+                                 [(when-not (unbound? v) (group-expr st v)) (g-cols i)]))
                              group-vars)
         agg-srcs (distinct (keep second (:aggregates ret)))
         src->kw (into {} (map-indexed (fn [i v] [v (keyword (str "__a_" i))]) agg-srcs))
@@ -1581,7 +1590,8 @@
       ;; and that alias has to be in :from before distinct-redundant? reads it.
       (let [{:keys [select plan entity-vars]} (aggregate-projection
                                                st (:return resolved)
-                                               (:plaid.query.ast/align-entities resolved))
+                                               (:plaid.query.ast/align-entities resolved)
+                                               (set (:plaid.query.ast/padded-vars resolved)))
             elide? (distinct-redundant? st entity-vars)
             ;; the elision counted on these, see distinct-redundant?
             _ (when elide?

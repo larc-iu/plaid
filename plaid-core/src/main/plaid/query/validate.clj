@@ -526,11 +526,14 @@
     ;; aggregate spec: group keys + sources must be bound; a source is a value
     ;; variable or a field path (not an entity id), a group is a var or field path.
     (when (clauses/aggregate? ast)
-      (let [ret (:return ast)]
-        (doseq [v (clauses/aggregate-vars ret)]
+      (let [ret (:return ast)
+            ;; a group-key var another alternative binds and this one does not
+            ;; reads null here (`desugar/aggregate-padded-vars`)
+            padded? (fn [v] (and (contains? (:plaid.query.ast/padded-vars ast) v) (not (positive v))))]
+        (doseq [v (clauses/aggregate-vars ret) :when (not (padded? v))]
           (when-not (positive v)
             (err! :validate (str ":return references unbound var " v))))
-        (doseq [g (:group ret) :when (clauses/field-ref? g)]
+        (doseq [g (:group ret) :when (and (clauses/field-ref? g) (not (padded? (clauses/field-var g))))]
           (validate-field-ref! kinds positive g false))
         (doseq [[op src] (:aggregates ret) :when src]
           (cond
