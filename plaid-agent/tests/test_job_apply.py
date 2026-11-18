@@ -345,9 +345,9 @@ def test_proposed_changes_are_capped_and_the_report_counts_the_rest(monkeypatch)
     changes = [{'kind': 'add_guideline', 'document_id': None, 'document': None, 'ref': None, 'field': None,
                 'from': None, 'to': f'b{i}', 'label': 'x'} for i in range(5)]
     s.runner.record_changes(changes, 'note')
-    s.runner.record_changes(changes, 'note')  # the same again: kept once, counted once
+    s.runner.record_changes(changes, 'note')  # the same again: kept once, counted once (REV-JR1-11)
     parts = s.runner.report_parts(s.job)
-    assert len(parts['proposed']) == 2 and parts['proposed_dropped'] == 6 and parts['proposed_more'] == 6
+    assert len(parts['proposed']) == 2 and parts['proposed_dropped'] == 3 and parts['proposed_more'] == 3
     assert limits.JOB_CHANGES_MAX == limits.JOB_REPORT_LIST_MAX
 
 

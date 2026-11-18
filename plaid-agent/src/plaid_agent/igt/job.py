@@ -5210,28 +5210,29 @@ class IgtRunner:
     def record_changes(self, changes: List[Dict[str, Any]], note: str = '') -> None:
         """Keep the changes a piece proposed among the job's decisions, each
         once (keyed by what it is), at most JOB_CHANGES_MAX for the job: past
-        the cap a change is only counted (a row whose count grows), and the
-        report says how many."""
+        the cap a change is only counted, a row of its own keyed the same
+        way and counted once however often it is sent (a call made again
+        after its answer was lost, the change proposed again: REV-JR1-11),
+        and the report says how many."""
         if not changes:
             return
         if self.changes is None:
             self.changes = {r.get('key') for r in self.job.decisions()
                             if str(r.get('form') or '').startswith(CHANGE_FORM)}
-        rows, dropped, keys = [], 0, []
+        rows, dropped, keys = [], set(), []
         for c in changes:
             text = self.change_text(c, note)
             key = analysis_key(canonical(c))
             if key in self.changes or key in keys:
                 continue
             if len(self.changes) + len(keys) >= JOB_CHANGES_MAX:
-                dropped += 1
+                dropped.add(key)
                 continue
             keys.append(key)
             rows.append({'form': CHANGE_FORM + key, 'key': key, 'analysis': text, 'count': 1,
                          'document_id': c.get('document_id'), 'sentence_id': None})
-        if dropped:
-            rows.append({'form': DROPPED_FORM, 'key': 'dropped', 'analysis': '{}', 'count': dropped,
-                         'document_id': None, 'sentence_id': None})
+        rows += [{'form': DROPPED_FORM, 'key': key, 'analysis': '{}', 'count': 1, 'document_id': None,
+                  'sentence_id': None} for key in sorted(dropped)]
         if rows:
             self.job.add_decisions(rows)
         # Kept as held only once core took them: a call core failed is made
@@ -6215,7 +6216,8 @@ class IgtRunner:
         for r in rows:
             form = str(r.get('form') or '')
             if form == DROPPED_FORM:
-                dropped += r.get('count') or 0
+                # One row a change, whatever its count (REV-JR1-11).
+                dropped += 1
                 continue
             if form.startswith(TABLES_DROPPED_FORM + ' '):
                 # One row per piece, its count in its analysis: a piece taken
