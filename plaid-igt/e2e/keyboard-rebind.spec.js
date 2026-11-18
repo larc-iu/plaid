@@ -7,7 +7,9 @@ import { getFixture } from './fixtureProject.js';
 // reload, and gone again after Reset all.
 //
 // It writes to the shared dev account's keymap, so both shortcuts it changes
-// are ones no other spec presses, and it clears the entry whatever happens.
+// are ones no other spec presses (the two literal characters in a morpheme
+// form: Alt+Down and Alt+0 are pressed elsewhere, FLK3-7), and it clears the
+// entry whatever happens.
 
 const KEY = 'igt:keymap';
 
@@ -37,17 +39,17 @@ test('a rebound shortcut works, shows in the legend, and survives a reload', asy
   await expect(page.getByText('Keyboard shortcuts', { exact: true })).toBeVisible();
 
   // Refused, with the reason, and still listening.
-  await rebind(page, 'List the other values seen for this form', 'Control+Enter');
+  await rebind(page, 'Type an equals sign without splitting', 'Control+Enter');
   await expect(page.getByRole('status')).toHaveText(
     'Ctrl+Enter is “Accept everything proposed on the word or sentence”.',
   );
   await page.keyboard.press('Alt+l');
   await expect(page.getByRole('status')).toHaveCount(0);
 
-  await rebind(page, 'Type a zero morph ∅', 'Alt+9');
+  await rebind(page, 'Type a hyphen without splitting', 'Alt+9');
   await expect
     .poll(async () => (await client.userData.get(userId, KEY)).value.metadata)
-    .toEqual({ 'analyze.alternatives': ['Alt+l'], 'morph.zero': ['Alt+9'] });
+    .toEqual({ 'morph.literalEquals': ['Alt+l'], 'morph.literalHyphen': ['Alt+9'] });
 
   // A fresh page load reads them off the account.
   await page.goto(`/#/projects/${projectId}/documents/${documentId}?tab=analyze`);
@@ -57,16 +59,16 @@ test('a rebound shortcut works, shows in the legend, and survives a reload', asy
   await form.click();
   const before = await form.inputValue();
   await page.keyboard.press('End');
-  await page.keyboard.press('Alt+0');
+  await page.keyboard.press('Alt+-');
   await expect(form).toHaveValue(before); // the old chord is dead
   await page.keyboard.press('Alt+9');
-  await expect(form).toHaveValue(`${before}∅`);
+  await expect(form).toHaveValue(`${before}-`);
   await page.keyboard.press('Escape'); // put the form back, write nothing
 
   await page.getByRole('button', { name: 'Keys and marks' }).click();
   const legend = page.locator('.igt-legend');
-  await expect(legend).toContainText('9 to type a zero morph');
-  await expect(legend).toContainText('L to list the rest');
+  await expect(legend).toContainText('9 / ');
+  await expect(legend).toContainText('L literal character');
 
   await page.goto('/#/profile');
   await page.getByRole('button', { name: 'Reset all' }).click();

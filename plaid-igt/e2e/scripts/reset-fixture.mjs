@@ -27,7 +27,7 @@ const note = (line) => {
 };
 
 const client = makeClient();
-const { documentId } = await getFixture();
+const { projectId, documentId } = await getFixture();
 const raw = await client.documents.get(documentId, true);
 const text = raw.textLayers[0];
 const body = text.text.body;
@@ -91,6 +91,26 @@ for (const [what, tokens] of tokensOf) {
 for (const token of alignment?.tokens || []) {
   note(`alignment token ${token.begin}-${token.end}: ${JSON.stringify(token.metadata)}`);
   if (!DRY) await client.tokens.delete(token.id);
+}
+
+// 5. The seeder makes no tagset, and none governs a layer. pair-picker's
+// governed-Gloss tests set one, and a run that died left it (FLK3-1): a closed
+// tagset then refuses values in every spec that types a gloss.
+const project = await client.projects.get(projectId);
+if (Object.keys(project.config?.igt?.tagsets || {}).length) {
+  note(`tagsets on the project: ${Object.keys(project.config.igt.tagsets).join(', ')}`);
+  if (!DRY) await client.projects.deleteConfig(projectId, 'igt', 'tagsets');
+}
+const projectSpanLayers = [];
+const walkProject = (tokenLayer) => {
+  for (const sl of tokenLayer.spanLayers || []) projectSpanLayers.push(sl);
+  for (const child of tokenLayer.tokenLayers || []) walkProject(child);
+};
+for (const t of project.textLayers || []) for (const tl of t.tokenLayers || []) walkProject(tl);
+for (const sl of projectSpanLayers) {
+  if (!sl.config?.igt?.tagset) continue;
+  note(`tagset ${JSON.stringify(sl.config.igt.tagset)} on the ${sl.name} layer`);
+  if (!DRY) await client.spanLayers.deleteConfig(sl.id, 'igt', 'tagset');
 }
 
 if (found.length === 0) {
