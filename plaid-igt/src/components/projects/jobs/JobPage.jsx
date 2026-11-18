@@ -336,6 +336,7 @@ export const JobPage = ({ project, projectId, jobId, client }) => {
             <JobSetup job={job} projectId={projectId} user={user} />
             {active ? (
               <>
+                <JobProgress job={job} readAt={readAt} />
                 {plan && (
                   <p className="mt-3 max-w-3xl text-sm" data-testid="job-plan">
                     <span className="text-muted-foreground">Plan </span>
@@ -597,6 +598,36 @@ const PlannedInstructions = ({ text }) => {
 const cutText = (text, given) =>
   `Cut to ${[...text].length.toLocaleString()} of ${given.toLocaleString()} characters.`;
 
+// How far a job still waiting or running has got, on its Overview (REV-RP-5):
+// its documents done of how many, from its own rows, when it started (or
+// since when it waits) and how long it has run, in the Setup's words.
+const JobProgress = ({ job, readAt }) => {
+  const docs = job.documents || [];
+  const done = docs.filter((d) => d.state === 'done').length;
+  return (
+    <dl
+      className="mt-3 grid max-w-2xl grid-cols-[auto_1fr] gap-x-6 gap-y-1 text-sm"
+      data-testid="job-progress"
+    >
+      <Fact label="Documents done">
+        {done.toLocaleString()} of {docs.length.toLocaleString()}
+      </Fact>
+      {job.startedAt ? (
+        <>
+          <Fact label="Started">
+            <When at={job.startedAt} />
+          </Fact>
+          <Fact label="Elapsed">{durationText(readAt - new Date(job.startedAt).getTime())}</Fact>
+        </>
+      ) : (
+        <Fact label="Waiting since">
+          <When at={job.createdAt} />
+        </Fact>
+      )}
+    </dl>
+  );
+};
+
 // The job's Setup: how it was planned and run (its instructions are on its
 // Overview). `plan`: the report's, or while there is none the plan row's.
 const JobFacts = ({ job, readAt, plan }) => {
@@ -690,7 +721,17 @@ const JobDocuments = ({ job, projectId, plan }) => {
           : allSkipped(d)
             ? 'Skipped'
             : (jobDocumentStateText(d.state) ?? d.state);
+  const order = new Map((job.documents || []).map((d, i) => [d.documentId, i + 1]));
   const columns = [
+    // The job's order, the order it works them in: the table's first order,
+    // whatever the job's state (REV-RP-5).
+    {
+      key: 'order',
+      label: '#',
+      align: 'right',
+      sort: (d) => order.get(d.documentId),
+      render: (d) => order.get(d.documentId).toLocaleString(),
+    },
     {
       key: 'name',
       label: 'Document',
@@ -791,11 +832,12 @@ const JobDocuments = ({ job, projectId, plan }) => {
   return (
     <DataTable
       id="job-documents"
-      scope={projectId}
+      // A sort is this job's: the next job opens in its own order.
+      scope={job.id}
       rows={shown}
       rowKey={(d) => d.documentId}
       columns={columns}
-      defaultSort={{ key: 'name', dir: 'asc' }}
+      defaultSort={{ key: 'order', dir: 'asc' }}
       pageParam="page"
       search={{
         placeholder: 'Search documents…',

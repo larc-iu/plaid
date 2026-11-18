@@ -236,14 +236,16 @@ const sectionKeys = (root) =>
   all(root, '[role="tab"]').map(
     (t) => t.getAttribute('href').match(/view=(\w+)/)?.[1] ?? 'overview',
   );
-// The documents table's rows in the job's order (the table sorts by name):
+// A documents table row's cells after its first, the job's order (#).
+const docCells = (r) => [...r.querySelectorAll('td')].slice(1).map(text);
+// The documents table's rows, looked up by name in the job's order:
 // each row's text, by its document's place in `job.documents`.
 const documentRows = (root, job) => {
   const rows = all(root, 'tbody tr').filter((r) =>
-    r.closest('table')?.querySelector('th')?.textContent.startsWith('Document'),
+    all(r.closest('table'), 'th').some((th) => th.textContent.startsWith('Document')),
   );
   return job.documents.map(
-    (d) => rows.find((r) => text(all(r, 'td')[0]) === (d.name ?? 'Deleted document')) ?? null,
+    (d) => rows.find((r) => text(all(r, 'td')[1]) === (d.name ?? 'Deleted document')) ?? null,
   );
 };
 const clientOf = (...answers) => {
@@ -1566,7 +1568,7 @@ describe('the job page', () => {
       ],
     });
     const v = await mountAll(clientOf(job));
-    const rows = all(v.container, 'tbody tr').map((r) => [...r.querySelectorAll('td')].map(text));
+    const rows = all(v.container, 'tbody tr').map(docCells);
     const a = rows.find((r) => r[0] === 'Story A');
     expect(a.slice(1, 3)).toEqual(['Skipped', '0 of 2, 2 skipped']);
     const b = rows.find((r) => r[0] === 'Story B');
@@ -1653,7 +1655,7 @@ describe('the job page', () => {
       },
     });
     const v = await mountAll(clientOf(job));
-    const rows = all(v.container, 'tbody tr').map((r) => [...r.querySelectorAll('td')].map(text));
+    const rows = all(v.container, 'tbody tr').map(docCells);
     expect(rows.find((r) => r[0] === 'Story A').slice(1, 3)).toEqual([
       'Done',
       'Worked in the one step',
@@ -2671,7 +2673,7 @@ describe('the job page', () => {
         },
       });
       const v = await mountAll(clientOf(job));
-      const rows = all(v.container, 'tbody tr').map((r) => [...r.querySelectorAll('td')].map(text));
+      const rows = all(v.container, 'tbody tr').map(docCells);
       expect(rows[0].slice(0, 3)).toEqual([
         'Story A',
         'Done',
@@ -2700,7 +2702,7 @@ describe('the job page', () => {
         nextCursor: null,
       }));
       const v = await mountAll(client);
-      const rows = all(v.container, 'tbody tr').map((r) => [...r.querySelectorAll('td')].map(text));
+      const rows = all(v.container, 'tbody tr').map(docCells);
       expect(rows[0][2]).toBe('0 of 3 matching, 17 not found by the plan’s search');
       await v.unmount();
     });
@@ -2713,7 +2715,7 @@ describe('the job page', () => {
         report: { ...REPORT, plan: planOf({ onlyEmpty: true }), documents: docs },
       });
       const v = await mountAll(clientOf(job));
-      const rows = all(v.container, 'tbody tr').map((r) => [...r.querySelectorAll('td')].map(text));
+      const rows = all(v.container, 'tbody tr').map(docCells);
       expect(rows[0][2]).toBe(
         '1 of 1 matching, 19 not found by the plan’s search or with nothing to fill',
       );

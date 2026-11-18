@@ -345,7 +345,7 @@ describe('the Overview of an ended job', () => {
 describe('the lists of an ended job', () => {
   it('filters the documents to those to check, the filter in the address', async () => {
     const v = await mount(clientOf(ENDED), '?view=documents&filter=check');
-    const names = () => all(v.container, 'tbody tr').map((r) => text(r.querySelector('td')));
+    const names = () => all(v.container, 'tbody tr').map((r) => text(all(r, 'td')[1]));
     expect(names()).toHaveLength(N);
     // Every document is to check here: drop the blanks the job left alone.
     await v.unmount();
@@ -359,7 +359,7 @@ describe('the lists of an ended job', () => {
     };
     const w = await mount(clientOf(fewer), '?view=documents&filter=check');
     const rows = () => all(w.container, 'tbody tr');
-    expect(rows().map((r) => text(r.querySelector('td')))).toEqual(['Story 01', 'Story 02']);
+    expect(rows().map((r) => text(all(r, 'td')[1]))).toEqual(['Story 01', 'Story 02']);
     expect(rows().map((r) => text(all(r, 'td').at(-1)))).toEqual([
       'In use, not worked',
       '1 sentence skipped',
@@ -380,7 +380,7 @@ describe('the lists of an ended job', () => {
     await v.unmount();
     const w = await mount(clientOf(ENDED), '?view=documents&filter=in-use');
     const rows = all(w.container, 'tbody tr');
-    expect(rows.map((r) => text(r.querySelector('td')))).toEqual(['Story 01']);
+    expect(rows.map((r) => text(all(r, 'td')[1]))).toEqual(['Story 01']);
     // The reason is the filter's third choice, chosen.
     const chosen = all(w.container, 'button[aria-pressed="true"]').map(text);
     expect(chosen).toEqual(['In use1']);
@@ -428,6 +428,52 @@ describe('the lists of an ended job', () => {
 });
 
 describe('a job still running', () => {
+  // REV-RP-5: how far it has got, when it started and how long it has run, on
+  // the Overview, and its documents in the job's order.
+  it('says how far it has got, and lists the documents in the job’s order', async () => {
+    const running = {
+      ...ENDED,
+      state: 'running',
+      phase: 'working',
+      finishedAt: null,
+      report: null,
+      documents: [
+        doc(1, { name: 'Zebra story' }),
+        doc(2, { name: 'Apple story', state: 'working', done: 1 }),
+        doc(3, { name: 'Mango story', state: 'waiting', done: 0, counts: {} }),
+      ],
+    };
+    const v = await mount(clientOf(running));
+    const facts = Object.fromEntries(
+      all(v.container, '[data-testid="job-progress"] dt').map((dt) => [
+        text(dt),
+        text(dt.nextElementSibling),
+      ]),
+    );
+    expect(facts['Documents done']).toBe('1 of 3');
+    expect(facts.Started).toBeTruthy();
+    expect(facts.Elapsed).toBeTruthy();
+    await v.unmount();
+    const w = await mount(clientOf(running), '?view=documents');
+    expect(all(w.container, 'tbody tr').map((r) => text(all(r, 'td')[1]))).toEqual([
+      'Zebra story',
+      'Apple story',
+      'Mango story',
+    ]);
+    expect(all(w.container, 'tbody tr').map((r) => text(all(r, 'td')[0]))).toEqual(['1', '2', '3']);
+    await w.unmount();
+    // The order a reader picks on one job is not the next job's.
+    localStorage.clear();
+    const x = await mount(clientOf(running), '?view=documents');
+    await x.step(() => byText(x.container, 'button', 'Document').click());
+    expect(text(all(x.container, 'tbody tr')[0])).toContain('Apple story');
+    await x.unmount();
+    const other = { ...running, id: 'j2' };
+    const y = await mount(clientOf(other), '?view=documents');
+    expect(text(all(y.container, 'tbody tr')[0])).toContain('Zebra story');
+    await y.unmount();
+  });
+
   it('draws Overview, Documents and Setup, the work so far on its Overview', async () => {
     const running = {
       ...ENDED,
