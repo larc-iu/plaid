@@ -33,19 +33,24 @@ const PIECES_TEXT = {
   selection: 'Worked on all the documents at once',
 };
 
-export const planText = (plan) => {
+// The Plan line in parts, as IsolatedLabel (plaid-ui) draws them: strings,
+// and `{isolate: [value]}` for a value drawn in a `<bdi>`.
+export const planParts = (plan) => {
   if (!plan) return null;
   // Planning ended with no plan: the job ended writing nothing (REV-DF3-2),
   // worded by why it ended (REV-DF4-2).
-  if (plan.by === 'none') return `${planEndedText(plan)} Nothing was written.`;
+  if (plan.by === 'none') return [`${planEndedText(plan)} Nothing was written.`];
+  const parts = [];
   let text = PIECES_TEXT[plan.pieces] ?? plan.pieces;
   if (plan.pieces === 'sentences' && plan.search) {
     // Only the sentences the plan's search matched, said by the worker's
     // words for it (`search.said`, CONTRACT, added by SF), as read_job says it.
-    // Isolated (FSI ... PDI), as the page isolates every value it shows: a
-    // pattern in a right-to-left script keeps its place in the line (REV-SF-2).
-    text +=
-      `, only the sentences matching \u2068${plan.search.said}\u2069: ` +
+    // Isolated in a `<bdi>`, as the page isolates every value it shows: a
+    // pattern in a right-to-left script keeps its place in the line
+    // (REV-SF-2), and its text holds no invisible character (REV-G4-1).
+    parts.push(`${text}, only the sentences matching `, { isolate: [plan.search.said] });
+    text =
+      `: ` +
       `${countOf(plan.search.sentences ?? 0, 'sentence')} in ${countOf(plan.search.documents ?? 0, 'document')}`;
     if (plan.onlyEmpty) text += ', of them only those with something empty';
   } else if (plan.pieces === 'sentences' && plan.onlyEmpty) {
@@ -71,7 +76,7 @@ export const planText = (plan) => {
   }
   // The plan says the instructions ask for the text itself to change
   // (plan_work's edits_text): only then may the job edit it.
-  return plan.editsText ? `${text} Text may be edited.` : text;
+  return [...parts, plan.editsText ? `${text} Text may be edited.` : text];
 };
 
 // What each kind of change a job counts is called (the worker's

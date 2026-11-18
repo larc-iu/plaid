@@ -2622,7 +2622,7 @@ describe('the job page', () => {
       });
       const v = await mountAll(clientOf(job));
       expect(totals(v.container).Plan).toBe(
-        'Worked in stretches of sentences, only the sentences matching \u2068Gloss "be.3ᴀᴜɢII"\u2069: ' +
+        'Worked in stretches of sentences, only the sentences matching Gloss "be.3ᴀᴜɢII": ' +
           '33 sentences in 24 documents. Fills: Gloss.',
       );
       await v.unmount();
@@ -2633,7 +2633,7 @@ describe('the job page', () => {
       });
       const w = await mountAll(clientOf(both));
       expect(totals(w.container).Plan).toBe(
-        'Worked in stretches of sentences, only the sentences matching \u2068Gloss "be.3ᴀᴜɢII"\u2069: ' +
+        'Worked in stretches of sentences, only the sentences matching Gloss "be.3ᴀᴜɢII": ' +
           '33 sentences in 24 documents, of them only those with something empty. Fills: Gloss.',
       );
       await w.unmount();
@@ -2652,11 +2652,12 @@ describe('the job page', () => {
         },
       });
       const v = await mountAll(clientOf(job));
-      expect(totals(v.container).Plan).toContain(
-        'matching \u2068word form "שלום"\u2069: 33 sentences',
-      );
+      expect(totals(v.container).Plan).toContain('matching word form "שלום": 33 sentences');
       const dd = all(v.container, 'dl dt').find((dt) => dt.textContent === 'Plan').nextSibling;
       expect(dd.className).toContain('[overflow-wrap:anywhere]');
+      // In a <bdi>, its text the search as said (REV-G4-1, JOIN18).
+      expect(dd.querySelector('bdi').textContent).toBe('word form "שלום"');
+      expect(dd.textContent).not.toMatch(/[\u2066-\u2069]/);
       await v.unmount();
     });
 

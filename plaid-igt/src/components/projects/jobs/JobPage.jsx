@@ -5,6 +5,7 @@ import { useAuth } from '../../../contexts/AuthContext';
 import { notifyError } from '@/utils/feedback';
 import { Button } from '@ui/components/ui/button';
 import { Badge } from '@ui/components/ui/badge';
+import { IsolatedLabel } from '@ui/components/shared/IsolatedLabel.jsx';
 import { useConfirm } from '@ui/components/shared/ConfirmProvider';
 import { DataTable } from '@ui/components/shared/data-table';
 import { SegmentedControl } from '@ui/components/shared/SegmentedControl.jsx';
@@ -55,7 +56,7 @@ import {
   jobsTabPath,
   changesGroup,
   leftText,
-  planText,
+  planParts,
   readableSetup,
   whoText,
   stoppedPartway,
@@ -375,7 +376,7 @@ export const JobPage = ({ project, projectId, jobId, client }) => {
                   {plan && (
                     <p className="mt-3 max-w-3xl text-sm" data-testid="job-plan">
                       <span className="text-muted-foreground">Plan </span>
-                      {planText(plan)}
+                      <IsolatedLabel parts={planParts(plan)} />
                     </p>
                   )}
                   <JobActivity job={job} projectId={projectId} pieces={pieces} />
@@ -671,7 +672,11 @@ const JobFacts = ({ job, readAt, plan }) => {
   const waited = waitedMs(job);
   return (
     <dl className="grid max-w-2xl grid-cols-[auto_1fr] gap-x-6 gap-y-1 text-sm">
-      {plan && <Fact label="Plan">{planText(plan)}</Fact>}
+      {plan && (
+        <Fact label="Plan">
+          <IsolatedLabel parts={planParts(plan)} />
+        </Fact>
+      )}
       {job.report?.plan?.pieceInstructions && (
         <Fact label="Assistant’s instructions">
           {job.report.plan.instructionsCut > 0 && (

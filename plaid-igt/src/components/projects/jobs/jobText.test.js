@@ -1,5 +1,11 @@
 import { describe, it, expect } from 'vitest';
-import { allSkipped, documentCounts, documentSentencesText, pieceEndLines } from './jobText.js';
+import {
+  allSkipped,
+  documentCounts,
+  documentSentencesText,
+  pieceEndLines,
+  planParts,
+} from './jobText.js';
 
 // What the job page says of a report's documents, by the worker's rows
 // (job review 2026-11-18, lane JR2).
@@ -70,5 +76,25 @@ describe('a piece ended by a repeat stop (REV-JR1-6)', () => {
     expect(pieceEndLines({ ended: 'budget', counts: { changes: 1 } })).toEqual([
       'Steps used up: written as staged.',
     ]);
+  });
+});
+
+// JOIN18 (REV-G4-1): the Plan line's search is drawn in a <bdi>, never with
+// invisible isolate characters in its text.
+describe('the Plan line', () => {
+  it('isolates the search as a part, its text holding no isolate character', () => {
+    const plan = {
+      pieces: 'sentences',
+      search: { said: 'word form "שלום"', sentences: 33, documents: 24 },
+      fillsNames: ['Gloss'],
+    };
+    const parts = planParts(plan);
+    expect(parts).toEqual([
+      'Worked in stretches of sentences, only the sentences matching ',
+      { isolate: ['word form "שלום"'] },
+      ': 33 sentences in 24 documents. Fills: Gloss.',
+    ]);
+    expect(JSON.stringify(parts)).not.toMatch(/[⁦-⁩]/);
+    expect(planParts({ by: 'none', reason: 'failed' })).toHaveLength(1);
   });
 });
