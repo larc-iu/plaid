@@ -396,7 +396,7 @@ def core_fault(e: Optional[BaseException]) -> Optional[str]:
     return 'other'
 
 
-def core_unreachable(e: Optional[BaseException]) -> bool:
+def core_out_of_reach(e: Optional[BaseException]) -> bool:
     """Whether ``e`` holds core out of reach: a network error (status 0 with
     the network's own error under it) or a 502, 503 or 504, the answers of a
     proxy with no core behind it. Only this drops a job for the next claim
@@ -840,7 +840,7 @@ def run_job(job: Job, runner) -> Optional[Dict[str, Any]]:
         job.set(phase=REPORTING, current_document=None, message='Writing the report.')
         return _finish(job, 'done', runner, harmonize, entries)
     except Exception as e:  # noqa: BLE001 - a stop, core saying the job is no longer this worker's, or a fault
-        if core_unreachable(e):
+        if core_out_of_reach(e):
             # Core out of reach past every try (S4-1, REV-SJ1-2): never the
             # job's end. The job is dropped as it stands, its lease lapses,
             # and a claim once core answers takes it up again from what core
@@ -1492,7 +1492,7 @@ class Worker:
             else:
                 run_job(job, runner)
         except Exception as e:  # noqa: BLE001 - a job the worker cannot finish is failed, never taken again
-            if core_unreachable(e):
+            if core_out_of_reach(e):
                 # Core out of reach as the job ended (S4-1, REV-SJ1-2):
                 # dropped, taken up again once core answers.
                 logger.warning('Job %s: dropped while core does not answer: %s', job.id, e)
