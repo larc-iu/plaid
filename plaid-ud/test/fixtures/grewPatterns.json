@@ -324,5 +324,10 @@
   "pattern { X [upos=VERB] } without { X -[obj]-> Y } global { is_projective }",
   "pattern { X -[2=pass]-> Y }",
   "pattern { X -[1=acl, 3=x]-> Y }",
-  "pattern { X -[0=nsubj]-> Y }"
+  "pattern { X -[0=nsubj]-> Y }",
+  "pattern { e: V -> S; V.upos = VERB }",
+  "pattern { e: V -[nsubj]-> S; e.label = nsubj }",
+  "pattern { e: X -[nsubj]-> Y; f: X -[obj]-> Z; e.label = f.label }",
+  "pattern { X []; X.lemma = e.label } pattern { e: X -> Y }",
+  "pattern { e: V -> S } without { e.label = obj }"
 ]

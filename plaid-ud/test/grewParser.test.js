@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { parse } from '../src/grew/parser.js';
+import { parse, parseGrs } from '../src/grew/parser.js';
 
 const onlyBlock = (s) => parse(s).blocks[0];
 const items = (s) => onlyBlock(s).items;
@@ -161,5 +161,39 @@ test('parse errors carry location', () => {
   assert.throws(
     () => parse('foo { X }'),
     (e) => /block keyword/.test(e.message),
+  );
+});
+
+// `e.label` on a named edge read as a feature of a new node called e, and the
+// search said "No matching sentences." with no word (H3-6-3). A pattern names
+// an edge's label in the edge, and anything else said of a named edge is
+// refused, in a search and in a rule alike.
+test('a constraint on a named edge in a pattern is refused, not read as a node', () => {
+  const refused = [
+    'pattern { e: V -[nsubj]-> S; e.label = nsubj }',
+    'pattern { e: V -> S; e.label = "obj" }',
+    'pattern { e: X -[nsubj]-> Y; f: X -[obj]-> Z; e.label = f.label }',
+    'pattern { X []; X.lemma = e.label } pattern { e: X -> Y }',
+    'pattern { e: V -> S } without { e.label = obj }',
+  ];
+  for (const src of refused) {
+    assert.throws(
+      () => parse(src),
+      (e) =>
+        e.name === 'GrewUnsupportedError' &&
+        e.feature === 'edge-constraint' &&
+        /in the edge: e: X -\[nsubj\]-> Y/.test(e.message),
+      src,
+    );
+  }
+  assert.throws(
+    () => parseGrs('pattern { e: V -> O; e.label = "obj" } commands { e.label = "dobj" }'),
+    (e) => e.feature === 'edge-constraint',
+  );
+  // A node's feature, and an edge's label in commands, are as before.
+  assert.equal(parse('pattern { e: V -> S; V.upos = VERB }').blocks[0].items[1].kind, 'nodefeat');
+  assert.equal(
+    parseGrs('pattern { e: V -[obj]-> O } commands { e.label = "dobj" }').rules.length,
+    1,
   );
 });

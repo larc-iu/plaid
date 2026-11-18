@@ -89,6 +89,7 @@ function createParser(src) {
       blocks.push(parseBlock());
     }
     if (blocks.length === 0) fail('Empty query. Expected a `pattern { … }` block.');
+    refuseEdgeConstraints(blocks);
     return { blocks, nonInjective: [...nonInjective] };
   }
 
@@ -143,6 +144,7 @@ function createParser(src) {
     if (anon) fail('Expected a `commands { … }` block after the pattern');
     if (rules.length === 0) fail('Empty rule set. Expected a `rule` or a pattern with `commands`.');
     rules.forEach(resolveLexiconRefs);
+    rules.forEach((rule) => refuseEdgeConstraints(rule.blocks));
     return { rules, strats };
   }
 
@@ -208,6 +210,33 @@ function createParser(src) {
           line: item.line,
         };
       });
+    }
+  }
+
+  // `e.label = nsubj` on a named edge reads as a feature of a node called e,
+  // which matched nothing and said nothing. A pattern names an edge's label in
+  // the edge (commands and Count by do take `e.label`).
+  function refuseEdgeConstraints(blocks) {
+    const edges = new Set();
+    for (const block of blocks) {
+      for (const item of block.items) {
+        if ((item.kind === 'edge' || item.kind === 'dominates') && item.id) edges.add(item.id);
+      }
+    }
+    for (const block of blocks) {
+      for (const item of block.items) {
+        let sides = [];
+        if (item.kind === 'nodefeat') sides = [{ node: item.node, feat: item.feat }];
+        if (item.kind === 'featcmp') sides = [item.left, item.right];
+        const side = sides.find((x) => edges.has(x.node));
+        if (side) {
+          throw new GrewUnsupportedError(
+            'edge-constraint',
+            `\`${side.node}.${side.feat}\` is not supported in a pattern. Name the label in the edge: e: X -[nsubj]-> Y.`,
+            item.line,
+          );
+        }
+      }
     }
   }
 

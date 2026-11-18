@@ -431,6 +431,7 @@ class _Parser:
             blocks.append(self.block())
         if not blocks:
             self.fail('Empty query. Expected a `pattern { … }` block.')
+        _refuse_edge_constraints(blocks)
         return {'blocks': blocks, 'nonInjective': list(self.non_injective)}
 
     def block(self) -> Dict[str, Any]:
@@ -699,6 +700,27 @@ class _Parser:
             op = '='
         return {'kind': 'globalmeta', 'key': id_tok['value'], 'op': op,
                 'value': self.value_expr(), 'line': id_tok['line']}
+
+
+def _refuse_edge_constraints(blocks: List[Dict[str, Any]]) -> None:
+    """``e.label = nsubj`` on a named edge reads as a feature of a node called
+    e, which matched nothing and said nothing. A pattern names an edge's label
+    in the edge."""
+    edges = {it['id'] for b in blocks for it in b['items']
+             if it['kind'] in ('edge', 'dominates') and it.get('id')}
+    for b in blocks:
+        for it in b['items']:
+            sides = []
+            if it['kind'] == 'nodefeat':
+                sides = [{'node': it['node'], 'feat': it['feat']}]
+            if it['kind'] == 'featcmp':
+                sides = [it['left'], it['right']]
+            side = next((x for x in sides if x['node'] in edges), None)
+            if side:
+                raise GrewUnsupportedError(
+                    'edge-constraint',
+                    f"`{side['node']}.{side['feat']}` is not supported in a pattern. "
+                    'Name the label in the edge: e: X -[nsubj]-> Y.', it['line'])
 
 
 def parse(src: str) -> Dict[str, Any]:
