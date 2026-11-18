@@ -1168,6 +1168,11 @@ describe('runImport', () => {
       .filter((t) => t.tokenLayerId === 'morph1');
     expect(morphs2.length).toBeGreaterThan(0);
     for (const m of morphs2) expect(m.metadata?.prov).toBeUndefined();
+  });
+
+  it("marks a link by who approved it, and makes the document with FLEx's metadata", async () => {
+    client = makeFakeClient();
+    await runImport({ client, projectId: 'p1', build, lexicon, config, vocabId: 'v1' });
 
     // vocab links on analyzed morphemes; FLEx human approval drives
     // provConfirmed (parser-only guesses import as unconfirmed-inferred)
