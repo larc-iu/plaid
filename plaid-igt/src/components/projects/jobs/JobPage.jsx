@@ -99,6 +99,9 @@ export const JobPage = ({ project, projectId, jobId, client }) => {
   // `undone`): its entry in the first of the job's documents whose History
   // has it, or null until found or where none does.
   const [undoneHref, setUndoneHref] = useState(null);
+  // Whether the job ended while this page was open (the transition below).
+  const [endedHere, setEndedHere] = useState(false);
+  useEffect(() => setEndedHere(false), [jobId]);
   const undoneOp = job?.undone?.operation ?? null;
   // The names of who stopped or undid the job, where the directory is open
   // to the reader (REV-RPF3-6).
@@ -121,9 +124,13 @@ export const JobPage = ({ project, projectId, jobId, client }) => {
   // An ended job's rows are all read at the cap: until that read lands, the
   // rows shown are the running read's, which no count of Notes is (REV-RP-7).
   const allRead = !!pieces.page && (active || pieces.limit === PIECES_MAX);
+  // Except for a job that ended with its page open, whose reader is taken to
+  // Notes at once: until every row is read, it counts the rows already read
+  // (REV-RP-R2-1).
+  const counted = allRead || (endedHere && !!pieces.page);
   const sections = useMemo(
-    () => (job ? jobSections(job, allRead ? pieces.rows.length : null, project?.vocabs) : []),
-    [job, allRead, pieces.rows.length, project?.vocabs],
+    () => (job ? jobSections(job, counted ? pieces.rows.length : null, project?.vocabs) : []),
+    [job, counted, pieces.rows.length, project?.vocabs],
   );
   const keys = useMemo(() => sections.map((s) => s.key), [sections]);
   // The sections can still grow until the job has ended and its work list
@@ -141,6 +148,7 @@ export const JobPage = ({ project, projectId, jobId, client }) => {
   useEffect(() => {
     if (!job) return;
     if (wasActive.current && !active) {
+      setEndedHere(true);
       setParams(
         (prev) => {
           const view = prev.get('view');

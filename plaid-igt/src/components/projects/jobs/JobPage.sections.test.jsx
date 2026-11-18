@@ -594,14 +594,19 @@ describe('a job that ends while its page is open', () => {
     await v.unmount();
   });
 
-  it('counts the Notes only once every row is read, never the running read’s rows', async () => {
+  // REV-RP-R2-1: no Overview between the running page and Notes. While the
+  // read of every row is pending, Notes counts the rows already read, and the
+  // count is the true one once that read lands.
+  it('opens Notes at once, counting the rows already read until every row is read', async () => {
     vi.useFakeTimers();
-    const v = await mount(clientAt(60, { capPending: true }));
+    const v = await mount(clientAt(60, { capPending: true }), '?page=2');
     await v.step(() => vi.advanceTimersByTimeAsync(JOB_POLL_MS));
     await v.step(async () => {});
-    expect(tabs(v.container).some((t) => t.startsWith('Notes'))).toBe(false);
+    expect(at).toBe('/projects/p1/jobs/j1?view=notes&page=2');
+    expect(panel(v.container).getAttribute('data-view')).toBe('notes');
+    expect(tabs(v.container)).toContain('Notes50');
     await v.unmount();
-    const w = await mount(clientAt(60));
+    const w = await mount(clientAt(60), '?page=2');
     await w.step(() => vi.advanceTimersByTimeAsync(JOB_POLL_MS));
     await w.step(async () => {});
     expect(tabs(w.container)).toContain('Notes60');
