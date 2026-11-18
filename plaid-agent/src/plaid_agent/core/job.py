@@ -119,11 +119,20 @@ def shown_words(e: BaseException, secrets=()) -> str:
     return _CLASS_NAMES.sub('', requester_message(e, secrets=secrets)).strip().rstrip('.') or UNKNOWN_FAILURE
 
 
+def from_provider(e: BaseException) -> bool:
+    """Whether ``e`` comes from the model's provider or its library."""
+    return type(e).__module__.split('.')[0] in ('litellm', 'openai')
+
+
 def model_refused_line(e: BaseException, secrets=()) -> str:
-    """The job's message when :func:`model_refused`: the provider's own
-    words as a reader may see them (:func:`shown_words`), cut to what core
-    keeps."""
-    return fit_line(f'The model’s provider refused the job’s calls: {shown_words(e, secrets)}.')
+    """The job's message when :func:`model_refused`: a fixed sentence of safe
+    facts, the status and what it means, never the provider's words, which
+    no masking can make safe (REV-SJ1-R2-1). They go to the worker's log
+    (:func:`shown_words`). ``secrets`` is for that log line."""
+    status = getattr(e, 'status_code', None)
+    if status == 404:
+        return f'The model’s provider found no such model or address (HTTP {status}).'
+    return f'The model’s provider refused the job’s key (HTTP {status}).'
 
 
 def failure_kind(e: BaseException) -> Optional[str]:
@@ -444,8 +453,14 @@ def fit_line(text: Optional[str]) -> Optional[str]:
 def error_line(e: BaseException, secrets=()) -> str:
     """The job's message for an error the worker has no rule for, cut to
     what core keeps (:func:`fit_line`). The error's own words, never
-    Python's class name (test_error_text): the worker's log has the
-    traceback."""
+    Python's class name (test_error_text), with no URL and none of
+    ``secrets``: the worker's log has the traceback. An error of the model's
+    provider or its library says its status only (REV-SJ1-R2-1)."""
+    if from_provider(e):
+        # Never the provider's words (REV-SJ1-R2-1): the worker's log has them.
+        status = getattr(e, 'status_code', None)
+        return 'The job worker stopped the job: the model’s provider failed' + \
+            (f' (HTTP {status}).' if isinstance(status, int) else '.')
     return fit_line(f'The job worker met an error and stopped the job: {requester_message(e, secrets=secrets)}')
 
 
@@ -853,7 +868,7 @@ def run_job(job: Job, runner) -> Optional[Dict[str, Any]]:
             e = job.access_lost() or e
         if model_refused(e):
             # The model's provider refused the key or the model (S1-2).
-            logger.warning('Job %s: the model refused its calls: %s', job.id, e)
+            logger.warning('Job %s: the model refused its calls: %s', job.id, shown_words(e, job.secrets))
             job.set(message=model_refused_line(e, job.secrets))
             return _finish(job, 'failed', runner, harmonize, entries, reason=MODEL_REFUSED, said=True)
         if not isinstance(e, JobStopped) and not no_longer_mine(e):

@@ -57,9 +57,11 @@ def test_a_refused_key_or_model_fails_the_job_with_the_providers_words(monkeypat
     row = _run(monkeypatch, REFUSALS[what], from_planning)
     assert row['state'] == 'failed', (row['state'], row.get('reason'), row.get('message'))
     assert row['reason'] == 'model-refused'
-    assert row['message'].startswith('The model’s provider refused the job’s calls: '), row['message']
-    words = {'key': 'Incorrect API key provided', 'model': 'The model does not exist', 'permission': 'Not allowed'}
-    assert row['message'].endswith(f': {words[what]}.'), row['message']
+    # A fixed sentence with safe facts only, never the provider's words (REV-SJ1-R2-1).
+    lines = {'key': 'The model’s provider refused the job’s key (HTTP 401).',
+             'permission': 'The model’s provider refused the job’s key (HTTP 403).',
+             'model': 'The model’s provider found no such model or address (HTTP 404).'}
+    assert row['message'] == lines[what], row['message']
     skipped = [s for d in row['documents'] for s in d.get('skipped') or []]
     assert not any(s.get('kind') == 'output' for s in skipped), skipped
 
@@ -71,41 +73,75 @@ def test_another_provider_refusal_skips_its_sentences_as_refused_never_too_long(
     assert [s['kind'] for s in d2['skipped']] == ['refused', 'refused'], d2['skipped']
 
 
-KEY = 'sk-live-Zq81hT0pWmX4'
-ENV_KEY = 'sk-env-Kd02nB77qRv1'
-BASE = 'https://llm.internal.example.org/v1'
+#: The review's probe (REV-SJ1-R2-1), each case: the worker's arguments, the
+#: environment, what the provider says, and what must never reach a reader.
+PROBE_KEY = 'sk-live-Zq81hT0pWmX4abcd'
+PROBE = {
+    'env OPENAI_API_KEY': (dict(api_key=None, api_base=None), {'OPENAI_API_KEY': PROBE_KEY},
+                           f'Incorrect API key provided: {PROBE_KEY}', [PROBE_KEY]),
+    'env AZURE_AD_TOKEN': (dict(api_key=None, api_base=None), {'AZURE_AD_TOKEN': PROBE_KEY},
+                           f'Token refused: {PROBE_KEY}', [PROBE_KEY]),
+    'env HF_TOKEN': (dict(api_key=None, api_base=None), {'HF_TOKEN': PROBE_KEY}, f'bad token {PROBE_KEY}',
+                     [PROBE_KEY]),
+    'env AWS_SECRET_ACCESS_KEY': (dict(api_key=None, api_base=None), {'AWS_SECRET_ACCESS_KEY': PROBE_KEY},
+                                  f'signature for {PROBE_KEY}', [PROBE_KEY]),
+    'partial key': (dict(api_key=PROBE_KEY, api_base=None), {},
+                    'Incorrect API key provided: sk-liv*************abcd', ['sk-liv', 'abcd']),
+    'url-encoded key': (dict(api_key='k3y/with+slash=Zq81', api_base=None), {},
+                        'refused key k3y%2Fwith%2Bslash%3DZq81', ['k3y', 'Zq81']),
+    'key in JSON': (dict(api_key=PROBE_KEY, api_base=None), {},
+                    '{"error": {"message": "bad key", "key": "%s"}}' % PROBE_KEY, [PROBE_KEY]),
+    'base quoted with a slash': (dict(api_key=PROBE_KEY, api_base='https://llm.internal.org/v1'), {},
+                                 'Not found: https://llm.internal.org/v1/ model m', ['llm.internal.org']),
+    'bare host': (dict(api_key=PROBE_KEY, api_base='https://llm.internal.org:8443/v1'), {},
+                  'Cannot connect to host llm.internal.org port 8443', ['llm.internal.org', '8443']),
+    'user:password': (dict(api_key=PROBE_KEY, api_base='https://bob:hunter22pass@llm.internal.org/v1'), {},
+                      'Unauthorized for bob:hunter22pass on llm.internal.org', ['hunter22pass', 'bob:']),
+    'query-string key': (dict(api_key=None, api_base='https://llm.internal.org/v1?api-key=QQQsecretQQQ'), {},
+                         'refused api-key=QQQsecretQQQ', ['QQQsecretQQQ']),
+    'short key': (dict(api_key='abc123', api_base=None), {}, 'Incorrect API key provided: abc123', ['abc123']),
+}
 
 
-def test_a_refusal_quoting_the_key_and_the_base_shows_neither_to_a_reader(monkeypatch, tmp_path):
-    """REV-SJ1-1: a provider quotes the key it refused, and litellm names the
-    api-base. Neither reaches the job's line, its report, a heartbeat, the
-    trace or read_job; nor does the library's class name lead the line."""
+@pytest.mark.parametrize('case', sorted(PROBE))
+def test_no_provider_words_reach_a_reader(monkeypatch, case):
+    """REV-SJ1-R2-1: masking cannot be complete, so a reader is never shown a
+    provider's own words: not in the job's line, its report, a heartbeat or
+    read_job. The secrets are the worker's own (``jobworker.job_secrets``)."""
     import json
     import os
     from plaid_agent.igt import jobread
-    from plaid_client.workflows.llm import provider_secrets
-    monkeypatch.setenv('OPENAI_API_KEY', ENV_KEY)
+    from plaid_agent.jobworker import job_secrets
+    args, env, said, secret = PROBE[case]
+    for k in [k for k in os.environ if 'KEY' in k or 'TOKEN' in k or 'SECRET' in k]:
+        monkeypatch.delenv(k)
+    for k, v in env.items():
+        monkeypatch.setenv(k, v)
     client = _client()
     made = client.jobs.create('p1', 'igt', 'Gloss the words.')
 
     def refusing(**kwargs):
-        raise litellm.AuthenticationError(
-            f'AuthenticationError: OpenAIException - Incorrect API key provided: {KEY} (also {ENV_KEY}) '
-            f'at {BASE}/chat/completions on llm.internal.example.org', 'openai', 'm')
+        raise litellm.AuthenticationError(said, 'openai', 'm')
     use(monkeypatch, refusing)
     Worker(client, {'igt': runner_factory(ModelConfig(model='fake/m', stream=False, max_steps=1000),
-                                          count=lambda v: 1, trace_dir=str(tmp_path))},
+                                          count=lambda v: 1)},
            'fake/m', client_for=lambda token: client, sleep=lambda s: None, heartbeat_s=10 ** 6,
-           secrets=provider_secrets(KEY) + (BASE, 'llm.internal.example.org')).once()
+           secrets=job_secrets(**args)).once()
     row = client.jobs.rows[made['id']]
-    assert row['reason'] == 'model-refused'
-    assert row['message'].startswith('The model’s provider refused the job’s calls: Incorrect API key provided'), \
-        row['message']
+    assert row['message'] == 'The model’s provider refused the job’s key (HTTP 401).', row['message']
     seen = [row['message'], json.dumps(row['report'], ensure_ascii=False),
             *[json.dumps(c, ensure_ascii=False) for c in client.jobs.calls if c[0] == 'heartbeat'],
             '\n'.join(jobread.summary(client.jobs.get(made['id'])))]
-    for root, _, files in os.walk(tmp_path):
-        seen += [open(os.path.join(root, f), encoding='utf-8').read() for f in files]
     for text in seen:
-        for secret in (KEY, ENV_KEY, BASE, 'llm.internal.example.org', 'litellm.', 'AuthenticationError'):
-            assert secret not in text, (secret, text[:300])
+        for bit in secret:
+            assert bit not in text, (bit, text[:300])
+
+
+def test_any_other_error_of_the_model_library_says_only_its_status(monkeypatch):
+    """REV-SJ1-R2-1: an error of the provider's library that ends the job as
+    the worker's own fault shows its status, never its words."""
+    from plaid_agent.core.job import error_line
+    e = litellm.APIConnectionError(f'Cannot reach https://llm.internal.org/v1 with key {PROBE_KEY}', 'openai', 'm')
+    line = error_line(e)
+    assert PROBE_KEY not in line and 'llm.internal.org' not in line, line
+    assert line == 'The job worker stopped the job: the model’s provider failed (HTTP 500).', line
