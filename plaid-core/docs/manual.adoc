@@ -394,9 +394,7 @@ Each row goes back to how it was before the first of those entries wrote it, so 
 The answer is the same summary, with `entries` naming what was undone, and the limit of 20,000 rows counts them all.
 The entries must all be of one project the caller can read: entries of two projects are refused, and so is an entry the caller cannot read.
 A job that is still waiting, running or stopping is refused until it has ended.
-While a job stands undone, its read carries `undone`, the undo's operation, time and user, and only a whole undo of that undo takes it away again: undoing one document's part of it, or one vocabulary's, leaves the job undone.
-An undo narrowed to a document counts as whole when every row the job's undo wrote lies in that document.
-A job made to stand again so can be undone again with `jobs.undo`, which counts its earlier undos, and their undos, among its own entries.
+While a job stands undone, its read carries `undone`, the undo's operation, time and user, and only a whole undo of that undo takes it away again: undoing one document's part of it leaves the job undone.
 
 [,python]
 ----

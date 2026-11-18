@@ -1192,22 +1192,13 @@
   for a job's undo (given), and for an undo of an entry that lies in such a
   group the other pass, `/redo` for an undo of a job's undo and `/undo` again
   for an undo of that redo. Only a WHOLE undo of such a group flips it: one
-  whose operations hold every operation of the group, and that is not
-  narrowed, or is narrowed to the one document every row they wrote lies in
-  (`document-id`: a History page always narrows to its own, H2-5-1). An undo
-  of one document's part, of one vocabulary's (`vocab-id`), or of one action,
-  gets nil, so the job still reads undone while the rest is (REV-UN4-1). nil
-  for any other entry."
-  [db ops given document-id vocab-id]
+  not narrowed (`narrowed?`) whose operations hold every operation of the
+  group. An undo of one document's part, or of one action, gets nil, so the
+  job still reads undone while the rest is (REV-UN4-1). nil for any other
+  entry."
+  [db ops given narrowed?]
   (or given
-      (when (and (nil? vocab-id)
-                 (or (nil? document-id)
-                     (empty? (psc/in-chunks #(psc/q db {:select [:op_id] :from [:audit_writes]
-                                                        :where [:and [:in :op_id (mapv str %)]
-                                                                [:or [:= :document_id nil]
-                                                                 [:<> :document_id (str document-id)]]]
-                                                        :limit 1})
-                                            (map :id ops)))))
+      (when-not narrowed?
         (let [mine (into #{} (map (comp str :id)) ops)
               rows (psc/in-chunks #(psc/q db {:select [:g.id :g.ref]
                                               :from [[:operations :o]]
@@ -1286,7 +1277,7 @@
             not-undone (not-undone-ops db ops)
             ;; An undo that a job's read must find gets a group of its own,
             ;; whose ref names the job (`job-ref`), one id for every attempt.
-            group-ref (job-ref db ops (:group-ref opts) (:document-id opts) (:vocab-id opts))
+            group-ref (job-ref db ops (:group-ref opts) (or (:document-id opts) (:vocab-id opts)))
             group-id (when group-ref (random-uuid))]
         (loop [excluded {}
                n 1]

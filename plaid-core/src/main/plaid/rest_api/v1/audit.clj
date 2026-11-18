@@ -433,16 +433,9 @@
       ;; A row names its group before its first write, so a group under which
       ;; nothing was written (a document the job wrote nothing in) has no
       ;; entry: it is left out, so the answer names only entries History has.
-      ;; After them, the groups of the job's earlier undos and of their undos
-      ;; from History (`plaid.history.undo/job-ref`): their writes are the
-      ;; unit's own, never "changed since", so a job made to stand again by
-      ;; undoing its undo can be undone again (H2-5-1).
-      (let [groups (->> (concat
-                         (mapcat (juxt :gloss_group :harmonize_group)
-                                 (psc/q db {:select [:gloss_group :harmonize_group] :from [:job_documents]
-                                            :where [:= :job_id (str job-id)] :order-by [:position]}))
-                         (map :id (psc/q db {:select [:id] :from [:operation_groups]
-                                             :where [:in :ref [(str "job:" job-id "/undo") (str "job:" job-id "/redo")]]})))
+      (let [groups (->> (psc/q db {:select [:gloss_group :harmonize_group] :from [:job_documents]
+                                   :where [:= :job_id (str job-id)] :order-by [:position]})
+                        (mapcat (juxt :gloss_group :harmonize_group))
                         (remove nil?)
                         (map str)
                         distinct
