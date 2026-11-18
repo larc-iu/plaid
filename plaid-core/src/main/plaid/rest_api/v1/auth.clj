@@ -1444,7 +1444,10 @@
 
         :else
         {:status 403
-         :body (unresolved-if (nil? vocab-id)
+         ;; Unresolved too when the path names a vocabulary there is none of
+         ;; now (deleted since the caller read it, S5-2), as an id resolved
+         ;; from an entry that is gone is.
+         :body (unresolved-if (or (nil? vocab-id) (not (known? db :vocab_layers vocab-id false)))
                               {:error (cond
                                         (nil? vocab-id) (unknown user-id nil)
                                         refusal refusal

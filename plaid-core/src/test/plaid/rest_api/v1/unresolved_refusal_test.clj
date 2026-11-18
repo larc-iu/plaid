@@ -91,3 +91,23 @@
         (is (not (contains? (:body r) :unresolved)))))
     (testing "an admin is told 404"
       (is (= 404 (:status (delete-vocab-item admin-request (random-uuid))))))))
+
+(deftest a-vocabulary-named-in-the-path-and-gone
+  ;; S5-2 of the stress campaign 2026-11-18: a lexicon deleted while a job
+  ;; read it under its starter's token answered 403 with no `unresolved`, and
+  ;; the job read that as its starter's access lost.
+  (let [p (create-test-project admin-request "P")
+        lex (-> (create-vocab-layer admin-request p "Lex") :body :id)
+        _ (assert-no-content (api-call admin-request {:method :post
+                                                      :path (str "/api/v1/projects/" p "/writers/" user1)}))
+        _ (assert-status 200 (api-call user1-request {:method :get :path (str "/api/v1/vocab-layers/" lex)}))
+        _ (assert-no-content (api-call admin-request {:method :delete :path (str "/api/v1/vocab-layers/" lex)}))]
+    (testing "a vocabulary deleted since it was read"
+      (let [r (api-call user1-request {:method :get :path (str "/api/v1/vocab-layers/" lex)
+                                       :query-params {:include-items true}})]
+        (assert-status 403 r)
+        (is (unresolved? r))))
+    (testing "one never there"
+      (let [r (api-call user1-request {:method :get :path (str "/api/v1/vocab-layers/" (random-uuid))})]
+        (assert-status 403 r)
+        (is (unresolved? r))))))
