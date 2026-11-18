@@ -31,7 +31,7 @@ import { getIgtLayerInfo } from './layerInfo.js';
 import { morphFormOf, wordCells } from './igtExport.js';
 import { equalsBefore, joinerBetween } from './affixMarkers.js';
 import { readOrthographies, readVocabFields } from './igtConfig.js';
-import { entryName } from './vocabLookup.js';
+import { entryName, itemsById } from './vocabLookup.js';
 import {
   FIELD_TYPES,
   RESERVED_ITEM_KEYS,
@@ -155,7 +155,12 @@ function vocabulariesAt(vocabularies, rows, image) {
   for (const [id, vocab] of Object.entries(vocabularies || {})) {
     out[id] = {
       ...vocab,
-      items: items.has(id) ? putBack(vocab.items, items.get(id), image) : vocab.items,
+      // A frozen list of its own, so the lexicon's numbers and indexes are
+      // built once per side and not once per row that names an entry
+      // (vocabLookup.js). The caller's list is copied, never frozen.
+      items: Object.freeze(
+        items.has(id) ? putBack(vocab.items, items.get(id), image) : [...(vocab.items || [])],
+      ),
       // Every link the rows name leaves, wherever it is, and comes back in
       // the vocabulary of the entry its image names.
       vocabLinks: links.length
@@ -702,9 +707,18 @@ export function entryChanges(rows, vocabularies) {
   const itemRows = rows.filter((r) => r.kind === 'vocab-item');
   const images = new Map();
   for (const r of itemRows) images.set(r.id, r.after ?? r.before);
+  // Each vocabulary's list, copied and frozen once, so its numbers and its
+  // index by id are built once and not per entry named (vocabLookup.js).
+  const lists = new Map();
+  const listOf = (vocabId) => {
+    if (!lists.has(vocabId)) {
+      lists.set(vocabId, Object.freeze([...(vocabularies?.[vocabId]?.items || [])]));
+    }
+    return lists.get(vocabId);
+  };
   const nameOf = (vocabId) => (id) => {
-    const items = vocabularies?.[vocabId]?.items || [];
-    const item = items.find((i) => i.id === id) ?? images.get(id);
+    const items = listOf(vocabId);
+    const item = itemsById({ items }).get(id) ?? images.get(id);
     return item ? entryName(items, item) : '';
   };
   const movedTo = new Map();
