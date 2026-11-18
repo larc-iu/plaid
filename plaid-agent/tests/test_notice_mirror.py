@@ -59,6 +59,7 @@ CASES = [
     {'documents_step_not_read': 1}, {'documents_step_not_read': 7},
     {'documents_step_failed': 1}, {'documents_step_failed': 2},
     {'documents_part_failed': 1}, {'documents_part_failed': 3},
+    {'documents_put_off': 1}, {'documents_put_off': 2},
     {'documents_ran_out': 1, 'documents_step_not_read': 2, 'documents_step_unchanged': 1, 'documents_step_failed': 1},
 ]
 

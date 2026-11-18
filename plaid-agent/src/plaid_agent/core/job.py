@@ -1043,7 +1043,7 @@ def notice(totals: Dict[str, Any], nouns: Optional[Tuple[str, str]] = None) -> O
 #: after it there.
 RAN_OUT_TOTALS = (('written', 'documents_ran_out'), ('unchanged', 'documents_step_unchanged'),
                   ('not-read', 'documents_step_not_read'), ('failed', 'documents_step_failed'),
-                  ('part-failed', 'documents_part_failed'))
+                  ('part-failed', 'documents_part_failed'), ('put-off', 'documents_put_off'))
 
 
 def ran_out_line(key: str, n: int) -> str:
@@ -1060,6 +1060,9 @@ def ran_out_line(key: str, n: int) -> str:
     if key == 'documents_step_not_read':
         return (f'{count} {"was" if one else "were"} not read: the job\'s step over the documents ended before '
                 f'{"it" if one else "them"}.')
+    if key == 'documents_put_off':
+        return (f'{count} {"was" if one else "were"} not changed: someone was editing {"it" if one else "them"} when '
+                'the job\'s changes there were to be written.')
     if key == 'documents_part_failed':
         # A plan by documents: each document's own part, never "the job's
         # step", the page's word for the step over all of them.

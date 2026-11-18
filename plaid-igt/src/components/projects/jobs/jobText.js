@@ -248,6 +248,13 @@ export const noticeText = (totals) => {
       `${countOf(partFailed, 'document')} ${one ? 'was' : 'were'} not worked: ${one ? 'its part' : 'the part for each'} failed.`,
     );
   }
+  const putOff = t.documentsPutOff || 0;
+  if (putOff) {
+    const one = putOff === 1;
+    out.push(
+      `${countOf(putOff, 'document')} ${one ? 'was' : 'were'} not changed: someone was editing ${one ? 'it' : 'them'} when the job's changes there were to be written.`,
+    );
+  }
   return out.join(' ') || null;
 };
 
@@ -277,6 +284,9 @@ export const noticeCounts = (report) => {
     documentsPartFailed:
       t.documentsPartFailed ??
       (report?.documents || []).filter((d) => d.counts?.ranOut === 'part-failed').length,
+    documentsPutOff:
+      t.documentsPutOff ??
+      (report?.documents || []).filter((d) => d.counts?.ranOut === 'put-off').length,
     // Core's own report: the whole-selection step's documents from their rows.
     ...(t.documentsInOneStep !== undefined
       ? {

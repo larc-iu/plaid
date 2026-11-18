@@ -187,7 +187,7 @@ def test_a_whole_piece_whose_write_is_put_off_or_hit_by_core_is_not_asked_whole_
 
 def test_a_whole_piece_put_off_is_not_asked_whole_by_a_worker_taken_up_again(monkeypatch):
     """REV-RW-4: the one fact the retake rule needs is kept in core as the
-    fallback row the job already writes (``again``), written when the whole
+    fallback row the job already writes (``in-use``, a put-off's reason, REV-RW-R3-1), written when the whole
     piece's write is put off: a worker that restarts during the wait works
     the document in stretches."""
     client = JobClient({'d1': document('d1', 'Story', blank(3))})
@@ -201,11 +201,11 @@ def test_a_whole_piece_put_off_is_not_asked_whole_by_a_worker_taken_up_again(mon
     first = runner(job)
     first.plan(job)
     assert first.document('d1') == 'deferred'
-    assert first.fallen_back() == {'d1': 'again'}
+    assert first.fallen_back() == {'d1': 'in-use'}
     monkeypatch.setattr(igt_job.IgtRunner, 'write', real)
     model = use(monkeypatch, _model(big_fails=False))
     fresh = runner(job)
     fresh.plan(job)
-    assert fresh.fallen_back() == {'d1': 'again'}
+    assert fresh.fallen_back() == {'d1': 'in-use'}
     fresh.document('d1')
     assert not _firsts(model, WHOLE), 'a restarted worker never asks it whole'

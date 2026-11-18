@@ -177,6 +177,11 @@ RAN_OUT = 'ran_out'
 #: The most document ids a piece's summary lists of those its rest went to
 #: stretches in (``rest_documents``), within the row's cap.
 REST_LISTED = 50
+#: What happened in a document of a plan that fills nothing that the walk
+#: ends instead of working it in stretches, by its fallback reason
+#: (``counts.ran_out``, REV-RW-R3-1).
+UNWORKED_HOW = {'selection': 'failed', 'failed': 'part-failed', 'ran-out': 'written', 'again': 'written',
+                'in-use': 'put-off'}
 #: ... and true beside it when that step was not shown every sentence of the
 #: document (it read part of it, or none, or wrote in it by reference).
 NOT_ALL_READ = 'not_all_read'
@@ -2322,7 +2327,8 @@ class IgtRunner:
         #: there was written, the rest not done), ``unchanged`` (an unfinished
         #: step read part of it and changed nothing), ``not-read`` (it read
         #: none of it) or ``failed`` (the step failed): the report's top line
-        #: says each, ``part-failed`` (its own whole-document part failed)
+        #: says each, ``part-failed`` (its own whole-document part failed),
+        #: ``put-off`` (its changes were to be written while a person edited)
         self.ran_out: Dict[str, str] = {}
         #: document id -> the first sentence a write must leave the cursor
         #: before (:meth:`go_on`, :meth:`record`)
@@ -3347,6 +3353,17 @@ class IgtRunner:
             # Decided once something is pending, so a document ended by its
             # whole piece records no fallback.
             whole = self.whole_document(project, doc)
+            if not whole and self.fills_nothing() and (self.plan_made or {}).get('pieces') in (DOCUMENT, SELECTION):
+                # A plan that fills nothing never works a document in
+                # stretches (RPF-A5), whatever fallback row it carries but
+                # too-long: put off for a person, or left live by a worker that
+                # died ending a failed selection's documents. It is ended and
+                # the top line says what happened there (REV-RW-R3-1).
+                fallen = self.fallen_back()
+                reason = fallen.get(doc.id) or (SELECTION if SELECTION in fallen else None)
+                if reason and reason != 'too-long':
+                    self.end_unworked(project, document_id, UNWORKED_HOW.get(reason, 'failed'))
+                    return 'done'
             part = pending if whole else pending[:JOB_STRETCH_SENTENCES]
             job.set(message=self.matching_line(doc, part) if self.searched() is not None else
                     self.progress_line(doc.name, whole, part[0].index, part[-1].index, len(doc.sentences)))
@@ -3377,8 +3394,9 @@ class IgtRunner:
                     # Its write put off: what it would have written remains, so
                     # the fallback row is kept now, in core, and a worker that
                     # restarts during the wait works it in stretches too
-                    # (REV-RW-4).
-                    core_job.through_core(job, lambda: self.fall_back(document_id, 'again'))
+                    # (REV-RW-4). Its reason is a put-off's (``in-use``), which
+                    # a plan that fills nothing says so (REV-RW-R3-1).
+                    core_job.through_core(job, lambda: self.fall_back(document_id, 'in-use'))
                     raise
                 finally:
                     self.whole_taken.add(document_id)
