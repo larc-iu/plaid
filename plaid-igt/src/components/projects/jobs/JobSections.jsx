@@ -53,6 +53,7 @@ const SkippedSection = ({ report, projectId }) => (
 // Documents with what is left blank in them, a page of them at a time.
 const BlankSection = ({ report, projectId }) => (
   <>
+    <Heading section="left" />
     <Paged items={blankDocuments(report)}>
       {(docs) => docs.map((d) => <BlankDocument key={d.documentId} d={d} projectId={projectId} />)}
     </Paged>

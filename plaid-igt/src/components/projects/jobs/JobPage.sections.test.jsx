@@ -437,6 +437,8 @@ describe('the lists of an ended job', () => {
 
   it('pages Left blank at 25 documents, the page in the address', async () => {
     const v = await mount(clientOf(ENDED), '?view=blank');
+    // Headed as its tab, and as read_job names it (REV-RP-R2-3, R2-5).
+    expect(text(panel(v.container).querySelector('h3'))).toBe('Blank');
     const names = () => all(panel(v.container), 'p > span.font-medium').map(text);
     expect(names()).toHaveLength(25);
     expect(text(panel(v.container))).toContain(`1–25 of ${N - 1}`);

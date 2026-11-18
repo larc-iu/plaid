@@ -11,7 +11,7 @@ how many rows it holds. A running or waiting job's page gives one fixed line
 not change every turn. Never the report itself: ``read_job`` reads a section
 of it by page.
 
-A section is named as the job page heads it, with its key: "Left blank
+A section is named as the job page heads it, with its key: "Blank
 (left)". The headings are the page's own (``jobSections.json`` in plaid-igt,
 one mapping for both).
 
@@ -64,7 +64,7 @@ HEADINGS = _headings()
 
 
 def section_name(key: str) -> str:
-    """A section as the job page heads it, with its key: "Left blank
+    """A section as the job page heads it, with its key: "Blank
     (left)". A section the page has no heading for is its key alone."""
     heading = HEADINGS.get(key)
     return f'{heading} ({key})' if heading else key

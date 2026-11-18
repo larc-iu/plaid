@@ -77,7 +77,7 @@ def test_a_turn_from_a_job_page_is_given_its_summary():
     assert 'Instructions as sent: "Gloss ka as "go"."' in note
     assert 'Totals: documents done 1, sentences 4, words 9, links 7, entries 1, skipped too long 1.' in note
     # JD's point 3: a section by the page's heading with its key.
-    assert ('Report sections and their rows: Documents (documents) 1, Skipped sentences (skipped) 1, Left blank '
+    assert ('Report sections and their rows: Documents (documents) 1, Skipped sentences (skipped) 1, Blank '
             '(left) 1, Forms left inconsistent (harmonize.left) 1, Entries created (entries.created) 1.') in note
     # The summary, never the report: no row of it.
     assert 'pele' not in note and 's2.w3' not in note and 'tuna' not in note
@@ -120,7 +120,7 @@ def test_the_summary_keeps_to_its_budget_and_says_what_it_cut():
     assert len(note) > 1900
     assert f'the first {jobread.JOB_SUMMARY_NOTE_CHARS} of {len(note):,} characters (read_job with the job gives ' \
            'it whole)' in said
-    assert 'Left blank (left) 4,500' in said and 'Analyses made consistent (harmonize.changed) 1,400' in said
+    assert 'Blank (left) 4,500' in said and 'Analyses made consistent (harmonize.changed) 1,400' in said
     assert len(said) < 1600, len(said)
 
 
@@ -196,7 +196,7 @@ def test_a_job_alone_gives_its_summary_with_the_instructions_whole():
     out = call_tool(ws, 'read_job', {'job': job})
     assert out.startswith(f'Job {job}.\nState: done.')
     assert f'Instructions as sent: "{note}"' in out
-    assert ('Report sections and their rows: Documents (documents) 1, Skipped sentences (skipped) 1, Left blank '
+    assert ('Report sections and their rows: Documents (documents) 1, Skipped sentences (skipped) 1, Blank '
             '(left) 1, Forms left inconsistent (harmonize.left) 1, Entries created (entries.created) 1.') \
         in out
     assert out.endswith('read_job with a section reads its rows.')
@@ -251,7 +251,7 @@ def test_a_section_gives_its_rows_with_the_places_to_read_and_plan():
     job = _ended(ws.client)
     out = call_tool(ws, 'read_job', {'job': job, 'section': 'left'})
     assert out.splitlines() == [
-        f'Job {job}, report section Left blank (left): rows 1 to 1 of 1. As the job ended, 2026-11-13 03:10 UTC.',
+        f'Job {job}, report section Blank (left): rows 1 to 1 of 1. As the job ended, 2026-11-13 03:10 UTC.',
         '"Text 1" | form: pele | ref: s2.w3']
     assert ws.reads[-1] == {'n': 1, 'unit': 'row', 'of': 1}
     out = call_tool(ws, 'read_job', {'job': job, 'section': 'harmonize.left'})
@@ -286,7 +286,7 @@ def test_a_section_pages_and_says_what_it_left_out():
     job = _ended(ws.client, report)
     out = call_tool(ws, 'read_job', {'job': job, 'section': 'left'})
     lines = out.splitlines()
-    assert lines[0].startswith(f'Job {job}, report section Left blank (left): rows 1 to 40 of 45, and 7 more the '
+    assert lines[0].startswith(f'Job {job}, report section Blank (left): rows 1 to 40 of 45, and 7 more the '
                                'report '
                                'counted and did not list.')
     assert len(lines) == 42 and lines[-1] == 'Rows 41 to 45: page 2.'
@@ -307,7 +307,7 @@ def test_document_narrows_a_section():
         'left': [{'ref': 's1.w1', 'sentence_id': 'X', 'begin': 0, 'form': 'kai'}], 'left_more': 3}]
     job = _ended(client, two)
     out = call_tool(ws, 'read_job', {'job': job, 'section': 'left', 'document': 'Text 1'})
-    assert 'section Left blank (left) in "Text 1": rows 1 to 1 of 1.' in out and 'kai' not in out
+    assert 'section Blank (left) in "Text 1": rows 1 to 1 of 1.' in out and 'kai' not in out
     out = call_tool(ws, 'read_job', {'job': job, 'section': 'left', 'document': 'gone-doc'})
     assert 'in a deleted document (gone-doc): rows 1 to 1 of 1, and 3 more the report counted' in out
     assert 'a deleted document (gone-doc) | form: kai | ref: s1.w1' in out
@@ -344,7 +344,7 @@ def test_harmonize_rows_name_their_documents_and_narrow_by_them():
 @pytest.mark.parametrize('args, said', [
     ({'section': 'left'}, 'Name the job: read_job with no job lists them'),
     ({'job': 'J', 'section': 'harmonize'}, 'has no section "harmonize". Its sections: Documents (documents), '
-                                           'Skipped sentences (skipped), Left blank (left), Forms left inconsistent '
+                                           'Skipped sentences (skipped), Blank (left), Forms left inconsistent '
                                            '(harmonize.left), Entries created (entries.created).'),
     ({'job': 'J', 'document': 'Text 1'}, 'document narrows a section: name the section too.'),
     ({'job': 'J', 'page': 'two'}, '"page" has to be a number'),
@@ -458,8 +458,8 @@ def test_each_step_says_what_it_read_as_the_panel_says_it():
     assert said[0] == ('Listed the jobs', '1 row')
     assert said[1][0] == 'Read a job\'s summary' and said[1][1].startswith('printed ')
     # JD's point 3: the step names the section by the page's heading, with its key.
-    assert said[2] == ('Read \u201cLeft blank (left)\u201d of a job\'s report', '1 row')
-    assert TRACER.describe('read_job', {'job': job, 'section': 'Left blank'}) == said[2][0], 'by its heading too'
+    assert said[2] == ('Read \u201cBlank (left)\u201d of a job\'s report', '1 row')
+    assert TRACER.describe('read_job', {'job': job, 'section': 'Blank'}) == said[2][0], 'by its heading too'
     assert said[3][0] == 'Read how to read a job'
     assert TRACER.kind('read_job') is not None
 

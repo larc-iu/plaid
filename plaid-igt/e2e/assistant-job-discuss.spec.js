@@ -186,7 +186,7 @@ test('a job is discussed from its page, and a gloss for the word it left blank i
     );
     expect(JSON.stringify(conv)).not.toContain('Report sections and their rows');
     const read = conv.messages.find(
-      (m) => m.role === 'tool' && m.content.includes('report section Left blank (left)'),
+      (m) => m.role === 'tool' && m.content.includes('report section Blank (left)'),
     );
     expect(read.content).toContain('"Story A" | form: pele | ref: s1.w2');
 
