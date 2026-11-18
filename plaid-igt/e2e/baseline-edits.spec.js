@@ -229,54 +229,59 @@ test('Backspace over the space between two words keeps both words', async ({ pag
   await showsStored(page, doc);
 });
 
+// Two tabs, each in a browser context of its own, loaded side by side, and
+// closed whatever happens.
+async function twoTabs(browser, doc, run) {
+  const contexts = await Promise.all([browser.newContext(), browser.newContext()]);
+  try {
+    const [A, B] = await Promise.all(contexts.map((c) => c.newPage()));
+    await Promise.all([openBaseline(A, doc), openBaseline(B, doc)]);
+    await run(A, B);
+  } finally {
+    await Promise.all(contexts.map((c) => c.close()));
+  }
+}
+
 test('two tabs editing different passages both land', async ({ browser }) => {
   const doc = await makeDocument('uno dos tres');
-  const A = await (await browser.newContext()).newPage();
-  const B = await (await browser.newContext()).newPage();
-  await openBaseline(A, doc);
-  await openBaseline(B, doc);
-  await A.getByRole('button', { name: 'Edit text' }).click();
-  await B.getByRole('button', { name: 'Edit text' }).click();
-  await caretAt(A, 12);
-  await A.keyboard.type(' cuatro');
-  await caretAt(B, 0);
-  await B.keyboard.type('la ');
-  await save(A);
-  await expect.poll(async () => (await stored(doc)).body).toBe('uno dos tres cuatro');
-  await showsStored(A, doc);
-  await save(B);
-  await expect.poll(async () => (await stored(doc)).body).toBe('la uno dos tres cuatro');
-  const s = await stored(doc);
-  expect(s.morphemes).toEqual(['dos:DOS', 'tres:TRES', 'uno:UNO']);
-  await showsStored(B, doc);
-  await A.context().close();
-  await B.context().close();
+  await twoTabs(browser, doc, async (A, B) => {
+    await A.getByRole('button', { name: 'Edit text' }).click();
+    await B.getByRole('button', { name: 'Edit text' }).click();
+    await caretAt(A, 12);
+    await A.keyboard.type(' cuatro');
+    await caretAt(B, 0);
+    await B.keyboard.type('la ');
+    await save(A);
+    await expect.poll(async () => (await stored(doc)).body).toBe('uno dos tres cuatro');
+    await showsStored(A, doc);
+    await save(B);
+    await expect.poll(async () => (await stored(doc)).body).toBe('la uno dos tres cuatro');
+    const s = await stored(doc);
+    expect(s.morphemes).toEqual(['dos:DOS', 'tres:TRES', 'uno:UNO']);
+    await showsStored(B, doc);
+  });
 });
 
 test('two tabs editing the same passage: the second is refused and keeps its draft', async ({
   browser,
 }) => {
   const doc = await makeDocument('uno dos tres');
-  const A = await (await browser.newContext()).newPage();
-  const B = await (await browser.newContext()).newPage();
-  await openBaseline(A, doc);
-  await openBaseline(B, doc);
-  await A.getByRole('button', { name: 'Edit text' }).click();
-  await B.getByRole('button', { name: 'Edit text' }).click();
-  await caretAt(A, 7);
-  await A.keyboard.press('Backspace');
-  await A.keyboard.type('z');
-  await caretAt(B, 7);
-  await B.keyboard.press('Backspace');
-  await B.keyboard.type('x');
-  await save(A);
-  await expect.poll(async () => (await stored(doc)).body).toBe('uno doz tres');
-  await save(B);
-  await expect(
-    B.getByText('The same passage was changed elsewhere.', { exact: false }),
-  ).toBeVisible();
-  await expect(box(B)).toHaveValue('uno dox tres');
-  expect((await stored(doc)).body).toBe('uno doz tres');
-  await A.context().close();
-  await B.context().close();
+  await twoTabs(browser, doc, async (A, B) => {
+    await A.getByRole('button', { name: 'Edit text' }).click();
+    await B.getByRole('button', { name: 'Edit text' }).click();
+    await caretAt(A, 7);
+    await A.keyboard.press('Backspace');
+    await A.keyboard.type('z');
+    await caretAt(B, 7);
+    await B.keyboard.press('Backspace');
+    await B.keyboard.type('x');
+    await save(A);
+    await expect.poll(async () => (await stored(doc)).body).toBe('uno doz tres');
+    await save(B);
+    await expect(
+      B.getByText('The same passage was changed elsewhere.', { exact: false }),
+    ).toBeVisible();
+    await expect(box(B)).toHaveValue('uno dox tres');
+    expect((await stored(doc)).body).toBe('uno doz tres');
+  });
 });

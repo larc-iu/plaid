@@ -103,6 +103,9 @@ test('the Comments tab opens one stream and reads the comments once', async ({ p
   });
   await page.getByRole('tab', { name: 'Comments' }).click();
   await expect(page).toHaveURL(/tab=comments/);
+  // The tab's stream and its read, however long the mount takes, then time
+  // for a second one to show up if one is coming.
+  await expect.poll(() => seen.listen > 0 && seen.comments > 0).toBe(true);
   await page.waitForTimeout(1500);
   expect(seen).toEqual({ listen: 1, comments: 1 });
 });
@@ -123,6 +126,8 @@ test('the Comments tab keeps the stream an open comment popover holds', async ({
   });
   await page.locator('.igt-token-form .igt-cmt-badge').first().click();
   await expect(page.locator('.igt-cmt-pop')).toBeVisible();
+  // The popover's stream, however long it takes to open, then its reads.
+  await expect.poll(() => seen.listen).toBe(1);
   await page.waitForTimeout(500);
   const before = { ...seen };
   await page.getByRole('tab', { name: 'Comments' }).click();

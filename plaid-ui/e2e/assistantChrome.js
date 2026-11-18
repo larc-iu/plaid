@@ -342,6 +342,9 @@ export const assistantChromeTests = ({
       // session: a thread the reader was in the middle of is the likeliest
       // reason they came back to the app at all. A reader who has never opened
       // it still gets it shut, which is what the first assertion stands on.
+      // Three whole loads of the app are the test, and on a loaded machine
+      // each can take a third of the default budget.
+      test.setTimeout(90_000);
       await seedAuth(page);
       await withAssistant(page);
       await gotoDocument(page, documentId());
