@@ -124,7 +124,7 @@ def test_an_entry_delete_and_the_repairs_it_carries_are_one_request(monkeypatch,
                            lexicon=_lexicon_with_a_sense())
     sent = _batches(monkeypatch)
     r = runner(job)
-    r._maintains = True
+    r.starter_maintains = lambda ws, project: True
     assert _run(r) == 'done'
     lexicon = ['vocab_items.delete', 'vocab_items.patch_metadata']
     assert sent == ([['spans.create'], lexicon] if with_gloss else [lexicon]), sent
@@ -159,7 +159,7 @@ def test_a_rename_after_a_try_that_covered_the_piece_is_listed_not_lost(monkeypa
         call(2, 'rename_entry', {'entry_id': 'vi-gam', 'new_form': 'gaam'})]), plan='document')
     _lost_first(monkeypatch)
     r = runner(job)
-    r._maintains = True
+    r.starter_maintains = lambda ws, project: True
     assert _run(r) == 'done'
     assert not any(k == 'vocab_items.update' for b in client.batches for k, _ in b), 'the rename is never sent'
     assert len([c for c in m.calls if c['n'] == 1]) == 1, 'the piece is not asked again'
@@ -295,7 +295,7 @@ def test_the_whole_manifest_is_in_core_before_the_first_request(monkeypatch):
         return real(self, w, seed)
     monkeypatch.setattr(igt_job.IgtRunner, 'sending', sending)
     r = runner(job)
-    r._maintains = True
+    r.starter_maintains = lambda ws, project: True
     assert _run(r) == 'done'
     tries = {row['try'] for row in at_first[0] if row['try']}
     assert len(tries) == 2, at_first
@@ -407,7 +407,7 @@ class World:
 
     def run(self):
         r = runner(self.job)
-        r._maintains = True
+        r.starter_maintains = lambda ws, project: True
         for _ in range(12):
             try:
                 if r.document('d1') == 'done':
@@ -416,7 +416,7 @@ class World:
                 # A new worker process: the rows as core has them, a new runner.
                 self.job.rows = {x['document_id']: dict(x) for x in self.client.jobs.get(J)['documents']}
                 r = runner(self.job)
-                r._maintains = True
+                r.starter_maintains = lambda ws, project: True
         raise AssertionError('the job did not end')
 
 

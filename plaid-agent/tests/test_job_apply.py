@@ -61,7 +61,7 @@ class _Setup:
                                  'd2': document('d2', 'Other', [{'words': ['other']}])})
         self.job = start(self.client, id=J)
         self.runner = runner(self.job)
-        self.runner._maintains = maintains
+        self.runner.starter_maintains = lambda ws, project: maintains
         self.project = load_project(self.client, 'p1')
         self.ws = JobWorkspace(self.client, self.project)
         # As run_piece sets it from the job's plan.
@@ -241,12 +241,13 @@ def test_a_change_core_refuses_to_the_starter_is_proposed(name, args, applied):
 
 
 def test_whether_the_starter_maintains_is_their_role_or_administration():
+    """Read from core at each ask, so a role changed during the job counts
+    from the next write (S9-1)."""
     s = _Setup()
-    s.runner._maintains = None
-    s.project.roles = {'maintainers': [s.job.starter]}
+    del s.runner.starter_maintains
+    s.client.project.update({'maintainers': [s.job.starter], 'writers': []})
     assert s.runner.starter_maintains(s.ws, s.project)
-    s.runner._maintains = None
-    s.project.roles = {'writers': [s.job.starter]}
+    s.client.project.update({'maintainers': [], 'writers': [s.job.starter]})
     assert not s.runner.starter_maintains(s.ws, s.project)
 
 

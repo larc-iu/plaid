@@ -33,6 +33,8 @@ def test_a_starter_who_lost_access_mid_stretch_fails_the_job_and_no_document_is_
     job = start(client)
     use(monkeypatch, Model(_analyse))
     refused = PlaidAPIError('HTTP 403', status=403, response_data={'error': 'Write access required.'})
+    # Core also says so at the heartbeat the refusal is checked by (S9-1).
+    client.jobs.can_write = lambda user_id, project_id: False
     if where == 'lock':
         _refuse_lock(client, refused)
     else:
@@ -67,6 +69,20 @@ def test_harmonize_refused_access_ends_the_job_failed_and_not_done(monkeypatch):
     recorded(job)
     job.status['phase'] = 'harmonizing'
     _refuse_lock(client, PlaidAPIError('HTTP 403', status=403, response_data={'error': 'Write access required.'}))
+    client.jobs.can_write = lambda user_id, project_id: False
     finished = run_job(job, runner(job))
     assert finished['state'] == 'failed' and finished['reason'] == 'starter-access'
     assert finished['report']['harmonize']['changed'] == []
+
+
+def test_a_403_while_the_starter_still_writes_is_the_refusal_itself_never_access_lost(monkeypatch):
+    """S9-1: core answers the heartbeat, the starter still writes: the job
+    fails with the refusal's own words, never "can no longer write"."""
+    client = _client()
+    job = start(client)
+    use(monkeypatch, Model(_analyse))
+    _refuse_lock(client, PlaidAPIError('HTTP 403 Only a maintainer may do this.', status=403,
+                                       response_data={'error': 'Only a maintainer may do this.'}))
+    finished = run_job(job, runner(job))
+    assert finished['state'] == 'failed' and finished['reason'] == 'worker-error', finished.get('reason')
+    assert 'Only a maintainer may do this.' in client.jobs.rows[job.id]['message']

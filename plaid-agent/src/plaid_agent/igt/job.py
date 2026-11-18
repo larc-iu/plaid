@@ -2488,15 +2488,16 @@ class IgtRunner:
         """What a refusal of a document's read, lock or write means: the
         document is :class:`Gone` when core no longer finds it (404, or 403
         naming nothing, ``unresolved``), the job's right to write is gone
-        on any other 403 (``Job.access_lost``: the job fails
-        ``starter-access``, and no document is called gone for it), and
-        anything else is the refusal itself: a 401 included, whose token
-        ``core_job.through_core`` renews (D5)."""
+        on any other 403 that a heartbeat says is so (``Job.access_lost``:
+        the job fails ``starter-access``, and no document is called gone for
+        it), and anything else is the refusal itself: a 401 included, whose
+        token ``core_job.through_core`` renews (D5), and a 403 of what the
+        starter, still a writer, may not do (S9-1)."""
         fault = core_job.core_fault(e)
         if fault == 'mine':
             return self.job.ended()
         if fault == 'access' and e.status != 401:
-            return self.job.access_lost()
+            return self.job.access_lost() or e
         data = e.response_data if isinstance(e.response_data, dict) else {}
         if e.status == 404 or (e.status == 403 and data.get('unresolved')):
             return Gone(document_id)
@@ -3533,7 +3534,11 @@ class IgtRunner:
             if fault == 'mine':
                 raise job.ended() from e
             if fault == 'access':
-                raise job.access_lost() from e
+                # A refusal of what a writer may not do, the starter still
+                # writing (S9-1), goes up as itself.
+                stop = job.access_lost()
+                if stop is not None:
+                    raise stop from e
             raise
 
     def walk(self, document_id: str) -> str:
@@ -5303,7 +5308,10 @@ class IgtRunner:
             live.append(op)
         if refused:
             self.record_refusals(ws, fresh.id, refused)
-        rule = jobapply.Rule(fresh, project, maintainer=lambda: self.starter_maintains(ws, project),
+        # Asked of core once in this write, when an op needs it (S9-1).
+        maintains: Dict[str, bool] = {}
+        rule = jobapply.Rule(fresh, project,
+                             maintainer=lambda: maintains.setdefault('v', self.starter_maintains(ws, project)),
                              edits_text=self.edits_text())
 
         def sentence_of(token):
@@ -5324,12 +5332,14 @@ class IgtRunner:
         """Whether the person who started the job may rename, merge or
         delete the entries of the project's own lexicons: a maintainer of the
         project or an administrator, as core decides it for the job's token.
-        Asked once per worker, only when a plan holds such a change."""
-        if getattr(self, '_maintains', None) is None:
-            starter = self.job.starter
-            self._maintains = project_role(project.roles, starter) == LEXICON_MAINTAINER or \
-                Requester(ws.client, starter).is_admin()
-        return self._maintains
+        Asked of core at each write that holds such a change, its roles read
+        afresh, so a starter made a writer during the job has such a change
+        proposed from the next write on, never sent for core to refuse
+        (S9-1)."""
+        starter = self.job.starter
+        raw = ws.client.projects.get(project.id) or {}
+        roles = {k: list(raw.get(k) or []) for k in ('maintainers', 'writers', 'readers')}
+        return project_role(roles, starter) == LEXICON_MAINTAINER or Requester(ws.client, starter).is_admin()
 
     @staticmethod
     def doc_of(ws: JobWorkspace, op: Dict[str, Any], fresh):

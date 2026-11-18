@@ -560,13 +560,22 @@ class Job:
         self._renewed = self.token
         return True
 
-    def access_lost(self) -> JobStopped:
-        """Core refused the starter's token its access (SPEC 12): the job
-        ends failed, ``starter-access``, with its report, unless the heartbeat
-        says it already ended otherwise. Nothing is called gone for it."""
-        self.beat()
+    def access_lost(self) -> Optional[JobStopped]:
+        """Core refused the starter's token something (a 403, SPEC 12): a
+        heartbeat asks core whether the starter still writes the project.
+        When core says they do not (it failed the job), the job ends failed,
+        ``starter-access``, with its report, and when it says the job ended
+        otherwise, as it says. When core answers and the starter still
+        writes, None: the refusal was of what was asked under the starter's
+        role as it now is (a maintainer made a writer, S9-1), never a lost
+        access, and the caller sorts it. A heartbeat core did not answer
+        decides nothing and the job ends failed as before. Nothing is called
+        gone for it."""
+        answered = self.beat()
         if self.lost and self.lost != 'failed':
             return JobStopped(self.lost)
+        if answered and not self.lost:
+            return None
         self.reason = self.reason or 'starter-access'
         return JobStopped('failed')
 
@@ -806,7 +815,9 @@ def run_job(job: Job, runner) -> Optional[Dict[str, Any]]:
             logger.warning('Job %s: dropped while core does not answer: %s', job.id, e)
             return None
         if core_fault(e) == 'access':
-            e = job.access_lost()
+            # A refusal of what was asked, the starter still writing (S9-1):
+            # it fails the job with its own words below, never as access lost.
+            e = job.access_lost() or e
         if model_refused(e):
             # The model's provider refused the key or the model (S1-2).
             logger.warning('Job %s: the model refused its calls: %s', job.id, e)
