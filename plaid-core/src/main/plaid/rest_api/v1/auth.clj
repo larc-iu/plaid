@@ -442,7 +442,8 @@
     :post {:summary (str "Invalidate all JWTs for the currently authenticated user by "
                          "bumping the per-user password_changes counter (the same "
                          "mechanism a password change uses). Subsequent requests with "
-                         "the old token will be rejected with 401.")
+                         "those tokens are rejected with 401. Named API tokens are not "
+                         "affected, so a request signed with one goes on working.")
            ;; Important behavioral note for API clients:
            ;;
            ;; Logout invalidates ALL of the user's live tokens across EVERY
