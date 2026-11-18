@@ -23,8 +23,12 @@
 ;; The treebank a timing is compared to: a tenth of the size. `X ->> Y` takes
 ;; about 50 times as long on the big one today (its `within` joins every word
 ;; of the one text to every sentence, so it grows with the square of the
-;; sentences), and the fault the namespace guards against (a closure run per
-;; candidate pair) ran past the 30 s limit, thousands of times the small one.
+;; sentences). A ratio cannot tell a quadratic fault from that quadratic
+;; baseline, and the fault the namespace guards against (a closure run per
+;; candidate pair, 16.5 s on 2,000 words) grows about 100 times for ten times
+;; the size, under the factor of 300. So the big case also has a ceiling of
+;; 15 s. Once `within` joins on the range, the factor can be about 30 and
+;; the ceiling can go.
 (def ^:private small-sentences 40)
 
 (defn- ids-of [r]
@@ -134,7 +138,7 @@
   without `related*`: `narrowed?` adds those, timed on statistics of the data.
   `small` is a treebank a tenth of the size in the same database: the slowest
   query is bounded by a multiple of its time on it, which a loaded machine
-  slows alike (FLK8-3: a fixed 5 s failed at 6.3 s under load)."
+  slows alike (FLK8-3: a fixed 5 s failed at 6.3 s under load), and by 15 s."
   [narrowed? {:keys [pid words sentences upos pos dep expected leaves roots toks verb? ancestors] :as tb} small]
   (let [q (fn [body] (timed #(qe/run db "admin@example.com" (merge {"scope" {"project-ids" [pid]}} body))))
         pairs (fn [r] (set (map (fn [row] (mapv str row)) (:results r))))
@@ -199,9 +203,13 @@
       (testing "Grew X ->> Y"
         (let [run (fn [t] #(qe/run db "admin@example.com" (grew-descendants t)))
               [_ small-ms] (h/timed (run small) {:warm 1})
-              [r ms] (h/timed (run tb))]
+              [r ms] (h/timed (run tb) {:runs 2})]
           (is (= (set (for [d (range n) a (ancestors d)] [(toks a) (toks d)])) (pairs r)))
-          (h/within-factor-of 300 small-ms ms {:floor-ms 50 :label "Grew X ->> Y"})))
+          (h/within-factor-of 300 small-ms ms {:floor-ms 50 :label "Grew X ->> Y"})
+          ;; the ratio misses a slowdown that slows the small case alike, so
+          ;; a ceiling too: half the 30 s limit, over twice the 6.3 s seen
+          ;; under a load of 58 (REV-FT3-1)
+          (is (< ms 15000) (format "Grew X ->> Y: %.0f ms, the quicker of 2 runs" (double ms)))))
       (when narrowed?
         (testing "Grew Y [upos=NOUN] without { X ->> Y }"
           (let [[r ms] (q {"find" ["?n_Y"]
