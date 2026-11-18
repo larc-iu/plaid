@@ -84,8 +84,9 @@
            ;; The roster is locked down to admins (it was an account-
            ;; enumeration surface for any authenticated caller). It's now also
            ;; open to project MAINTAINERS, who need to find users to grant
-           ;; project access — see `wrap-user-directory-access`. Ordinary
-           ;; readers/writers still get 403. Optional `?q=` filters to users
+           ;; project access — see `wrap-user-directory-access`. Anyone may
+           ;; make a project and so become a maintainer (ruling 2,
+           ;; 2026-10-16). Optional `?q=` filters to users
            ;; whose display name contains that text or whose email starts with
            ;; it (contains it, when the text has an @). Returns the
            ;; uniform {:entries :next-cursor} envelope (default page 100, max

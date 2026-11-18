@@ -984,9 +984,9 @@
 (defn wrap-user-directory-access
   "Allows reading the user directory (list/search) to admins OR any user who
   maintains at least one project — maintainers need it to find users to
-  grant project access. Everyone else gets 403 (the roster stays
-  unenumerable for ordinary readers/writers; see the account-enumeration
-  note on the list route)."
+  grant project access. Everyone else gets 403. Anyone may create a project
+  and so become a maintainer, so every account can search the roster
+  (ruling 2, 2026-10-16, the manual's Users and Permissions)."
   [handler]
   (fn [request]
     (if (or (user/admin? (:user/record request))
@@ -1114,10 +1114,12 @@
   to judge, so it refused a writer 403 `unresolved` (an admin passed and got
   204), and inside a batch that refused the whole batch. A script deleting
   words and then their morphemes, which the words' delete had already
-  taken, stopped halfway (D8-PRODLOG-1). The no-op tells nobody anything:
-  the ids belong to no project, so a member and a stranger learn the same.
-  A list naming any id that does resolve still meets the gate on that id's
-  project, so this lets nobody past it. Single deletes keep the unknown-id
+  taken, stopped halfway (D8-PRODLOG-1). A list naming any id that does
+  resolve still meets the gate on that id's project, so this lets nobody
+  past it. It does tell a caller whether an id of a project they cannot
+  read is live (403) or names nothing (204), as `unresolved` does on a
+  single route: the bit the 2026-09-14 ruling lets through, since ids are
+  UUIDv7 and not guessed (ACL3-2). Single deletes keep the unknown-id
   ruling (writer 403, admin 404)."
   [handler resolver]
   (fn [request]
@@ -1230,9 +1232,10 @@
   "A 403 `body` with `:unresolved true` added when `unresolved?`: the id the
   request named resolved to nothing (deleted since the caller read it, or
   never there). The status stays 403 (the core ruling on unknown ids), and
-  the field tells a client no more than the wording already does, so a
-  client can read the refusal as changed or removed without matching the
-  message's text."
+  a client reads the field as changed or removed without matching the
+  message's text. The field does tell a non-member that the id names
+  nothing, where a live id of another project gets the 403 alone: the bit
+  the ruling accepts, as ids are UUIDv7 and not guessed (ACL3-2)."
   [unresolved? body]
   (cond-> body unresolved? (assoc :unresolved true)))
 
