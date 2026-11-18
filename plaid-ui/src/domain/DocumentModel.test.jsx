@@ -188,6 +188,19 @@ describe('what every document can do as a document', () => {
       expect(client.calls.some(([c]) => c === 'get')).toBe(false);
     });
 
+    // Accepted: a failed read after a copy that landed says nothing of the
+    // recording, a possible silence, never a false warning.
+    it('says nothing of the recording when the read of the copy fails', async () => {
+      const { doc, client } = withMedia({ copyHasMedia: false });
+      client.documents.get = async () => {
+        throw new TypeError('Failed to fetch');
+      };
+      const errors = [];
+      doc.onError = (msg) => errors.push(msg);
+      expect(await doc.copyTo('One (copy)')).toEqual({ id: 'd2', name: 'One (copy)' });
+      expect(errors).toEqual([]);
+    });
+
     it('reads nothing for a document with no recording', async () => {
       const { doc, client } = load();
       await doc.copyTo('One (copy)');
