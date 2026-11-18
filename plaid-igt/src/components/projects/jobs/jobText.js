@@ -194,10 +194,13 @@ export const noticeText = (totals) => {
   const out = [];
   const people = t.peoplesValuesChanged || 0;
   if (people) {
+    // Those a lexicon change took or moved outside the job's documents (S6-2).
+    const elsewhere = t.peoplesOutside || 0;
     out.push(
       `People's work: ${countOf(people, 'value, morpheme or link', 'values, morphemes or links')} ` +
-        `people wrote ${people === 1 ? 'was' : 'were'} changed or removed. What the job wrote in ` +
-        'their place is unverified.',
+        `people wrote ${people === 1 ? 'was' : 'were'} changed or removed` +
+        (elsewhere ? `, ${elsewhere.toLocaleString()} of them outside the job's documents` : '') +
+        '. What the job wrote in their place is unverified.',
     );
   }
   const added = t.wordsAdded || 0;
@@ -302,6 +305,7 @@ export const noticeCounts = (report) => {
     t[k] ?? (report?.documents || []).reduce((n, d) => n + (d.counts?.[k] ?? 0), 0);
   return {
     peoplesValuesChanged: sum('peoplesValuesChanged'),
+    peoplesOutside: sum('peoplesOutside'),
     wordsAdded: sum('wordsAdded'),
     tokensChanged: sum('tokensChanged'),
     textChanges: sum('textChanges'),

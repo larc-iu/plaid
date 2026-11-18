@@ -1242,9 +1242,13 @@ def notice(totals: Dict[str, Any], nouns: Optional[Tuple[str, str]] = None) -> O
     out = []
     people = totals.get('peoples_values_changed') or 0
     if people:
+        # Of those, the ones outside the job's documents (an app's
+        # ``peoples_outside``, S6-2).
+        elsewhere = totals.get('peoples_outside') or 0
         out.append(f'People\'s work: {n(people, *(nouns or PEOPLE_NOUNS))} people '
-                   f'wrote {"was" if people == 1 else "were"} changed or removed. What the job wrote in their place '
-                   'is unverified.')
+                   f'wrote {"was" if people == 1 else "were"} changed or removed'
+                   + (f', {elsewhere:,} of them outside the job\'s documents' if elsewhere else '')
+                   + '. What the job wrote in their place is unverified.')
     added, changed = totals.get('words_added') or 0, totals.get('tokens_changed') or 0
     said = ([n(added, 'word', 'words') + ' added'] if added else []) + (
         [f'{n(changed, "existing word or punctuation mark", "existing words or punctuation marks")} changed or '
@@ -1406,6 +1410,11 @@ def build_report(job: Job, state: str, reason: Optional[str], documents: List[Di
     if outside:
         # What the job wrote outside its setup (an app's ``counts.outside``).
         totals['outside'] = field_counts(outside)
+    elsewhere = sum((d.get('counts') or {}).get('peoples_outside') or 0 for d in documents)
+    if elsewhere:
+        # Of ``peoples_values_changed``, those in documents outside the job
+        # (an app's ``counts.peoples_outside``, S6-2).
+        totals['peoples_outside'] = elsewhere
     if parts:
         # The changes by kind, summing to ``changes``, in CHANGE_KINDS'
         # order (an app's ``counts.changes_parts``, RPF-A3).

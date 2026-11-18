@@ -36,6 +36,9 @@ CASES = [
     {'peoples_values_changed': 2, 'words_added': 1, 'tokens_changed': 1, 'text_changes': 1},
     {'peoples_values_changed': 5, 'text_changes': 2},
     {'peoples_values_changed': None, 'words_added': None, 'text_changes': None},
+    # S6-2: people's links a lexicon change took or moved outside the job's documents.
+    {'peoples_values_changed': 2, 'peoples_outside': 1},
+    {'peoples_values_changed': 1234, 'peoples_outside': 1001, 'words_added': 1},
     # The whole-selection step (the lead's ruling after RP4-5).
     {'documents_in_one_step': 1, 'documents_changed_in_one_step': 1, 'documents_not_all_read': 1},
     {'documents_in_one_step': 1, 'documents_changed_in_one_step': 0, 'documents_not_all_read': 0},
@@ -137,6 +140,8 @@ REPORTS = [
      'documents': [{'state': 'done', 'counts': {'words_added': 25, 'tokens_changed': 2, 'text_changes': 3}}]},
     {'totals': {}, 'documents': [{'state': 'done', 'counts': {'words_added': 1, 'peoples_values_changed': 2}},
                                  {'state': 'done', 'counts': {'tokens_changed': 4, 'ran_out': 'written'}}]},
+    # S6-2: core's own report, people's links outside the job on the rows only.
+    {'totals': {}, 'documents': [{'state': 'done', 'counts': {'peoples_values_changed': 3, 'peoples_outside': 2}}]},
     # Each of RW's ``ran_out`` values by its own total (JOIN18, REV-JR2-7).
     {'totals': {}, 'documents': [{'state': 'done', 'counts': {'ran_out': 'put-off'}},
                                  {'state': 'done', 'counts': {'ran_out': 'unchanged'}},

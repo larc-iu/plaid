@@ -306,7 +306,7 @@ def plan_line(report: Dict[str, Any]) -> Optional[str]:
 
 #: The top line's counts that core's own report may hold only on its
 #: documents' rows (REV D10).
-_NOTICE_KEYS = ('peoples_values_changed', 'words_added', 'tokens_changed', 'text_changes')
+_NOTICE_KEYS = ('peoples_values_changed', 'peoples_outside', 'words_added', 'tokens_changed', 'text_changes')
 
 
 def notice_counts(report: Dict[str, Any]) -> Dict[str, Any]:

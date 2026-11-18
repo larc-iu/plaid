@@ -978,6 +978,36 @@ def peoples_on_word(w: Word) -> int:
             + (w.link is not None and peoples(w.link.metadata)))
 
 
+def people_links_in(docs, ops: List[Dict[str, Any]]) -> Dict[str, str]:
+    """``{link id: document id}`` of each link people made (not a machine's)
+    to an entry ``ops`` delete or merge away, in ``docs`` (the documents the
+    staging tools read to find the entry's links, wherever they are: in the
+    job's documents or not). A deleted entry takes them, a merged one moves
+    them: people's work, counted by :meth:`Write.of_people_and_text` (S6-2)."""
+    items = {o.get('item_id') if o.get('kind') == 'delete_entry' else o.get('remove_id')
+             for o in ops if o.get('kind') in ('delete_entry', 'merge_entries')}
+    out: Dict[str, str] = {}
+    if not items:
+        return out
+    for doc in docs:
+        for s in doc.sentences:
+            for w in s.words:
+                for link in [w.link] + list(w.mwes) + [m.link for m in w.morphemes]:
+                    if link is not None and link.item_id in items and prov_state(link.metadata) != 'machine':
+                        out.setdefault(link.id, doc.id)
+    return out
+
+
+def entry_link_ids(op: Dict[str, Any]) -> List[str]:
+    """The ids of the links a delete or a merge of an entry staged in
+    ``op`` takes or moves, as its tool read them. Empty for any other change."""
+    if op.get('kind') == 'delete_entry':
+        return [l for l in op.get('links') or [] if isinstance(l, str)]
+    if op.get('kind') == 'merge_entries':
+        return [l.get('link_id') for l in op.get('links') or [] if isinstance(l, dict)]
+    return []
+
+
 def replaces_people(op: Dict[str, Any], doc, project: IgtProject) -> int:
     """How many pieces people wrote ``op`` changes or takes away, by the
     provenance of what it replaces in ``doc`` (the document before the
@@ -1205,6 +1235,7 @@ CHANGE_NOUNS = {'values': ('value set or cleared', 'values set or cleared'),
 #: The totals' keys the final context reads by another name: what each counts.
 TOTAL_WORDS = {'changes': 'changes written', 'sentences': 'sentences written in', 'text_changes': 'text edits',
                'peoples_values_changed': 'values, morphemes and links people wrote, changed or removed', 'words': 'words segmented',
+               'peoples_outside': 'of those, links outside the job\'s documents',
                'words_added': 'words added by text edits',
                'tokens_changed': 'existing words or punctuation marks changed or removed by text edits'}
 #: How much of the plan's instructions for every piece the final context is handed.
@@ -1959,7 +1990,8 @@ class Write:
     lists a change."""
 
     def __init__(self, document_id: str, piece: str, st: Stretch, own: List[str], ops: List[Dict[str, Any]],
-                 counts: Counter, fresh=None, proposed=(), describe=None, within=None):
+                 counts: Counter, fresh=None, proposed=(), describe=None, within=None, inside=None,
+                 people_links=None):
         #: the write's tag in its rows: the start of a UUIDv7, which sorts by time
         self.id = uuid7().replace('-', '')[:PIECE_TAG_CHARS]
         self.document_id, self.piece, self.st, self.ops, self.counts = document_id, piece, st, ops, counts
@@ -1972,6 +2004,12 @@ class Write:
         #: a job with no setup: a value written in any other is counted
         #: outside it (:meth:`outside_of`)
         self.within = within
+        #: the job's documents (ids), or None: people's links a lexicon change
+        #: of the write takes or moves elsewhere are counted outside the job
+        #: (``peoples_outside``, S6-2)
+        self.inside = inside
+        #: :func:`people_links_in` for the write's ops
+        self.people_links = people_links or {}
         #: each target's id to the name the job's setup line shows it by
         #: (``targets.shown_names``), what a row of :meth:`named` says
         self.names = None
@@ -2155,8 +2193,15 @@ class Write:
         sentences (``jobapply.TEXT_KINDS``). From the worker's own ops,
         never from words (REV-DAY-S-3)."""
         doc = self.fresh if self.fresh is not None else self.st.doc
+        # The links people made that a deleted or merged entry takes or
+        # moves, in any document, and of those the ones outside the job's
+        # documents (S6-2).
+        taken = [self.people_links[i] for o in ops for i in entry_link_ids(o) if i in self.people_links]
+        outside = 0 if self.inside is None else sum(1 for d in taken if d not in self.inside)
         return Counter({'peoples_values_changed': sum(replaces_people(o, doc, self.st.project) for o in ops)
-                        + sum(removes_people(o, doc) for o in ops if o.get('kind') in jobapply.TEXT_KINDS),
+                        + sum(removes_people(o, doc) for o in ops if o.get('kind') in jobapply.TEXT_KINDS)
+                        + len(taken),
+                        'peoples_outside': outside,
                         'text_changes': sum(1 for o in ops if o.get('kind') in jobapply.TEXT_KINDS)})
 
     def words_of(self, ops: List[Dict[str, Any]]) -> List[str]:
@@ -5227,7 +5272,8 @@ class IgtRunner:
         setup = self.job_setup(project)
         w = Write(document_id, piece, st, own, kept, counts, fresh, proposed,
                   describe=lambda o, here: self.describe(o, fresh, project) if here else self.describe_loose(o),
-                  within=setup.ids if setup is not None else None)
+                  within=setup.ids if setup is not None else None, inside=set(job.order),
+                  people_links=people_links_in(ws._docs.values(), kept))
         if summary in self.unsummed:
             # Before the first request: a write cut short is counted by what of it landed.
             self.unsummed[summary]['writes'].add(w.id)
