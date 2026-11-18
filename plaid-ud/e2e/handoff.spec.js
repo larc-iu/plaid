@@ -132,7 +132,7 @@ test('Alt+click a word in Annotate opens the Text Editor on its sentence', async
   });
 });
 
-test('a plain click on a word still starts drawing a relation', async ({ page }) => {
+test('a plain click on a word does not open the Text Editor', async ({ page }) => {
   await open(page, 'annotate');
   await expect(page.locator('.token-form', { hasText: 'cat' }).first()).toBeVisible({
     timeout: 15000,
