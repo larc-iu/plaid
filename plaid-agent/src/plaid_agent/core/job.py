@@ -461,6 +461,12 @@ def error_line(e: BaseException, secrets=()) -> str:
         status = getattr(e, 'status_code', None)
         return 'The job worker stopped the job: the model’s provider failed' + \
             (f' (HTTP {status}).' if isinstance(status, int) else '.')
+    err = plaid_error(e)
+    if err is not None and err.status == 403 and isinstance(err.response_data, dict) \
+            and err.response_data.get('unresolved'):
+        # Core says what was named is gone, never that access is lacking
+        # (REV-SJ1-R2-4).
+        return 'The job worker stopped the job: something it was reading was deleted during the job.'
     return fit_line(f'The job worker met an error and stopped the job: {requester_message(e, secrets=secrets)}')
 
 

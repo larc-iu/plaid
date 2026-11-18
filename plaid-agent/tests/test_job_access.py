@@ -89,3 +89,25 @@ def test_a_403_while_the_starter_still_writes_is_the_refusal_itself_never_access
     assert 'Only a maintainer may do this.' in client.jobs.rows[job.id]['message']
     # Core's address never reaches a reader (REV-SJ1-5).
     assert 'core.internal' not in client.jobs.rows[job.id]['message']
+
+
+def test_a_lexicon_deleted_during_the_job_is_said_as_deleted_never_as_access(monkeypatch):
+    """REV-SJ1-R2-4, S5-2's path: the next stretch reads the lexicon a
+    maintainer deleted, and core refuses 403 ``unresolved`` with words that
+    say the starter lacks read access. The job's line says something it was
+    reading was deleted, with no email and no id."""
+    from plaid_agent.igt import workspace
+    client = _client()
+    job = start(client)
+    use(monkeypatch, Model(_analyse))
+    gone = PlaidAPIError('HTTP 403 User sam@ex.org lacks read access to vocab layer 01a1-lex', status=403,
+                         response_data={'error': 'User sam@ex.org lacks read access to vocab layer 01a1-lex',
+                                        'unresolved': True})
+
+    def lexicon(self, vocab):
+        raise gone
+    monkeypatch.setattr(workspace.Workspace, 'lexicon', lexicon)
+    finished = run_job(job, runner(job))
+    message = client.jobs.rows[job.id]['message']
+    assert finished['state'] == 'failed' and finished['reason'] == 'worker-error', finished.get('reason')
+    assert message == 'The job worker stopped the job: something it was reading was deleted during the job.', message
