@@ -12,15 +12,17 @@ export const pageOfParam = (raw) => {
 };
 
 // The job's rows of work, read with each read of the job: `{page, rows,
-// plan, limit}`, `page` the route's answer (null until the first), `rows` its rows
-// with the plan's taken out, `plan` the plan once found.
+// plan, limit}`, `page` the route's answer (null until the first), `rows` its
+// rows with the plan's taken out, `plan` the plan once found, `limit` the
+// limit `page` was read at (a running job's read is short of every row).
 export const useJobPieces = (client, jobId, readAt, limit, enabled = true) => {
-  const [page, setPage] = useState(null);
+  const [read, setRead] = useState({ page: null, limit: null });
+  const page = read.page;
   const [plan, setPlan] = useState(null);
   // The job whose plan row was found, or looked for past the first page.
   const planFor = useRef(null);
   useEffect(() => {
-    setPage(null);
+    setRead({ page: null, limit: null });
     setPlan(null);
     planFor.current = null;
   }, [jobId]);
@@ -32,7 +34,7 @@ export const useJobPieces = (client, jobId, readAt, limit, enabled = true) => {
       .piecesPage(jobId, { limit })
       .then(async (next) => {
         if (!live) return;
-        setPage(next);
+        setRead({ page: next, limit });
         if (planFor.current === jobId) return;
         let found = planOf(next?.entries);
         if (!found && next?.nextCursor) {
@@ -52,5 +54,5 @@ export const useJobPieces = (client, jobId, readAt, limit, enabled = true) => {
     };
   }, [client, jobId, limit, readAt, enabled]);
   const rows = useMemo(() => (page?.entries || []).filter((r) => !r.piece.plan), [page]);
-  return { page, rows, plan, limit };
+  return { page, rows, plan, limit: read.limit };
 };

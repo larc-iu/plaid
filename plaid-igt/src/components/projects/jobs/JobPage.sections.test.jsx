@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { MemoryRouter, useLocation } from 'react-router-dom';
 import { renderComponent, byText, all } from '@ui/test/renderComponent.jsx';
 import { ConfirmProvider } from '@ui/components/shared/ConfirmProvider';
@@ -12,6 +12,7 @@ const auth = vi.hoisted(() => ({ user: { id: 'w', isAdmin: false } }));
 vi.mock('../../../contexts/AuthContext', () => ({ useAuth: () => auth }));
 vi.mock('@/utils/feedback', () => ({ notifyError: vi.fn() }));
 const { JobPage } = await import('./JobPage.jsx');
+const { JOB_POLL_MS } = await import('@ui/domain/jobs.js');
 
 const PROJECT = { id: 'p1', maintainers: ['m'], writers: ['w'], readers: [], vocabs: [] };
 
@@ -142,6 +143,7 @@ beforeEach(() => {
   localStorage.clear();
   at = null;
 });
+afterEach(() => vi.useRealTimers());
 
 describe('the sections of an ended job', () => {
   it('draws each section that holds something, with its count, and none that is empty', async () => {
@@ -531,5 +533,74 @@ describe('a job still running', () => {
     expect(v.container.querySelector('section[aria-label="Work so far"]')).not.toBeNull();
     expect(v.container.querySelector('[data-testid="job-headline"]')).toBeNull();
     await v.unmount();
+  });
+});
+
+// REV-RP-7: the moment a job ends with its page open.
+describe('a job that ends while its page is open', () => {
+  const RUNNING = {
+    ...ENDED,
+    state: 'running',
+    phase: 'working',
+    finishedAt: null,
+    report: null,
+  };
+  const rowsOf = (n) => Array.from({ length: n }, (_, k) => piece(n - k, (k % N) + 1));
+  // The route answers as many rows as asked, newest first, of `total`.
+  const clientAt = (total, { capPending = false } = {}) => {
+    const answers = [RUNNING, ENDED];
+    let i = 0;
+    return {
+      jobs: {
+        get: vi.fn(async () => answers[Math.min(i++, answers.length - 1)]),
+        piecesPage: vi.fn((_, { limit }) =>
+          capPending && limit === 1000
+            ? new Promise(() => {})
+            : Promise.resolve({
+                entries: rowsOf(total).slice(0, limit),
+                nextCursor: limit < total ? 'c' : null,
+              }),
+        ),
+        cancel: vi.fn(),
+      },
+      messages: { discoverServices: vi.fn(async () => []) },
+    };
+  };
+
+  it('keeps the reader on the page of the work list they were reading, now in Notes', async () => {
+    vi.useFakeTimers();
+    const v = await mount(clientAt(60), '?page=2');
+    expect(text(panel(v.container))).toContain('26–50 of 50+');
+    await v.step(() => vi.advanceTimersByTimeAsync(JOB_POLL_MS));
+    await v.step(async () => {});
+    expect(at).toBe('/projects/p1/jobs/j1?view=notes&page=2');
+    expect(panel(v.container).getAttribute('data-view')).toBe('notes');
+    expect(text(panel(v.container))).toContain('26–50 of 60');
+    await v.unmount();
+  });
+
+  it('stays on the Overview, its address naming a section only the ended job has dropped', async () => {
+    vi.useFakeTimers();
+    const v = await mount(clientAt(3), '?view=blank');
+    expect(panel(v.container).getAttribute('data-view')).toBe('overview');
+    await v.step(() => vi.advanceTimersByTimeAsync(JOB_POLL_MS));
+    await v.step(async () => {});
+    expect(at).toBe('/projects/p1/jobs/j1');
+    expect(panel(v.container).getAttribute('data-view')).toBe('overview');
+    await v.unmount();
+  });
+
+  it('counts the Notes only once every row is read, never the running read’s rows', async () => {
+    vi.useFakeTimers();
+    const v = await mount(clientAt(60, { capPending: true }));
+    await v.step(() => vi.advanceTimersByTimeAsync(JOB_POLL_MS));
+    await v.step(async () => {});
+    expect(tabs(v.container).some((t) => t.startsWith('Notes'))).toBe(false);
+    await v.unmount();
+    const w = await mount(clientAt(60));
+    await w.step(() => vi.advanceTimersByTimeAsync(JOB_POLL_MS));
+    await w.step(async () => {});
+    expect(tabs(w.container)).toContain('Notes60');
+    await w.unmount();
   });
 });

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { ArrowLeft } from 'lucide-react';
 import { useAuth } from '../../../contexts/AuthContext';
@@ -87,7 +87,7 @@ import {
 export const JobPage = ({ project, projectId, jobId, client }) => {
   const { user } = useAuth();
   const confirm = useConfirm();
-  const [params] = useSearchParams();
+  const [params, setParams] = useSearchParams();
   const [job, setJob] = useState(null);
   // When the job shown was read, which is as far as its elapsed time runs.
   const [readAt, setReadAt] = useState(null);
@@ -118,18 +118,45 @@ export const JobPage = ({ project, projectId, jobId, client }) => {
       : PIECES_MAX,
     !!job,
   );
+  // An ended job's rows are all read at the cap: until that read lands, the
+  // rows shown are the running read's, which no count of Notes is (REV-RP-7).
+  const allRead = !!pieces.page && (active || pieces.limit === PIECES_MAX);
   const sections = useMemo(
-    () => (job ? jobSections(job, pieces.page ? pieces.rows.length : null, project?.vocabs) : []),
-    [job, pieces.page, pieces.rows.length, project?.vocabs],
+    () => (job ? jobSections(job, allRead ? pieces.rows.length : null, project?.vocabs) : []),
+    [job, allRead, pieces.rows.length, project?.vocabs],
   );
   const keys = useMemo(() => sections.map((s) => s.key), [sections]);
   // The sections can still grow until the job has ended and its work list
   // has been read: an address naming one is kept until then.
   const [view, setView, viewHref] = useTabParam(keys, 'overview', {
     param: 'view',
-    ready: !!job && !active && !!pieces.page,
+    ready: !!job && !active && allRead,
     clears: SECTION_PARAMS,
   });
+  // The moment the job ends with its page open, the reader keeps their place
+  // (REV-RP-7): a page of Work so far past the first is the same page of
+  // Notes, and the Overview stays the Overview, a section the address kept
+  // while the job ran dropped.
+  const wasActive = useRef(false);
+  useEffect(() => {
+    if (!job) return;
+    if (wasActive.current && !active) {
+      setParams(
+        (prev) => {
+          const view = prev.get('view');
+          if (view === 'documents' || view === 'setup') return prev;
+          const out = new URLSearchParams();
+          if (pageOfParam(prev.get('page')) > 0) out.set('view', 'notes');
+          for (const [key, value] of prev) {
+            if (!['view', 'filter', 'order'].includes(key)) out.set(key, value);
+          }
+          return out;
+        },
+        { replace: true },
+      );
+    }
+    wasActive.current = active;
+  }, [job, active, setParams]);
   useEffect(() => {
     setUndoneHref(null);
     if (!undoneOp) return undefined;
