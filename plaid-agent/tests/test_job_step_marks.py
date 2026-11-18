@@ -47,3 +47,14 @@ def test_an_unfinished_step_says_read_in_part_unchanged_and_not_read_apart(monke
     totals = finished['report']['totals']
     assert (totals['documents_step_unchanged'], totals['documents_step_not_read'], totals['documents_ran_out'],
             totals['documents_not_reached']) == (1, 1, 1, 0), totals
+
+
+def test_a_whole_documents_failed_part_is_not_called_the_jobs_step(monkeypatch):
+    """A check planned by documents whose part for each document fails."""
+    client = JobClient({'d1': document('d1', 'Story', blank(2)), 'd2': document('d2', 'Tale', blank(2))})
+    job = start(client, 'Check every gloss.', id=J, plan='document', fills=())
+    use(monkeypatch, Model(lambda asked, n, kwargs: reply(calls=[call(100 + n, 'no_such_tool', {'n': n})])))
+    finished = run_job(job, runner(job))
+    notice = finished['report']['notice']
+    assert '2 documents were not worked: the part for each failed.' in notice, notice
+    assert "job's step" not in notice

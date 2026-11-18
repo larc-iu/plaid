@@ -1042,7 +1042,8 @@ def notice(totals: Dict[str, Any], nouns: Optional[Tuple[str, str]] = None) -> O
 #: what happened in a document a big piece did not finish and nothing walked
 #: after it there.
 RAN_OUT_TOTALS = (('written', 'documents_ran_out'), ('unchanged', 'documents_step_unchanged'),
-                  ('not-read', 'documents_step_not_read'), ('failed', 'documents_step_failed'))
+                  ('not-read', 'documents_step_not_read'), ('failed', 'documents_step_failed'),
+                  ('part-failed', 'documents_part_failed'))
 
 
 def ran_out_line(key: str, n: int) -> str:
@@ -1059,6 +1060,10 @@ def ran_out_line(key: str, n: int) -> str:
     if key == 'documents_step_not_read':
         return (f'{count} {"was" if one else "were"} not read: the job\'s step over the documents ended before '
                 f'{"it" if one else "them"}.')
+    if key == 'documents_part_failed':
+        # A plan by documents: each document's own part, never "the job's
+        # step", the page's word for the step over all of them.
+        return f'{count} {"was" if one else "were"} not worked: {"its part" if one else "the part for each"} failed.'
     return f'{count} {"was" if one else "were"} not worked: the job\'s step over {"it" if one else "them"} failed.'
 
 

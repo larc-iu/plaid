@@ -2322,7 +2322,7 @@ class IgtRunner:
         #: there was written, the rest not done), ``unchanged`` (an unfinished
         #: step read part of it and changed nothing), ``not-read`` (it read
         #: none of it) or ``failed`` (the step failed): the report's top line
-        #: says each
+        #: says each, ``part-failed`` (its own whole-document part failed)
         self.ran_out: Dict[str, str] = {}
         #: document id -> the first sentence a write must leave the cursor
         #: before (:meth:`go_on`, :meth:`record`)
@@ -3367,7 +3367,7 @@ class IgtRunner:
                         # however it ended: the document ends, counted failed
                         # (REV-RW-R2-2).
                         self.failed_whole(document_id, doc.name, part, e.kind)
-                        self.end_unworked(project, document_id, 'failed')
+                        self.end_unworked(project, document_id, 'part-failed')
                         return 'done'
                     core_job.through_core(job, lambda: self.fall_back(document_id, 'failed'))
                     # A row of its own in the work list, saying it failed and

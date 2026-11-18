@@ -87,7 +87,9 @@ def test_a_plan_that_fills_nothing_walks_nothing_after_its_big_piece_however_it_
         # By documents, Tale's own piece staged nothing and failed.
         assert ('1 document ended before the job had done its work there: what it had staged there was written, and '
                 'the rest was not done.') in notice, notice
-        assert '1 document was not worked: the job\'s step over it failed.' in notice, notice
+        assert '1 document was not worked: its part failed.' in notice, notice
+    elif plan == 'document':
+        assert '2 documents were not worked: the part for each failed.' in notice, notice
     else:
         assert '2 documents were not worked: the job\'s step over them failed.' in notice, notice
     assert 'what it had staged was written' not in notice
