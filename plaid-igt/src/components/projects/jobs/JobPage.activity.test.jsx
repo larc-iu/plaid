@@ -298,6 +298,7 @@ describe('the job page’s list of its work', () => {
           ]),
         ],
       ),
+      '?view=notes',
     );
     expect(ends(v.container)).toEqual([
       ['Failed: over budget.', 'Worked again in stretches of sentences.'],
@@ -322,7 +323,10 @@ describe('the job page’s list of its work', () => {
       restDocuments: ['d1', 'd2'],
     };
     const states = [doc('d1', 'in-use'), doc('d2', 'done'), doc('d3', 'done')];
-    let v = await mount(clientOf([ended(states)], [page([{ seq: '000030', piece }])]));
+    let v = await mount(
+      clientOf([ended(states)], [page([{ seq: '000030', piece }])]),
+      '?view=notes',
+    );
     expect(ends(v.container)).toEqual([
       [
         'Steps used up: written as staged.',
@@ -361,6 +365,7 @@ describe('the job page’s list of its work', () => {
           ]),
         ],
       ),
+      '?view=notes',
     );
     expect(ends(v.container)).toEqual([
       ['Failed: over budget.', 'Then 60 documents went to stretches of sentences.'],
@@ -406,6 +411,7 @@ describe('the job page’s list of its work', () => {
           ]),
         ],
       ),
+      '?view=notes',
     );
     expect(ends(v.container)).toEqual([
       ['Failed: over budget.', 'Not worked again: in use.'],
