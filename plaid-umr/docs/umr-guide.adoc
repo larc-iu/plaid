@@ -253,6 +253,7 @@ In Arabic a word also finds its roleset with a proclitic and a suffix removed, s
 In the attribute picker, aspect, person and number are lattices.
 Pick the most specific value you are sure of, and the finer values under it appear.
 The other attributes are lists, and free values such as `:quant` and `:wiki` go in the text line at the bottom.
+An attribute that has a list, such as `:aspect state`, typed in the text line sets that list's value.
 
 A variable is `s`, the sentence number, then letters and an optional number, such as `s3e` or `s3e2`, and it must be unique in the document.
 A new node's variable is made from the first letter of its concept.
