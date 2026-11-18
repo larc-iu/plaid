@@ -549,3 +549,27 @@ describe('a row write planned before the page read the document again', () => {
     expect(spans(server)).toEqual(['two']);
   });
 });
+
+// REV-G1-2: a loss that grew in one count is a loss that grew, though the
+// sum of the counts did not (a gloss taken away and a link made meanwhile).
+describe('a row write whose loss changed kind', () => {
+  it('is refused when a link is to go where only an annotation was asked about', async () => {
+    const server = plain();
+    const doc = open(server);
+    const real = doc.segmentEditLoss.bind(doc);
+    // On the document read after the refusal: no annotation, one link.
+    doc.segmentEditLoss = (id, edit, info) =>
+      info
+        ? {
+            stretches: [],
+            loss: { annotations: 0, links: 1, shortened: { annotations: 0, links: 0 } },
+          }
+        : real(id, edit);
+    server.refuseNext(409);
+    const asked = { annotations: 1, links: 0, shortened: { annotations: 0, links: 0 } };
+    const o = await edit(doc, 'a-2', { text: 'xyz', speaker: 'Ana', asked });
+    await idle(doc);
+    expect(o.landed).toBe(false);
+    expect(server.body).toBe('one two three');
+  });
+});

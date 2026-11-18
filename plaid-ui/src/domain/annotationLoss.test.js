@@ -419,3 +419,25 @@ describe('singleLinkDrops', () => {
     expect([...singleLinkTokens(layers)]).toEqual(['t1']);
   });
 });
+
+// REV-G1-2: one rule for "did the loss grow", each count on its own.
+describe('lossWithin', () => {
+  const loss = (annotations, links, sa = 0, sl = 0) => ({
+    annotations,
+    links,
+    shortened: { annotations: sa, links: sl },
+  });
+  it('holds when no count is above the one counted', async () => {
+    const { lossWithin } = await import('./annotationLoss.js');
+    expect(lossWithin(loss(1, 0), loss(1, 0))).toBe(true);
+    expect(lossWithin(loss(0, 0), loss(2, 1, 1, 1))).toBe(true);
+    expect(lossWithin(loss(0, 0), null)).toBe(true);
+  });
+  it('does not hold when one count grew, whatever the others did', async () => {
+    const { lossWithin } = await import('./annotationLoss.js');
+    expect(lossWithin(loss(0, 1), loss(1, 0))).toBe(false);
+    expect(lossWithin(loss(0, 0, 1), loss(1, 0))).toBe(false);
+    expect(lossWithin(loss(0, 0, 0, 1), loss(1, 1, 1))).toBe(false);
+    expect(lossWithin(loss(1, 0), null)).toBe(false);
+  });
+});

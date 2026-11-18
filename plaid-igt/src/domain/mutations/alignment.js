@@ -69,6 +69,7 @@ import {
   countTextDeleteLoss,
   dropRelations,
   holdsPersonsWork,
+  lossWithin,
 } from '@ui/domain/annotationLoss.js';
 import {
   newHalfMetadata,
@@ -157,11 +158,6 @@ const findTemporalInversion = (tokens, posBegin, timeBegin, excludeId = null) =>
 };
 
 const bodyOf = (info) => info.primaryTextLayer?.text?.body ?? '';
-
-// How much a loss (`segmentDeleteLoss`, `segmentEditLoss`) takes, as one
-// number, to tell whether it grew.
-const lossSize = (loss) =>
-  loss.annotations + loss.links + loss.shortened.annotations + loss.shortened.links;
 
 // The words a text write's answer says the server made on the word layer
 // ("Tokenize new text"), shown in begin order.
@@ -648,7 +644,7 @@ export const alignmentMutations = {
     // words it deletes meanwhile, H2-1-2): refused, the row asks again.
     const seen = recordingOf(this._raw);
     const pageLoss = this.segmentEditLoss(existingAlignmentId, { text, edits }).loss;
-    const seenLoss = lossSize(asked ?? pageLoss);
+    const seenLoss = asked ?? pageLoss;
     const timed = setsTimes(rowPatch(mine, was));
     const replan = (fresh, updated) => {
       const refusal = timed ? this._recordingRefusal(seen, updated, 'Segment edit') : null;
@@ -669,8 +665,10 @@ export const alignmentMutations = {
         found.segment,
       );
       const again = overlap ? null : planEdit(fresh, found.segment, gaps, next, timeBegin);
-      const grew =
-        lossSize(this.segmentEditLoss(found.segment.id, { text, edits }, fresh).loss) > seenLoss;
+      const grew = !lossWithin(
+        this.segmentEditLoss(found.segment.id, { text, edits }, fresh).loss,
+        seenLoss,
+      );
       return !again || again.error || grew
         ? { conflict: { stored: over, mine: next } }
         : { plan: { ...again, patch } };
@@ -687,7 +685,7 @@ export const alignmentMutations = {
       recheck: timed ? this._sameRecording(seen, 'Segment edit') : null,
       // The page was read while the question was open, and holds more now:
       // counted again on a read before it goes.
-      recount: lossSize(pageLoss) > seenLoss,
+      recount: !lossWithin(pageLoss, seenLoss),
     });
   },
 
@@ -855,7 +853,7 @@ export const alignmentMutations = {
     const over = cpSlice(this.body, existingAlignment.begin, existingAlignment.end);
     // What it deletes besides, as the person was asked about it.
     const pageLoss = this.segmentDeleteLoss(alignmentId);
-    const seenLoss = lossSize(asked ?? pageLoss);
+    const seenLoss = asked ?? pageLoss;
     const planned = this._plannedText();
 
     // The segment is deleted in its own right, then its text. It used to go
@@ -879,7 +877,7 @@ export const alignmentMutations = {
     const state = {
       planned,
       send: (base) => send(alignmentId, textOps, base),
-      recount: lossSize(pageLoss) > seenLoss,
+      recount: !lossWithin(pageLoss, seenLoss),
     };
     return this._queueWrite(label, async () => {
       if (!textOps.length) {
@@ -895,7 +893,7 @@ export const alignmentMutations = {
           const found = segmentConflict(fresh, alignmentId, over, '');
           if (found.conflict) return { conflict: found.conflict };
           const { segment } = found;
-          if (lossSize(this.segmentDeleteLoss(segment.id, fresh)) > seenLoss) {
+          if (!lossWithin(this.segmentDeleteLoss(segment.id, fresh), seenLoss)) {
             return { conflict: { stored: over, mine: '' } };
           }
           const ops = planDeleteText(bodyOf(fresh), segment);

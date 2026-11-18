@@ -3,7 +3,7 @@ import { Pause, Play, Trash2, X } from 'lucide-react';
 import { cpSlice, provState, PROV_STATES } from '@larc-iu/plaid-client';
 import { Button } from '@ui/components/ui/button';
 import { Popover, PopoverAnchor, PopoverContent } from '@ui/components/ui/popover';
-import { hasLoss, lossPhrase } from '@ui/domain/annotationLoss.js';
+import { hasLoss, lossPhrase, lossWithin } from '@ui/domain/annotationLoss.js';
 import { Input } from '@ui/components/ui/input';
 import { Label } from '@ui/components/ui/label';
 import { Switch } from '@ui/components/ui/switch';
@@ -150,16 +150,8 @@ const WAITS_TO_RESEND = new Set(['conflict', 'takenUp', 'putBack']);
 
 // Whether a Save anyway given for `answer` covers saving `text` now with
 // `loss`: the same text, and no count above the one asked about.
-const coveredBy = (answer, text, loss) => {
-  if (!answer || answer.text !== text) return false;
-  const was = answer.loss;
-  return (
-    loss.annotations <= was.annotations &&
-    loss.links <= was.links &&
-    (loss.shortened?.annotations ?? 0) <= (was.shortened?.annotations ?? 0) &&
-    (loss.shortened?.links ?? 0) <= (was.shortened?.links ?? 0)
-  );
-};
+const coveredBy = (answer, text, loss) =>
+  !!answer && answer.text === text && lossWithin(loss, answer.loss);
 
 // "3 annotations and 1 vocabulary link on this text." A link or annotation
 // the delete only cuts down is named apart: "Shortens 1 vocabulary link."

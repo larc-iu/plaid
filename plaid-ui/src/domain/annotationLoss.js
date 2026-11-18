@@ -46,6 +46,22 @@ export const hasLoss = (loss) =>
       (loss.annotations || loss.links || loss.shortened?.annotations || loss.shortened?.links),
   );
 
+// Whether `loss` takes no more than `counted` (`{ annotations, links,
+// shortened: { annotations, links } }`, null for nothing), each count on its
+// own: one count that grew is a loss that grew, whatever the others did. The
+// one rule for a question answered before a write and the write made again
+// on a newer read (plaid-igt's transcript rows, REV-G1-2).
+export const lossWithin = (loss, counted) => {
+  const n = (x, key) => x?.[key] ?? 0;
+  const cut = (x, key) => x?.shortened?.[key] ?? 0;
+  return (
+    n(loss, 'annotations') <= n(counted, 'annotations') &&
+    n(loss, 'links') <= n(counted, 'links') &&
+    cut(loss, 'annotations') <= cut(counted, 'annotations') &&
+    cut(loss, 'links') <= cut(counted, 'links')
+  );
+};
+
 const bump = (map, key, n = 1) => map.set(key, (map.get(key) || 0) + n);
 
 // A token's metadata holds something of its own beyond provenance.
