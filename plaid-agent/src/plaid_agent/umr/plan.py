@@ -64,6 +64,19 @@ class Context:
         # (document, sentence token) -> the record a triple between two
         # constants is listed in: its id and the list as written so far.
         self.records: Dict[tuple, Dict[str, Any]] = {}
+        # document -> its constants as they stand now: var -> concept span id.
+        self._constants: Dict[str, Dict[str, str]] = {}
+
+    def constant_now(self, document_id: str, var: str) -> Optional[str]:
+        """The span of the constant ``var`` the document holds now, or None.
+        Read once per document, when the plan first makes a constant in it.
+        A plan applied with no project to read it by (a test's) reads nothing."""
+        if self.project is None:
+            return None
+        if document_id not in self._constants:
+            doc = load_document(self.client, self.project, document_id)
+            self._constants[document_id] = {c.var: c.id for c in doc.constants}
+        return self._constants[document_id].get(var)
 
     def end_of(self, op: Dict[str, Any], side: str):
         """One end of an edge or a triple: the span it already has, or the
@@ -161,7 +174,12 @@ def _apply_create_node(ctx: Context, op) -> int:
     to words (``pieces``, diff.py ``_kept_pieces``) stands on those words and
     its hold, from where they begin to the sentence's end (``holdFor`` in
     plaid-umr's sentenceGraph.js), and records the words (``words``), as the
-    app's applyPenman makes it."""
+    app's applyPenman makes it.
+
+    A constant the document has gained since the plan was made (on the
+    canvas, or by another plan) is the one the plan's triples hang on, and
+    no second is made: constants are judged by name, so a document never
+    has two (plaid-umr's umrRebase.js, H2-10-1)."""
     begin = op.get('begin') or 0
     end = op.get('end') or begin
     meta: Dict[str, Any] = {'var': op['var'], 'attrs': list(op.get('attrs') or [])}
@@ -185,6 +203,15 @@ def _apply_create_node(ctx: Context, op) -> int:
 
     anchors = [ctx.b.new_id() for _ in pieces]
     span = ctx.b.new_id()
+    # Asked once the ids are drawn, so the rows made after it are named as on
+    # a first send, and a resend finds the constant its first send made.
+    if op.get('constant'):
+        there = ctx.constant_now(op['document_id'], op['var'])
+        if there:
+            ctx.span_at[(op['document_id'], op['var'])] = there
+            if there != span:
+                ctx.notes.append(f'{op["var"]} was already in the document, so it was not added again')
+            return 0
 
     def queue(batch, o=op, m=meta):
         batch.tokens.bulk_create([{'token_layer_id': o['node_layer_id'], 'text': o['text_id'], **p, 'id': a}
