@@ -81,8 +81,11 @@ def test_a_403_while_the_starter_still_writes_is_the_refusal_itself_never_access
     client = _client()
     job = start(client)
     use(monkeypatch, Model(_analyse))
-    _refuse_lock(client, PlaidAPIError('HTTP 403 Only a maintainer may do this.', status=403,
+    _refuse_lock(client, PlaidAPIError('HTTP 403 Only a maintainer may do this. at http://core.internal:8085/api/v1/x',
+                                       status=403, url='http://core.internal:8085/api/v1/x',
                                        response_data={'error': 'Only a maintainer may do this.'}))
     finished = run_job(job, runner(job))
     assert finished['state'] == 'failed' and finished['reason'] == 'worker-error', finished.get('reason')
     assert 'Only a maintainer may do this.' in client.jobs.rows[job.id]['message']
+    # Core's address never reaches a reader (REV-SJ1-5).
+    assert 'core.internal' not in client.jobs.rows[job.id]['message']
