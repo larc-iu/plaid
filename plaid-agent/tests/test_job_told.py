@@ -320,3 +320,42 @@ def test_the_chat_is_still_told_to_copy_in_run_code_or_ask_the_user():
     ws = Workspace(c, load_project(c, 'p1'))
     why = ws.garbled({'value': '\U0001E900\U0001E901'})
     assert 'run_code' in why and 'paste it into the chat' in why
+
+
+# --- D26: a findings piece is never shown a one-line ending ------------------------------------
+
+@pytest.mark.parametrize('sentences', [False, True])
+def test_a_findings_piece_is_shown_an_example_that_ends_with_findings(sentences):
+    from plaid_agent.core.prompt import JOB_FINDINGS_ENDING
+    from plaid_agent.igt.prompt import build_job_prompt
+    project = _job_ws().project
+    told = build_job_prompt(project, sentences=sentences, targets=[], findings=True)
+    assert 'Then you ended with the note' not in told
+    assert JOB_FINDINGS_ENDING in told
+    assert 'Then you ended with the note' in build_job_prompt(project, sentences=sentences, targets=[])
+
+
+def test_a_findings_piece_is_told_to_end_with_its_findings_at_every_closing_line(monkeypatch):
+    """The decide-now line, the re-ask after an empty answer and the
+    closing call's lines of a job that fills nothing ask for its findings."""
+    from plaid_agent.core import prompt as p
+    for line in (p.JOB_FINDINGS_DECIDE_NOW, p.JOB_FINDINGS_ANSWER_AGAIN, p.JOB_FINDINGS_STEPS_USED_UP,
+                 p.JOB_FINDINGS_STEPS_USED_UP_REFUSED):
+        assert 'findings' in line and 'note' not in line and 'one line' not in line
+    ws = _job_ws()
+    ws.findings, ws.closing = True, True
+    assert toolkit.job_piece_call(ws, 'plan_status', {}) == 'Error: ' + p.JOB_FINDINGS_STEPS_USED_UP_REFUSED
+    client = JobClient({'d1': document('d1', 'Story', [{'words': ['blank']}])})
+    job = start(client, fills=[], plan='document')
+    r = runner(job)
+    asked = []
+
+    def answer(said, n, kwargs):
+        asked.append([m.get('content') for m in kwargs['messages'] if m.get('role') == 'user'][-1])
+        return reply('' if len(asked) == 1 else '## Findings')
+    use(monkeypatch, Model(answer))
+    assert r.fills_nothing()
+    pace = r.pace(piece=True)
+    assert pace.line == p.JOB_FINDINGS_DECIDE_NOW and pace.used_up == p.JOB_FINDINGS_STEPS_USED_UP
+    r.document('d1')
+    assert asked[1] == p.JOB_FINDINGS_ANSWER_AGAIN, asked

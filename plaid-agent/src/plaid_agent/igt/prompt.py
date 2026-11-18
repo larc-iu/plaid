@@ -509,6 +509,11 @@ def build_job_prompt(project: IgtProject, sentences: bool = False, edits_text: b
     if findings:
         assert shared.JOB_NOTE in out
         out = out.replace(shared.JOB_NOTE, shared.JOB_FINDINGS_NOTE)
+        # The example ends with findings, never a one-line note (D26).
+        head = ' Then you ended with the note:\n\n'
+        at = out.index(head)
+        end = out.index('\n', at + len(head))
+        out = out[:at] + shared.JOB_FINDINGS_ENDING + out[end:]
     if not edits_text:
         for said, instead in NO_TEXT_EDITS:
             # A piece in sentences is told of no project-wide tool at all.

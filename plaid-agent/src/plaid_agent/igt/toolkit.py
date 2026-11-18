@@ -1031,10 +1031,11 @@ def job_piece_call(ws, name: str, args: Dict[str, Any]) -> str:
     """One call of a piece's model: a tool its list offers, run as the chat
     runs it, and a refusal for any other. A piece in sentences reads no
     sentence of an answer naming a tool it is not offered (REV-DAY-P-8)."""
-    from ..core.prompt import JOB_READING_OVER, JOB_STEPS_USED_UP_REFUSED
+    from ..core.prompt import JOB_FINDINGS_STEPS_USED_UP_REFUSED, JOB_READING_OVER, JOB_STEPS_USED_UP_REFUSED
     from ..core.tools import refused
     if getattr(ws, 'closing', False):
-        return refused(JOB_STEPS_USED_UP_REFUSED, 'invalid-argument')
+        return refused(JOB_FINDINGS_STEPS_USED_UP_REFUSED if getattr(ws, 'findings', False)
+                       else JOB_STEPS_USED_UP_REFUSED, 'invalid-argument')
     if name not in {t['function']['name'] for t in job_piece_tools(ws, plan_only=ws.decide_now)}:
         if ws.decide_now and name in {t['function']['name'] for t in job_piece_tools(ws)}:
             # Withdrawn by the decide-now line: said as such, with the next

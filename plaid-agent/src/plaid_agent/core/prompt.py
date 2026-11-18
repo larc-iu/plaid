@@ -432,6 +432,10 @@ list or say, whole, in Markdown (tables and lists where they help), and what you
 last message, with no tool call, and the person reads it as you wrote it. Nobody answers it.'''
 
 JOB_EXAMPLE = '''- A WHOLE PIECE, FOR EXAMPLE. {did} Then you ended with the note:\n\n{note}'''
+#: The example's ending for a piece of a job that fills nothing, in place of
+#: its note (D26): its last message is the job's report.
+JOB_FINDINGS_ENDING = (' Then you ended with your findings, the job\'s report: everything the instructions asked you '
+                       'to find, whole, in Markdown.')
 
 #: The line a piece's model is sent once it has used most of its calls or
 #: its prompt has grown near its cap (CONTRACT 1). The call it goes with and
@@ -439,6 +443,10 @@ JOB_EXAMPLE = '''- A WHOLE PIECE, FOR EXAMPLE. {did} Then you ended with the not
 #: B3: a model not told called its reading tools to the end).
 JOB_DECIDE_NOW = ('(system) Decide now with what you have: reading is over for this piece, and only the tools that '
                   'stage changes are left. Stage your work and end with your note.')
+#: The same for a piece of a job that fills nothing, which ends with its
+#: findings (D26), as do the lines below named JOB_FINDINGS_*.
+JOB_FINDINGS_DECIDE_NOW = ('(system) Decide now with what you have: reading is over for this piece, and only the '
+                           'tools that stage changes are left. Stage any change and end with your findings.')
 #: The decide-now line of a job's context that writes text and has no tool
 #: (the report's prose, the findings of a job that fills nothing): it is no
 #: piece and reads nothing (REV-RW-8).
@@ -450,8 +458,12 @@ JOB_READING_OVER = 'Reading is over for this piece: stage what you have and end.
 #: written by the ordinary write, whatever it answers.
 JOB_STEPS_USED_UP = ('(system) The steps of this piece are used up: no tool can be called now. What you staged is '
                      'written as it stands. End now with your note, saying what is unfinished.')
+JOB_FINDINGS_STEPS_USED_UP = ('(system) The steps of this piece are used up: no tool can be called now. What you '
+                              'staged is written as it stands. End now with your findings, saying what is '
+                              'unfinished.')
 #: A piece's refusal of a tool called in its closing call.
 JOB_STEPS_USED_UP_REFUSED = 'The steps of this piece are used up: end now with your note.'
+JOB_FINDINGS_STEPS_USED_UP_REFUSED = 'The steps of this piece are used up: end now with your findings.'
 
 #: What a piece's model is told in place of a refusal's chat advice (a later
 #: turn, an approval, discard_plan), which a job cannot follow
@@ -469,6 +481,7 @@ JOB_TEXT_THEN_FILL = 'Stage only the text edit now: the words it adds are offere
 #: what the answer holds, never by its words.
 JOB_ANSWER_AGAIN = ('(system) Your answer staged nothing and said nothing. Stage what your piece needs now, '
                     'or reply in one line why it needs nothing.')
+JOB_FINDINGS_ANSWER_AGAIN = '(system) Your answer staged nothing and said nothing. Write your findings now.'
 
 def job_cut_at_limit(limit: int) -> str:
     """The line a piece's model is sent once when a call of it reached its

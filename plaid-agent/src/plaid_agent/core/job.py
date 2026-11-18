@@ -146,9 +146,12 @@ class Pace:
     def __init__(self, model: str, before_call: Callable[[], None] = lambda: None,
                  count: Optional[Callable[[Any], int]] = None, decided: Callable[[], None] = lambda: None,
                  line: str = JOB_DECIDE_NOW, output_tokens: Optional[int] = None, asks_again: bool = False,
-                 holds: Callable[[], bool] = lambda: False, closing: Callable[[], None] = lambda: None):
+                 holds: Callable[[], bool] = lambda: False, closing: Callable[[], None] = lambda: None,
+                 used_up: str = JOB_STEPS_USED_UP):
         self.count = count or token_counter(model)
         self.line = line
+        #: the closing call's line (a findings piece's own, D26)
+        self.used_up = used_up
         self.output_tokens = output_tokens or None
         self.asks_again = asks_again
         self.holds = holds
@@ -191,7 +194,7 @@ class Pace:
             raise StretchFailed(BUDGET, spent)
         self.closed = True
         self.closing()
-        return JOB_STEPS_USED_UP
+        return self.used_up
 
     def sending(self, kwargs: Dict[str, Any]) -> Optional[str]:
         """The call as it will go out: its prompt's budgets, then the wait

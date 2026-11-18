@@ -59,7 +59,8 @@ from ..core.limits import (JOB_ANALYSIS_MAX_CHARS, JOB_CHANGE_VALUE_CHARS, JOB_C
                            JOB_EVIDENCE_CHARS, JOB_SENTENCE_MAX_CHARS, JOB_SENTENCE_MAX_WORDS,
                            JOB_PIECE_OUTPUT_TOKENS, JOB_SKIPPED_PER_DOCUMENT, JOB_STRETCH_SENTENCES)
 from ..core.plan import JOB_DETAIL_KEY, ONE_REQUEST, PlanError, TooBig, held_changes, plan_changes
-from ..core.prompt import (JOB_ANSWER_AGAIN, JOB_LEAVE_IT, JOB_PLAN_WRITTEN_CALL_NEXT, JOB_TEXT_NOW, JOB_TEXT_THEN_FILL,
+from ..core.prompt import (JOB_ANSWER_AGAIN, JOB_FINDINGS_ANSWER_AGAIN, JOB_FINDINGS_DECIDE_NOW,
+                           JOB_FINDINGS_STEPS_USED_UP, JOB_LEAVE_IT, JOB_PLAN_WRITTEN_CALL_NEXT, JOB_TEXT_NOW, JOB_TEXT_THEN_FILL,
                            JOB_WRITTEN_CALL_NEXT)
 from ..core.provenance import Requester
 from ..core.tools import Refusal, ToolError
@@ -1449,6 +1450,8 @@ class JobWorkspace(Workspace):
         #: the piece's closing call is under way: a budget ran out while it
         #: held staged work, and no tool is offered (BRIEF RW B2)
         self.closing = False
+        #: a piece of a job that fills nothing, which ends with its findings (D26)
+        self.findings = False
         #: the piece ended without finishing, with work staged: the kind of
         #: what ended it (``budget``: its closing call, BRIEF RW B2), None
         #: when it ended by itself
@@ -4088,6 +4091,7 @@ class IgtRunner:
                                   findings=self.fills_nothing())
         transcript = [{'role': 'user', 'content': message}]
         seed(ws.seen, system, transcript, lambda tool, args: True)
+        ws.findings = self.fills_nothing()
         self.steps_now = 0
         kit = Toolkit(tools_for=lambda w: toolkit.job_piece_tools(w, plan_only=w.decide_now),
                       call_tool=self.counting(toolkit.job_piece_call, ' in this part'), tracer=TRACER)
@@ -4104,7 +4108,8 @@ class IgtRunner:
         result = self.repeat_stopped(ws, self.turn(ws, kit, system, transcript, pace=pace))
         job.check()
         if answered_nothing(ws, result.text):
-            more = transcript + list(result.messages or []) + [{'role': 'user', 'content': JOB_ANSWER_AGAIN}]
+            again = JOB_FINDINGS_ANSWER_AGAIN if ws.findings else JOB_ANSWER_AGAIN
+            more = transcript + list(result.messages or []) + [{'role': 'user', 'content': again}]
             result = self.repeat_stopped(ws, self.turn(ws, kit, system, more, pace=pace))
             job.check()
             ws.answered_nothing = answered_nothing(ws, result.text)
@@ -4143,9 +4148,13 @@ class IgtRunner:
         def before_call():
             job.check()
             job.yield_to_people()
+        # A piece of a job that fills nothing ends with its findings (D26).
+        findings = piece and self.fills_nothing()
+        line = line or (JOB_FINDINGS_DECIDE_NOW if findings else None)
         return Pace(self.cfg.model, before_call=before_call, count=self.count, decided=decided,
                     output_tokens=self.piece_output_tokens if piece else None, asks_again=piece,
-                    holds=holds, closing=closing, **({'line': line} if line else {}))
+                    holds=holds, closing=closing, **({'line': line} if line else {}),
+                    **({'used_up': JOB_FINDINGS_STEPS_USED_UP} if findings else {}))
 
     def counting(self, call_tool, where: str, read=None):
         """``call_tool`` that counts each step (each tool call, as the chat
