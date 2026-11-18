@@ -43,6 +43,10 @@ const sentenceName = (n, metadata) =>
     ? `sentence ${n} (sent_id ${metadata.sent_id})`
     : `sentence ${n}`;
 
+// An ID, a HEAD or a range bound is digits and nothing else. parseInt alone
+// read `2a` as 2 and `1.5` as 1.
+const wholeNumber = (v) => (/^\d+$/.test(v) ? Number(v) : NaN);
+
 const hasSpaceAfterNo = (misc) => (misc || '').split('|').includes('SpaceAfter=No');
 // Whether a row's MISC holds anything the import drops: every value but
 // `SpaceAfter=No`, which the body holds (see the word rows below).
@@ -151,9 +155,9 @@ export function parseCoNLLU(text) {
 
     // Handle multi-word tokens (e.g., "1-3")
     if (id.includes('-')) {
-      const [startStr, endStr] = id.split('-');
-      const start = parseInt(startStr);
-      const end = parseInt(endStr);
+      const [startStr, endStr, ...rest] = id.split('-');
+      const start = rest.length ? NaN : wholeNumber(startStr);
+      const end = wholeNumber(endStr);
 
       if (isNaN(start) || isNaN(end) || start <= 0 || end <= 0 || start >= end) {
         throw new Error(`Invalid multi-word token range in ${here()}: ${id}`);
@@ -170,7 +174,7 @@ export function parseCoNLLU(text) {
     }
 
     // Validate ID is a positive integer
-    const idNum = parseInt(id);
+    const idNum = wholeNumber(id);
     if (isNaN(idNum) || idNum <= 0) {
       throw new Error(`Invalid token ID in ${here()}: ${id}`);
     }
@@ -193,7 +197,7 @@ export function parseCoNLLU(text) {
 
     // Parse HEAD (0 means root). `_` names no head at all, so the row has no
     // relation, whatever its DEPREL says: null, never 0.
-    const headNum = head === '_' ? null : parseInt(head);
+    const headNum = head === '_' ? null : wholeNumber(head);
     if (headNum !== null && (isNaN(headNum) || headNum < 0)) {
       throw new Error(`Invalid HEAD value in ${here()}: ${head}`);
     }

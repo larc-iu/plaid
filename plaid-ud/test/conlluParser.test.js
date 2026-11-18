@@ -158,3 +158,35 @@ test('a refusal names its sentence and what is wrong in CoNLL-U terms', () => {
     'Invalid multi-word token range in sentence 1: 1-1',
   );
 });
+
+// H3-5-4: parseInt read ID `2a` as 2 and HEAD `1.5` as 1.
+test('an ID, HEAD or range bound that is not a whole number is refused', () => {
+  const refusal = (lines) => {
+    try {
+      parseCoNLLU(conllu(lines));
+    } catch (e) {
+      return e.message;
+    }
+    return null;
+  };
+  assert.equal(
+    refusal(['1\ta\t_\tX\t_\t_\t0\troot\t_\t_', '2a\tb\t_\tX\t_\t_\t1\tdep\t_\t_']),
+    'Invalid token ID in sentence 1: 2a',
+  );
+  assert.equal(
+    refusal(['1\ta\t_\tX\t_\t_\t0\troot\t_\t_', '2\tb\t_\tX\t_\t_\t1.5\tdep\t_\t_']),
+    'Invalid HEAD value in sentence 1: 1.5',
+  );
+  assert.equal(
+    refusal(['1\ta\t_\tX\t_\t_\t0\troot\t_\t_', '2\tb\t_\tX\t_\t_\t+1\tdep\t_\t_']),
+    'Invalid HEAD value in sentence 1: +1',
+  );
+  assert.equal(
+    refusal([
+      '1-2x\tab\t_\t_\t_\t_\t_\t_\t_\t_',
+      '1\ta\t_\tX\t_\t_\t0\troot\t_\t_',
+      '2\tb\t_\tX\t_\t_\t1\tdep\t_\t_',
+    ]),
+    'Invalid multi-word token range in sentence 1: 1-2x',
+  );
+});
