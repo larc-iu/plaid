@@ -3008,8 +3008,9 @@ class IgtRunner:
         piece wrote there (``counts`` :data:`ONE_STEP`, and
         :data:`NOT_ALL_READ` when ``unread``). What stays to work is what the
         rules not about reading leave: a sentence a person changed during the
-        piece is taken again by the walk (:meth:`record`), and the document
-        then ends with it. ``leave``: what a piece that ended without
+        piece is taken again by the walk (:meth:`record`), and so is a piece
+        after a text edit that was put off (:attr:`text_edited`), and the
+        document then ends with it. ``leave``: what a piece that ended without
         finishing did not get to there (:meth:`go_on`), left to the walk in
         stretches, the document not ended. One put off, deferred or gone is
         not here."""
@@ -3035,8 +3036,10 @@ class IgtRunner:
                 'skipped')))
             return
         self.one_stepped[document_id] = unread
-        if any(s.id in again for s in doc.sentences):
-            # Taken again by the walk, which then ends the document.
+        if any(s.id in again for s in doc.sentences) or document_id in self.text_edited:
+            # Taken again by the walk, which then ends the document: a
+            # sentence a person changed during the piece, or a piece after a
+            # text edit that was put off, taken first by the walk (D19).
             self.job.update_row(document_id, **self.tally(document_id, (self.job.rows.get(document_id) or {}).get(
                 'skipped')))
             return
