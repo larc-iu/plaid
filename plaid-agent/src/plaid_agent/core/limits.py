@@ -309,10 +309,11 @@ JOB_PLAN_SEARCH_PATTERN_MAX_CHARS = 200
 #: script of several tokens a letter passed and then failed before any call):
 #: a quarter of JOB_CALL_MAX_PROMPT_TOKENS, which leaves room for the prompt,
 #: the tool list and the reads. Measured on the rendered text with the prod
-#: model's counter (REV-JR1-R2-1): glossed Latin IGT is about 2.7 characters
-#: a token, so this lets through what the old gate of 40,000 characters did
-#: (about 43,000 characters). Unglossed orthography with apostrophes is
-#: about 1.7 (about 28,000 characters), CJK 1.6, Arabic 1.5, Devanagari 1.4,
+#: model's counter (REV-JR1-R2-1): annotated Latin-script text is about 2.7
+#: characters a token, so this lets through what the old gate of 40,000
+#: characters did (about 43,000 characters). Bare orthography with
+#: apostrophes is about 1.7 (about 28,000 characters), CJK 1.6, Arabic 1.5,
+#: Devanagari 1.4,
 #: Meitei Mayek and IPA with diacritics 0.9. A larger one is worked in
 #: stretches of sentences, and the report says so.
 JOB_DOCUMENT_PIECE_MAX_TOKENS = JOB_CALL_MAX_PROMPT_TOKENS // 4
