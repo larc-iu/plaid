@@ -533,6 +533,56 @@
         (is (= 400 (:status r)))
         (is (clojure.string/includes? (-> r :body :error) "names no document"))))))
 
+(deftest a-bulk-create-naming-one-deleted-thing-keeps-its-answer
+  ;; REV-CA-1: the gate refusing a create whose parent lies in another
+  ;; project must not refuse a bulk whose entry names a parent or layer that
+  ;; is gone. The first entry that resolves judges the bulk, so a writer
+  ;; hears the route's own 400, or 409 when they sent a version that is now
+  ;; stale, and igt and plaid-agent refetch and retry.
+  (let [proj (create-test-project admin-request "BulkGoneProj")
+        doc (create-test-document admin-request proj "Doc")
+        _ (assert-no-content (add-project-writer admin-request proj "user1@example.com"))
+        tl (-> (create-text-layer admin-request proj "TL") :body :id)
+        tokl (-> (create-token-layer admin-request tl "Tokens") :body :id)
+        sl (-> (create-span-layer admin-request tokl "Gloss") :body :id)
+        gone-sl (-> (create-span-layer admin-request tokl "Gone") :body :id)
+        text (-> (create-text admin-request tl doc "ab cd ef") :body :id)
+        [t1 t2] (mapv #(-> (create-token admin-request tokl text (first %) (second %)) :body :id)
+                      [[0 2] [3 5]])
+        vocab (-> (create-vocab-layer admin-request proj "BulkGoneVocab") :body :id)
+        item (-> (create-vocab-item admin-request vocab "ab") :body :id)
+        stale (psc/document-version fix/db doc)
+        _ (assert-no-content (delete-token admin-request t1))
+        _ (assert-no-content (fix/api-call admin-request {:method :delete
+                                                          :path (str "/api/v1/span-layers/" gone-sl)}))
+        now (psc/document-version fix/db doc)
+        post (fn [path body & [version]]
+               (fix/api-call fix/user1-request {:method :post
+                                                :path (cond-> path version (str "?document-version=" version))
+                                                :body body}))]
+
+    (testing "links whose first word was deleted"
+      (let [body [{:vocab-item item :tokens [t1]} {:vocab-item item :tokens [t2]}]
+            r (post "/api/v1/vocab-links/bulk" body)]
+        (is (= 400 (:status r)))
+        (is (nil? (-> r :body :unresolved)))
+        (is (= 409 (:status (post "/api/v1/vocab-links/bulk" body stale))))))
+
+    (testing "glosses whose first word was deleted"
+      (let [body [{:span-layer-id sl :tokens [t1] :value "A"} {:span-layer-id sl :tokens [t2] :value "B"}]]
+        (is (= 400 (:status (post "/api/v1/spans/bulk" body))))
+        (is (= 409 (:status (post "/api/v1/spans/bulk" body stale))))))
+
+    (testing "glosses whose first entry names a deleted layer"
+      (let [body [{:span-layer-id gone-sl :tokens [t2] :value "A"} {:span-layer-id sl :tokens [t2] :value "B"}]
+            r (post "/api/v1/spans/bulk" body)]
+        (is (not= 403 (:status r)))
+        (is (nil? (-> r :body :unresolved)))
+        (is (= 409 (:status (post "/api/v1/spans/bulk" body stale))))))
+
+    (testing "nothing was written"
+      (is (= now (psc/document-version fix/db doc))))))
+
 (deftest any-password-secret-or-token-key-is-redacted
   ;; REV-FX-H1-4: `current-password` was logged in clear at debug level, since
   ;; the list matched whole key names only.

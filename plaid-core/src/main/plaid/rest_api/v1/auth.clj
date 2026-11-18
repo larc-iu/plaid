@@ -1056,9 +1056,11 @@
   A create whose parent lies in a document of another project than its
   layer resolves to no project (the gate's 403 `unresolved` to a member, as
   for any id they cannot see), and to no document either. A bulk create does
-  so when any of its entries does. A parent that names nothing (deleted a
-  moment ago) still resolves to the layer's project, so a versioned write
-  hears 409 and refetches (`middleware-test`). Before, the gate judged the layer's project
+  so when any of its entries does, judged once per distinct layer and parent.
+  Only when both projects are known and differ: a parent or layer that names
+  nothing (deleted a moment ago) resolves as it always did, so a versioned
+  write hears 409 and refetches, and a bulk is judged by its first entry that
+  resolves (`middleware-test`). Before, the gate judged the layer's project
   while the version check and the lock check ran on the parent's document,
   so a create in one's own project naming another project's text, token or
   span answered with that document's version, who held its lock and its
@@ -1076,33 +1078,48 @@
         create-doc (fn [db body]
                      (let [[k t] create-document]
                        (column-of db t :document_id (body-id body k))))
-        create-project (fn [db body]
-                         (let [doc-project (project-of-document db (create-doc db body))]
-                           (if-let [[k t] create-layer]
-                             (let [layer-project (column-of db t :project_id (body-id body k))]
-                               (when (or (nil? doc-project) (= (some-> layer-project str) (str doc-project)))
-                                 layer-project))
-                             doc-project)))
-        ;; A create whose parent is not in its layer's project resolves to
-        ;; nothing, so its document is not looked at either.
-        create-doc-checked (fn [db body] (when (create-project db body) (create-doc db body)))
+        layer-project (fn [db body]
+                        (let [[k t] create-layer]
+                          (column-of db t :project_id (body-id body k))))
+        ;; Only when both projects are known and differ: a layer or parent
+        ;; that is gone keeps the answer it had (400, or 409 on a version).
+        elsewhere? (fn [db body]
+                     (when create-layer
+                       (let [lp (layer-project db body)
+                             dp (some->> (create-doc db body) (project-of-document db))]
+                         (and lp dp (not= (str lp) (str dp))))))
+        base-project (fn [db body]
+                       (if create-layer
+                         (layer-project db body)
+                         (project-of-document db (create-doc db body))))
+        create-project (fn [db body] (when-not (elsewhere? db body) (base-project db body)))
+        create-doc-checked (fn [db body] (when-not (elsewhere? db body) (create-doc db body)))
         single (fn [of-row of-body]
                  (fn [{db :db params :parameters}]
                    (if-let [id (get-in params [:path path-key])]
                      (of-row db id)
                      (of-body db (:body params)))))
+        ;; Judged once per distinct [layer, parent] pair: a tokenizer's
+        ;; thousand tokens name one pair.
+        bulk-elsewhere? (fn [db entries]
+                          (when create-layer
+                            (let [[lk] create-layer
+                                  [dk] create-document]
+                              (->> entries
+                                   (into #{} (comp (filter map?) (map (fn [e] [(body-id e lk) (body-id e dk)]))))
+                                   (some (fn [[l d]] (elsewhere? db {lk l dk d})))))))
         bulk (fn [of-row of-body]
                (let [resolve (bulk-resolver (fn [db entry]
                                               (cond
                                                 (map? entry) (of-body db entry)
                                                 (uuid? entry) (of-row db entry))))]
                  (fn [{db :db params :parameters :as request}]
-                   (when-not (some #(and (map? %) (nil? (create-project db %))) (:body params))
+                   (when-not (bulk-elsewhere? db (:body params))
                      (resolve request)))))]
     {:project-id (single row-project create-project)
      :document-id (single row-document create-doc-checked)
-     :bulk-project-id (bulk row-project create-project)
-     :bulk-document-id (bulk row-document create-doc-checked)
+     :bulk-project-id (bulk row-project base-project)
+     :bulk-document-id (bulk row-document create-doc)
      :bulk-update-project-id (bulk-update-resolver row-project)
      :bulk-update-document-id (bulk-update-resolver row-document)}))
 
