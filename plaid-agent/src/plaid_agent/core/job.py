@@ -1158,6 +1158,11 @@ def notice(totals: Dict[str, Any], nouns: Optional[Tuple[str, str]] = None) -> O
     for _value, key in RAN_OUT_TOTALS:
         if totals.get(key):
             out.append(ran_out_line(key, totals[key]))
+    unanswered = totals.get('documents_unanswered') or 0
+    if unanswered:
+        # A job that ends done with documents core never answered for says
+        # so first-hand, never as a clean done (REV-JR2-3).
+        out.append(f'{n(unanswered, "document was", "documents were")} not worked: the server did not answer.')
     return ' '.join(out) or None
 
 
@@ -1316,6 +1321,11 @@ def build_report(job: Job, state: str, reason: Optional[str], documents: List[Di
         k = sum(1 for d in documents if (d.get('counts') or {}).get('ran_out') == value)
         if k:
             totals[key] = k
+    # The documents an app ended because core never answered for them (an
+    # app's ``counts.unanswered``, REV-JR2-3), for the top line.
+    unanswered = sum(1 for d in documents if (d.get('counts') or {}).get('unanswered') is True)
+    if unanswered:
+        totals['documents_unanswered'] = unanswered
     changed, changed_more = cut(harmonize.get('changed') or [])
     left, left_more = cut(harmonize.get('left') or [])
     lists = {}

@@ -91,7 +91,7 @@ def test_the_list_of_jobs_says_which_stand_undone():
 
 # --- D14: core out of reach is not people editing -------------------------------------------------
 
-def _two_documents(monkeypatch, down_reads):
+def _two_documents(monkeypatch, down_reads, from_work=False):
     """A job over two documents whose reads of d1 meet a 502 the first
     ``down_reads`` times, on a fake clock."""
     clock = {'t': 1_800_000_000.0}
@@ -110,7 +110,15 @@ def _two_documents(monkeypatch, down_reads):
         return reply('Done.')
     use(monkeypatch, Model(answer))
     r = runner(job)
-    real, left = r.read, {'n': down_reads}
+    real, left = r.read, {'n': 0 if from_work else down_reads}
+    if from_work:
+        # Core fails from the walk on, not at the checks.
+        work = r.work
+
+        def armed(job):
+            left['n'] = down_reads
+            return work(job)
+        r.work = armed
 
     def read(project, document_id, client=None):
         if document_id == 'd1' and left['n']:
@@ -596,3 +604,29 @@ def test_a_restore_beside_other_changes_is_refused_in_a_job_without_a_chat_step(
     ws = _job_ws()
     for staging in (True, False):
         assert _no_chat(ws.exclusive_message(staging)) and 'discard_plan' not in ws.exclusive_message(staging)
+
+
+# --- REV-JR2-3: a job done with documents core never answered for says so ------------------------
+
+def test_a_document_core_never_answered_for_is_marked_counted_and_said_on_the_top_line(monkeypatch):
+    from plaid_agent.core.job import run_job
+    from plaid_agent.igt.job import UNANSWERED, state_text
+    # Core fails d1's reads through every put-off, then answers again for
+    # the job's later passes.
+    client, job, r = _two_documents(monkeypatch, JOB_CORE_TRIES * (JOB_DEFER_ROUNDS + 1), from_work=True)
+    finished = run_job(job, r)
+    assert finished['state'] == 'done'
+    d1 = next(d for d in finished['report']['documents'] if d['document_id'] == 'd1')
+    assert d1['state'] == 'not-reached' and d1['counts'].get(UNANSWERED) is True
+    assert finished['report']['totals']['documents_unanswered'] == 1
+    assert finished['report']['notice'] == '1 document was not worked: the server did not answer.'
+    assert state_text(d1) == 'not worked: the server did not answer'
+
+
+def test_the_unanswered_line_is_said_for_many_and_read_from_cores_own_report():
+    from plaid_agent.core.job import notice
+    from plaid_agent.igt.jobread import notice_counts
+    assert notice({'documents_unanswered': 2}) == '2 documents were not worked: the server did not answer.'
+    report = {'totals': {}, 'documents': [{'state': 'not-reached', 'counts': {'unanswered': True}},
+                                          {'state': 'done', 'counts': {}}]}
+    assert notice_counts(report)['documents_unanswered'] == 1

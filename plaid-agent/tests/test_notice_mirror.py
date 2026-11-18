@@ -61,6 +61,9 @@ CASES = [
     {'documents_part_failed': 1}, {'documents_part_failed': 3},
     {'documents_put_off': 1}, {'documents_put_off': 2},
     {'documents_ran_out': 1, 'documents_step_not_read': 2, 'documents_step_unchanged': 1, 'documents_step_failed': 1},
+    # REV-JR2-3: documents the server never answered for.
+    {'documents_unanswered': 1},
+    {'documents_unanswered': 1234, 'words_added': 3},
 ]
 
 
@@ -137,6 +140,8 @@ REPORTS = [
     {'totals': {'words_added': 7, 'text_changes': 1},
      'documents': [{'state': 'done', 'counts': {'words_added': 25, 'one_step': True, 'changes': 1}}]},
     {'documents': []},
+    {'totals': {}, 'documents': [{'state': 'not-reached', 'counts': {'unanswered': True}},
+                                 {'state': 'not-reached', 'counts': {'unanswered': True}}]},
 ]
 
 

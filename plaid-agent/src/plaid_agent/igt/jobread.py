@@ -316,6 +316,8 @@ def notice_counts(report: Dict[str, Any]) -> Dict[str, Any]:
                            sum((d.get('counts') or {}).get(k) or 0 for d in docs) for k in _NOTICE_KEYS}
     out['documents_ran_out'] = t['documents_ran_out'] if t.get('documents_ran_out') is not None else \
         sum(1 for d in docs if (d.get('counts') or {}).get('ran_out') is True)
+    out['documents_unanswered'] = t['documents_unanswered'] if t.get('documents_unanswered') is not None else \
+        sum(1 for d in docs if (d.get('counts') or {}).get('unanswered') is True)
     if t.get('documents_in_one_step') is not None:
         out.update({k: t.get(k) for k in ('documents_in_one_step', 'documents_in_job',
                                           'documents_changed_in_one_step', 'documents_not_all_read')})

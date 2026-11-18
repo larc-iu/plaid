@@ -184,6 +184,10 @@ REST_LISTED = 50
 #: (``counts.ran_out``, REV-RW-R3-1).
 UNWORKED_HOW = {'selection': 'failed', 'failed': 'part-failed', 'ran-out': 'written', 'again': 'written',
                 'in-use': 'put-off'}
+#: A row's count, true for a document core never answered for through the
+#: waits a person's document gets: it ends ``not-reached`` (put off for good,
+#: as that state's definition says) and the report says why (REV-JR2-3).
+UNANSWERED = 'unanswered'
 #: ... and true beside it when that step was not shown every sentence of the
 #: document (it read part of it, or none, or wrote in it by reference).
 NOT_ALL_READ = 'not_all_read'
@@ -1145,6 +1149,8 @@ def state_text(d: Dict[str, Any], left_out: Iterable[str] = ()) -> str:
     (``left_out``, its ids) says so (D22)."""
     if d.get('state') == 'not-reached' and d.get('document_id') in set(left_out):
         return 'left out by the plan'
+    if d.get('state') == 'not-reached' and (d.get('counts') or {}).get(UNANSWERED) is True:
+        return 'not worked: the server did not answer'
     if d.get('state') == 'not-reached' and ((d.get('done') or 0) > 0
                                             or ((d.get('counts') or {}).get('changes') or 0) > 0):
         # One that holds the job's changes is never "not reached" (RPF3-D2).
@@ -3366,7 +3372,9 @@ class IgtRunner:
         job did not finish it, and goes on (REV-JG-4's job that ends done,
         never in use for it, REV D14)."""
         if document_id in self.server_off and self.unanswered[document_id] >= JOB_DEFER_ROUNDS:
-            core_job.through_core(self.job, lambda: self.job.update_row(document_id, state='not-reached'))
+            row = self.job.rows.get(document_id) or {}
+            core_job.through_core(self.job, lambda: self.job.update_row(
+                document_id, state='not-reached', counts={**(row.get('counts') or {}), UNANSWERED: True}))
 
     @property
     def own_ref(self) -> str:
@@ -5876,6 +5884,9 @@ class IgtRunner:
         ran_out = self.ran_out.get(document_id) or (row.get('counts') or {}).get(RAN_OUT)
         if ran_out:
             counts[RAN_OUT] = ran_out
+        if (row.get('counts') or {}).get(UNANSWERED) is True:
+            # Kept as the row says it (REV-JR2-3).
+            counts[UNANSWERED] = True
         if document_id in self.one_stepped or (row.get('counts') or {}).get(ONE_STEP) is True:
             # Ended in the whole-selection piece's one step.
             counts[ONE_STEP] = True

@@ -255,6 +255,14 @@ export const noticeText = (totals) => {
       `${countOf(putOff, 'document')} ${one ? 'was' : 'were'} not changed: someone was editing ${one ? 'it' : 'them'} when the job's changes there were to be written.`,
     );
   }
+  // Documents the server never answered for, ended unworked (the worker's
+  // `unanswered`, REV-JR2-3).
+  const unanswered = t.documentsUnanswered || 0;
+  if (unanswered) {
+    out.push(
+      `${unanswered.toLocaleString()} ${unanswered === 1 ? 'document was' : 'documents were'} not worked: the server did not answer.`,
+    );
+  }
   return out.join(' ') || null;
 };
 
@@ -287,6 +295,9 @@ export const noticeCounts = (report) => {
     documentsPutOff:
       t.documentsPutOff ??
       (report?.documents || []).filter((d) => d.counts?.ranOut === 'put-off').length,
+    documentsUnanswered:
+      t.documentsUnanswered ??
+      (report?.documents || []).filter((d) => d.counts?.unanswered === true).length,
     // Core's own report: the whole-selection step's documents from their rows.
     ...(t.documentsInOneStep !== undefined
       ? {
