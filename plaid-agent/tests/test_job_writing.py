@@ -1059,9 +1059,10 @@ def test_a_document_piece_put_off_after_its_first_batch_deletes_its_sentence_onc
     deletes s3, which repeats s2. Its first try (the gloss) lands, core
     refuses the second (the deletion, 409, the starter's own browser
     wrote), and the document is put off. Taken up again, core says what
-    landed: s1 and s2 are written, s3 is a target again, so the piece runs
-    again, its gloss of s1 is left out as written, s3 is deleted once, and
-    nothing is listed (the deletion was made by the piece taken again)."""
+    landed: s1 and s2 are written, s3 is a target again, so it is taken
+    again, as a stretch since the whole document was asked once (REV-RW-3),
+    its gloss of s1 is left out as written, s3 is deleted once, and nothing
+    is listed (the deletion was made by the piece taken again)."""
     before = [{'words': ['ka']}, {'words': ['sa']}, {'words': ['sa']}]
     glossed = [{'words': [MINE['ka']]}, {'words': ['sa']}, {'words': ['sa']}]
     client = JobClient({'d1': document('d1', 'Story', before)})
@@ -1075,7 +1076,9 @@ def test_a_document_piece_put_off_after_its_first_batch_deletes_its_sentence_onc
     pieces = []
 
     def model(asked, n, kwargs):
-        if n > 1 or 'Your piece: the whole document' not in asked:
+        mine = asked.splitlines()[-1]
+        if n > 1 or not ('Your piece: the whole document' in mine or (mine.startswith('Your piece: s')
+                                                                       and 's3' in mine.split('.')[0])):
             return reply('Done.')
         # Asked again, another gloss (REV-L2B-9): a value on the morpheme ka
         # keeps, in a sentence the piece's own write wrote.
@@ -1097,11 +1100,12 @@ def test_a_document_piece_put_off_after_its_first_batch_deletes_its_sentence_onc
     monkeypatch.setattr(client.texts, 'edit', edit)
     runner(job).work(job)
     assert edits == ['refused', 'landed'], edits
-    assert len([c for c in m.calls if c['n'] == 1 and 'Your piece: the whole document' in c['asked']]) == 2
+    assert len([c for c in m.calls if c['n'] == 1 and 'Your piece: the whole document' in c['asked']]) == 1
+    assert [c['asked'].splitlines()[-1] for c in m.calls if c['n'] == 1][1:] == ['Your piece: s2, s3. s1 is context.']
     assert [o['word_id'] for o in staged if o['kind'] == 'set_analysis'] == ['d1-s1w1'], 'glossed once'
     assert [o['sentence_id'] for o in staged if o['kind'] == 'delete_sentence'] == ['d1-s3', 'd1-s3']
     row = job.rows['d1']
     assert row['state'] == 'done' and not row.get('skipped'), row
-    # The other gloss of s1, staged again: left out as written before,
-    # counted repeated (REV-L2B-9).
-    assert row['counts']['repeated'] == 1 and row['counts']['deletions'] == 1, row['counts']
+    # The other gloss of s1, staged again by the stretch beside it: never
+    # written (s1 was glossed once, above).
+    assert row['counts']['deletions'] == 1, row['counts']
