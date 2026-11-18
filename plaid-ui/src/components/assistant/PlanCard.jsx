@@ -346,8 +346,8 @@ export const PlanCard = ({
               "Record as human-made" wins over both: ticked, one Approve. A plan
               of only changes that write no value of the assistant's
               (confirmations, deletions: the service's `stampChoice: false`)
-              offers one Approve too: a rule made in review on 2026-11-12,
-              pending the owner, not his ruling. */}
+              offers one Approve too (the owner's ruling, 2026-11-18: one
+              button when there is nothing to choose). A parse keeps two. */}
           {canWrite && (asHuman || plan.stampChoice === false) ? (
             <Button
               type="button"

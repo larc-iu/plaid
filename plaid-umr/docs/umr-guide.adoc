@@ -386,7 +386,7 @@ One attribute set on every node of a concept is one row with its count, and **Sh
 **Approve as verified** records them as the assistant's work accepted by you.
 A confirmation in the plan is made under either button.
 Tick **Record as human-made** to record them as your own work instead, and the card then offers a single **Approve**.
-A plan of only confirmations, deletions and other changes that write no value offers a single **Approve** as well.
+A plan of only confirmations and deletions offers a single **Approve** as well.
 Once a plan with two buttons is applied, its card says how it was approved, such as **Approved as unverified**.
 Reading needs Reader access, and approving a plan needs Writer.
 

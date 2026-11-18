@@ -836,9 +836,9 @@ class Stamps:
         says whether the piece is this writer's to review
         (``reviewable_state``) and what its confirm merges
         (``confirm_fragment``). A machine writer reviews nothing. An approval
-        as unverified confirms as the approver confirms (a rule made in
-        review on 2026-11-12, pending the owner: the person asked for it, and
-        "unverified" is the stamp on what the assistant writes)."""
+        as unverified confirms as the approver confirms (the owner's ruling,
+        2026-11-18: a confirmation has no stamp to choose, so one Approve
+        makes it under either stamp mode)."""
         if self.machine:
             return None
         if self.human:

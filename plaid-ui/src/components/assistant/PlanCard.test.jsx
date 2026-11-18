@@ -562,10 +562,9 @@ describe('the two approve buttons', () => {
     await view.unmount();
   });
 
-  // A rule made in review on 2026-11-12, pending the owner: a plan of only
-  // changes that write no value of the assistant's (confirmations,
-  // deletions) has no stamp to choose, so it offers one Approve, as the
-  // ticked box does.
+  // The owner's ruling (2026-11-18), "one button when nothing to choose": a
+  // plan of only changes that write no value of the assistant's
+  // (confirmations, deletions) offers one Approve, as the ticked box does.
   const confirmOnly = () => ({ ...one(), stampChoice: false });
 
   it('is one Approve on a plan with no stamp to choose', async () => {
