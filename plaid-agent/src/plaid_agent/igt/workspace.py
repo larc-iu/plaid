@@ -82,7 +82,8 @@ def tagset_rules(tagset: Optional[dict]) -> List[dict]:
         return []
     return [{'type': 'value-set', 'values': [t['value'] for t in tagset.get('values') or []],
              'delimiters': tagset.get('delimiters') or '', 'parts': 'all'}]
-from .project import (BAD_REF, FORMAT_LEGEND, MARKERS, IgtProject, IgtDoc, Morpheme, Sentence, Word, is_virtual,
+from .project import (BAD_REF, FORMAT_LEGEND, MARKERS, IgtProject, IgtDoc, Morpheme, Sentence, Word, VIRTUAL_PREFIX,
+                      is_virtual,
                       load_document, read_view, render_document, resolve)
 from .lexview import FLEX_MORPH_TYPES, LexView, _dict_hits, entry_line
 from .tagsets import SETTINGS_APART, SETTINGS_APART_NEXT
@@ -1205,6 +1206,34 @@ class Workspace(BaseWorkspace):
         # it, not a reason to refuse it.
         with self.superseding(ops):
             super().add_ops(ops)
+        self.restage_virtual_links(ops)
+
+    def restage_virtual_links(self, ops: List[Dict[str, Any]]) -> None:
+        """A link planned on an unsegmented word's derived morpheme
+        (``virtual:<word id>``) whose word one of ``ops`` analyses becomes a
+        link on that analysis's first morpheme, after it: the one path a link
+        staged after the analysis takes, which keeps one link on it and takes
+        off a type the entry forbids (REV-SJ2-3)."""
+        analysed = {op.get('word_id'): op for op in ops
+                    if op.get('kind') == 'set_analysis' and op.get('morphemes')
+                    and not [m for m in op.get('existing') or [] if not is_virtual(m.get('id'))]}
+        if not analysed:
+            return
+        keep, moved = [], []
+        for op in self.ops:
+            word = op['token_id'][len(VIRTUAL_PREFIX):] if (op.get('kind') == 'link'
+                                                             and is_virtual(op.get('token_id'))) else None
+            if word not in analysed:
+                keep.append(op)
+                continue
+            first = analysed[word]['morphemes'][0]
+            moved.append({**{k: v for k, v in op.items() if k not in ('virtual_at', 'untype', 'untype_record')},
+                          'token_id': None, 'analysis_word_id': word, 'morpheme_index': 1,
+                          'morpheme_form': first.get('form'), 'reuses_morpheme_id': None,
+                          'doc': op.get('doc') or analysed[word].get('doc')})
+        if moved:
+            self.ops[:] = keep + moved
+            self._gone_at = -1
 
     def place_virtual(self, op: Dict[str, Any]) -> None:
         """Note on ``op`` the word an unsegmented word's derived morpheme is

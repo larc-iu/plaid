@@ -6,6 +6,8 @@ so "gloss every akuna as go" and ``set_field s1.w3.m1`` reach the word the
 grid shows with an empty Gloss cell. In the fixture, ``akuna`` (w-3, 11-16)
 has no morpheme token, as after Tokenize."""
 
+import pytest
+
 from plaid_client.testing import as_fragment
 
 from fixtures import FakeClient, MGLOSS, MORPH_LAYER, TEXT_ID, document_raw, fake_ws, lexicon_raw
@@ -195,3 +197,96 @@ def test_a_two_morpheme_analysis_after_a_link_on_the_derived_morpheme_makes_one_
     assert len(made) == 2
     assert [m['kwargs']['precedence'] for m in made] == [1, 2]
     assert c.payloads('vocab_links.create')[0]['args'][1] == [made[0]['kwargs']['id']]
+
+
+# --- REV-SJ2-3: a link on m1 and an analysis of its word take one path -------------
+
+def _applied_as(w, mode):
+    w.client.calls.clear()
+    execute_plan(w.client, w.plan_payload()['ops'], source=SOURCE, label='l', project=w.project, stamp_mode=mode)
+    return w.client
+
+
+@pytest.mark.parametrize('mode', ['verified', 'unverified'])
+@pytest.mark.parametrize('order', ['link-first', 'analysis-first'])
+def test_a_second_link_on_m1_replaces_the_first_whatever_the_order(order, mode):
+    """Link m1 to gam, analyse the word, link m1 to gam2 (or analyse first):
+    one morpheme, one link, to gam2."""
+    w = fake_ws(FakeClient())
+    link = lambda e: call_tool(w, 'link_entry', {'document': 'd1', 'refs': ['s1.w3.m1'], 'entry_id': e})  # noqa: E731
+    analyse = lambda: call_tool(w, 'set_analysis', {'document': 'd1', 'ref': 's1.w3',  # noqa: E731
+                                                    'morphemes': [{'form': 'akuna'}]})
+    if order == 'link-first':
+        link('vi-gam')
+        analyse()
+    else:
+        analyse()
+        link('vi-gam')
+    link('vi-gam2')
+    c = _applied_as(w, mode)
+    [made] = c.payloads('tokens.create')
+    links = c.payloads('vocab_links.create')
+    assert [(x['args'][0], x['args'][1]) for x in links] == [('vi-gam2', [made['kwargs']['id']])], links
+
+
+@pytest.mark.parametrize('mode', ['verified', 'unverified'])
+@pytest.mark.parametrize('order', ['link-first', 'analysis-first'])
+def test_a_linked_first_morpheme_keeps_no_type_whatever_the_order(order, mode):
+    """Link m1 to the suffix entry -di and analyse the word with a type: the
+    linked morpheme stores no type (R2), as when the link comes second."""
+    w = fake_ws(FakeClient())
+    link = lambda: call_tool(w, 'link_entry', {'document': 'd1', 'refs': ['s1.w3.m1'], 'entry_id': 'vi-erg'})  # noqa: E731
+    analyse = lambda: call_tool(w, 'set_analysis', {'document': 'd1', 'ref': 's1.w3',  # noqa: E731
+                                                    'morphemes': [{'form': 'akuna', 'type': 'stem'}]})
+    if order == 'link-first':
+        link()
+        analyse()
+    else:
+        analyse()
+        link()
+    c = _applied_as(w, mode)
+    [made] = c.payloads('tokens.create')
+    mid = made['kwargs']['id']
+    stored = dict(made['kwargs'].get('metadata') or {})
+    for tid, ops in c.patches('tokens'):
+        if tid == mid:
+            for o in ops:
+                if o.get('op') == 'set':
+                    stored[o['path'][0]] = o['value']
+                elif o.get('op') == 'delete':
+                    stored.pop(o['path'][0], None)
+    assert 'morphType' not in stored, stored
+    assert [x['args'][1] for x in c.payloads('vocab_links.create')] == [[mid]]
+
+
+@pytest.mark.parametrize('second', [None, 'vi-gam2'])
+def test_in_a_job_a_link_then_an_analysis_write_one_linked_untyped_morpheme(monkeypatch, second):
+    """The same two shapes in a job's piece (machine stamps)."""
+    from job_fixtures import JobClient, Model, call as jcall, document, reply, runner, start, use
+    from plaid_agent.core.job import run_job
+    client = JobClient({'d1': document('d1', 'Story', [{'words': ['ka']}])})
+    job = start(client, plan='sentences')
+
+    def answer(asked, n, kwargs):
+        if n > 1:
+            return reply('Done.')
+        calls = [jcall(1, 'link_entry', {'document': 'Story', 'refs': ['s1.w1.m1'], 'entry_id': 'vi-erg'}),
+                 jcall(2, 'set_analysis', {'document': 'Story', 'ref': 's1.w1',
+                                           'morphemes': [{'form': 'ka', 'type': 'stem'}]})]
+        if second:
+            calls.append(jcall(3, 'link_entry', {'document': 'Story', 'refs': ['s1.w1.m1'], 'entry_id': second}))
+        return reply(calls=calls)
+    use(monkeypatch, Model(answer))
+    run_job(job, runner(job))
+    [made] = client.payloads('tokens.create')
+    mid = made['kwargs']['id']
+    links = client.payloads('vocab_links.create')
+    assert [(x['args'][0], x['args'][1]) for x in links] == [(second or 'vi-erg', [mid])], links
+    stored = dict(made['kwargs'].get('metadata') or {})
+    for tid, ops in client.patches('tokens'):
+        for o in ops if tid == mid else ():
+            if o.get('op') == 'set':
+                stored[o['path'][0]] = o['value']
+            elif o.get('op') == 'delete':
+                stored.pop(o['path'][0], None)
+    assert 'morphType' not in stored, stored
