@@ -24,7 +24,7 @@ let host;
 let editor;
 
 // "the cat sat down", one sentence, and a lexicon with a phrase entry.
-function mount({ links = [], maintainer = false, borrowed = false } = {}) {
+function mount({ links = [], maintainer = false, borrowed = false, extraItems = [] } = {}) {
   const raw = buildRawDoc({
     body: 'the cat sat down',
     words: [
@@ -47,6 +47,7 @@ function mount({ links = [], maintainer = false, borrowed = false } = {}) {
           { id: 'i-cat', form: 'cat', metadata: { morphType: 'stem' } },
           { id: 'i-sit', form: 'sit down', metadata: { morphType: 'phrase' } },
           { id: 'i-the', form: 'the', metadata: { morphType: 'stem' } },
+          ...extraItems,
         ],
         vocabLinks: links,
       },
@@ -373,6 +374,23 @@ describe('gathering words into a multi-word expression', () => {
     const type = pop.querySelector('.igt-vocab-pop__type select');
     expect(type.querySelector('option[selected]').value).toBe('phrase');
     expect(type.disabled).toBe(true);
+  });
+
+  // H2-14-3: a phrase entry listed first does not take the keyboard from an
+  // untyped entry spelled exactly like the gathered words.
+  it('starts on an untyped entry spelled like the gathered words, not on + Create', async () => {
+    const { client } = mount({ extraItems: [{ id: 'i-satdown', form: 'sat down', metadata: {} }] });
+    click(form('w-3'), { shiftKey: true });
+    click(form('w-4'), { shiftKey: true });
+    key(label('mwe:new'), 'Enter');
+    const pop = popover();
+    expect(pop.querySelector('.igt-vocab-pop__item.is-active')?.textContent).toContain('sat down');
+    expect(pop.querySelector('.igt-vocab-pop__create').classList.contains('is-active')).toBe(false);
+    key(pop.querySelector('.igt-vocab-pop__search'), 'Enter');
+    await settle(4);
+    expect(client.calls.some((c) => c.kind === 'vocabItems.create')).toBe(false);
+    const create = client.calls.find((c) => c.kind === 'vocabLinks.create');
+    expect(create.args.slice(0, 2)).toEqual(['i-satdown', ['w-3', 'w-4']]);
   });
 
   it('picking an entry links the gathered words to it', async () => {

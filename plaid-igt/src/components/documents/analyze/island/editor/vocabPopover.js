@@ -926,6 +926,9 @@ export const vocabPopover = {
           : precedentCounts(this._precedentTally(), kind, precForm, SLOT_LINK),
       },
     );
+    // The ranked order, before the phrase entries are drawn first: the row the
+    // keyboard starts on is chosen from it (H2-14-3).
+    const ranked = items.slice();
     // In MWE mode the phrase-typed entries come first, in their ranked order.
     // Single-word entries stay listed: a fixed spelling can be what is wanted.
     if (isMwe) {
@@ -978,7 +981,12 @@ export const vocabPopover = {
     const covered = (it) =>
       it._tier !== TIERS.PRECEDENT &&
       (tree?.childrenOf.get(it.id) || []).some((c) => c.form === it.form && rankedIds.has(c.id));
-    const first = items.find((it) => !covered(it)) ?? items[0];
+    // The current link first, then the ranked order: an unrelated phrase entry
+    // drawn at the top never takes the keyboard from an entry spelled like the
+    // gathered words.
+    const current = currentItem && items.find((it) => it.id === currentItem.id);
+    const order = current ? [current, ...ranked.filter((it) => it !== current)] : ranked;
+    const first = order.find((it) => !covered(it)) ?? order[0];
     // With nothing typed, Enter takes a row only when the form chose it: the
     // current link, what the form was linked to before, or an entry spelled
     // like it or starting with it. An entry that only contains the form, or
