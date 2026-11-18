@@ -155,6 +155,21 @@ describe('a rewrite preview', () => {
     expect(notes).toEqual([['ok', 'Changed.']]);
     await view.unmount();
   });
+
+  it('keeps the sentences left out unticked when it runs again after an apply', async () => {
+    const view = await previewed();
+    await click(view, '[data-untick]');
+    expect(text(view, '[data-ticked]')).toBe('d1:a,d1:c');
+    runner.apply = vi.fn(async () => ({ failed: { docId: 'd1' } }));
+    await click(view, '[data-apply]');
+    await view.step(async () => {});
+    expect(runner.apply.mock.calls[0][1].rows.map((r) => r.id)).toEqual(['a', 'c']);
+    expect(text(view, '[data-ticked]')).toBe('d1:a,d1:c');
+    // Pressing Preview changes again is a new preview, all ticked.
+    await press(view, 'Preview changes');
+    expect(text(view, '[data-ticked]')).toBe('d1:a,d1:b,d1:c');
+    await view.unmount();
+  });
 });
 
 describe('the search results', () => {

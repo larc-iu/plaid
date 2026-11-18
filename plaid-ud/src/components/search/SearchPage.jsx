@@ -160,13 +160,13 @@ export const SearchPage = () => {
   );
 
   // A preview is of the rules it was made from (`text`), and is shown only
-  // while the box still holds them.
+  // while the box still holds them. Rows in `unticked` stay unticked.
   const runPreview = useCallback(
-    async (grs, text) => {
+    async (grs, text, unticked = new Set()) => {
       const result = await planRewrite(getClient(), { project, user, layerInfo, grs }, setProgress);
       const rows = result.rows.map((r) => ({ ...r, key: `${r.docId}:${r.id}` }));
       setPlan({ ...result, rows, grs, text });
-      setSelected(new Set(rows.filter((r) => !r.error).map((r) => r.key)));
+      setSelected(new Set(rows.filter((r) => !r.error && !unticked.has(r.key)).map((r) => r.key)));
     },
     [project, user, layerInfo, getClient],
   );
@@ -252,6 +252,9 @@ export const SearchPage = () => {
     setApplying(true);
     try {
       const rows = plan.rows.filter((r) => selected.has(r.key));
+      const unticked = new Set(
+        plan.rows.filter((r) => !r.error && !selected.has(r.key)).map((r) => r.key),
+      );
       // A rule written without a name is called `rule` (grew/parser.js), a
       // keyword no rule can be named: History says "Rewrite" for it.
       const names = plan.grs.rules
@@ -267,8 +270,8 @@ export const SearchPage = () => {
       if (out.failed) notifyError(summary, 'Failed to apply the changes');
       else notifySuccess(summary);
       // Show what the same rules would still change now that these are
-      // applied.
-      await runPreview(plan.grs, plan.text);
+      // applied, with the sentences left out still left out.
+      await runPreview(plan.grs, plan.text, unticked);
     } catch (err) {
       notifyError(err, 'Failed to apply the changes');
     } finally {
