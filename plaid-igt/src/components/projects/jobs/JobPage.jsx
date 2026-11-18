@@ -758,6 +758,8 @@ const JobDocuments = ({ job, projectId, plan }) => {
     columns.push({
       key: 'check',
       label: 'To check',
+      // Wide enough that a row stays a line or two where the table scrolls.
+      className: 'min-w-[18rem]',
       render: (d) => checks.get(d.documentId).join('; '),
     });
   }
