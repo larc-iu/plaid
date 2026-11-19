@@ -306,6 +306,12 @@ def send_chunks(client, ops: list[dict], stamped_documents: list | None, stamped
                    if start > 0 and 'refs' in op else op
                    for op in ops[start:start + MAX_BATCH_OPS]]
                   for start in range(0, len(ops), MAX_BATCH_OPS)]
+        # Every chunk's values encoded before the first request goes, so a
+        # value json cannot encode, anywhere in the batch, is the caller's
+        # mistake raised with nothing written (REV-LO-2). Each is encoded
+        # again as it goes, its version claims stamped.
+        for body in chunks:
+            json_body(body, _unsendable)
         groups = stamped_groups or [None] * len(ops)
         for start, body in zip(range(0, len(ops), MAX_BATCH_OPS), chunks):
             chunk_stamps = stamps[start:start + MAX_BATCH_OPS]

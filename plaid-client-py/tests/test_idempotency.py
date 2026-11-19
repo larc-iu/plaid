@@ -688,3 +688,19 @@ def test_a_fault_on_the_way_out_is_not_a_network_error_and_a_lost_connection_is(
     with pytest.raises(PlaidAPIError) as e:
         client.projects.get('p')
     assert e.value.status == 0 and isinstance(e.value.original_error, requests_lib.ConnectionError)
+
+
+def test_a_value_json_cannot_encode_in_a_later_chunk_sends_nothing():
+    """REV-LO-2: a batch past MAX_BATCH_OPS goes as several requests. A bad
+    value in the second chunk raised after the first chunk was stored, with no
+    ``committed``. Every chunk is encoded before the first request goes."""
+    import datetime
+    client = PlaidClient('http://x', 'tok', **FAST)
+    client.session = recording_session(lambda r: [{'status': 201, 'body': {'id': 's'}}] * MAX_BATCH_OPS)
+    b = client.batch()
+    for i in range(MAX_BATCH_OPS):
+        b.spans.create('L', ['t'], f'v{i}')
+    b.spans.create('L', ['t'], datetime.date(2026, 1, 1))
+    with pytest.raises(TypeError, match='not JSON serializable'):
+        b.submit()
+    assert client.session.sent == []
