@@ -525,14 +525,19 @@ export const ReferencedByPanel = ({ item, items, fields, numbers, itemTo }) => {
   );
 };
 
-/** One sentence of context, as the concordance and the examples draw it. */
-export const ContextRow = ({ row, to }) => {
+/**
+ * One sentence of context, as the concordance and the examples draw it.
+ * `segmented` sets the segmentation under every word with a morpheme hit,
+ * where the row otherwise does so only for a word its forms do not spell.
+ */
+export const ContextRow = ({ row, to, segmented = false }) => {
+  const stacks = segmented ? row.segmentations : row.stacks;
   const body = (
     <>
       <p className="text-sm text-foreground">
         <span className="mr-2 text-xs text-muted-foreground">#{row.sentenceIndex + 1}</span>
-        {row.stacks?.length ? (
-          <StackedSentence text={row.text} marks={row.marks} stacks={row.stacks} />
+        {stacks?.length ? (
+          <StackedSentence text={row.text} marks={row.marks} stacks={stacks} />
         ) : (
           <MarkedText text={row.text} marks={row.marks} />
         )}

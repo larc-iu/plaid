@@ -105,7 +105,10 @@ export async function loadConcordanceGroups(client, hits, docEntries, { morpheme
  * morpheme's letters in sentence offsets. Where they do not, the row gains
  * `stacks`, one `{ begin, end, parts }` per such word (its extent in the
  * sentence and its segmentationParts), to be set under the word, which keeps
- * its plain mark. A row with no morpheme hit comes back as it was.
+ * its plain mark. `segmentations` holds the same for EVERY word with a
+ * morpheme hit, spelled or not, for a reader who asks to see the segmentation
+ * always (the Concordance tab's checkbox). A row with no morpheme hit comes
+ * back as it was.
  */
 export function withMorphemeHits(doc, rows, hitIds) {
   const sentences = new Map((doc.sentences || []).map((s) => [s.id, s]));
@@ -114,6 +117,7 @@ export function withMorphemeHits(doc, rows, hitIds) {
     if (!sentence) return row;
     const inner = new Map(); // word begin in the sentence -> [{begin, end}]
     const stacks = [];
+    const segmentations = [];
     for (const word of sentence.tokens || []) {
       const hits = (word.morphemes || []).filter((m) => hitIds.has(m.id));
       if (!hits.length) continue;
@@ -128,20 +132,22 @@ export function withMorphemeHits(doc, rows, hitIds) {
         if (!inner.has(at)) inner.set(at, []);
         inner.get(at).push({ begin: at + range.begin, end: at + range.end });
       }
-      if (unplaced)
-        stacks.push({
-          begin: at,
-          end: word.end - sentence.begin,
-          parts: segmentationParts(word, hitIds),
-        });
+      const stack = {
+        begin: at,
+        end: word.end - sentence.begin,
+        parts: segmentationParts(word, hitIds),
+      };
+      segmentations.push(stack);
+      if (unplaced) stacks.push(stack);
     }
-    if (!inner.size && !stacks.length) return row;
+    if (!segmentations.length) return row;
     return {
       ...row,
       marks: row.marks.map((mk) =>
         inner.has(mk.begin) ? { ...mk, inner: inner.get(mk.begin) } : mk,
       ),
       ...(stacks.length ? { stacks } : {}),
+      segmentations,
     };
   });
 }

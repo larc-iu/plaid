@@ -318,3 +318,46 @@ describe('a translation in the concordance and the examples', () => {
     await view.unmount();
   });
 });
+
+// GH #68, the follow-up: a reader may ask for the segmentation under every
+// match, also where the forms spell the word.
+describe('Show segmentation', () => {
+  const KEY = 'plaid_igt_concordance_segmentation';
+  const box = (view) => view.container.querySelector('input[type="checkbox"]');
+  const segmentationsIn = (view) =>
+    rowLinks(view).map((a) =>
+      [...a.querySelectorAll('[data-segmentation]')].map((el) => el.textContent),
+    );
+
+  it('is off at first: only the word its forms do not spell has its segmentation', async () => {
+    localStorage.removeItem(KEY);
+    const view = await mount(rowsOf());
+    expect(box(view).checked).toBe(false);
+    expect(box(view).closest('label').textContent).toBe('Show segmentation');
+    expect(segmentationsIn(view).map((s) => s.length)).toEqual([1, 0, 0]);
+    view.unmount();
+  });
+
+  it('ticked, sets the segmentation under the spelled word too, never under a word linked whole, and is remembered', async () => {
+    localStorage.removeItem(KEY);
+    const view = await mount(rowsOf());
+    const before = segmentationsIn(view)[0];
+    await view.step(() => box(view).click());
+    const shown = segmentationsIn(view);
+    expect(shown[0]).toEqual(before);
+    expect(shown[1].map((t) => t.replace(/\s/g, ''))).toEqual(['pi-ngu-uq']);
+    expect(shown[2]).toEqual([]);
+    // The spelled word keeps the morpheme's mark inside it.
+    expect(rowLinks(view)[1].querySelector('mark').textContent).toBe('pinguuq');
+    expect(localStorage.getItem(KEY)).toBe('1');
+    view.unmount();
+
+    const again = await mount(rowsOf());
+    expect(box(again).checked).toBe(true);
+    expect(segmentationsIn(again).map((s) => s.length)).toEqual([1, 1, 0]);
+    await again.step(() => box(again).click());
+    expect(localStorage.getItem(KEY)).toBe('0');
+    expect(segmentationsIn(again).map((s) => s.length)).toEqual([1, 0, 0]);
+    again.unmount();
+  });
+});

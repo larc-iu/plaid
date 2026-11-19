@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { FileText, Quote } from 'lucide-react';
 import { Button } from '@ui/components/ui/button';
 import { cn } from '@ui/lib/utils';
@@ -9,6 +10,19 @@ import { countOf } from '@ui/lib/plural.js';
 // The Concordance tab: the open entry's uses, grouped by document, each row
 // a link into the sentence, with "Use as example" for a maintainer. `conc` is
 // a useItemConcordance.
+//
+// "Show segmentation" (GH #68) sets each match's segmentation under its word
+// in every row, where a row otherwise shows it only for a word whose morpheme
+// forms do not spell it. Remembered in this browser.
+const SEGMENTED_STORAGE_KEY = 'plaid_igt_concordance_segmentation';
+const readSegmented = () => {
+  try {
+    return localStorage.getItem(SEGMENTED_STORAGE_KEY) === '1';
+  } catch {
+    return false;
+  }
+};
+
 export const ConcordancePanel = ({ conc, selectedItem, canEdit, onAddExample }) => {
   const {
     concPlan,
@@ -21,16 +35,35 @@ export const ConcordancePanel = ({ conc, selectedItem, canEdit, onAddExample }) 
     loadMore,
     sentinelRef,
   } = conc;
+  const [segmented, setSegmented] = useState(readSegmented);
+  const toggleSegmented = (on) => {
+    setSegmented(on);
+    try {
+      localStorage.setItem(SEGMENTED_STORAGE_KEY, on ? '1' : '0');
+    } catch {
+      /* ignore */
+    }
+  };
   return (
     <div className="rounded-lg border bg-card">
       <div className="flex items-center justify-between border-b px-4 py-2">
         <span className="text-sm font-medium">Concordance</span>
-        {concPlan && (
-          <span className="text-xs text-muted-foreground">
-            {countOf(concPlan.totalHits, 'use')} in {countOf(concPlan.totalDocs, 'document')}
-            {concPlan.truncated ? ' (capped)' : ''}
-          </span>
-        )}
+        <span className="flex items-center gap-4">
+          <label className="flex items-center gap-1.5 text-xs text-muted-foreground">
+            <input
+              type="checkbox"
+              checked={segmented}
+              onChange={(e) => toggleSegmented(e.target.checked)}
+            />
+            Show segmentation
+          </label>
+          {concPlan && (
+            <span className="text-xs text-muted-foreground">
+              {countOf(concPlan.totalHits, 'use')} in {countOf(concPlan.totalDocs, 'document')}
+              {concPlan.truncated ? ' (capped)' : ''}
+            </span>
+          )}
+        </span>
       </div>
 
       {concLoading ? (
@@ -62,7 +95,11 @@ export const ConcordancePanel = ({ conc, selectedItem, canEdit, onAddExample }) 
                     );
                   return (
                     <div key={row.sentenceId} className="group flex items-start">
-                      <ContextRow row={row} to={sentenceTo(g.projectId, g.docId, row.sentenceId)} />
+                      <ContextRow
+                        row={row}
+                        to={sentenceTo(g.projectId, g.docId, row.sentenceId)}
+                        segmented={segmented}
+                      />
                       {canEdit && tokenId && (
                         <button
                           type="button"
