@@ -16,5 +16,10 @@ describe.each(Object.entries(guides))('the %s guide', (_name, text) => {
     expect(section).toContain("A job's undo cannot itself be undone.");
     expect(section).not.toMatch(/the undo can itself be undone/);
     expect(section).not.toMatch(/brought back from History/);
+    // REV-JU-4: a job over 20,000 changes is undone document by document, and
+    // each of those undos is an ordinary entry, not final.
+    expect(section).toContain(
+      "A job of more than 20,000 changes is undone document by document, from each document's **Changes** link, and each of those undos is an ordinary entry in the document's history, which can itself be undone.",
+    );
   });
 });

@@ -1151,7 +1151,7 @@ The dialog, **Undo this job?**, lists what will be undone under **To undo** and,
 A value changed again later is left, and so is anything something was added to since.
 The job then reads **Undone**, and its page says **Undone by** whom with the time and **Show in History**.
 A job's undo cannot itself be undone.
-A job of more than 20,000 changes is undone document by document, from each document's **Changes** link.
+A job of more than 20,000 changes is undone document by document, from each document's **Changes** link, and each of those undos is an ordinary entry in the document's history, which can itself be undone.
 Restoring a document to the moment before the job (see <<_history>>) also takes back the job's work in that document, but not in the lexicon.
 
 == Discussing a job with the assistant
