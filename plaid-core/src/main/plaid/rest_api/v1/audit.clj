@@ -209,8 +209,9 @@
        "left out, and so is a row of a document or vocabulary the caller cannot read. Pass ?document-id= or "
        "?vocab-layer-id= for the rows of that document or vocabulary only. Paginated, in a fixed order that "
        "new writes do not disturb. With ?ceiling=N, the first page (no cursor) also says over: whether the entry "
-       "wrote more than N rows there, counted before the rows that show no change or that the caller cannot "
-       "read are left out, so a reader can stop at the first page of an entry too large to show."))
+       "wrote more than N rows there in documents and vocabularies the caller may read, counted before the rows "
+       "that show no change are left out, so a reader can stop at the first page of an entry too large to show. "
+       "A document or vocabulary named that the caller may not read counts nothing, as one that does not exist."))
 
 (defn- entry-changes
   [{db :db {{:keys [entry-id]} :path query :query} :parameters :as request}]
@@ -257,9 +258,14 @@
           (as-> resp (cond-> resp
                        (= 200 (:status resp))
                        (assoc-in [:body :over]
-                                 (changes/over? db entry-id {:ceiling (:ceiling query)
-                                                             :document-id (:document-id query)
-                                                             :vocab-id (:vocab-layer-id query)})))))
+                                 (changes/over? db entry-id
+                                                (cond-> {:ceiling (:ceiling query)
+                                                         :document-id (:document-id query)
+                                                         :vocab-id (:vocab-layer-id query)}
+                                                  ;; only the rows the caller may read (REV-LO-1)
+                                                  (not (user/admin? record))
+                                                  (assoc :readable-document? readable-document?
+                                                         :readable-vocab? readable-vocab?)))))))
         (catch clojure.lang.ExceptionInfo e
           (if (= 400 (:code (ex-data e)))
             {:status 400 :body {:error (ex-message e)}}

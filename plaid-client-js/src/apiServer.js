@@ -418,10 +418,10 @@ export function auditApi(client) {
     /**
      * One page of the same rows, in a fixed order that later writes do not
      * disturb. With `ceiling`, the first page (no `cursor`) also has `over`:
-     * whether the entry wrote more than `ceiling` rows there, counted before
-     * the rows that show no change or that the caller cannot read are left
-     * out, so a reader can stop at the first page of an entry too large to
-     * show.
+     * whether the entry wrote more than `ceiling` rows there in documents and
+     * vocabularies the caller may read, counted before the rows that show no
+     * change are left out, so a reader can stop at the first page of an entry
+     * too large to show.
      * @param {string} entryId - An entry's `id`, or an operation's id inside one
      * @param {object} [opts]
      * @param {string} [opts.documentId] - Only the rows of this document

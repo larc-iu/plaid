@@ -356,6 +356,71 @@
           (is (false? (:over (over :ceiling n))))
           (is (true? (:over (over :ceiling (dec n))))))))))
 
+;; REV-LO-1: `over` counts only the rows the caller may read, so it says
+;; nothing of an entry's writes in a project they cannot read, and a document
+;; or vocabulary they cannot read is answered as one that does not exist. The
+;; count is of rows written: the entry also bumps its vocabulary's row, which
+;; shows no change and is not listed, so a reader of the vocabulary flips one
+;; row later than the rows it is shown (REV-LO-5).
+(deftest over-counts-only-what-the-caller-may-read
+  (let [mk (fn [pname n-docs n-toks r]
+             (let [proj (create-test-project admin-request pname)
+                   tl (id (create-text-layer admin-request proj "Text"))
+                   word (id (create-token-layer admin-request tl "Words"))]
+               {:proj proj
+                :docs (vec (for [i (range n-docs)]
+                             (let [d (create-test-document r proj (str pname i))
+                                   text (id (create-text r tl d (str/join " " (repeat n-toks "a"))))]
+                               (bulk-create-tokens r (mapv (fn [k] {:token-layer-id word :text text
+                                                                    :begin (* 2 k) :end (inc (* 2 k))})
+                                                           (range n-toks)))
+                               d)))}))
+        g (str (random-uuid))
+        r (in-group admin-request g)
+        a (mk "OverA" 2 3 r)
+        b (mk "OverB" 3 40 r)
+        vocab (id (create-vocab-layer admin-request (:proj a) "LexA"))
+        _ (id (create-vocab-item r vocab "kai"))
+        _ (assert-done (add-project-reader admin-request (:proj a) "user1@example.com"))
+        _ (assert-done (add-project-reader admin-request (:proj b) "user2@example.com"))
+        page (fn [req & opts] (let [resp (apply changes-page req g opts)]
+                                (assert-ok resp)
+                                (:body resp)))
+        n (fn [req & opts] (count (apply all-changes req g opts)))
+        ;; over at a ceiling below, at and above the rows the actor may read
+        ;; that the entry wrote: those it is shown, and `bumped` more
+        at-its-count (fn [req bumped & opts]
+                       (let [k (+ bumped (apply n req opts))]
+                         (mapv #(:over (apply page req (concat opts [:ceiling %])))
+                               [(dec k) k (inc k)])))
+        unknown (str (random-uuid))
+        nothing {:entries [] :next-cursor nil :over false}
+        check (fn [label req bumped readable unreadable]
+                (testing label
+                  (testing "the whole entry, counted on what it may read"
+                    (is (= [true false false] (at-its-count req bumped))))
+                  (doseq [d readable]
+                    (testing (str "narrowed to a document it reads " d)
+                      (is (= [true false false] (at-its-count req 0 :document-id d)))))
+                  (doseq [d (conj unreadable unknown)]
+                    (testing (str "narrowed to a document it cannot read, or none " d)
+                      (is (= nothing (page req :document-id d :ceiling 0)))))))]
+    (is (= (+ (* 2 (+ 2 3)) (* 3 (+ 2 40)) 1) (n admin-request)) "every document, text and token, and the entry")
+    (check "an admin" admin-request 1 (into (:docs a) (:docs b)) [])
+    (check "a reader of A only" user1-request 1 (:docs a) (:docs b))
+    (is (= (+ (* 2 (+ 2 3)) 1) (n user1-request)))
+    (check "a reader of B only" user2-request 0 (:docs b) (:docs a))
+    (is (= (* 3 (+ 2 40)) (n user2-request)))
+    (testing "a vocabulary: its rows for its reader, nothing for another, as for none"
+      (is (= [true false false] (at-its-count user1-request 1 :vocab-layer-id vocab)))
+      (is (= 1 (n user1-request :vocab-layer-id vocab)))
+      (is (= nothing (page user2-request :vocab-layer-id vocab :ceiling 0)))
+      (is (= nothing (page user2-request :vocab-layer-id unknown :ceiling 0)))
+      (is (= nothing (page user1-request :vocab-layer-id unknown :ceiling 0))))
+    (assert-done (add-project-reader admin-request (:proj a) "user2@example.com"))
+    (check "a reader of both" user2-request 1 (into (:docs a) (:docs b)) [])
+    (is (= (n admin-request) (n user2-request)))))
+
 ;; ============================================================
 ;; A restore, a batch, and the batch clamp
 ;; ============================================================

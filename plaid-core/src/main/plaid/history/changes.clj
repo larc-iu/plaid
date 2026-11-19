@@ -535,18 +535,39 @@
 (defn over?
   "Whether unit `unit-id` wrote more than `ceiling` rows, in the document or
   vocabulary the options narrow it to as `changes-page` does: the rows the
-  read walks, counted before it leaves out a row that shows no change or that
-  the reader cannot read. So a unit under the ceiling never lists more than
+  read walks, counted before it leaves out a row that shows no change. So a
+  unit under the ceiling never lists more than
   `ceiling` rows. Counts stop just past the ceiling, so an entry of any size
   costs at most about `ceiling` index steps (SCL4-4: the Changes view read 21
   pages of an import to say only that it was too large). False for an id no
-  unit has."
-  [db unit-id {:keys [ceiling document-id vocab-id]}]
+  unit has.
+
+  `:readable-document?` and `:readable-vocab?` (nil: all) keep the count to
+  the rows of documents and vocabularies the reader may read, so it says
+  nothing of rows the read leaves out for them (REV-LO-1): a document or
+  vocabulary named that they may not read counts nothing, as one that does
+  not exist."
+  [db unit-id {:keys [ceiling document-id vocab-id readable-document? readable-vocab?]}]
   (let [ops (unit-ops db unit-id)
         cap (inc ceiling)
+        scoped? (or readable-document? readable-vocab?)
+        readable-document? (or readable-document? (constantly true))
+        readable-vocab? (or readable-vocab? (constantly true))
+        ;; the readable documents and vocabularies among the unit's, as
+        ;; strings, or nil for a reader of all of them
+        [docs vocabs] (when (and scoped? (not document-id) (not vocab-id))
+                        (let [{:keys [documents vocabs]} (unit-scopes db ops)]
+                          [(into #{} (comp (filter #(readable-document? (psc/->uuid %))) (map str)) documents)
+                           (into #{} (comp (filter #(readable-vocab? (psc/->uuid %))) (map str)) vocabs)]))
+        shut? (or (and document-id (not (readable-document? (psc/->uuid document-id))))
+                  (and vocab-id (not (readable-vocab? (psc/->uuid vocab-id))))
+                  (and docs (empty? docs) (empty? vocabs)))
+        ops (if shut? [] ops)
         narrow (cond
                  document-id [:= :document_id (str document-id)]
-                 vocab-id [:= :vocab_layer_id (str vocab-id)])
+                 vocab-id [:= :vocab_layer_id (str vocab-id)]
+                 docs (into [:or] (remove nil?) [(when (seq docs) [:in :document_id (vec docs)])
+                                                 (when (seq vocabs) [:in :vocab_layer_id (vec vocabs)])]))
         ;; run 1: each row once per chunk of operations, a row two chunks
         ;; write counted twice (never fewer than the read lists)
         run-1 (reduce (fn [n chunk]
@@ -566,7 +587,8 @@
         ;; run 2: the rows `lazy-ids` reads, recorded late or never
         steps (when-not vocab-id
                 (for [{:keys [doc op]} (cond->> (created-documents db (map :id ops))
-                                         document-id (filter #(= (str document-id) (:doc %))))
+                                         document-id (filter #(= (str document-id) (:doc %)))
+                                         docs (filter #(contains? docs (:doc %))))
                       table lazy-tables]
                   [doc op table]))]
     (> (reduce (fn [n [doc op table]]
