@@ -384,14 +384,27 @@
       {:status 404 :body {:error "Entry not found"}})
     (assoc-in (undo-refusal request) [:body :unresolved] true)))
 
+(defn- entry-readable?
+  "Whether the caller reads the entry whose operations are `ops`: through a
+  project its operations name, else (an entry's metadata write names none)
+  through its rows' documents or vocabularies, as the changes read lets it
+  be seen. Both undo routes ask it before anything else, so a caller who
+  cannot read an entry learns nothing of it (REV-UN4-2, REV-JU-1)."
+  [{db :db :as request} ops]
+  (or (some (pra/project-readable-fn request) (distinct (keep :project_id ops)))
+      (let [{:keys [readable-document? readable-vocab?]} (undo-gates request)
+            {:keys [documents vocabs]} (changes/unit-scopes db ops)]
+        (or (some readable-document? documents) (some readable-vocab? vocabs)))))
+
 (defn- entry-undo
   [{db :db {{:keys [entry-id]} :path query :query} :parameters :as request}]
   (let [ops (changes/unit-ops db entry-id)]
-    (if (empty? ops)
-      (unknown-entry request [entry-id])
-      (undo-answer request entry-id ops {:dry-run? (boolean (:dry-run query))
-                                         :document-id (:document-id query)
-                                         :vocab-id (:vocab-layer-id query)}))))
+    (cond
+      (empty? ops) (unknown-entry request [entry-id])
+      (not (entry-readable? request ops)) (undo-refusal request)
+      :else (undo-answer request entry-id ops {:dry-run? (boolean (:dry-run query))
+                                               :document-id (:document-id query)
+                                               :vocab-id (:vocab-layer-id query)}))))
 
 (defn- entries-undo
   "Several entries undone as one. Refused before anything is written, as
@@ -403,21 +416,12 @@
   [{db :db {{:keys [entries]} :body query :query} :parameters :as request}]
   (let [ids (vec (distinct entries))
         ops-of (into {} (map (fn [i] [i (changes/unit-ops db i)])) ids)
-        readable? (pra/project-readable-fn request)
         projects (distinct (keep :project_id (mapcat val ops-of)))]
     (cond
       (some (comp empty? val) ops-of)
       (unknown-entry request (keep (fn [[i ops]] (when (empty? ops) i)) ops-of))
 
-      ;; an entry is read through a project its operations name, else (an
-      ;; entry's metadata write names none) through its rows' documents or
-      ;; vocabularies, as the changes read lets it be seen
-      (some (fn [[_ ops]]
-              (not (or (some readable? (distinct (keep :project_id ops)))
-                       (let [{:keys [readable-document? readable-vocab?]} (undo-gates request)
-                             {:keys [documents vocabs]} (changes/unit-scopes db ops)]
-                         (or (some readable-document? documents) (some readable-vocab? vocabs))))))
-            ops-of)
+      (some (fn [[_ ops]] (not (entry-readable? request ops))) ops-of)
       (undo-refusal request)
 
       (< 1 (count projects))

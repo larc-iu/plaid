@@ -1566,6 +1566,34 @@
         (is (= 200 (:status resp)) (pr-str (:body resp)))
         (is (= "JOB" (-> (get-span admin-request (nth spans 1)) :body :span/value)))))))
 
+(deftest rev-ju-1-a-caller-who-cannot-read-a-jobs-undo-learns-nothing-of-it
+  ;; REV-JU-1: the entry's own route gates readability first, as the list
+  ;; route does: a non-member gets the 403 any other entry they cannot read
+  ;; gets, never 422 job-undo-final nor the 413 size answer. A reader who is
+  ;; no maintainer sees the entry and its ref, and keeps the 422.
+  (let [{:keys [proj job doc vocab groups]} (job-world!)
+        op (str (:operation (:body (undo-job admin-request job))))
+        group (str (:group_id (psc/fetch-by-id db :operations op)))
+        ops (op-count)]
+    (testing "a non-member: 403 unresolved-free, as for the job's own entry, dry or not, whole or narrowed"
+      (let [ordinary (undo user2-request (first groups))]
+        (is (= 403 (:status ordinary)))
+        (doseq [entry [op group]
+                opts [[] [:dry-run true] [:document-id doc] [:vocab-layer-id vocab]]]
+          (let [resp (apply undo user2-request entry opts)]
+            (is (= 403 (:status resp)) (pr-str entry opts (:body resp)))
+            (is (= (:body ordinary) (:body resp)))))
+        (is (= 403 (:status (undo-list user2-request [group]))))))
+    (testing "nor the size answer"
+      (with-redefs [plaid.history.undo/max-rows 0]
+        (is (= 403 (:status (undo user2-request (first groups)))))))
+    (is (= ops (op-count)) "the non-member's calls wrote nothing")
+    (testing "a reader who is no maintainer: 422 job-undo-final"
+      (assert-done (add-project-reader admin-request proj "user1@example.com"))
+      (let [resp (undo user1-request op :dry-run true)]
+        (is (= 422 (:status resp)))
+        (is (= "job-undo-final" (-> resp :body :code)))))))
+
 (deftest rev-un4-2-a-list-is-one-project-the-caller-reads
   (testing "an entry the caller cannot read: 403, nothing written"
     (let [{:keys [proj spans]} (setup!)
