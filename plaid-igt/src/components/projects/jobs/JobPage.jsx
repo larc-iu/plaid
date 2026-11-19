@@ -594,12 +594,6 @@ const JobStatus = ({ job, user, names, undoneHref }) => {
           )}
         </p>
       )}
-      {/* Nothing follows a redo from History: the job stays undone (H2-5-1, owner 2026-11-18). */}
-      {job.undone && (
-        <p className="text-muted-foreground" data-testid="job-undone-history">
-          To undo work brought back from History, undo it there, one document at a time.
-        </p>
-      )}
       {failed ? (
         <p>{jobReasonText(job)}</p>
       ) : (

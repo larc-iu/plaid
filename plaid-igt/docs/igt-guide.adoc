@@ -1149,8 +1149,8 @@ On the job's page, a document's **Changes** and **Analyses made consistent** lin
 Once a job that wrote something has ended, **Undo job** on its page, for the project's maintainers, takes back what it wrote in every document and in the lexicon, as one entry in the history.
 The dialog, **Undo this job?**, lists what will be undone under **To undo** and, under **Left as they are**, what people changed since, with the reason and the place, before anything is written.
 A value changed again later is left, and so is anything something was added to since.
-The job then reads **Undone**, and its page says **Undone by** whom with the time and **Show in History**, where the undo can itself be undone.
-To undo work brought back from History, undo it there, one document at a time.
+The job then reads **Undone**, and its page says **Undone by** whom with the time and **Show in History**.
+A job's undo cannot itself be undone.
 A job of more than 20,000 changes is undone document by document, from each document's **Changes** link.
 Restoring a document to the moment before the job (see <<_history>>) also takes back the job's work in that document, but not in the lexicon.
 
