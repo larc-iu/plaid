@@ -7,6 +7,7 @@ import {
   leftLine,
   notUndoneLines,
   undoError,
+  isJobUndo,
   undoneLine,
   undoneToast,
 } from './undoSummary.js';
@@ -324,12 +325,25 @@ describe('undoneToast', () => {
   });
 });
 
+describe('isJobUndo', () => {
+  it('is an entry whose ref names a job’s undo, and nothing else', () => {
+    expect(isJobUndo({ id: 'g', ref: 'job:j1/undo' })).toBe(true);
+    expect(isJobUndo({ id: 'g', ref: 'job:j1/doc:d/pass:gloss' })).toBe(false);
+    expect(isJobUndo({ id: 'g', ref: 'format:table' })).toBe(false);
+    expect(isJobUndo({ id: 'g' })).toBe(false);
+    expect(isJobUndo(null)).toBe(false);
+  });
+});
+
 describe('undoError', () => {
   it('gives each refusal its own sentence', () => {
     expect(undoError(httpError(413))).toBe(
       'Too many changes to undo. An undo takes at most 20,000.',
     );
     expect(undoError(httpError(422))).toBe('A project’s deletion cannot be undone.');
+    expect(undoError(httpError(422, { code: 'job-undo-final' }))).toBe(
+      'A job’s undo cannot be undone.',
+    );
     expect(undoError(httpError(403))).toBe('Only a maintainer can undo this entry.');
     expect(undoError(httpError(403, { unresolved: true }))).toBe(
       'This entry does not exist or cannot be opened.',

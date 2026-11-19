@@ -489,6 +489,7 @@ export const VocabularyDetail = () => {
           time: entry.endTime || entry.time,
           from: entry.time,
           label: entry.message || entry.ops?.[0]?.description || '',
+          ref: entry.ref,
           action: !!entry.partOf,
         });
       } catch (err) {

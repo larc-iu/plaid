@@ -125,6 +125,34 @@ describe('HistoryDrawer', () => {
     await view.unmount();
   });
 
+  // A job's undo is final, and the app reads that from the entry's ref (JU).
+  it('hands on the entry’s ref with the entry and with an action of it', async () => {
+    const onSelectEntry = vi.fn();
+    const view = await renderComponent(
+      <HistoryDrawer
+        isOpen
+        onClose={() => {}}
+        auditEntries={[{ ...entry, ref: 'job:j1/undo' }]}
+        loading={false}
+        error={null}
+        onSelectEntry={onSelectEntry}
+        selectedEntry={null}
+      />,
+    );
+    await view.step(() => byText(view.container, 'button', '2 actions').click());
+    expect(onSelectEntry).toHaveBeenLastCalledWith(
+      expect.objectContaining({ id: 'batch-1', ref: 'job:j1/undo' }),
+    );
+    await view.step(() => view.container.querySelector('button[aria-label="Expand"]').click());
+    await view.step(() =>
+      byText(view.container, '[data-history-item^="o:"]', 'Set a span').click(),
+    );
+    expect(onSelectEntry).toHaveBeenLastCalledWith(
+      expect.objectContaining({ id: 'op-1', action: true, ref: 'job:j1/undo' }),
+    );
+    await view.unmount();
+  });
+
   // A keyboard reaches the entries: each is a button, one of them is in the
   // tab order at a time, and the arrow keys walk the list.
   describe('from the keyboard', () => {

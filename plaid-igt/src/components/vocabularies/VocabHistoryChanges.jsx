@@ -8,6 +8,7 @@ import { TYPE } from '@ui/lib/typeScale.js';
 import { documentViewSearch, historyHref } from '@ui/hooks/useHistoryParam.js';
 import { entryChanges, linkCounts } from '@/domain/historyChanges.js';
 import { vocabularyPlacer } from '@/domain/undoPlaces.js';
+import { isJobUndo } from '@/domain/undoSummary.js';
 import { APP_ROUTES } from '@/appRoutes.js';
 import { EntryChangeList } from '../documents/history/EntryChangeList.jsx';
 import { useChangeRows } from '../documents/history/useChangeRows.js';
@@ -35,17 +36,18 @@ const LINK_DOCUMENTS_SHOWN = 50;
  * `canUndo`: Undo over the changes, for the vocabulary's maintainers. It
  * undoes the entry's part in this vocabulary, its entries and every link to
  * them in any document (UndoDialog), then `onUndone` goes back to the
- * vocabulary now.
+ * vocabulary now. A job's undo is final, and offers none.
  */
 export const VocabHistoryChanges = ({
   client,
   vocabularyId,
   entry,
   past,
-  canUndo = false,
+  canUndo: canManage = false,
   onUndone,
 }) => {
   const [undoOpen, setUndoOpen] = useState(false);
+  const canUndo = canManage && !isJobUndo(entry);
   const streams = useMemo(
     () => [
       { key: 'own', opts: { vocabLayerId: vocabularyId } },

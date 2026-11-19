@@ -99,20 +99,23 @@ export const HistoryDrawer = ({
   // after its whole batch when it ran in one: a batch is atomic, so a time
   // inside it reads as before the batch, and a restore from there would undo
   // the op. The server sends that time as the op's `endTime`.
+  // `ref` is the entry's, which says whether it is a job's undo (no Undo).
   const selectUnit = (entry) =>
     onSelectEntry({
       id: entry.id,
       time: entry.endTime || entry.time,
       from: entry.time,
       label: unitLabel(entry),
+      ref: entry.ref,
     });
   // `action` marks one change picked inside an entry.
-  const selectOp = (op) =>
+  const selectOp = (op, entry) =>
     onSelectEntry({
       id: op.id,
       time: op.endTime || op.time,
       label: readableDescription(op.description),
       action: true,
+      ref: entry.ref,
     });
 
   // The list is one tab stop (roving tabindex): the entry last focused, else
@@ -227,7 +230,7 @@ export const HistoryDrawer = ({
           isLast && 'border-b',
           isSelected && 'bg-accent hover:bg-accent',
         )}
-        onClick={() => selectOp(op)}
+        onClick={() => selectOp(op, entry)}
       >
         <span className="line-clamp-2 block text-sm leading-snug">
           {readableDescription(op.description)}

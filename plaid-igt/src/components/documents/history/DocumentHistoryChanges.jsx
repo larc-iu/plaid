@@ -11,6 +11,7 @@ import { TYPE } from '@ui/lib/typeScale.js';
 import { documentViewSearch } from '@ui/hooks/useHistoryParam.js';
 import { documentRowChanges, entryChanges, sentenceChanges } from '@/domain/historyChanges.js';
 import { documentPlacer } from '@/domain/undoPlaces.js';
+import { isJobUndo } from '@/domain/undoSummary.js';
 import { dropPrecedent } from '@/domain/precedentCache';
 import { SentenceChange } from './SentenceChange.jsx';
 import { EntryChangeList } from './EntryChangeList.jsx';
@@ -42,7 +43,7 @@ const SENTENCES_SHOWN = 50;
  * Over the changes, Undo for those who may restore (`user` a maintainer of
  * the project, and no service run writing): it undoes this entry's rows in
  * this document (UndoDialog), then the page goes back to the document now
- * (`backToNow`).
+ * (`backToNow`). A job's undo is final, and offers none.
  */
 export const DocumentHistoryChanges = ({ context, user = null }) => {
   const {
@@ -54,7 +55,8 @@ export const DocumentHistoryChanges = ({ context, user = null }) => {
     liveDoc,
     backToNow,
   } = context;
-  const canUndo = canManageProject(context.project, user) && !context.writeLockHeld;
+  const canUndo =
+    canManageProject(context.project, user) && !context.writeLockHeld && !isJobUndo(pastEntry);
   const [undoOpen, setUndoOpen] = useState(false);
   const vocabIds = Object.keys(after?.vocabularies || {}).sort();
   const vocabKey = vocabIds.join(',');

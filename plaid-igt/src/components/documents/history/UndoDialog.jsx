@@ -40,7 +40,7 @@ const UNKNOWN_UNDO =
   'The server did not answer. The undo may have been made. History shows whether it was.';
 
 /**
- * `entry`: the History entry open (`{id, label, action}`). `place(row)`: where
+ * `entry`: the History entry open (`{id, label, action, ref}`). `place(row)`: where
  * a row left can be shown (`{key, label, to}`), or null. `tokenRows`: the
  * entry's token rows with the role of each (`[{id, role}]`), which name the
  * tokens undone. `vocabularies`: from a document's History, the vocabularies

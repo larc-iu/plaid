@@ -126,6 +126,7 @@ const app = (over = {}) => ({
       <div
         data-testid="changes"
         data-entry={context.pastEntry.id}
+        data-ref={context.pastEntry.ref ?? ''}
         data-snapshot={context.historySnapshot?.raw?.name ?? ''}
       />
     );
@@ -167,7 +168,15 @@ beforeEach(() => {
   auditPage = vi.fn(async (documentId, { entryId }) => ({
     entries:
       entryId === 'g1'
-        ? [{ id: 'g1', time: '2026-11-01T00:00:00Z', endTime: '2026-11-01T00:05:00Z', ops: [] }]
+        ? [
+            {
+              id: 'g1',
+              time: '2026-11-01T00:00:00Z',
+              endTime: '2026-11-01T00:05:00Z',
+              ref: 'job:j1/undo',
+              ops: [],
+            },
+          ]
         : [],
     nextCursor: null,
   }));
@@ -183,6 +192,8 @@ describe('a History entry in the address', () => {
     expect(auditPage).toHaveBeenCalledWith('d1', { entryId: 'g1', opsLimit: 1 });
     expect(view.container.querySelector('[data-testid="drawer"]').dataset.open).toBe('true');
     expect(changes().dataset.entry).toBe('g1');
+    // Its ref, which says whether it is a job's undo (JU).
+    expect(changes().dataset.ref).toBe('job:j1/undo');
     // The document after the whole entry, which the view places its rows in.
     expect(changes().dataset.snapshot).toBe('Doc then');
     expect(body()).toBeNull();

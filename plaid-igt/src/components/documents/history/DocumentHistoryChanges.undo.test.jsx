@@ -44,7 +44,13 @@ afterEach(async () => {
   view = null;
 });
 
-const mount = async ({ user, writeLockHeld = null, undo, backToNow = vi.fn() }) => {
+const mount = async ({
+  user,
+  writeLockHeld = null,
+  undo,
+  backToNow = vi.fn(),
+  pastEntry = { id: 'g1', label: 'Edit' },
+}) => {
   const d = doc();
   const client = {
     audit: {
@@ -65,7 +71,7 @@ const mount = async ({ user, writeLockHeld = null, undo, backToNow = vi.fn() }) 
           documentId: 'doc-1',
           project: PROJECT,
           writeLockHeld,
-          pastEntry: { id: 'g1', label: 'Edit' },
+          pastEntry,
           historySnapshot: d,
           liveDoc: d,
           backToNow,
@@ -107,6 +113,16 @@ describe('Undo over a document History entry’s changes', () => {
     // An admin maintains every project.
     await mount({ user: { id: 'root', isAdmin: true } });
     expect(undoButton()).not.toBeNull();
+  });
+
+  it('is not offered on a job’s undo, which is final', async () => {
+    await mount({
+      user: { id: 'boss' },
+      pastEntry: { id: 'g1', label: 'Undo job: gloss', ref: 'job:j1/undo' },
+    });
+    expect(view.container.textContent).toContain('1 value changed');
+    expect(undoButton()).toBeNull();
+    expect(dialog()).toBeNull();
   });
 
   it('undoes this entry’s rows in this document, then goes back to now', async () => {

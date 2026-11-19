@@ -334,9 +334,18 @@ export const undoneToast = (summary, opts) => {
   return { title: line ? 'Undone' : 'Nothing undone', message, undid: !!line };
 };
 
+/**
+ * Whether History entry `entry` is a job's undo (its ref `job:<id>/undo`),
+ * which core refuses to undo (422 job-undo-final): History offers no Undo on it.
+ */
+export const isJobUndo = (entry) => /^job:.+\/undo$/.test(entry?.ref ?? '');
+
 /** The sentence for an undo core refused, or failed to give. */
 export const undoError = (err, fallback) => {
   const status = statusOf(err);
+  if (status === 422 && err?.responseData?.code === 'job-undo-final') {
+    return 'A job’s undo cannot be undone.';
+  }
   if (status === 413) return 'Too many changes to undo. An undo takes at most 20,000.';
   if (status === 422) return 'A project’s deletion cannot be undone.';
   if (status === 404 || (status === 403 && err?.responseData?.unresolved)) {

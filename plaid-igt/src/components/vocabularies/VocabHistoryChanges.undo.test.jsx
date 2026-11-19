@@ -45,7 +45,12 @@ const settle = () =>
     for (let i = 0; i < 6; i++) await new Promise((r) => setTimeout(r, 0));
   });
 
-const mount = async ({ canUndo, undo, onUndone = vi.fn() }) => {
+const mount = async ({
+  canUndo,
+  undo,
+  onUndone = vi.fn(),
+  entry = { id: 'g1', label: 'Merge' },
+}) => {
   const client = {
     audit: {
       changesPage: vi.fn(async (entryId, { vocabLayerId }) => ({
@@ -61,7 +66,7 @@ const mount = async ({ canUndo, undo, onUndone = vi.fn() }) => {
       <VocabHistoryChanges
         client={client}
         vocabularyId="v1"
-        entry={{ id: 'g1', label: 'Merge' }}
+        entry={entry}
         past={PAST}
         canUndo={canUndo}
         onUndone={onUndone}
@@ -83,6 +88,16 @@ describe('Undo over a vocabulary History entry’s changes', () => {
     await mount({ canUndo: false });
     expect(view.container.textContent).toContain('1 entry, 1 link in 1 document');
     expect(undoButton()).toBeNull();
+  });
+
+  it('is not offered on a job’s undo, which is final', async () => {
+    await mount({
+      canUndo: true,
+      entry: { id: 'g1', label: 'Undo job: gloss', ref: 'job:j1/undo' },
+    });
+    expect(view.container.textContent).toContain('1 entry, 1 link in 1 document');
+    expect(undoButton()).toBeNull();
+    expect(dialog()).toBeNull();
   });
 
   it('undoes the vocabulary’s part, every row left shown at its entry or document', async () => {
