@@ -15,8 +15,8 @@ import copy
 import json
 import os
 import subprocess
-import sys
 import tempfile
+import types
 
 import pytest
 
@@ -25,6 +25,7 @@ from plaid_agent.ud.plan import execute_plan
 from plaid_agent.ud.project import load_project
 from plaid_agent.ud.toolkit import call_tool
 from plaid_agent.ud.tools import Workspace
+from plaid_client import testing as servicetest
 from plaid_client.provenance import is_machine
 from test_enhanced_mirror import _node
 from test_ud_tools import _parsed_raw
@@ -117,14 +118,23 @@ def _grid(raw, project):
     return json.loads(run.stdout)
 
 
+_PARSE = []
+
+
+def _parse_service():
+    """The Parse service's own module. Its rule needs no Stanza, so an empty
+    module stands in for the library, which is not installed everywhere this
+    suite runs."""
+    if not _PARSE:
+        _PARSE.append(servicetest.load_service(os.path.join(SERVICES, 'ud_parse_stanza.py'),
+                                               {'stanza': types.ModuleType('stanza')}))
+    return _PARSE[0]
+
+
 def _parse_refuses(raw, s):
     """The sentences Parse leaves alone as a person's work, by its own rule
     (ud_parse_stanza ``protected_sentence_indexes``)."""
-    sys.path.insert(0, SERVICES)
-    try:
-        from ud_parse_stanza import protected_sentence_indexes
-    finally:
-        sys.path.remove(SERVICES)
+    protected_sentence_indexes = _parse_service().protected_sentence_indexes
     words = _layer(raw, s.ids[WORD_LAYER])
     sentences = sorted(_layer(raw, s.ids[SENT_LAYER])['tokens'], key=lambda t: t['begin'])
     m2s = {m['id']: i for m in words['tokens'] for i, sent in enumerate(sentences)
