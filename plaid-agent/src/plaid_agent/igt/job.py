@@ -1072,6 +1072,17 @@ def removes_people(op: Dict[str, Any], doc) -> int:
     token and its word values and link, and a merge of words keeps the first
     word's: each deletes the words' morpheme analyses, counted as
     :func:`peoples_in_morphemes` counts them (S7-2)."""
+    gone_sentences, gone_words, analysed = text_removes(op, doc)
+    n = sum(peoples(sp.metadata, sp.value) for s in gone_sentences for sp in s.fields.values())
+    n += sum(peoples_in_morphemes(w) for w in analysed)
+    return n + sum(peoples_on_word(w) for w in gone_words)
+
+
+def text_removes(op: Dict[str, Any], doc) -> Tuple[List[Sentence], List[Word], List[Word]]:
+    """What a text op takes away in ``doc``, as :func:`removes_people` counts
+    it: the sentences it removes, the words it removes (a deleted sentence's
+    with it), and the words whose morpheme analyses it deletes (a split or a
+    merge of words)."""
     kind = op.get('kind')
     sentences = {s.id: s for s in doc.sentences}
     words = {w.id: w for s in doc.sentences for w in s.words}
@@ -1088,16 +1099,35 @@ def removes_people(op: Dict[str, Any], doc) -> int:
     elif kind == 'edit_text' and op.get('sentence_id') in sentences and op.get('planned_words') is not None:
         kept = {p.get('word_id') for p in op['planned_words']}
         gone_words = [w.id for w in sentences[op['sentence_id']].words if w.id not in kept]
-    n = 0
-    for sid in gone_sentences:
-        s = sentences.get(sid)
-        if s is None:
-            continue
-        if kind == 'delete_sentence':
-            gone_words += [w.id for w in s.words]
-        n += sum(peoples(sp.metadata, sp.value) for sp in s.fields.values())
-    n += sum(peoples_in_morphemes(words[wid]) for wid in analysed if wid in words)
-    return n + sum(peoples_on_word(words[wid]) for wid in gone_words if wid in words)
+    gone = [sentences[sid] for sid in gone_sentences if sid in sentences]
+    if kind == 'delete_sentence':
+        gone_words += [w.id for s in gone for w in s.words]
+    return (gone, [words[wid] for wid in gone_words if wid in words],
+            [words[wid] for wid in analysed if wid in words])
+
+
+def people_links_removed(op: Dict[str, Any], doc, project: IgtProject) -> set:
+    """The ids of the links people made that ``op`` replaces or takes away
+    in ``doc``, each one :func:`replaces_people` or :func:`removes_people`
+    already counts. A deleted or merged entry that would take or move the same
+    link counts it no second time (REV-JOIN19-1)."""
+    from .jobapply import _found, token_of
+
+    def in_morphemes(w):
+        return {m.link.id for m in w.morphemes if not m.virtual and m.link is not None and peoples(m.link.metadata)}
+    kind = op.get('kind')
+    if kind in ('link', 'link_phrase', 'unlink'):
+        return {lid for lid in [op.get('existing_link_id') or op.get('link_id')] if lid} \
+            if replaces_people(op, doc, project) else set()
+    if kind in ('set_analysis', 'discard_analysis'):
+        hit = _found(doc, token_of(op))
+        w = hit[1] if hit is not None else None
+        return in_morphemes(w) if w is not None and word_state(w) == 'protected' else set()
+    if kind not in jobapply.TEXT_KINDS:
+        return set()
+    _sentences, gone_words, analysed = text_removes(op, doc)
+    out = set().union(*(in_morphemes(w) for w in analysed + gone_words))
+    return out | {w.link.id for w in gone_words if w.link is not None and peoples(w.link.metadata)}
 
 
 def document_counts(report: Dict[str, Any]) -> Dict[str, int]:
@@ -2223,8 +2253,16 @@ class Write:
 
     def taken_by_document(self, ops: List[Dict[str, Any]]) -> Counter:
         """How many links people made a deleted or merged entry of ``ops``
-        takes or moves, by the document each lies in (:attr:`people_links`)."""
-        return Counter(self.people_links[i] for o in ops for i in entry_link_ids(o) if i in self.people_links)
+        takes or moves, by the document each lies in (:attr:`people_links`),
+        each once: not one an op of the write (in any of its tries) already
+        counts as replaced or taken away (:func:`people_links_removed`,
+        REV-JOIN19-1)."""
+        taken = [i for o in ops for i in entry_link_ids(o) if i in self.people_links]
+        if not taken:
+            return Counter()
+        doc = self.fresh if self.fresh is not None else self.st.doc
+        counted = set().union(*(people_links_removed(o, doc, self.st.project) for o in list(self.ops) + list(ops)))
+        return Counter(self.people_links[i] for i in dict.fromkeys(taken) if i not in counted)
 
     def taken_elsewhere(self, ops: List[Dict[str, Any]]) -> Dict[str, int]:
         """Of :meth:`taken_by_document`, those in the job's other documents,

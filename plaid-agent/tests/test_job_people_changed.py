@@ -140,3 +140,48 @@ def test_a_split_or_a_merge_of_words_counts_the_analyses_it_deletes():
              'morpheme_ids': ['d1-s1w1m1', 'd1-s1w2m1']}
     assert _counted([split]) == (2, 1)
     assert _counted([merge]) == (2, 1)
+
+
+def _with_people(write, links):
+    """``write`` with ``links`` (link id: document) as the people's links a
+    deleted or merged entry of it takes or moves."""
+    write.people_links = links
+    write.inside = {'d1'}
+    return write
+
+
+def test_a_link_an_op_removes_and_its_entry_deleted_in_the_same_write_counts_once():
+    """REV-JOIN19-1: a person's word link unlinked, and the entry it named
+    deleted in the same write, is one link changed, not two: in one try, and
+    in two tries of the write (the unlink in its batch, the delete with the
+    lexicon's changes)."""
+    unlink = {'kind': 'unlink', 'token_id': 'd1-s1w1', 'link_id': 'wl1'}
+    delete = {'kind': 'delete_entry', 'item_id': 'vi-x', 'links': ['wl1']}
+
+    def count(w, ops):
+        return w.of_people_and_text(ops)['peoples_values_changed']
+    assert count(_with_people(_linked_write('human'), {'wl1': 'd1'}), [unlink]) == 1
+    assert count(_with_people(_linked_write('human'), {'wl1': 'd1'}), [delete]) == 1
+    assert count(_with_people(_linked_write('human'), {'wl1': 'd1'}), [unlink, delete]) == 1
+    w = _with_people(_linked_write('human'), {'wl1': 'd1'})
+    w.ops = [unlink, delete]
+    assert count(w, [unlink]) + count(w, [delete]) == 1
+
+
+def test_a_split_and_its_morphemes_entry_deleted_in_the_same_write_count_the_link_once():
+    """REV-JOIN19-1: a split of "gam" counts its person's morpheme, gloss and
+    link (S7-2). Deleting that link's entry in the same write adds nothing."""
+    split = {'kind': 'split_word', 'word_id': 'd1-s1w1', 'position': 1, 'morpheme_ids': ['d1-s1w1m1']}
+    delete = {'kind': 'delete_entry', 'item_id': 'vi-gam', 'links': ['l-d1-s1w1m1']}
+    alone = _with_people(_linked_write('human'), {'l-d1-s1w1m1': 'd1'}).of_people_and_text([split])
+    both = _with_people(_linked_write('human'), {'l-d1-s1w1m1': 'd1'}).of_people_and_text([split, delete])
+    assert both['peoples_values_changed'] == alone['peoples_values_changed'] == 3
+
+
+def test_a_machines_link_unlinked_leaves_a_persons_link_of_the_entry_counted():
+    """Only a link an op counts is left out: the delete still counts the
+    person's link it takes when the unlinked one was a machine's."""
+    unlink = {'kind': 'unlink', 'token_id': 'd1-s1w1', 'link_id': 'wl1'}
+    delete = {'kind': 'delete_entry', 'item_id': 'vi-x', 'links': ['wl1', 'wl2']}
+    w = _with_people(_linked_write('svc'), {'wl2': 'd1'})
+    assert w.of_people_and_text([unlink, delete])['peoples_values_changed'] == 1
