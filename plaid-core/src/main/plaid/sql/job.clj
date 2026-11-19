@@ -238,24 +238,23 @@
 
 (defn undone-by-job
   "`{job-id {:operation :time :user}}` for each of `job-ids` that stands
-  undone: the newest operation in a group whose ref is `job:<id>/undo` or
-  `job:<id>/redo` (an undo of the job's undo, `plaid.history.undo/job-ref`)
-  is in an `/undo` one. Only an undo that wrote something has an operation:
-  one that wrote nothing is taken back out. One read over the groups by ref
-  (no index: the groups table is read once), joined to their operations."
+  undone: its undo's operation, in a group whose ref is `job:<id>/undo`. Only
+  an undo that wrote something has an operation, and a job's undo is final
+  (`plaid.history.undo/undo` refuses it), so the newest such operation
+  settles it. One read over the groups by ref (no index: the groups table is
+  read once), joined to their operations."
   [db job-ids]
-  (let [refs (mapcat (fn [j] [(str "job:" j "/undo") (str "job:" j "/redo")]) job-ids)
+  (let [refs (map #(str "job:" % "/undo") job-ids)
         rows (psc/in-chunks #(psc/q db {:select [:g.ref :o.id :o.ts :o.user_id]
                                         :from [[:operation_groups :g]]
                                         :join [[:operations :o] [:= :o.group_id :g.id]]
                                         :where [:in :g.ref (vec %)]})
                             refs)]
     (into {}
-          (keep (fn [[job rs]]
-                  (let [newest (last (sort-by (comp str :ts) rs))]
-                    (when (str/ends-with? (:ref newest) "/undo")
-                      [job {:operation (str (:id newest)) :time (str (:ts newest)) :user (:user_id newest)}]))))
-          (group-by (fn [r] (second (re-matches #"job:(.+)/(?:undo|redo)" (:ref r)))) rows))))
+          (map (fn [[job rs]]
+                 (let [newest (last (sort-by (comp str :ts) rs))]
+                   [job {:operation (str (:id newest)) :time (str (:ts newest)) :user (:user_id newest)}])))
+          (group-by (fn [r] (second (re-matches #"job:(.+)/undo" (:ref r)))) rows))))
 
 (defn- wrote?
   "Whether History holds a change job `job-id` wrote: an operation under one

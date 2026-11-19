@@ -929,8 +929,8 @@
   which writes are a job's own). So the rule: a ref that names a job is
   taken only from that job's starter, the account every token of the job
   writes as (`plaid.rest-api.v1.auth/issue-job-token!`), and `job:<id>/undo`
-  and `job:<id>/redo` from nobody, since core writes them itself on an undo
-  (ACL7-1). Any other ref is a label core never reads. A ref is judged by
+  from nobody, since core writes it itself on a job's undo (ACL7-1), nor
+  `job:<id>/redo`, which core no longer writes. Any other ref is a label core never reads. A ref is judged by
   its `job:` prefix and read across line terminators, so no line break lets
   one past (REV-CA-3), and `group-structure-error` refuses those anyway."
   [db ref user-id]

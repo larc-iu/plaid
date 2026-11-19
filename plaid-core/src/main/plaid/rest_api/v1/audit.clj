@@ -305,7 +305,9 @@
        "entry's operations that made them ({op-type, count}). A project's deletion is not an entry: it cannot be "
        "undone. The response counts what was undone per kind (undone: {inserted, updated, deleted} for documents, "
        "texts, tokens, spans, relations, vocab-links and vocab-items), total, rows (the entry's rows) and, when the "
-       "call wrote, operation (the undo's own id, an entry that can be undone in turn). An entry undone twice finds "
+       "call wrote, operation (the undo's own id, an entry that can be undone in turn, unless it is a job's undo). "
+       "A job's undo (POST /jobs/{id}/undo) cannot be undone: its entry, its operation or a list naming one is "
+       "refused 422 with code job-undo-final, narrowed or dry, and nothing is written. An entry undone twice finds "
        "nothing left the second time and writes nothing. Pass ?document-id= for that document's rows only (its "
        "links included), or ?vocab-layer-id= for that vocabulary's entries and the links that name one of them, "
        "before or after. With dry-run true nothing is written and the answer is what the call would do. Requires "
@@ -351,12 +353,12 @@
   its rows, the summary otherwise."
   [{db :db :as request} ids ops opts]
   (let [{:keys [maintains?] :as gates} (undo-gates request)
-        {:keys [summary documents error code]}
+        {:keys [summary documents error code reason]}
         (undo/undo db ids (merge (select-keys gates [:may-document? :may-vocab? :readable-document? :readable-vocab?])
                                  {:user (pra/->user-id request)}
                                  opts))]
     (cond
-      error {:status code :body {:error error}}
+      error {:status code :body (cond-> {:error error} reason (assoc :code reason))}
 
       (if (pos? (:rows summary))
         (zero? (:permitted summary))
@@ -565,7 +567,8 @@
                              "of every document of it, its gloss pass and its harmonize pass, its lexicon writes among "
                              "them, read from the job's own rows, undone together as POST /audit/undo does. A job "
                              "still waiting, running or stopping is refused 409. Same answer, dry run, access and "
-                             "limit as an entry's undo, with entries naming the job's groups.")
+                             "limit as an entry's undo, with entries naming the job's groups. The undo is final: its own "
+                             "entry cannot be undone (422, code job-undo-final).")
             :parameters {:query [:map [:dry-run {:optional true} boolean?]]}
             :handler    job-undo}}]
 

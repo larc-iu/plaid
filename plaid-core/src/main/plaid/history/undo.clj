@@ -1246,33 +1246,17 @@
           (jdbc/execute! db ["RELEASE plaid_undo"])
           result))))
 
-(def ^:private job-ref-pattern #"job:(.+)/(undo|redo)")
-
-(defn job-ref
-  "The group ref an undo's own operation carries, so a job's read can tell
-  whether the job stands undone (`plaid.sql.job/undone`): `job:<id>/undo`
-  for a job's undo (given), and for an undo of an entry that lies in such a
-  group the other pass, `/redo` for an undo of a job's undo and `/undo` again
-  for an undo of that redo. Only a WHOLE undo of such a group flips it: one
-  not narrowed (`narrowed?`) whose operations hold every operation of the
-  group. An undo of one document's part, or of one action, gets nil, so the
-  job still reads undone while the rest is (REV-UN4-1). nil for any other
-  entry."
-  [db ops given narrowed?]
-  (or given
-      (when-not narrowed?
-        (let [mine (into #{} (map (comp str :id)) ops)
-              rows (psc/in-chunks #(psc/q db {:select [:g.id :g.ref]
-                                              :from [[:operations :o]]
-                                              :join [[:operation_groups :g] [:= :g.id :o.group_id]]
-                                              :where [:and [:in :o.id (mapv str %)] [:<> :g.ref nil]]})
-                                  (map :id ops))]
-          (some (fn [{:keys [id ref]}]
-                  (when-let [[_ job pass] (re-matches job-ref-pattern (str ref))]
-                    (let [members (psc/q db {:select [:id] :from [:operations] :where [:= :group_id (str id)]})]
-                      (when (every? #(contains? mine (str (:id %))) members)
-                        (str "job:" job "/" (if (= pass "undo") "redo" "undo"))))))
-                (distinct rows))))))
+(defn- job-undo?
+  "Whether any of `ops` is a job's undo: an operation in a group whose ref
+  is `job:<id>/undo` (`plaid.sql.job/undone-by-job`). A job's undo is final:
+  no route undoes it (owner 2026-11-19)."
+  [db ops]
+  (boolean (seq (psc/in-chunks #(psc/q db {:select [:o.id]
+                                           :from [[:operations :o]]
+                                           :join [[:operation_groups :g] [:= :g.id :o.group_id]]
+                                           :where [:and [:in :o.id (mapv str %)] [:like :g.ref "job:%/undo"]]
+                                           :limit 1})
+                               (map :id ops)))))
 
 (defn entry-label
   "The words an undo's description names its entry by: the group's message,
@@ -1389,9 +1373,9 @@
                       (= 1 (count (:vocabs permitted))) (first (:vocabs permitted))
                       :else (some :project_id ops))
             not-undone (not-undone-ops db ops)
-            ;; An undo that a job's read must find gets a group of its own,
-            ;; whose ref names the job (`job-ref`), one id for every attempt.
-            group-ref (job-ref db ops (:group-ref opts) (or (:document-id opts) (:vocab-id opts)))
+            ;; A job's undo gets a group of its own, whose ref names the job
+            ;; (`plaid.sql.job/undone-by-job`), one id for every attempt.
+            group-ref (:group-ref opts)
             group-id (when group-ref (random-uuid))]
         (loop [excluded {}
                n 1]
@@ -1474,7 +1458,8 @@
                  :documents (when operation (:documents result))}))))))))
 
 (defn undo
-  "`undo*`, once the entry is known to fit: an undo of more than `max-rows`
+  "`undo*`, once the entry is known to fit. A job's undo is refused (422,
+  `:reason` job-undo-final) whatever the narrowing, dry or not. An undo of more than `max-rows`
   rows is refused (413) before the write lock is taken, so it holds up
   nobody's save (SCL4-3). The count of indexes in `row-bound` settles it
   for most entries, and only an entry that count puts over the limit has
@@ -1484,7 +1469,13 @@
         too-many (when (and (seq ops) (> (row-bound db ops) max-rows))
                    (let [n (count (:items (unit-items db entry-id opts)))]
                      (when (> n max-rows) n)))]
-    (if too-many
+    (cond
+      (job-undo? db ops)
+      {:error "A job's undo cannot be undone." :code 422 :reason "job-undo-final"}
+
+      too-many
       {:error (str "This entry changed " too-many " rows. An undo takes at most " max-rows ".")
        :code 413}
+
+      :else
       (undo* db entry-id opts))))

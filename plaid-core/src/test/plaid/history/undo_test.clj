@@ -1373,9 +1373,11 @@
         (let [again (:body (undo-job admin-request job))]
           (is (zero? (:total again)))
           (is (nil? (:operation again)))))
-      (testing "the undo undone: the job's work is back"
-        (undone! admin-request (:operation real))
-        (is (= after (state [doc d2] [vocab]))))))
+      (testing "the undo is final: undoing it is refused and writes nothing"
+        (let [ops (op-count)]
+          (is (= 422 (:status (undo admin-request (:operation real)))))
+          (is (= ops (op-count)))
+          (is (= before (state [doc d2] [vocab])))))))
   (testing "the same list of entries on /audit/undo"
     (let [{:keys [doc d2 vocab before groups]} (job-world!)
           resp (api-call admin-request {:method :post :path "/api/v1/audit/undo" :body {:entries groups}})]
@@ -1510,13 +1512,7 @@
     (testing "a reader of the project sees it, a non-member does not"
       (assert-done (add-project-reader admin-request proj "user1@example.com"))
       (is (= op (-> (job-read user1-request job) :body :job/undone :operation)))
-      (is (= 403 (:status (job-read user2-request job)))))
-    (testing "the undo undone (a redo): no longer undone; that undone again: undone"
-      (let [redo (:operation (undone! admin-request op))]
-        (is (some? redo))
-        (is (nil? (-> (job-read admin-request job) :body :job/undone)))
-        (let [again (str (:operation (undone! admin-request redo)))]
-          (is (= again (-> (job-read admin-request job) :body :job/undone :operation))))))))
+      (is (= 403 (:status (job-read user2-request job)))))))
 
 ;; ============================================================
 ;; Round 6 (REV-UN4)
@@ -1525,40 +1521,50 @@
 (defn- undo-list [req ids & {:keys [dry-run]}]
   (api-call req {:method :post :path (str "/api/v1/audit/undo" (when dry-run "?dry-run=true")) :body {:entries ids}}))
 
-(deftest rev-un4-1-only-a-whole-redo-makes-a-job-stand-again
-  (let [{:keys [job doc]} (job-world!)
-        undone #(-> (job-read admin-request job) :body :job/undone)
-        op (str (:operation (:body (undo-job admin-request job))))]
-    (testing "a redo of one document's part leaves the job undone"
-      (is (some? (:operation (undone! admin-request op :document-id doc))))
-      (is (= op (:operation (undone)))))
-    (testing "a redo of the rest, whole, makes it stand"
-      (is (some? (:operation (undone! admin-request op))))
-      (is (nil? (undone))))))
-
-(deftest an-undone-job-stays-undone-when-its-undo-is-undone-from-history
-  ;; H2-5-1, ruled (owner 2026-11-18, "say it plainly, track nothing"): the
-  ;; job's work comes back, the job reads undone, and Undo job again writes
-  ;; nothing, listing the job's rows as changed since.
-  (let [{:keys [job doc d2 vocab]} (job-world!)
-        after (state [doc d2] [vocab])
-        op (str (:operation (:body (undo-job admin-request job))))]
-    (is (some? (:operation (undone! admin-request op :document-id doc))))
-    (is (some? (:operation (undone! admin-request op :vocab-layer-id vocab))))
-    (is (some? (:operation (undone! admin-request op :document-id d2))))
-    (is (= after (state [doc d2] [vocab])) "the job's work is back")
-    (is (= op (-> (job-read admin-request job) :body :job/undone :operation)) "the job reads undone")
-    (let [ops (op-count)
-          resp (undo-job admin-request job)
-          body (:body resp)]
-      (is (= 200 (:status resp)))
-      (is (zero? (:total body)))
-      (is (nil? (:operation body)))
-      (is (pos? (:skipped-count body)))
-      (is (every? #{"changed-since"} (map :reason (:skipped body))) (pr-str (:skipped body)))
-      (is (= ops (op-count)))
-      (is (= after (state [doc d2] [vocab])))
-      (is (= op (-> (job-read admin-request job) :body :job/undone :operation))))))
+(deftest a-jobs-undo-is-final
+  ;; JU (owner 2026-11-19, "an undo on a job should not be undoable"): core
+  ;; refuses to undo a job's undo on every route that undoes, 422 with its
+  ;; own code, and writes nothing. A restore is no undo of it and stays.
+  (let [{:keys [job doc d2 vocab spans groups]} (job-world!)
+        before-undo (psc/now-iso)
+        _ (Thread/sleep 5)
+        op (str (:operation (:body (undo-job admin-request job))))
+        group (str (:group_id (psc/fetch-by-id db :operations op)))
+        undone-state (state [doc d2] [vocab])
+        refused? (fn [resp]
+                   (is (= 422 (:status resp)) (pr-str (:body resp)))
+                   (is (= "job-undo-final" (-> resp :body :code)))
+                   (is (= "A job's undo cannot be undone." (-> resp :body :error))))
+        unchanged! (fn [f]
+                     (let [ops (op-count)]
+                       (refused? (f))
+                       (is (= ops (op-count)))
+                       (is (= undone-state (state [doc d2] [vocab])))))]
+    (is (seq op) "the job's undo wrote")
+    (testing "the entry by its operation and by its group, whole, dry or narrowed"
+      (doseq [entry [op group]]
+        (unchanged! #(undo admin-request entry))
+        (unchanged! #(undo admin-request entry :dry-run true))
+        (unchanged! #(undo admin-request entry :document-id doc))
+        (unchanged! #(undo admin-request entry :vocab-layer-id vocab))))
+    (testing "in a list with another entry: the whole list is refused"
+      (let [g (str (random-uuid))]
+        (assert-ok (update-span (in-group admin-request g) (nth spans 0) :value "OTHER"))
+        (let [ops (op-count)]
+          (refused? (undo-list admin-request [g op]))
+          (refused? (undo-list admin-request [g group] :dry-run true))
+          (is (= ops (op-count)))
+          (is (= "OTHER" (-> (get-span admin-request (nth spans 0)) :body :span/value))))))
+    (testing "the job still reads undone"
+      (is (= op (-> (job-read admin-request job) :body :job/undone :operation))))
+    (testing "the job's own entries stay entries an undo takes"
+      (is (= 200 (:status (undo admin-request (first groups) :dry-run true)))))
+    (testing "a document's restore to before the undo is no undo of it, and brings the job's spans back"
+      (let [resp (api-call admin-request {:method :post
+                                          :path (str "/api/v1/documents/" doc "/restore?as-of="
+                                                     (java.net.URLEncoder/encode before-undo "UTF-8"))})]
+        (is (= 200 (:status resp)) (pr-str (:body resp)))
+        (is (= "JOB" (-> (get-span admin-request (nth spans 1)) :body :span/value)))))))
 
 (deftest rev-un4-2-a-list-is-one-project-the-caller-reads
   (testing "an entry the caller cannot read: 403, nothing written"
