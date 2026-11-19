@@ -317,6 +317,15 @@ describe('what to check', () => {
       '6 values, morphemes or links people wrote that the job changed or removed, ' +
         "3 in 2 documents and 3 outside the job's documents",
     ],
+    [
+      // REV-LO-6: a report whose documents list was cut to fit holds the
+      // outside count in its totals, never in a listed row.
+      'outside, in a report cut to fit',
+      [{ peoplesValuesChanged: 3 }],
+      { peoplesValuesChanged: 5, peoplesOutside: 2 },
+      '5 values, morphemes or links people wrote that the job changed or removed, ' +
+        "3 in 1 document and 2 outside the job's documents",
+    ],
   ])("says where people's work the job changed lies: %s", (_, counts, totals, said) => {
     const report = {
       totals,
