@@ -1,8 +1,8 @@
 """The AnCast writer numbers a document's sentences as the app's export does.
 
 The app writes each ``# :: snt`` line by position, unless the document goes by
-its file's numbers (the first stored number is not 1, as in a released excerpt
-starting at snt5). Then a stored number is written as it is, and a sentence
+its file's numbers (its import marked its records so, as it marks a released
+excerpt starting at snt5). Then a stored number is written as it is, and a sentence
 that stores none, or repeats one, takes its position or the next number past
 the highest (``fileNumbers`` in src/domain/sentenceGraph.js, ported as
 ``plaid_client.workflows.umr.file_numbers``).
@@ -69,21 +69,23 @@ def test_a_prepended_sentence_leaves_no_number_written_twice(cases):
     assert numbers == [f'# :: snt{i}' for i in range(1, 30)]
 
 
-def _sentences(*stored):
-    return [Sentence(id=f't{i}', index=i, begin=0, end=0, text='', snt=snt)
+def _sentences(*stored, by_file=False):
+    return [Sentence(id=f't{i}', index=i, begin=0, end=0, text='', snt=snt, file_numbered=by_file)
             for i, snt in enumerate(stored, start=1)]
 
 
 def test_file_numbers_by_hand():
-    # Numbered by position: a stored 1 first, or nothing stored at all.
+    # Numbered by position: every document its import did not mark, whatever
+    # its first stored number is (H3-9-1).
     assert file_numbers(_sentences(None, '1', '2')) == [1, 2, 3]
     assert file_numbers(_sentences(None, None)) == [1, 2]
+    assert file_numbers(_sentences('5', None, '6')) == [1, 2, 3]
     assert file_numbers([]) == []
     # Numbered by the file: stored numbers stand, a sentence with none takes
     # its position, or past the highest when that is taken.
-    assert file_numbers(_sentences('5', None, '6')) == ['5', 2, '6']
-    assert file_numbers(_sentences('5', '5', '7')) == ['5', 2, '7']
-    assert file_numbers(_sentences('2', None, '3')) == ['2', 4, '3']
+    assert file_numbers(_sentences('5', None, '6', by_file=True)) == ['5', 2, '6']
+    assert file_numbers(_sentences('5', '5', '7', by_file=True)) == ['5', 2, '7']
+    assert file_numbers(_sentences('2', None, '3', by_file=True)) == ['2', 4, '3']
     # A stored number that is not a number is written as it is, and does not
     # count towards the highest.
-    assert file_numbers(_sentences('5a', None, '2')) == ['5a', 4, '2']
+    assert file_numbers(_sentences('5a', None, '2', by_file=True)) == ['5a', 4, '2']
