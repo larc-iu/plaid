@@ -102,3 +102,23 @@ test("getMedia reads again when the core is busy", async () => {
   assert.equal(calls, 2);
   assert.equal(blob.size, BYTES.length);
 });
+
+// REV-LO-3: an error the caller's own onProgress throws is that error, never
+// a network error (status 0, "Network error: ..."), as plaid-client-py keeps
+// on_download_progress outside its guard.
+test("an error onProgress throws reaches the caller as it is", async () => {
+  const client = new PlaidClient("http://x", "tok");
+  const mine = new RangeError("the caller's own");
+  await assert.rejects(
+    withFetch(
+      async () => mediaResponse(),
+      () =>
+        client.documents.getMedia("d1", {
+          onProgress: () => {
+            throw mine;
+          },
+        }),
+    ),
+    (e) => e === mine,
+  );
+});

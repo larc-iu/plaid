@@ -828,6 +828,15 @@ export function writesLanded(client, started, replayed = false) {
  * response has no Content-Length).
  * @private
  */
+// An error a caller's own callback threw inside the request's guarded part,
+// carried past the catch that calls anything else there a network error
+// (REV-LO-3), and thrown as it was.
+class CallerError {
+  constructor(error) {
+    this.error = error;
+  }
+}
+
 async function readBlob(response, onProgress) {
   const type = response.headers.get("content-type") ?? "";
   const reader = onProgress ? response.body?.getReader?.() : null;
@@ -841,7 +850,11 @@ async function readBlob(response, onProgress) {
     if (done) break;
     parts.push(value);
     loaded += value.byteLength;
-    onProgress({ loaded, total });
+    try {
+      onProgress({ loaded, total });
+    } catch (e) {
+      throw new CallerError(e);
+    }
   }
   return new Blob(parts, { type });
 }
@@ -992,6 +1005,7 @@ export async function makeRequest(client, method, path, options = {}) {
       return await response.text();
     }
   } catch (error) {
+    if (error instanceof CallerError) throw error.error;
     if (signal?.aborted && error === signal.reason) throw error;
     const escaped =
       error.status !== undefined ? error : makeNetworkError(error, url, method);
