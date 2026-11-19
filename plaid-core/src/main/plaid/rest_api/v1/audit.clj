@@ -192,7 +192,8 @@
 (def ^:private changes-query
   (into [:map
          [:document-id {:optional true} :uuid]
-         [:vocab-layer-id {:optional true} :uuid]]
+         [:vocab-layer-id {:optional true} :uuid]
+         [:ceiling {:optional true} [:int {:min 0}]]]
         pagination/query-params))
 
 (def ^:private changes-doc
@@ -207,7 +208,9 @@
        "or vocabulary read serves, without versions or times. A row that shows the same before and after is "
        "left out, and so is a row of a document or vocabulary the caller cannot read. Pass ?document-id= or "
        "?vocab-layer-id= for the rows of that document or vocabulary only. Paginated, in a fixed order that "
-       "new writes do not disturb."))
+       "new writes do not disturb. With ?ceiling=N, the first page (no cursor) also says over: whether the entry "
+       "wrote more than N rows there, counted before the rows that show no change or that the caller cannot "
+       "read are left out, so a reader can stop at the first page of an entry too large to show."))
 
 (defn- entry-changes
   [{db :db {{:keys [entry-id]} :path query :query} :parameters :as request}]
@@ -239,15 +242,24 @@
 
       :else
       (try
-        (pagination/list-response
-         query
-         (fn [{:keys [limit cursor-vals]}]
-           (changes/changes-page db entry-id {:limit limit
-                                              :cursor-vals cursor-vals
-                                              :document-id (:document-id query)
-                                              :vocab-id (:vocab-layer-id query)
-                                              :readable-document? readable-document?
-                                              :readable-vocab? readable-vocab?})))
+        (cond-> (pagination/list-response
+                 query
+                 (fn [{:keys [limit cursor-vals]}]
+                   (changes/changes-page db entry-id {:limit limit
+                                                      :cursor-vals cursor-vals
+                                                      :document-id (:document-id query)
+                                                      :vocab-id (:vocab-layer-id query)
+                                                      :readable-document? readable-document?
+                                                      :readable-vocab? readable-vocab?})))
+          ;; SCL4-4: said on the first page, so a reader of an entry too
+          ;; large to show stops there
+          (and (:ceiling query) (nil? (:cursor query)))
+          (as-> resp (cond-> resp
+                       (= 200 (:status resp))
+                       (assoc-in [:body :over]
+                                 (changes/over? db entry-id {:ceiling (:ceiling query)
+                                                             :document-id (:document-id query)
+                                                             :vocab-id (:vocab-layer-id query)})))))
         (catch clojure.lang.ExceptionInfo e
           (if (= 400 (:code (ex-data e)))
             {:status 400 :body {:error (ex-message e)}}

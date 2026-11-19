@@ -36,15 +36,22 @@ const after = ({ spans = {}, vocabularies = {}, ...opts } = {}) => {
 };
 
 // A client whose changes read answers `pages[key]`, a list of pages, `key`
-// being "document" or the vocabulary's id; a function answer is called.
+// being "document" or the vocabulary's id; a function answer is called. Its
+// first page says whether the rows are `over` a ceiling it is given, as
+// core's does.
 const clientOf = (pages) => {
-  const changesPage = vi.fn(async (entryId, { documentId, vocabLayerId, cursor }) => {
+  const changesPage = vi.fn(async (entryId, { documentId, vocabLayerId, cursor, ceiling }) => {
     const key = documentId ? 'document' : vocabLayerId;
     const list = pages[key];
     if (typeof list === 'function') return list();
     const at = cursor ? Number(cursor) : 0;
     const page = (list || [])[at] || [];
-    return { entries: page, nextCursor: list && at + 1 < list.length ? String(at + 1) : null };
+    const total = (list || []).reduce((n, p) => n + p.length, 0);
+    return {
+      entries: page,
+      nextCursor: list && at + 1 < list.length ? String(at + 1) : null,
+      ...(ceiling !== undefined && !cursor ? { over: total > ceiling } : {}),
+    };
   });
   return { audit: { changesPage } };
 };
@@ -123,6 +130,7 @@ describe('DocumentHistoryChanges', () => {
       documentId: 'doc-1',
       limit: CHANGE_ROWS_PAGE,
       cursor: undefined,
+      ceiling: CHANGE_ROWS_CEILING,
     });
     // What the count is made of, in the nouns the job's report uses, and no
     // bare count of "changes" to read against another screen's (RP-3,
@@ -376,6 +384,7 @@ describe('DocumentHistoryChanges', () => {
       vocabLayerId: 'v1',
       limit: CHANGE_ROWS_PAGE,
       cursor: undefined,
+      ceiling: CHANGE_ROWS_CEILING,
     });
     expect(count()).toBe('3 lexicon entries changed, 0 replaced a person’s value');
     const entries = all(view.container, '[data-entry]');
@@ -683,12 +692,12 @@ describe('DocumentHistoryChanges', () => {
   const fullPage = Array.from({ length: CHANGE_ROWS_PAGE }, (_, i) => glossRow(i));
   const fullPages = CHANGE_ROWS_CEILING / CHANGE_ROWS_PAGE;
 
-  // REV-HD2-2 and -3: the ceiling is on rows read, and only a row beyond it
-  // reaches it.
+  // REV-HD2-2 and -3: only a row beyond the ceiling reaches it. SCL4-4: core's
+  // first page says so, and nothing more is read.
   it('says there are too many changes to show when a row lies beyond the ceiling', async () => {
     const client = clientOf({ document: Array.from({ length: fullPages + 1 }, () => fullPage) });
     await mountAt(client);
-    expect(client.audit.changesPage).toHaveBeenCalledTimes(fullPages + 1);
+    expect(client.audit.changesPage).toHaveBeenCalledTimes(1);
     expect(count()).toBe('Too many changes to show here.');
     expect(sentences()).toHaveLength(0);
     const link = all(view.container, 'a').find((a) => a.textContent === 'Show document');

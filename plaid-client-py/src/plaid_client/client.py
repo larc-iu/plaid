@@ -3535,9 +3535,13 @@ class AuditResource(_Resource):
 
     def changes_page(self, entry_id: str, *, document_id: str | None = None,
                      vocab_layer_id: str | None = None, limit: int | None = None,
-                     cursor: str | None = None) -> Any:
+                     cursor: str | None = None, ceiling: int | None = None) -> Any:
         """One page of the same rows, in a fixed order that later writes do
-        not disturb.
+        not disturb. With ``ceiling``, the first page (no ``cursor``) also has
+        ``over``: whether the entry wrote more than ``ceiling`` rows there,
+        counted before the rows that show no change or that the caller cannot
+        read are left out, so a reader can stop at the first page of an entry
+        too large to show.
 
         Args:
             entry_id: An entry's ``id``, or an operation's id inside one
@@ -3545,10 +3549,12 @@ class AuditResource(_Resource):
             vocab_layer_id: Only the rows of this vocabulary
             limit: Page size (1..1000)
             cursor: Opaque cursor from a previous page's ``next_cursor``
+            ceiling: A row count the first page says the entry is ``over`` or not
         """
         return list_page(self._client, f'/api/v1/audit/entries/{segment(entry_id)}/changes',
                          limit=limit, cursor=cursor,
-                         query={'document-id': document_id, 'vocab-layer-id': vocab_layer_id})
+                         query={'document-id': document_id, 'vocab-layer-id': vocab_layer_id,
+                                'ceiling': ceiling})
 
     def undo(self, entry_id: str, *, dry_run: bool = False, document_id: str | None = None,
              vocab_layer_id: str | None = None) -> Any:

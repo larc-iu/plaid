@@ -522,6 +522,71 @@
                           (if (= 2 (count p)) (into ["a"] p) (into ["b"] p))))}))))
 
 ;; ============================================================
+;; Past a ceiling
+;; ============================================================
+
+(defn- capped-count
+  "How many rows `sql-map` gives, counted only up to `cap`."
+  [db sql-map cap]
+  (if (pos? cap)
+    (:n (psc/q1 db {:select [[[:count :*] :n]] :from [[(assoc sql-map :limit cap) :c]]}))
+    0))
+
+(defn over?
+  "Whether unit `unit-id` wrote more than `ceiling` rows, in the document or
+  vocabulary the options narrow it to as `changes-page` does: the rows the
+  read walks, counted before it leaves out a row that shows no change or that
+  the reader cannot read. So a unit under the ceiling never lists more than
+  `ceiling` rows. Counts stop just past the ceiling, so an entry of any size
+  costs at most about `ceiling` index steps (SCL4-4: the Changes view read 21
+  pages of an import to say only that it was too large). False for an id no
+  unit has."
+  [db unit-id {:keys [ceiling document-id vocab-id]}]
+  (let [ops (unit-ops db unit-id)
+        cap (inc ceiling)
+        narrow (cond
+                 document-id [:= :document_id (str document-id)]
+                 vocab-id [:= :vocab_layer_id (str vocab-id)])
+        ;; run 1: each row once per chunk of operations, a row two chunks
+        ;; write counted twice (never fewer than the read lists)
+        run-1 (reduce (fn [n chunk]
+                        (if (> n ceiling)
+                          (reduced n)
+                          (+ n (capped-count db {:select-distinct [:target_table :target_id]
+                                                 :from [:audit_writes]
+                                                 :where (cond-> [:and
+                                                                 [:in :op_id (vec chunk)]
+                                                                 [:>= :seq 0]
+                                                                 [:<> :change_type bump]
+                                                                 [:in :target_table tables]]
+                                                          narrow (conj narrow))}
+                                             (- cap n)))))
+                      0
+                      (partition-all ops-per-step (map :id ops)))
+        ;; run 2: the rows `lazy-ids` reads, recorded late or never
+        steps (when-not vocab-id
+                (for [{:keys [doc op]} (cond->> (created-documents db (map :id ops))
+                                         document-id (filter #(= (str document-id) (:doc %))))
+                      table lazy-tables]
+                  [doc op table]))]
+    (> (reduce (fn [n [doc op table]]
+                 (if (> n ceiling)
+                   (reduced n)
+                   (let [n (+ n (capped-count db {:select [:target_id] :from [:audit_writes]
+                                                  :where [:and [:= :op_id op] [:< :seq 0]
+                                                          [:= :target_table table] [:= :document_id doc]]}
+                                              (- cap n)))]
+                     (+ n (capped-count db {:select [:x.id] :from [[(keyword table) :x]]
+                                            :where [:and [:= :x.document_id doc]
+                                                    [:not [:exists {:select [1] :from [[:audit_writes :a]]
+                                                                    :where [:and [:= :a.target_table table]
+                                                                            [:= :a.target_id :x.id]]}]]]}
+                                        (- cap n))))))
+               run-1
+               steps)
+       ceiling)))
+
+;; ============================================================
 ;; Every row, raw, for undo
 ;; ============================================================
 

@@ -11,7 +11,9 @@ export const CHANGE_ROWS_PAGE = 1000;
 // largest job's group wrote 14,746 rows across all its documents, read whole
 // in 1.8 to 5.4 s, an import 5,788 to 8,925, an assistant plan at most
 // 7,977: every entry measured fits, and one past this is a document deleted
-// or a huge import, which the view does not draw.
+// or a huge import, which the view does not draw. Core's first page says
+// whether the entry is past it (`over`), so such an entry costs one page
+// (SCL4-4: it was read to 21 pages first).
 export const CHANGE_ROWS_CEILING = 20000;
 
 const start = () => ({ rows: {}, over: {}, errors: {}, reading: true, read: 0 });
@@ -22,8 +24,9 @@ const start = () => ({ rows: {}, over: {}, errors: {}, reading: true, read: 0 })
  * or a vocabulary), read page after page to the end before anything is
  * handed over. `read` counts the rows read so far, for the wait.
  *
- * A stream with a row beyond CHANGE_ROWS_CEILING is not read further:
- * `over[key]`, and no rows for it. A stream the reader may not read (403 on
+ * A stream whose entry wrote more than CHANGE_ROWS_CEILING rows there, as
+ * core's first page says, is not read further: `over[key]`, and no rows for
+ * it. A stream the reader may not read (403 on
  * its first page) holds no rows: core leaves out what a reader cannot read,
  * row by row, and a stream wholly so is the same thing. Any other failure, a
  * 403 after the first page too, is the stream's `errors[key]`, and no rows
@@ -56,6 +59,7 @@ export function useChangeRows(client, entryId, streams) {
               ...s.opts,
               limit: CHANGE_ROWS_PAGE,
               cursor,
+              ...(cursor ? {} : { ceiling: CHANGE_ROWS_CEILING }),
             });
           } catch (err) {
             if (!live) return;
@@ -69,17 +73,15 @@ export function useChangeRows(client, entryId, streams) {
             break;
           }
           if (!live) return;
-          const entries = page?.entries || [];
-          for (const r of entries) mine.push(r);
-          count += entries.length;
-          cursor = page?.nextCursor ?? null;
-          // Past the ceiling only on a row beyond it: core gives a cursor
-          // after any full page, a last one too.
-          if (mine.length > CHANGE_ROWS_CEILING) {
+          if (page?.over) {
             over[s.key] = true;
             mine = [];
             break;
           }
+          const entries = page?.entries || [];
+          for (const r of entries) mine.push(r);
+          count += entries.length;
+          cursor = page?.nextCursor ?? null;
           setState((prev) => ({ ...prev, read: count }));
         } while (cursor);
         rows[s.key] = mine;

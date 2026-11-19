@@ -37,14 +37,15 @@
   (fn [method path]
     (req method (str path (if (str/includes? path "?") "&" "?") "group-id=" group))))
 
-(defn- changes-page [req entry-id & {:keys [document-id vocab-layer-id limit cursor]}]
+(defn- changes-page [req entry-id & {:keys [document-id vocab-layer-id limit cursor ceiling]}]
   (api-call req {:method :get
                  :path (str "/api/v1/audit/entries/" entry-id "/changes?"
                             (str/join "&" (cond-> []
                                             document-id (conj (str "document-id=" document-id))
                                             vocab-layer-id (conj (str "vocab-layer-id=" vocab-layer-id))
                                             limit (conj (str "limit=" limit))
-                                            cursor (conj (str "cursor=" cursor)))))}))
+                                            cursor (conj (str "cursor=" cursor))
+                                            ceiling (conj (str "ceiling=" ceiling)))))}))
 
 (defn- all-changes
   "Every row, following the cursor, `limit` per page."
@@ -306,6 +307,54 @@
           (is (= "X" (:span/value (:after (row (nth spans 0))))))
           (is (true? (:changed-since (row (nth spans 0)))))
           (is (false? (:changed-since (row (nth toks 1))))))))))
+
+;; SCL4-4: the Changes view read every page of an import past 20,000 rows only
+;; to say it was too large. The first page now says whether the entry wrote
+;; more rows than the caller's ceiling, where the read would list them.
+(deftest the-first-page-says-whether-an-entry-is-past-a-ceiling
+  (let [proj (create-test-project admin-request "Ceiling")
+        tl (id (create-text-layer admin-request proj "Text"))
+        word (id (create-token-layer admin-request tl "Words"))
+        pos (id (create-span-layer admin-request word "POS"))
+        g (str (random-uuid))
+        r (in-group admin-request g)
+        d (create-test-document r proj "Imported")
+        text (id (create-text r tl d "a b c d e f g h"))
+        toks (-> (bulk-create-tokens r (mapv (fn [i] {:token-layer-id word :text text :begin (* 2 i) :end (inc (* 2 i))})
+                                             (range 8)))
+                 :body :ids)
+        spans (-> (bulk-create-spans r (mapv (fn [t] {:span-layer-id pos :tokens [t] :value "X"}) toks)) :body :ids)
+        n (count (all-changes admin-request g))
+        over (fn [& opts] (let [resp (apply changes-page admin-request g opts)]
+                            (assert-ok resp)
+                            (:body resp)))]
+    (is (= (+ 2 (count toks) (count spans)) n) "the document, its text, its tokens and its spans")
+    (testing "an import's rows, which no audit row names"
+      (is (true? (:over (over :limit 2 :ceiling (dec n)))))
+      (is (false? (:over (over :limit 2 :ceiling n))))
+      (is (= 2 (count (:entries (over :limit 2 :ceiling 0)))) "the page itself is the same"))
+    (testing "narrowed to the document, as the read is"
+      (is (true? (:over (over :document-id d :ceiling (dec n)))))
+      (is (false? (:over (over :document-id d :ceiling n)))))
+    (testing "said on the first page only, and only when asked"
+      (is (not (contains? (over :limit 2) :over)))
+      (let [cursor (:next-cursor (over :limit 2 :ceiling 0))]
+        (is (some? cursor))
+        (is (not (contains? (over :limit 2 :ceiling 0 :cursor cursor) :over)))))
+    (testing "rows the log names, counted once each however often written"
+      (let [b (api-call admin-request {:method :post :path "/api/v1/batch"
+                                       :body [{:path (str "/api/v1/spans/" (nth spans 0)) :method "patch" :body {:value "a"}}
+                                              {:path (str "/api/v1/spans/" (nth spans 0)) :method "patch" :body {:value "b"}}
+                                              {:path (str "/api/v1/spans/" (nth spans 1)) :method "patch" :body {:value "c"}}]})
+            _ (assert-ok b)
+            batch-id (:audit/batch-id (last (-> (get-document-audit admin-request d) :body :entries)))
+            over-b (fn [c] (:over (:body (changes-page admin-request batch-id :ceiling c))))]
+        (is (= 2 (count (all-changes admin-request batch-id))))
+        (is (true? (over-b 1)))
+        (is (false? (over-b 2)))
+        (testing "and the import, written over since, is still the same size"
+          (is (false? (:over (over :ceiling n))))
+          (is (true? (:over (over :ceiling (dec n))))))))))
 
 ;; ============================================================
 ;; A restore, a batch, and the batch clamp

@@ -417,20 +417,25 @@ export function auditApi(client) {
       }),
     /**
      * One page of the same rows, in a fixed order that later writes do not
-     * disturb.
+     * disturb. With `ceiling`, the first page (no `cursor`) also has `over`:
+     * whether the entry wrote more than `ceiling` rows there, counted before
+     * the rows that show no change or that the caller cannot read are left
+     * out, so a reader can stop at the first page of an entry too large to
+     * show.
      * @param {string} entryId - An entry's `id`, or an operation's id inside one
      * @param {object} [opts]
      * @param {string} [opts.documentId] - Only the rows of this document
      * @param {string} [opts.vocabLayerId] - Only the rows of this vocabulary
      * @param {number} [opts.limit] - Page size (1..1000; server default 100)
      * @param {string} [opts.cursor] - Opaque cursor from a previous page
-     * @returns {Promise<Page<AuditRowChange>>}
+     * @param {number} [opts.ceiling] - A row count the first page says the entry is `over` or not
+     * @returns {Promise<Page<AuditRowChange> & {over?: boolean}>}
      */
-    changesPage: (entryId, { documentId, vocabLayerId, limit, cursor } = {}) =>
+    changesPage: (entryId, { documentId, vocabLayerId, limit, cursor, ceiling } = {}) =>
       listPage(client, apiPath`/api/v1/audit/entries/${entryId}/changes`, {
         limit,
         cursor,
-        query: { "document-id": documentId, "vocab-layer-id": vocabLayerId },
+        query: { "document-id": documentId, "vocab-layer-id": vocabLayerId, ceiling },
       }),
     /**
      * Undo one audit entry, as one operation: every row it wrote is put back

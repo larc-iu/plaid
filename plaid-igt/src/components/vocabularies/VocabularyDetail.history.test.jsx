@@ -359,15 +359,20 @@ describe('the vocabulary History', () => {
     after: { id: `s${i}`, value: 'X', tokens: ['t'] },
   });
   // The entry's whole read in pages of `size`, `n` rows of spans with the
-  // three links at the very end.
+  // three links at the very end. The first page says whether the rows are
+  // `over` the ceiling it is given, as core's does.
   const wholeRead =
     (n, size) =>
-    (entryId, { vocabLayerId, cursor }) => {
+    (entryId, { vocabLayerId, cursor, ceiling }) => {
       if (vocabLayerId) return Promise.resolve({ entries: changes.slice(0, 2), nextCursor: null });
       const rows = [...Array.from({ length: n }, (_, i) => span(i)), ...changes.slice(2)];
       const at = cursor ? Number(cursor) : 0;
       const next = at + size < rows.length ? String(at + size) : null;
-      return Promise.resolve({ entries: rows.slice(at, at + size), nextCursor: next });
+      return Promise.resolve({
+        entries: rows.slice(at, at + size),
+        nextCursor: next,
+        ...(ceiling !== undefined && !cursor ? { over: rows.length > ceiling } : {}),
+      });
     };
 
   it('reads a job’s group whole: its entries narrowed, its links from every page', async () => {
@@ -377,6 +382,7 @@ describe('the vocabulary History', () => {
       vocabLayerId: 'A',
       limit: CHANGE_ROWS_PAGE,
       cursor: undefined,
+      ceiling: CHANGE_ROWS_CEILING,
     });
     // Three pages of the whole read, to its end.
     expect(changesPage.mock.calls.filter(([, o]) => !o.vocabLayerId)).toHaveLength(3);
@@ -388,7 +394,11 @@ describe('the vocabulary History', () => {
   });
 
   it('shows the entries of an entry past the ceiling, its links not counted', async () => {
-    const view = await opened(vi.fn(wholeRead(CHANGE_ROWS_CEILING + 10, CHANGE_ROWS_PAGE)));
+    const changesPage = vi.fn(wholeRead(CHANGE_ROWS_CEILING + 10, CHANGE_ROWS_PAGE));
+    const view = await opened(changesPage);
+    // SCL4-4: the first page of the whole read says it is past the ceiling,
+    // and nothing more of it is read.
+    expect(changesPage.mock.calls.filter(([, o]) => !o.vocabLayerId)).toHaveLength(1);
     expect(document.body.querySelector('[data-testid="change-count"]').textContent).toBe(
       '2 entries',
     );
@@ -406,13 +416,15 @@ describe('the vocabulary History', () => {
       vocabLayer: 'A',
       after: { id: `i${i}`, form: `w${i}`, metadata: {} },
     });
-    const changesPage = vi.fn((entryId, { vocabLayerId, cursor }) => {
+    const changesPage = vi.fn((entryId, { vocabLayerId, cursor, ceiling }) => {
       const at = cursor ? Number(cursor) : 0;
       return Promise.resolve({
         entries: vocabLayerId
           ? Array.from({ length: CHANGE_ROWS_PAGE }, (_, i) => item(at + i))
           : [],
         nextCursor: vocabLayerId ? String(at + CHANGE_ROWS_PAGE) : null,
+        // Endless rows of the vocabulary's own: over any ceiling.
+        ...(ceiling !== undefined && !cursor ? { over: Boolean(vocabLayerId) } : {}),
       });
     });
     const view = await opened(changesPage);

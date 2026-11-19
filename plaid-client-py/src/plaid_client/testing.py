@@ -1008,13 +1008,18 @@ class _AuditLog(list):
         return self._changes(entry_id, document_id, vocab_layer_id)
 
     def changes_page(self, entry_id, *, document_id=None, vocab_layer_id=None, limit=None,
-                     cursor=None):
+                     cursor=None, ceiling=None):
         """The cursor is opaque to a caller, so here it is the offset the next
-        page starts at."""
+        page starts at. With ``ceiling``, the first page says whether the rows
+        are ``over`` it, as core's does (the fake holds only rows that show a
+        change, so it counts those)."""
         rows = self._changes(entry_id, document_id, vocab_layer_id)
         start = int(cursor) if cursor else 0
         end = start + (limit or 100)
-        return {'entries': rows[start:end], 'next_cursor': str(end) if end < len(rows) else None}
+        page = {'entries': rows[start:end], 'next_cursor': str(end) if end < len(rows) else None}
+        if ceiling is not None and not cursor:
+            page['over'] = len(rows) > ceiling
+        return page
 
     def undo(self, entry_id, *, dry_run=False, document_id=None, vocab_layer_id=None):
         """The server's undo of an entry, recorded dry or not. Either way it

@@ -79,6 +79,17 @@ def test_the_fake_answers_the_rows_it_was_given():
     assert refused.value.status == 404
 
 
+def test_the_fakes_first_page_says_whether_the_rows_are_past_a_ceiling():
+    # SCL4-4: core's first page says ``over`` when asked, and the fake's too.
+    fake = FakeClient([], unit_changes={'e1': _rows()})
+    assert fake.audit.changes_page('e1', limit=2, ceiling=5)['over'] is True
+    assert fake.audit.changes_page('e1', limit=2, ceiling=6)['over'] is False
+    assert fake.audit.changes_page('e1', document_id='d2', ceiling=1)['over'] is True
+    assert 'over' not in fake.audit.changes_page('e1', limit=2)
+    page = fake.audit.changes_page('e1', limit=2, ceiling=0)
+    assert 'over' not in fake.audit.changes_page('e1', limit=2, ceiling=0, cursor=page['next_cursor'])
+
+
 def test_the_fakes_audit_stays_the_projects_log():
     fake = FakeClient([], audit=[{'id': 'a1', 'time': '2026-01-01T00:00:00Z', 'ops': []}],
                       unit_changes={'e1': _rows()})

@@ -457,6 +457,13 @@
     "sends": [{"method": "GET", "path": "/api/v1/audit/entries/e1/changes", "query": {"vocab-layer-id": "v1", "limit": "50", "cursor": "c1"}}]
   },
   {
+    "name": "the first page of an entry's changes asks whether the entry is past a ceiling",
+    "js": ["audit.changesPage", "e1", {"documentId": "d1", "limit": 1000, "ceiling": 20000}],
+    "py": ["audit.changes_page", "e1"],
+    "py_kw": {"document_id": "d1", "limit": 1000, "ceiling": 20000},
+    "sends": [{"method": "GET", "path": "/api/v1/audit/entries/e1/changes", "query": {"document-id": "d1", "limit": "1000", "ceiling": "20000"}}]
+  },
+  {
     "name": "an entry's undo posts to the entry, with nothing asked of it",
     "js": ["audit.undo", "e1"],
     "py": ["audit.undo", "e1"],
