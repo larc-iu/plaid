@@ -5,7 +5,8 @@
   (:require [clojure.test :refer [deftest is testing use-fixtures]]
             [plaid.fixtures :refer [with-db with-mount-states with-rest-handler with-admin
                                     with-test-users with-clean-db admin-request user1-request
-                                    user2-request api-call assert-status]]
+                                    user2-request api-call assert-status db]]
+            [plaid.sql.common :as psc]
             [plaid.test-helpers :refer [create-test-project create-test-document create-text-layer
                                         create-token-layer create-span-layer create-text create-token
                                         create-span get-project-audit create-vocab-layer
@@ -161,3 +162,73 @@
                                        :body {:vocab-layer-id v :form "beta"}})]
         (assert-status 200 (api-call user1-request {:method :post :path (str "/api/v1/audit/entries/" g "/undo")}))
         (is (= 1 (count (undos admin-request h))))))))
+
+(deftest a-narrowed-undo-is-filed-where-the-caller-may-undo
+  ;; H's vocabulary V, borrowed by B and C. user1 maintains B and C and has no
+  ;; role in H, user2 maintains H only. An entry made in V and linked in
+  ;; documents of B and C, undone from the vocabulary's History (narrowed by
+  ;; `?vocab-layer-id=`). A caller who may undo V's rows files it under H. One
+  ;; who may not, whose rows lie in two projects, is refused as the plain call
+  ;; is (REV-JOIN20-1): it was filed in H's History, where they have no role.
+  (let [b (world "B")
+        c (world "C")
+        h (create-test-project admin-request "H")
+        _ (grant! (:project b) "maintainers" "user1@example.com")
+        _ (grant! (:project c) "maintainers" "user1@example.com")
+        _ (grant! h "maintainers" "user2@example.com")
+        v (id (create-vocab-layer admin-request h "Shared"))
+        _ (link-vocab-to-project admin-request (:project b) v)
+        _ (link-vocab-to-project admin-request (:project c) v)
+        entry! (fn [worlds & [q]]
+                 (let [g (random-uuid)
+                       q (str "?group-id=" g q)
+                       item (id (api-call admin-request {:method :post :path (str "/api/v1/vocab-items" q)
+                                                         :body {:vocab-layer-id v :form "alpha"}}))]
+                   (doseq [w worlds]
+                     (assert-status 201 (api-call admin-request {:method :post
+                                                                 :path (str "/api/v1/vocab-links" q)
+                                                                 :body {:vocab-item item :tokens [(:token w)]}})))
+                   g))
+        undo (fn [req g q] (api-call req {:method :post :path (str "/api/v1/audit/entries/" g "/undo" q)}))
+        narrowed (str "?vocab-layer-id=" v)
+        filed (fn [] (mapv #(count (undos admin-request %)) [(:project b) (:project c) h]))]
+    (testing "a maintainer of both borrowers and not of the home: refused, plain or narrowed, dry run or real"
+      (let [g (entry! [b c])]
+        (doseq [q ["" "?dry-run=true" narrowed (str narrowed "&dry-run=true")]]
+          (let [r (undo user1-request g q)]
+            (is (= 422 (:status r)) q)
+            (is (= "The entries are in more than one project. Undo each project's entries on their own."
+                   (-> r :body :error)))))
+        (is (= [0 0 0] (filed)))))
+    (testing "a borrower's maintainer whose rows lie in one project: filed under it"
+      (let [before (filed)
+            r (undo user1-request (entry! [b]) narrowed)]
+        (assert-status 200 r)
+        (is (= 1 (-> r :body :total)))
+        (is (= [1 0 0] (mapv - (filed) before)))))
+    (testing "the home's maintainer, no role in the borrowers: the links are not theirs, the entry is built on"
+      (let [before (filed)
+            r (undo user2-request (entry! [b c]) narrowed)]
+        (assert-status 200 r)
+        (is (= 0 (-> r :body :total)))
+        (is (= [0 0 0] (mapv - (filed) before)))))
+    (testing "an admin: filed under the home"
+      (let [before (filed)
+            r (undo admin-request (entry! [b c]) narrowed)]
+        (assert-status 200 r)
+        (is (= 3 (-> r :body :total)))
+        (is (= [0 0 1] (mapv - (filed) before)))))
+    (testing "a job's undo, its entry and a link in B: filed under the entry's first operation's project"
+      (let [job (str (random-uuid))
+            g (entry! [b] "&group-kind=job&group-message=Assistant%20job")
+            now (psc/now-iso)
+            before (filed)]
+        (psc/execute! db {:insert-into :jobs
+                          :values [{:id job :project_id (str (:project b)) :app "igt"
+                                    :started_by "admin@example.com" :state "done" :created_at now
+                                    :instructions "Gloss"}]})
+        (psc/execute! db {:insert-into :job_documents
+                          :values [{:job_id job :document_id (str (:document b)) :position 0 :state "done"
+                                    :gloss_group (str g) :updated_at now}]})
+        (assert-status 200 (api-call admin-request {:method :post :path (str "/api/v1/jobs/" job "/undo")}))
+        (is (= [0 0 1] (mapv - (filed) before)))))))

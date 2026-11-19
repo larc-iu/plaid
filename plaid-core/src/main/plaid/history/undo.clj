@@ -1306,12 +1306,15 @@
   homes of the vocabularies whose rows of `ops` the caller may undo
   (`may-document?`, `may-vocab?`, within `:document-id` or `:vocab-id` when
   given). Within `:vocab-id` the documents are those of the links it
-  narrows to (`unit-items`), and the home is that vocabulary's.
+  narrows to (`unit-items`). A vocabulary's home counts only when the
+  caller may undo its rows, so a narrowed undo is never filed under a home
+  the caller has no say in (REV-JOIN20-1).
 
   One entry's undo is filed under the one project of these documents, else
   under the one vocabulary home, else under the entry's first operation's
   project (ACL8-1, REV-CA2-1). An entry's own route refuses one whose rows
-  lie in documents of several projects and in no vocabulary (`undo*`):
+  lie in documents of several projects and in no vocabulary the caller may
+  undo, narrowed or not (`undo*`):
   filed under one, it would be missing from the other's History, as the
   route for several entries refuses entries in more than one project. A
   vocabulary's rows show in its History, which every project that borrows
@@ -1326,7 +1329,7 @@
     {:documents (distinct (keep #(when (and may-document? (may-document? %))
                                    (some-> (changes/document-project db %) str))
                                 documents))
-     :vocabs (distinct (keep #(when (and (not document-id) (or vocab-id (and may-vocab? (may-vocab? %))))
+     :vocabs (distinct (keep #(when (and (not document-id) may-vocab? (may-vocab? %))
                                 (some-> (psc/q1 db {:select [:project_id] :from [:vocab_layers]
                                                     :where [:= :id (str %)]})
                                         :project_id str))
@@ -1370,7 +1373,7 @@
       (empty? ops)
       nil
 
-      (and (not several?) (not (:vocab-id opts)) (empty? (:vocabs permitted))
+      (and (not several?) (empty? (:vocabs permitted))
            (< 1 (count (:documents permitted))))
       {:error "The entries are in more than one project. Undo each project's entries on their own."
        :code 422}
