@@ -155,8 +155,8 @@ export function jobsApi(client) {
      * the groups. A job still waiting, running or stopping is refused 409.
      * Rows the caller may not maintain are left `not-permitted`, and 403 when
      * it maintains none. More than 20,000 rows: 413, saying how many. The
-     * job's read then carries `undone` (`{operation, time, user}`) until that
-     * undo is itself undone.
+     * job's read then carries `undone` (`{operation, time, user}`). The undo
+     * is final: `audit.undo` of it is refused 422 `job-undo-final`.
      * @param {string} jobId - The job
      * @param {object} [opts]
      * @param {boolean} [opts.dryRun] - Write nothing and say what would be done

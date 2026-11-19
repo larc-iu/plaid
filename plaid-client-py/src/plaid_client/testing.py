@@ -73,6 +73,7 @@ import inspect
 import itertools
 import json
 import pathlib
+import re
 import threading
 import time
 import types
@@ -1021,13 +1022,26 @@ class _AuditLog(list):
             page['over'] = len(rows) > ceiling
         return page
 
+    def _refuse_a_jobs_undo(self, entry_ids, path):
+        """Core's 422 when any of ``entry_ids`` is a job's undo, which is
+        final: an entry of the fake's log whose ref is ``job:<id>/undo``, or
+        the operation the fake's own undo of a job answered."""
+        final = {e.get('id') for e in self if re.fullmatch(r'job:.+/undo', str(e.get('ref') or ''))}
+        final |= {(j.get('undone') or {}).get('operation') for j in self._root.jobs.rows.values()}
+        if any(i in final for i in entry_ids if i is not None):
+            url = f'{self._root.base_url}{path}'
+            error = "A job's undo cannot be undone."
+            raise PlaidAPIError(f'HTTP 422 {error} at {url}', status=422, url=url, method='POST',
+                                response_data={'error': error, 'code': 'job-undo-final'})
+
     def undo(self, entry_id, *, dry_run=False, document_id=None, vocab_layer_id=None):
         """The server's undo of an entry, recorded dry or not. Either way it
         answers with the fake's ``undo_summary``: what WOULD be undone, or what
         was, with ``skipped_unreadable`` (rows left where the caller cannot
         read, a count only) 0 unless it says. The fake applies nothing to its
-        documents."""
+        documents. A job's undo is refused as core refuses it, unrecorded."""
         self._root.fail_if_asked('audit.undo')
+        self._refuse_a_jobs_undo([entry_id], f'/api/v1/audit/entries/{segment(entry_id)}/undo')
         answer = _undo_answer(self._root.undo_summary)
         self._root.record('audit.undo',
                           {'args': (entry_id,),
@@ -1038,8 +1052,10 @@ class _AuditLog(list):
 
     def undo_entries(self, entry_ids, *, dry_run=False):
         """The server's undo of several entries as one, recorded dry or not,
-        answered with the fake's ``undo_summary`` as ``undo`` is."""
+        answered with the fake's ``undo_summary`` as ``undo`` is. A list naming
+        a job's undo is refused whole, as core refuses it."""
         self._root.fail_if_asked('audit.undo_entries')
+        self._refuse_a_jobs_undo(list(entry_ids), '/api/v1/audit/undo')
         self._root.record('audit.undo_entries',
                           {'args': (list(entry_ids),), 'kwargs': {'dry_run': dry_run}},
                           {'body': _undo_answer(self._root.undo_summary)})
@@ -1102,7 +1118,10 @@ class FakeClient:
     the home project's entries, and answers those two reads as well.
 
     ``audit.undo`` is recorded (``audit.undo`` among the calls, dry or not) and
-    answers with ``undo_summary``, a summary as the real client gives it.
+    answers with ``undo_summary``, a summary as the real client gives it. An
+    undo of a job's undo is refused 422 ``job-undo-final`` as core refuses it
+    (an entry of ``audit`` whose ``ref`` is ``job:<id>/undo``, or the
+    operation of the fake's own undo of a job).
 
     ``users.get`` answers any user's record, an administrator when ``admins``
     names them.
@@ -2310,8 +2329,8 @@ class _FakeJobs:
         if job['state'] not in _JOB_FINAL:
             raise self._refuse(409, 'POST', path, 'This job has not ended. A job is undone once it has stopped.')
         summary = _undo_answer(self._client.undo_summary)
-        # As core's read: the job stands undone once an undo wrote something.
-        # The fake keeps no log, so an undo of that undo is not followed.
+        # As core's read: the job stands undone once an undo wrote something,
+        # and the undo is final (``audit.undo`` refuses its operation).
         if not dry_run and summary and summary.get('operation'):
             job['undone'] = {'operation': summary['operation'],
                              'time': _now_iso(),

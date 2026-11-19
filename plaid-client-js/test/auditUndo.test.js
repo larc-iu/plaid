@@ -124,3 +124,31 @@ test("an undo never joins an open logical operation", async () => {
     restore();
   }
 });
+
+// JU: a job's undo is final. Core refuses it 422 with code job-undo-final,
+// and the error carries the code, for an entry and for a list, sent once.
+test("an undo of a job's undo is refused with its code, sent once", async () => {
+  const sent = [];
+  const real = globalThis.fetch;
+  globalThis.fetch = async (url, opts) => {
+    sent.push({ url: new URL(String(url)), method: opts.method });
+    return new Response(
+      JSON.stringify({ error: "A job's undo cannot be undone.", code: "job-undo-final" }),
+      { status: 422, headers: { "Content-Type": "application/json" } },
+    );
+  };
+  try {
+    const client = new PlaidClient("http://x", "tok");
+    for (const call of [() => client.audit.undo("o1"), () => client.audit.undoEntries(["e1", "o1"])]) {
+      await assert.rejects(call(), (err) => {
+        assert.equal(err.status, 422);
+        assert.equal(err.responseData.code, "job-undo-final");
+        assert.equal(err.responseData.error, "A job's undo cannot be undone.");
+        return true;
+      });
+    }
+    assert.equal(sent.length, 2);
+  } finally {
+    globalThis.fetch = real;
+  }
+});

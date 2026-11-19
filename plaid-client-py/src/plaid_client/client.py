@@ -3574,7 +3574,10 @@ class AuditResource(_Resource):
         layers, a vocabulary's name or settings, users and memberships are not
         undone: ``not_undone`` lists the entry's operations that made them.
         Undoing an entry again finds nothing left and writes nothing. The undo
-        is itself an entry (``operation``), so it can be undone in turn.
+        is itself an entry (``operation``), so it can be undone in turn, except
+        a job's undo (``jobs.undo``), which is final: its entry or operation
+        is refused 422 with code ``job-undo-final``, dry or not, and nothing
+        is written.
         Maintainers only, row by row: a row of a document needs its project's
         maintainer, an entry its vocabulary's home's. It holds the write lock
         for its whole run, as a batch does, so it waits as long as a batch
@@ -3606,7 +3609,8 @@ class AuditResource(_Resource):
         wrote it. Its dry run is exact where one undo per entry is not (each
         would see the others' rows as built on). The same access row by row
         and the same limit over all the rows (413). A job is undone with
-        ``jobs.undo``.
+        ``jobs.undo``. A list naming a job's undo is refused whole, 422
+        ``job-undo-final``.
 
         Args:
             entry_ids: The entries' ids
@@ -3873,7 +3877,8 @@ class JobsResource(_Resource):
         ``not-permitted``, and 403 when it maintains none, and those in a
         document the caller cannot read are counted in ``skipped_unreadable``
         only. More than 20,000 rows: 413, saying how many. The job's read then carries ``undone``
-        (``{operation, time, user}``) until that undo is itself undone.
+        (``{operation, time, user}``). The undo is final: ``audit.undo`` of it
+        is refused 422 ``job-undo-final``.
 
         Args:
             job_id: The job

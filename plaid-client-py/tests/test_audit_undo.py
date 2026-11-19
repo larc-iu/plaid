@@ -146,3 +146,49 @@ def test_the_fake_answers_the_rows_left_where_the_caller_cannot_read_as_given():
     fake = FakeClient({}, undo_summary=summary)
     assert fake.audit.undo('e1')['skipped_unreadable'] == 2
     assert fake.audit.undo_entries(['e1'])['skipped_unreadable'] == 2
+
+
+def test_the_fake_refuses_to_undo_a_jobs_undo_as_core_does():
+    """JU: a job's undo is final. Core refuses its entry, its operation and a
+    list naming either, 422 with code job-undo-final, dry or not, narrowed or
+    not, and writes nothing. The fake knows a job's undo by the operation its
+    own undo of a job answered, and by an audit entry whose ref is
+    ``job:<id>/undo``."""
+    import pytest
+    from plaid_client.http import PlaidAPIError
+    summary = {'entries': ['g1'], 'total': 1, 'skipped': [], 'skipped_count': 0, 'operation': 'o1'}
+    audit = [{'id': 'g9', 'ref': 'job:j0/undo', 'ops': []}, {'id': 'g8', 'ref': 'job:j0/doc:d1/pass:gloss', 'ops': []}]
+    fake = FakeClient({'d1': {'id': 'd1', 'name': 'One'}}, undo_summary=summary, project={'id': 'p1'}, audit=audit)
+    job = fake.jobs.create('p1', 'igt', 'Gloss')
+    fake.jobs.cancel(job['id'])
+    fake.jobs.undo(job['id'])
+    before = len(fake.calls)
+    for call in (lambda: fake.audit.undo('o1'),
+                 lambda: fake.audit.undo('o1', dry_run=True, document_id='d1'),
+                 lambda: fake.audit.undo('g9'),
+                 lambda: fake.audit.undo_entries(['e1', 'g9']),
+                 lambda: fake.audit.undo_entries(['o1'], dry_run=True)):
+        with pytest.raises(PlaidAPIError) as refused:
+            call()
+        assert refused.value.status == 422
+        assert refused.value.response_data == {'error': "A job's undo cannot be undone.", 'code': 'job-undo-final'}
+    assert len(fake.calls) == before, 'a refused undo is not recorded'
+    # Any other entry, the job's own among them, is undone as before.
+    assert fake.audit.undo('g8')['total'] == 1
+    assert fake.audit.undo_entries(['e1'])['total'] == 1
+
+
+def test_an_undo_of_a_jobs_undo_is_refused_with_its_code_sent_once():
+    """JU: core's 422 job-undo-final reaches the caller with its code, for an
+    entry and for a list, and is not sent again."""
+    import pytest
+    from plaid_client.http import PlaidAPIError
+    client = PlaidClient('http://x', 'tok', retry_delays=[0, 0, 0])
+    client.session = recording_session(lambda kw: (422, {'error': "A job's undo cannot be undone.",
+                                                         'code': 'job-undo-final'}))
+    for call in (lambda: client.audit.undo('o1'), lambda: client.audit.undo_entries(['e1', 'o1'])):
+        with pytest.raises(PlaidAPIError) as refused:
+            call()
+        assert refused.value.status == 422
+        assert refused.value.response_data['code'] == 'job-undo-final'
+    assert len(client.session.sent) == 2
