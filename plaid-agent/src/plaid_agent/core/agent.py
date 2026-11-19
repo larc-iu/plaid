@@ -66,8 +66,10 @@ class Toolkit:
 #: The most one model call of a turn may write when the operator states no
 #: figure (--max-output-tokens), its reasoning included. A model that fell
 #: into a loop was seen writing 229,501 tokens in one call, and another
-#: filled its whole 262,144-token window, each for over an hour.
-DEFAULT_MAX_OUTPUT_TOKENS = 32768
+#: filled its whole 262,144-token window, each for over an hour. 65,536 is
+#: the most the hosted model writes in one call: people met the earlier
+#: 32,768 in ordinary use (owner 2026-11-19).
+DEFAULT_MAX_OUTPUT_TOKENS = 65536
 
 
 #: The environment variable that turns ``ModelConfig.keep_reasoning`` on in a

@@ -762,9 +762,9 @@ def test_an_unnamed_refusal_of_more_than_the_known_window_teaches_nothing(monkey
     ws = _ws(client)
     ws.shrink = lambda history, new: history[-1:]
     with pytest.raises(Exception):
-        run_turn(ModelConfig(model='fake/m3', stream=False, context_window=65536), _kit({}), ws, 'system',
+        run_turn(ModelConfig(model='fake/m3', stream=False, context_window=262144), _kit({}), ws, 'system',
                  [{'role': 'user', 'content': 'a'}, {'role': 'user', 'content': 'b'}])
-    assert agent.context_window('fake/m3', 65536) == 32768, 'a tiny request refused: halved once, by the known window'
+    assert agent.context_window('fake/m3', 262144) == 131072, 'a tiny request refused: halved once, by the known window'
 
 
 @require_sandbox()

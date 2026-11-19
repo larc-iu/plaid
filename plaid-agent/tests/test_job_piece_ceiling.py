@@ -32,7 +32,7 @@ from plaid_agent.igt import job as igt_job
 
 J = 'JPC'
 N = 4
-MODEL_CAP = 32768
+MODEL_CAP = agent.DEFAULT_MAX_OUTPUT_TOKENS
 CEILING = 12000
 
 
@@ -195,7 +195,7 @@ def test_a_call_at_an_operators_ceiling_is_asked_again_naming_the_ceiling(monkey
 
 def test_the_line_names_the_limit_and_says_what_is_true():
     line = job_cut_at_limit(MODEL_CAP)
-    assert line.startswith('(system) Your last call reached 32,768 tokens, ') and 'smaller steps' in line
+    assert line.startswith(f'(system) Your last call reached {MODEL_CAP:,} tokens, ') and 'smaller steps' in line
     assert 'none of its tool calls ran' in line and 'What you staged before it is kept' in line
 
 

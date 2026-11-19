@@ -161,7 +161,7 @@ and results stay in the model transcript with a note that no reply followed and
 nothing it staged, drafted or saved was kept, so the next message reads what it
 did. Retry keeps them too and asks the question again after them, so the
 retried turn continues from the steps already done. `--max-output-tokens N` caps
-what one model call may write, its reasoning included (default 32768, or less
+what one model call may write, its reasoning included (default 65536, or less
 for a model litellm knows to write less). A call that reaches the cap ends the
 turn with a message asking the user to ask about less at a time, and what the
 model wrote stays on the turn as a stop's does. `--max-steps` caps the
@@ -605,7 +605,7 @@ Its flags, as `plaid-job-worker --help` gives them:
 - `--context-window TOKENS`: how many tokens the model can be sent, used in
   place of litellm's figure.
 - `--max-output-tokens N`: the most one model call may write, its reasoning
-  included (default 32768, or less for a model litellm knows to write less).
+  included (default 65536, or less for a model litellm knows to write less).
 - `--piece-output-tokens N`: a lower limit for the calls of a job's pieces
   alone (default 0: none, the model's own cap). Measured, a lower limit made
   jobs slower. A negative number is refused at startup.
