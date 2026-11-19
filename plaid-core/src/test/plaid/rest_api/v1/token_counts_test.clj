@@ -7,6 +7,7 @@
                                             with-rest-handler with-admin with-test-users
                                             api-call admin-request user1-request db]]
             [plaid.sql.common :as psc]
+            [plaid.sql.token-counts :as token-counts]
             [plaid.test-helpers :as h :refer [id]]))
 
 (use-fixtures :once with-db with-mount-states with-rest-handler with-admin with-test-users)
@@ -123,6 +124,16 @@
     ;; Ana runs Ben said: 4 words of 8 tokens a unit
     (is (= [[tokl doc 80000]] (-> resp :body :results)))
     (h/within-factor-of 30 small ms {:floor-ms 20 :label "counting 160,000 tokens"})))
+
+;; SCL7-7: a count past its time limit answers as a query's does, 422 with
+;; `query-timeout`, never 408, which a browser sends again on its own.
+(deftest a-count-past-its-time-limit-is-a-422-query-timeout
+  (let [{:keys [tokl]} (corpus! "Slow" "Ana runs.")]
+    (binding [token-counts/*timeout-ms* -1]
+      (let [resp (counts admin-request [tokl] word-pattern)]
+        (fix/assert-status 422 resp)
+        (is (= "query-timeout" (-> resp :body :code)))
+        (is (= "Counting took longer than the time limit." (-> resp :body :error)))))))
 
 (deftest only-layers-the-caller-can-read
   (let [{:keys [tokl]} (corpus! "Private" "Ana runs.")]

@@ -1,5 +1,6 @@
 """A query waits longer than core's own query limit (30 s), so a query too
-broad reaches the caller as core's 408. Before, the client's 30 s timeout and
+broad reaches the caller as core's 422 ``query-timeout`` (a 408 before
+SCL7-7). Before, the client's 30 s timeout and
 core's 30 s limit raced and the client gave up first, which read like a lost
 connection. The JS twin is plaid-client-js/test/queryTimeout.test.js."""
 
@@ -64,4 +65,18 @@ def test_a_query_refused_503_is_not_retried():
     with pytest.raises(PlaidAPIError) as e:
         client.query({'where': []})
     assert e.value.status == 503
+    assert len(client.session.sent) == 1
+
+
+def test_a_query_past_cores_time_limit_is_sent_once_and_names_the_time_limit():
+    # SCL7-7: core answers 422 with ``code: "query-timeout"``, not 408, which
+    # a browser sends again by itself.
+    client = PlaidClient('http://x', 't')
+    client.session = recording_session([Response(
+        422, {'error': 'Query exceeded the 30s time limit', 'code': 'query-timeout'},
+        reason='Unprocessable Entity')])
+    with pytest.raises(PlaidAPIError) as e:
+        client.query({'where': []})
+    assert e.value.status == 422
+    assert e.value.response_data['code'] == 'query-timeout'
     assert len(client.session.sent) == 1

@@ -113,9 +113,16 @@ def test_every_app_hands_run_tool_the_schema_it_declared():
 
 
 class _HttpError(Exception):
-    def __init__(self, status):
+    def __init__(self, status, response_data=None):
         super().__init__(f'HTTP {status}')
         self.status = status
+        self.response_data = response_data
+
+
+def _timed_out():
+    """Core's answer to a query past its time limit (SCL7-7: 422 with a
+    code, never 408)."""
+    return _HttpError(422, {'error': 'Query exceeded the 30s time limit', 'code': 'query-timeout'})
 
 
 @pytest.mark.parametrize('status,kind', [(403, 'not-allowed'), (404, 'not-found'), (409, 'conflict'),
@@ -154,16 +161,18 @@ def test_the_words_are_classed_in_the_same_kinds_as_the_steps_store():
 # REV-W3-REST A1 to A6: one cause, one kind, in every app.
 
 @pytest.mark.parametrize('status,kind', [(400, 'query-refused'), (422, 'query-refused'), (500, 'unavailable'),
-                                         (0, 'unavailable'), (423, 'conflict'), (408, 'too-large')])
+                                         (0, 'unavailable'), (423, 'conflict'), ('timed-out', 'too-large')])
 def test_a_query_the_server_answered_is_query_refused_only_when_the_engine_refused_it(status, kind):
     from plaid_agent.core.corpus import query_refused
     from plaid_agent.core.query import QueryRefused, run
 
-    assert query_refused(_HttpError(status)).kind == kind
+    def error():
+        return _timed_out() if status == 'timed-out' else _HttpError(status)
+    assert query_refused(error()).kind == kind
 
     class Client:
         def query(self, q):
-            raise _HttpError(status)
+            raise error()
     with pytest.raises(QueryRefused) as e:
         run(Client(), {'where': [], 'find': ['?x']}, 'p1')
     assert e.value.kind == kind
@@ -174,10 +183,12 @@ def test_a_query_refused_before_it_is_sent_is_query_refused():
     assert QueryRefused('query must be a JSON object').kind == 'query-refused'
 
 
-@pytest.mark.parametrize('status,kind', [(423, 'conflict'), (408, 'too-large')])
-def test_a_held_document_and_a_query_timeout_have_their_own_kinds(status, kind):
+def test_a_held_document_and_a_query_timeout_have_their_own_kinds():
     from plaid_agent.core.tools import kind_of_status
-    assert kind_of_status(_HttpError(status)) == kind
+    assert kind_of_status(_HttpError(423)) == 'conflict'
+    assert kind_of_status(_timed_out()) == 'too-large'
+    # Another 422 is a refusal of what was sent, not a time limit.
+    assert kind_of_status(_HttpError(422, {'error': 'No.'})) == 'invalid-argument'
 
 
 @pytest.mark.parametrize('code,reason,kind', [('', None, 'invalid-argument'), (5, None, 'invalid-argument'),

@@ -21,6 +21,11 @@
    "<id>"
    "\"NOUN\""
    "1001"]],
+ "plaid.rest-api.v1.query-keyed-and-batched-test/a-query-past-its-time-limit-is-a-422-query-timeout"
+ [["SELECT DISTINCT s_1.id AS s FROM spans AS s_1 WHERE (s_1.span_layer_id IN (?)) AND (JSON_EXTRACT(s_1.value, '$') REGEXP ?) LIMIT ?"
+   "<id>"
+   "(.*a){28}"
+   "1001"]],
  "plaid.rest-api.v1.query-keyed-and-batched-test/a-slow-query-in-a-batch-lets-other-writes-through"
  [["SELECT DISTINCT s_1.id AS s FROM spans AS s_1 WHERE (s_1.span_layer_id IN (?)) AND (JSON_EXTRACT(s_1.value, '$') REGEXP ?) LIMIT ?"
    "<id>"
@@ -4997,7 +5002,7 @@
    "<id>"
    "\"NOUN\""
    "1001"]],
- "plaid.sql.query.exec-review2-test/runaway-query-times-out-408"
+ "plaid.sql.query.exec-review2-test/runaway-query-times-out"
  [["(?)" "WITH RECURSIVE r(x) AS (SELECT 1 UNION ALL SELECT x+1 FROM r) SELECT count(*) AS n FROM r"]],
  "plaid.sql.query.exec-review2-test/scalar-layer-ref-must-be-an-id"
  [["SELECT DISTINCT s_1.id AS s FROM spans AS s_1 WHERE (s_1.span_layer_id IN (?)) AND (s_1.value = ?) LIMIT ?"

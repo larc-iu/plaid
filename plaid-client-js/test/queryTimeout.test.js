@@ -1,5 +1,6 @@
 // A query waits longer than core's own query limit (30 s), so a query too
-// broad reaches the caller as core's 408. Before, the client's 30 s timeout
+// broad reaches the caller as core's 422 `query-timeout` (a 408 before
+// SCL7-7). Before, the client's 30 s timeout
 // and core's 30 s limit raced, the client gave up first, and the search page
 // said "Failed to reach the server" for a query that had only timed out.
 
@@ -79,6 +80,31 @@ test('a query refused 503 is not retried', async () => {
   try {
     const client = new PlaidClient('http://localhost:0', 't');
     await assert.rejects(client.query({ where: [] }), (e) => e.status === 503);
+    assert.strictEqual(calls, 1);
+  } finally {
+    globalThis.fetch = realFetch;
+  }
+});
+
+// SCL7-7: core answers a query past its time limit 422 with `code:
+// "query-timeout"`, not 408, which a browser sends again by itself. The
+// client sends it once and hands the caller the body that names it.
+test('a query past core\'s time limit is sent once and names the time limit', async () => {
+  const realFetch = globalThis.fetch;
+  let calls = 0;
+  globalThis.fetch = async () => {
+    calls += 1;
+    return new Response(
+      JSON.stringify({ error: 'Query exceeded the 30s time limit', code: 'query-timeout' }),
+      { status: 422, headers: { 'Content-Type': 'application/json' } },
+    );
+  };
+  try {
+    const client = new PlaidClient('http://localhost:0', 't');
+    await assert.rejects(
+      client.query({ where: [] }),
+      (e) => e.status === 422 && e.responseData?.code === 'query-timeout',
+    );
     assert.strictEqual(calls, 1);
   } finally {
     globalThis.fetch = realFetch;

@@ -100,6 +100,26 @@ describe('a failed search', () => {
     await view.unmount();
   });
 
+  // SCL7-7: core answers a search past its time limit 422 `query-timeout`
+  // (never 408, which the browser sent again, so the page waited out its own
+  // timeout and said the network had failed).
+  it('says the query was too broad when core stops it at its time limit', async () => {
+    const view = await searchedOnce();
+    query.fn = async () => {
+      throw Object.assign(new Error('HTTP 422 Query exceeded the 30s time limit'), {
+        status: 422,
+        url: 'http://x/api/v1/query',
+        responseData: { error: 'Query exceeded the 30s time limit', code: 'query-timeout' },
+      });
+    };
+    await search(view, 'pattern { V [upos=VERB]; N [upos=NOUN]; V -[obj]-> N }');
+    expect(view.container.textContent).toContain(
+      'The query was too broad and timed out. Add more constraints.',
+    );
+    expect(view.container.textContent).not.toContain('reach the server');
+    await view.unmount();
+  });
+
   it('clears the previous results when the pattern cannot be read', async () => {
     const view = await searchedOnce();
     compiled.fn = () => {

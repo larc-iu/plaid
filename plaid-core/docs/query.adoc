@@ -813,7 +813,7 @@ A query returns at most 1000 rows unless you set `limit`, which goes up to 100,0
 `truncated: true` means there may be more.
 There is no paging, so to see more of a large result, narrow the pattern or query one project at a time.
 
-Every query has 30 seconds, after which it is stopped with HTTP 408.
+Every query has 30 seconds, after which it is stopped with HTTP 422 and `"code": "query-timeout"` beside the error.
 A query that takes that long is too broad, so add a more selective clause or narrow `scope`.
 A count or aggregate may also be refused with 503 when the server is busy with others.
 

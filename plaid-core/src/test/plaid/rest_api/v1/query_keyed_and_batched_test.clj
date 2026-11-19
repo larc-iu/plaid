@@ -10,6 +10,7 @@
                                     with-db with-mount-states with-rest-handler
                                     with-admin with-test-users with-clean-db]]
             [plaid.sql.common :as psc]
+            [plaid.sql.query.exec :as qe]
             [plaid.test-helpers :as h :refer [id]]
             [ring.mock.request :as mock]))
 
@@ -94,6 +95,20 @@
         (is (= 400 (:status resp)) (str (:body resp)))
         (is (= before (:n (psc/q1 db {:select [[[:count :*] :n]] :from [:spans]}))))))))
 
+;; SCL7-7: a query past its time limit answers 422 with `query-timeout`. A
+;; 408 was sent again by the browser on a kept-alive connection, so the
+;; server ran the query twice and the page said the network had failed.
+(deftest a-query-past-its-time-limit-is-a-422-query-timeout
+  (let [{:keys [sl t0]} (corpus!)
+        _ (h/create-span admin-request sl [t0] (apply str (repeat 32 "a")))
+        ;; ~6.7 s unbounded (see `exec-regex-test/regex-redos-is-aborted`)
+        slow {:find ["?s"] :where [["span" "?s" {"layer" sl "value" {"regex" "(.*a){28}"}}]]}]
+    (binding [qe/*query-timeout-ms* 300]
+      (let [resp (send! "/api/v1/query" slow)]
+        (is (= 422 (:status resp)) (str (:body resp)))
+        (is (= "query-timeout" (-> resp :body :code)))
+        (is (re-find #"time limit" (-> resp :body :error)))))))
+
 (deftest a-slow-query-in-a-batch-lets-other-writes-through
   ;; The query runs on the batch's transaction, which holds the database's
   ;; write lock until the batch ends. Another write waits for that lock only
@@ -121,6 +136,7 @@
         (is (< ms busy-ms) (str "the write waited " ms " ms"))))
     (testing "the batch's query is stopped at its limit, and the batch rolls back"
       (let [[resp ms] @batch]
-        (is (= 408 (:status resp)) (str (:body resp)))
+        (is (= 422 (:status resp)) (str (:body resp)))
+        (is (= "query-timeout" (-> resp :body :code)) (str (:body resp)))
         (is (< ms busy-ms) (str "the batch took " ms " ms, past busy_timeout"))
         (is (= [] (-> (send! "/api/v1/query" (spans-valued "HIDDEN")) :body :results)))))))

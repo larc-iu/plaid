@@ -15,6 +15,7 @@ import {
   SelectLabel,
 } from '@ui/components/ui/select';
 import { notifyError, humanizeError } from '@/utils/feedback';
+import { isQueryTimeout } from '@ui/lib/errors.js';
 import { getIgtLayerInfo } from '@/domain/layerInfo';
 import { MATCH_TYPES, searchDomains } from './searchQueries.js';
 import { PatternError } from '@ui/domain/javaRegex.js';
@@ -122,7 +123,9 @@ export const ProjectSearch = ({ project, projectId, client }) => {
           ? `Check your regex: ${err.message}`
           : matchType === 'regex' && err?.status === 400
             ? `Check your regex: ${detail || 'the pattern is invalid.'}`
-            : 'Try again or simplify the query.',
+            : isQueryTimeout(err)
+              ? detail
+              : 'Try again or simplify the query.',
         'Failed to search',
       );
     } finally {

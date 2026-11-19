@@ -93,7 +93,7 @@
 
 ;; REV-R4-UD R1: one deadline covers the queue, the connection and the run, so
 ;; core always answers within `*query-timeout-ms*` and the clients' 35 s wait
-;; sees core's own 408 or 503. Before, the run's 30 s started only once the
+;; sees core's own 422 (query-timeout) or 503. Before, the run's 30 s started only once the
 ;; query had a turn and a connection.
 
 (defn- code-and-ms [f]
@@ -117,7 +117,7 @@
     (try
       (binding [qe/*query-timeout-ms* 600]
         (let [[code ms] (code-and-ms #(#'qe/run-heavy db (fn [_] (Thread/sleep 5000) :done)))]
-          (is (= 408 code))
+          (is (= 422 code))
           (is (< ms 900) (str "stopped at the deadline from its arrival, after " ms " ms"))))
       (finally @released)))
   (is (= permit-count (.availablePermits permits))))
@@ -127,5 +127,5 @@
                (getConnection [_] (Thread/sleep 1500) (.getConnection ^javax.sql.DataSource db)))]
     (binding [qe/*query-timeout-ms* 200]
       (let [[code ms] (code-and-ms #(#'qe/run-bounded slow (fn [_] :done)))]
-        (is (= 408 code) "no connection before the deadline is the time limit")
+        (is (= 422 code) "no connection before the deadline is the time limit")
         (is (< ms 1000))))))

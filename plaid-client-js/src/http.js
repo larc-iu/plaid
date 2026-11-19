@@ -70,9 +70,11 @@ export const DEFAULT_TIMEOUT_MS = 30000;
 export const DEFAULT_BATCH_TIMEOUT_MS = 180000;
 
 // A query may run for core's own query limit (30 s, `*query-timeout-ms*` in
-// plaid.sql.query.exec), and core then answers 408. The client waits a little
-// longer than that, so the caller gets core's 408 for a query too broad and
-// not a timeout of its own that reads like a lost connection.
+// plaid.sql.query.exec), and core then answers 422 with `code:
+// "query-timeout"` (not 408, which a browser sends again by itself). The
+// client waits a little longer than that, so the caller gets core's answer for
+// a query too broad and not a timeout of its own that reads like a lost
+// connection.
 export const DEFAULT_QUERY_TIMEOUT_MS = 35000;
 
 /**

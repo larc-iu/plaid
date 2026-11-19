@@ -141,20 +141,31 @@ def kind_of(e: Exception, otherwise: str) -> str:
     return kind if kind in REFUSAL_KINDS else refusal_kind(otherwise)
 
 
+def is_query_timeout(e: Exception) -> bool:
+    """Whether ``e`` is core stopping a query or a count at its time limit:
+    422 with ``code: "query-timeout"`` (SCL7-7: not 408, which a browser
+    sends again by itself)."""
+    data = getattr(e, 'response_data', None)
+    return getattr(e, 'status', None) == 422 and isinstance(data, dict) and data.get('code') == 'query-timeout'
+
+
 def kind_of_status(e: Exception, otherwise: str = 'unavailable') -> str:
-    """The refusal kind for a server's answer, by its HTTP status."""
+    """The refusal kind for a server's answer, by its HTTP status. A query
+    the engine gave up on is over its time limit."""
+    if is_query_timeout(e):
+        return 'too-large'
     return {403: 'not-allowed', 401: 'not-allowed', 404: 'not-found', 409: 'conflict', 413: 'too-large',
             400: 'invalid-argument', 422: 'invalid-argument',
-            # A document a service holds is the data as it stands, and a
-            # query the engine gave up on is over its time limit.
-            423: 'conflict', 408: 'too-large'}.get(getattr(e, 'status', None), otherwise)
+            # A document a service holds is the data as it stands.
+            423: 'conflict'}.get(getattr(e, 'status', None), otherwise)
 
 
 def engine_refusal_kind(e: Exception) -> str:
     """The kind for a query the server answered with ``e``: a query the
-    engine turned down (400, 422) is ``query-refused``, anything else (a 5xx,
-    a dropped connection, a held document) is said by its status."""
-    if getattr(e, 'status', None) in (400, 422):
+    engine turned down (400, 422) is ``query-refused``, one it gave up on at
+    its time limit ``too-large``, anything else (a 5xx, a dropped connection,
+    a held document) is said by its status."""
+    if getattr(e, 'status', None) in (400, 422) and not is_query_timeout(e):
         return 'query-refused'
     return kind_of_status(e)
 

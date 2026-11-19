@@ -14,6 +14,13 @@
             [plaid.sql.query.exec :as qe]
             [plaid.sql.token-counts :as token-counts]))
 
+(defn- refusal-body
+  "The body of a refused query or count: its message, and the `code` that
+  names a time limit (`qe/timed-out`), which the clients and apps read."
+  [e]
+  (cond-> {:error (ex-message e)}
+    (:error-code (ex-data e)) (assoc :code (:error-code (ex-data e)))))
+
 (def query-routes
   [["/query"
     {:post {:summary (str "Run a query over all projects you can read. Returns id tuples (or full entities / a count via :return). "
@@ -27,12 +34,13 @@
                          {:status 200 :body (qe/run db user-id body)}
                          (catch clojure.lang.ExceptionInfo e
                            (let [code (or (:code (ex-data e)) 500)]
-                             ;; author-facing codes (400 bad query, 408 timeout,
-                             ;; 503 no turn in the heavy-query queue) carry a
-                             ;; helpful message and are NOT server bugs;
-                             ;; anything else is logged and returned opaque.
-                             (if (#{400 408 503} code)
-                               {:status code :body {:error (ex-message e)}}
+                             ;; author-facing codes (400 bad query, 422
+                             ;; query-timeout, 503 no turn in the heavy-query
+                             ;; queue) carry a helpful message and are NOT
+                             ;; server bugs; anything else is logged and
+                             ;; returned opaque.
+                             (if (#{400 422 503} code)
+                               {:status code :body (refusal-body e)}
                                (do (log/error e "Query failed for user" user-id)
                                    {:status code :body {:error "Internal query error"}}))))
                          ;; Throwable, not Exception: a deeply-nested query body
@@ -64,7 +72,7 @@
                           :body {:results (token-counts/counts db user-id (:layers body) (:value body))}}
                          (catch clojure.lang.ExceptionInfo e
                            (let [code (or (:code (ex-data e)) 500)]
-                             (if (#{400 408} code)
-                               {:status code :body {:error (ex-message e)}}
+                             (if (#{400 422} code)
+                               {:status code :body (refusal-body e)}
                                (do (log/error e "Token count failed for user" user-id)
                                    {:status 500 :body {:error "Internal error"}}))))))}}]])

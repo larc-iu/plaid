@@ -28,15 +28,18 @@
             [next.jdbc.result-set :as rs]
             [plaid.query.clauses :as clauses]
             [plaid.sql.common :as psc]
+            [plaid.sql.query.exec :as exec]
             [plaid.sql.query.resolve :as resolve])
   (:import [java.util.regex Pattern]))
 
 (def ^:dynamic *timeout-ms*
-  "How long one count may run before it is refused 408, as a query is."
+  "How long one count may run before it is refused 422 `query-timeout`, as a
+  query is."
   30000)
 
-(defn- refuse! [code msg]
-  (throw (ex-info msg {:code code})))
+(defn- refuse!
+  ([code msg] (throw (ex-info msg {:code code})))
+  ([code error-code msg] (throw (ex-info msg {:code code :error-code error-code}))))
 
 (defn- pattern-of
   "The compiled pattern for a `{:regex .. :flags \"i\"?}` spec, or a 400."
@@ -119,7 +122,7 @@
         (when (> (.size ^java.util.Map cache) cache-cap) (.clear ^java.util.Map cache))
         (doseq [[layer doc cnt] groups]
           (when (> (System/currentTimeMillis) deadline)
-            (refuse! 408 "Counting took longer than the time limit."))
+            (refuse! 422 exec/timed-out "Counting took longer than the time limit."))
           (let [k [layer doc pkey]
                 sig [cnt (get versions doc)]
                 [had n] (when cached? (.get ^java.util.Map cache k))

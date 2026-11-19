@@ -126,7 +126,7 @@
                         nil
                         (catch clojure.lang.ExceptionInfo e (:code (ex-data e))))
               ms   (/ (- (System/nanoTime) start) 1e6)]
-          (is (= 408 code) "must abort with a 408 timeout")
+          (is (= 422 code) "must abort with the time limit's 422")
           (is (< ms 20000) (str "must not hang past the limit (took " (long ms) "ms)")))))))
 
 (deftest regex-validation

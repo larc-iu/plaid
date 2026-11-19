@@ -2,7 +2,7 @@
   "Round-2 review fixes at the exec/SQL level: conjunctive constraint AND (a var
   in two entity clauses must satisfy both — no last-wins merge), a scalar layer
   reference must be a layer id (a name/path is a 400 — layers are identified by id
-  only), and the query timeout (408)."
+  only), and the query timeout (422 query-timeout)."
   (:require [clojure.test :refer [deftest is testing use-fixtures]]
             [plaid.fixtures :refer [with-db with-mount-states with-clean-db
                                     with-rest-handler with-admin with-test-users
@@ -66,13 +66,13 @@
                                {"find" ["?s"] "where" [["span" "?s" {"layer" pos "value" "NOUN"}]]})))))))
 
 ;; ---------------------------------------------------------------------------
-;; Query timeout -> 408
+;; Query timeout -> 422 query-timeout (SCL7-7: a browser resends a 408)
 ;; ---------------------------------------------------------------------------
 
-(deftest runaway-query-times-out-408
-  (testing "a query past the time limit is interrupted (SQLite interrupt) and reported as 408"
+(deftest runaway-query-times-out
+  (testing "a query past the time limit is interrupted (SQLite interrupt) and reported as 422 query-timeout"
     (binding [qe/*query-timeout-ms* 1000]
-      (is (= 408 (code-of
+      (is (= 422 (code-of
                   #(#'qe/run-bounded
                     db
                     (fn [conn]

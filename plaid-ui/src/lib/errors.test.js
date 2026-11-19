@@ -6,6 +6,7 @@ import {
   isGone,
   isKeyReused,
   isPermissionError,
+  isQueryTimeout,
   isTextChanged,
   isUnknownOutcome,
   signInError,
@@ -461,7 +462,9 @@ describe('a request too large for the server', () => {
 });
 
 // REV-R4-UD R2: the clients now wait past core's 30 s query limit, so core's
-// own 408 reaches the page, worded for a developer. A query core's full queue
+// own time limit answer reaches the page, worded for a developer. Since SCL7-7
+// that is 422 with `code: "query-timeout"`, not 408, which a browser sends
+// again by itself. A query core's full queue
 // refused (503) says the server is busy, not that it cannot be reached.
 describe('a query that took too long or found the server busy', () => {
   const queryError = (status, said) =>
@@ -475,7 +478,18 @@ describe('a query that took too long or found the server busy', () => {
   it("says the search took too long, without the server's wording", () => {
     const said =
       'Query exceeded the 30s time limit \u2014 narrow it with more selective clauses or a tighter :scope.';
-    expect(humanizeError(queryError(408, said), 'Failed to search.')).toBe(
+    const timedOut = queryError(422, said);
+    timedOut.responseData.code = 'query-timeout';
+    expect(humanizeError(timedOut, 'Failed to search.')).toBe(
+      'The search took too long. Narrow it and try again.',
+    );
+    expect(isQueryTimeout(timedOut)).toBe(true);
+  });
+
+  it('takes no other 422 for a time limit', () => {
+    const refused = queryError(422, 'Not allowed by the rules of this layer.');
+    expect(isQueryTimeout(refused)).toBe(false);
+    expect(humanizeError(refused, 'Failed to search.')).not.toBe(
       'The search took too long. Narrow it and try again.',
     );
   });

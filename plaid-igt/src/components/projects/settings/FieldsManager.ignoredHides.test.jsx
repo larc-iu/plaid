@@ -129,7 +129,7 @@ describe('a rule change that hides annotated words', () => {
         initialData={{ fields: [], ignoredTokens: EXPLICIT }}
         onSaveChanges={onSaveChanges}
         onCountHiddenWords={async () => {
-          throw new Error('HTTP 408');
+          throw new Error('HTTP 422 Counting took longer than the time limit.');
         }}
         projectId="p1"
       />,

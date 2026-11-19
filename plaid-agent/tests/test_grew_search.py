@@ -133,6 +133,24 @@ def test_a_pattern_no_tree_can_match_asks_nothing(fake_ws):
     assert '(note) Tree/cyclicity globals assume well-formed UD trees' in out
 
 
+def test_a_pattern_core_stops_at_its_time_limit_is_said_to_be_too_broad(fake_ws, monkeypatch):
+    """SCL7-7: core answers a query past its time limit 422 with ``code:
+    "query-timeout"`` (no longer 408), and the model is still told to narrow
+    the pattern."""
+    from plaid_client.http import PlaidAPIError
+
+    def timed_out(body):
+        raise PlaidAPIError('HTTP 422 Query exceeded the 30s time limit', status=422,
+                            response_data={'error': 'Query exceeded the 30s time limit',
+                                           'code': 'query-timeout'})
+    monkeypatch.setattr(fake_ws.client, 'query', timed_out)
+    with pytest.raises(ToolError) as e:
+        t_grew_search(fake_ws, 'pattern { V [upos=VERB]; N [upos=NOUN]; V -[obj]-> N }')
+    assert str(e.value).startswith('The engine gave up on this pattern after ')
+    assert 'constrain the nodes more' in str(e.value)
+    assert e.value.kind == 'too-large'
+
+
 def test_the_tool_is_on_the_table(fake_ws):
     out = call_tool(fake_ws, 'grew_search', {'pattern': 'pattern { X [upos=] }'})
     assert 'Not a Grew pattern' in out

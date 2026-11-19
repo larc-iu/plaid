@@ -8,6 +8,7 @@ import { setupHref } from '../projects/setup.jsx';
 import { useAuth } from '../../contexts/AuthContext.jsx';
 import { getUdLayerInfo } from '../../utils/udLayerUtils.js';
 import { canManageProject } from '@ui/domain/permissions.js';
+import { isQueryTimeout } from '@ui/lib/errors.js';
 import { notifySuccess, notifyError, humanizeError } from '../../utils/feedback.jsx';
 import { ProjectTabs } from '../projects/ProjectTabs.jsx';
 import {
@@ -91,7 +92,7 @@ export const SearchPage = () => {
   const reportError = useCallback((err) => {
     if (err instanceof GrewError) {
       setError(err);
-    } else if (err?.status === 408) {
+    } else if (isQueryTimeout(err)) {
       setError({
         name: 'ServerError',
         message: 'The query was too broad and timed out. Add more constraints.',

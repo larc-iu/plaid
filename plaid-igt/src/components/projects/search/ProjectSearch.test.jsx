@@ -3,11 +3,17 @@ import { MemoryRouter } from 'react-router-dom';
 import { renderComponent } from '@ui/test/renderComponent.jsx';
 import { ProjectSearch } from './ProjectSearch.jsx';
 import { runHitsSearch } from './searchRunner.js';
+import { notifyError } from '@/utils/feedback';
 
-vi.mock('@/utils/feedback', () => ({
-  notifyError: vi.fn(),
-  humanizeError: (e) => String(e?.message ?? e),
-}));
+vi.mock('@/utils/feedback', async () => {
+  const { humanizeError } = await import('@ui/lib/errors.js');
+  return {
+    notifyError: vi.fn(),
+    // The server's own words, except where the shared wording replaces them.
+    humanizeError: (e, fallback) =>
+      e?.status === 422 ? humanizeError(e, fallback) : String(e?.message ?? e),
+  };
+});
 vi.mock('@/domain/layerInfo', () => ({ getIgtLayerInfo: () => ({}) }));
 vi.mock('./searchQueries.js', async (orig) => ({
   ...(await orig()),
@@ -61,6 +67,29 @@ describe('ProjectSearch', () => {
     await search(view, 'per(');
     expect(runHitsSearch.mock.calls.at(-1)[4]).toBe('per(');
     expect(view.container.textContent).not.toContain('Story');
+    await view.unmount();
+  });
+
+  // SCL7-7: a search core stopped at its time limit (422 query-timeout) says
+  // so, as ud's Search does, never that the network failed.
+  it('a search past the time limit says it took too long', async () => {
+    runHitsSearch.mockRejectedValue(
+      Object.assign(new Error('HTTP 422 Query exceeded the 30s time limit'), {
+        status: 422,
+        url: 'http://x/api/v1/query',
+        responseData: { error: 'Query exceeded the 30s time limit', code: 'query-timeout' },
+      }),
+    );
+    const view = await renderComponent(
+      <MemoryRouter>
+        <ProjectSearch project={{ id: 'p1', vocabs: [] }} projectId="p1" client={{}} />
+      </MemoryRouter>,
+    );
+    await search(view, 'gato');
+    expect(notifyError).toHaveBeenCalledWith(
+      'The search took too long. Narrow it and try again.',
+      'Failed to search',
+    );
     await view.unmount();
   });
 

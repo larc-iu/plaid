@@ -21,7 +21,8 @@
   when the (effective) limit was reached. `:count` is capped at `count-cap`.
   Every query answers within `*query-timeout-ms*` of its arrival: its wait for a
   turn in the heavy-query queue (503 when none comes), its wait for a pooled
-  connection and its SQL run all count against that one deadline (408 on overrun).
+  connection and its SQL run all count against that one deadline (422
+  `query-timeout` on overrun, see `time-limit-error`).
 
   Errors propagate as `ex-info` with a `:code` (400 author error / 500 compiler
   bug) for the REST layer to map to an HTTP status."
@@ -253,8 +254,9 @@
 (def ^:dynamic *query-timeout-ms*
   "Wall-clock ceiling for a single query, from its arrival: the wait for a
   heavy-query turn, the wait for a pooled connection and the SQL run together.
-  A query past it is aborted (SQLite `interrupt()`) and reported as a 408. The
-  clients wait a little longer than this (35 s), so the 408 reaches them.
+  A query past it is aborted (SQLite `interrupt()`) and reported as a 422
+  `query-timeout` (`time-limit-error`). The clients wait a little longer than
+  this (35 s), so that answer reaches them.
   SQLite ignores JDBC `setQueryTimeout` for CPU-bound work, so we use a
   watchdog + connection interrupt, which IS reliable. Dynamic so
   tests/operators can rebind it."
@@ -274,16 +276,24 @@
 
 (defn- ms-left [deadline] (max 0 (- deadline (System/currentTimeMillis))))
 
+(def timed-out
+  "The `:error-code` of a query or count stopped at its time limit, which the
+  routes answer as 422 with `{:error .. :code \"query-timeout\"}`. Not 408:
+  a browser sends a request again after a 408 on a kept-alive connection, so
+  the server ran the query twice and the page waited out its own timeout
+  (SCL7-7). Nobody resends a 422."
+  "query-timeout")
+
 (defn- time-limit-error []
   (ex-info (if *in-transaction?*
              (str "A query inside a batch has " (quot *query-timeout-ms* 1000)
                   "s, and this one took longer. Send it on its own, or narrow it.")
              (str "Query exceeded the " (quot *query-timeout-ms* 1000)
                   "s time limit — narrow it with more selective clauses or a tighter :scope."))
-           {:code 408 :query-error/stage :exec}))
+           {:code 422 :error-code timed-out :query-error/stage :exec}))
 
 (defn- connection-by
-  "A pooled connection, or a 408 when none comes before `deadline`. A
+  "A pooled connection, or the time limit's error when none comes before `deadline`. A
   connection that comes after it is closed again, back to the pool."
   [db deadline]
   (let [p (future (jdbc/get-connection db))
@@ -330,8 +340,8 @@
 (defn- run-bounded
   "Run `(f conn)` on a dedicated pooled connection, aborting via SQLite's
   `interrupt()` if it is still running at `deadline` (by default
-  `*query-timeout-ms*` from now). Returns `(f conn)`'s value, or throws a 408
-  `ex-info` on timeout. Any other SQL error propagates as its cause.
+  `*query-timeout-ms*` from now). Returns `(f conn)`'s value, or throws
+  `time-limit-error` on timeout. Any other SQL error propagates as its cause.
 
   A `db` that is already a connection (a query inside a batch, whose
   transaction it is) is used as it is and left open, so the query reads what
@@ -493,7 +503,8 @@
 
   On a transaction's connection (a query inside a batch) the query is held to
   `*in-transaction-query-timeout-ms*`, since the transaction holds the write
-  lock while it runs, and the batch it overruns is refused with the 408."
+  lock while it runs, and the batch it overruns is refused with the time
+  limit's 422."
   [db user-id raw]
   (if (instance? java.sql.Connection db)
     (binding [*in-transaction?* true
