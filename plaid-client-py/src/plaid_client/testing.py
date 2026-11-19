@@ -1026,7 +1026,7 @@ class _AuditLog(list):
         """Core's 422 when any of ``entry_ids`` is a job's undo, which is
         final: an entry of the fake's log whose ref is ``job:<id>/undo``, or
         the operation the fake's own undo of a job answered."""
-        final = {e.get('id') for e in self if re.fullmatch(r'job:.+/undo', str(e.get('ref') or ''))}
+        final = {e.get('id') for e in self if re.fullmatch(r'job:[^/]+/undo', str(e.get('ref') or ''))}
         final |= {(j.get('undone') or {}).get('operation') for j in self._root.jobs.rows.values()}
         if any(i in final for i in entry_ids if i is not None):
             url = f'{self._root.base_url}{path}'

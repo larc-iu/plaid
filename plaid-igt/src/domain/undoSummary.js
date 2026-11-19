@@ -335,10 +335,11 @@ export const undoneToast = (summary, opts) => {
 };
 
 /**
- * Whether History entry `entry` is a job's undo (its ref `job:<id>/undo`),
+ * Whether History entry `entry` is a job's undo (its ref exactly `job:`, an
+ * id with no slash, `/undo`, case-sensitive, as core's rule),
  * which core refuses to undo (422 job-undo-final): History offers no Undo on it.
  */
-export const isJobUndo = (entry) => /^job:.+\/undo$/.test(entry?.ref ?? '');
+export const isJobUndo = (entry) => /^job:[^/]+\/undo$/.test(entry?.ref ?? '');
 
 /** The sentence for an undo core refused, or failed to give. */
 export const undoError = (err, fallback) => {

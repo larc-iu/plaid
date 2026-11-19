@@ -1246,17 +1246,22 @@
           (jdbc/execute! db ["RELEASE plaid_undo"])
           result))))
 
+(def job-undo-ref
+  "The one rule for a job's undo's group ref: `job:`, an id with no slash,
+  `/undo`, case-sensitive (`plaid.sql.job/undone-by-job` reads the same)."
+  #"job:[^/]+/undo")
+
 (defn- job-undo?
   "Whether any of `ops` is a job's undo: an operation in a group whose ref
-  is `job:<id>/undo` (`plaid.sql.job/undone-by-job`). A job's undo is final:
-  no route undoes it (owner 2026-11-19)."
+  is `job-undo-ref`. A job's undo is final: no route undoes it (owner
+  2026-11-19)."
   [db ops]
-  (boolean (seq (psc/in-chunks #(psc/q db {:select [:o.id]
-                                           :from [[:operations :o]]
-                                           :join [[:operation_groups :g] [:= :g.id :o.group_id]]
-                                           :where [:and [:in :o.id (mapv str %)] [:like :g.ref "job:%/undo"]]
-                                           :limit 1})
-                               (map :id ops)))))
+  (boolean (some #(re-matches job-undo-ref (str (:ref %)))
+                 (psc/in-chunks #(psc/q db {:select-distinct [:g.ref]
+                                            :from [[:operations :o]]
+                                            :join [[:operation_groups :g] [:= :g.id :o.group_id]]
+                                            :where [:and [:in :o.id (mapv str %)] [:like :g.ref "job:%/undo"]]})
+                                (map :id ops)))))
 
 (defn entry-label
   "The words an undo's description names its entry by: the group's message,

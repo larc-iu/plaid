@@ -192,3 +192,15 @@ def test_an_undo_of_a_jobs_undo_is_refused_with_its_code_sent_once():
         assert refused.value.status == 422
         assert refused.value.response_data['code'] == 'job-undo-final'
     assert len(client.session.sent) == 2
+
+
+def test_the_fake_takes_only_job_id_slash_undo_as_a_jobs_undo():
+    """REV-JU-2: one exact, case-sensitive rule, as core's: a look-alike ref
+    is an ordinary entry."""
+    summary = {'entry': 'e', 'total': 1, 'skipped': [], 'skipped_count': 0}
+    audit = [{'id': 'a', 'ref': 'JOB:zzz/UNDO', 'ops': []}, {'id': 'b', 'ref': 'Job:abc/Undo', 'ops': []},
+             {'id': 'c', 'ref': 'job:j1/doc:d1/undo', 'ops': []}]
+    fake = FakeClient({}, undo_summary=summary, audit=audit)
+    for entry in ('a', 'b', 'c'):
+        assert fake.audit.undo(entry)['total'] == 1
+    assert fake.audit.undo_entries(['a', 'b', 'c'])['total'] == 1

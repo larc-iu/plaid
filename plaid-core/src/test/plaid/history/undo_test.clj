@@ -1594,6 +1594,20 @@
         (is (= 422 (:status resp)))
         (is (= "job-undo-final" (-> resp :body :code)))))))
 
+(deftest rev-ju-2-only-job-id-slash-undo-is-a-jobs-undo
+  ;; REV-JU-2: `job:` then an id with no slash then `/undo`, case-sensitive,
+  ;; as `undone-by-job` reads it. A look-alike ref is an ordinary entry.
+  (let [{:keys [job doc spans]} (job-world!)]
+    (doseq [[i ref] (map-indexed vector ["JOB:zzz/UNDO" "Job:abc/Undo" (str "job:" job "/doc:" doc "/undo")])]
+      (let [g (str (random-uuid))
+            enc #(java.net.URLEncoder/encode (str %) "UTF-8")
+            r (fn [m p] (admin-request m (str p "?group-id=" g "&group-ref=" (enc ref))))]
+        (assert-ok (update-span r (nth spans i) :value (str "LOOK" i)))
+        (is (= ref (:ref (psc/q1 db {:select [:ref] :from [:operation_groups] :where [:= :id g]}))))
+        (let [resp (undo admin-request g)]
+          (is (= 200 (:status resp)) (pr-str ref (:body resp)))
+          (is (some? (-> resp :body :operation)) ref))))))
+
 (deftest rev-un4-2-a-list-is-one-project-the-caller-reads
   (testing "an entry the caller cannot read: 403, nothing written"
     (let [{:keys [proj spans]} (setup!)

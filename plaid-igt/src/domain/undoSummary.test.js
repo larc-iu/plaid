@@ -329,6 +329,11 @@ describe('isJobUndo', () => {
   it('is an entry whose ref names a job’s undo, and nothing else', () => {
     expect(isJobUndo({ id: 'g', ref: 'job:j1/undo' })).toBe(true);
     expect(isJobUndo({ id: 'g', ref: 'job:j1/doc:d/pass:gloss' })).toBe(false);
+    // REV-JU-2: one exact, case-sensitive rule, as core's.
+    expect(isJobUndo({ id: 'g', ref: 'JOB:zzz/UNDO' })).toBe(false);
+    expect(isJobUndo({ id: 'g', ref: 'Job:abc/Undo' })).toBe(false);
+    expect(isJobUndo({ id: 'g', ref: 'job:j1/doc:d1/undo' })).toBe(false);
+    expect(isJobUndo({ id: 'g', ref: 'job:/undo' })).toBe(false);
     expect(isJobUndo({ id: 'g', ref: 'format:table' })).toBe(false);
     expect(isJobUndo({ id: 'g' })).toBe(false);
     expect(isJobUndo(null)).toBe(false);
