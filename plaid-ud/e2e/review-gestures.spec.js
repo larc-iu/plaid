@@ -257,3 +257,54 @@ test('the legend names the gestures, and shows amber only where work is reviewed
 
   await S.client.projects.setConfig(S.projectId, 'plaid', 'review', { users: [] });
 });
+
+// REV-JOIN20-2: the assistant's discard of lemmas only leaves each lemma
+// valueless and the machine's, under the parser's head. Ctrl+Enter, pressed for
+// the head, accepted the empty lemma too. It accepts the head and leaves the
+// lemma as it is.
+test('Ctrl+Enter takes the head over an empty machine lemma and leaves the lemma', async ({
+  page,
+}) => {
+  const T = await seedUdDoc(`Empty lemma ${Date.now()}`, 'the dog', [
+    [0, 3],
+    [4, 7],
+  ]);
+  const { client, layers, morphIds } = T;
+  try {
+    const empty = (await client.spans.create(layers.lemma, [morphIds[0]], 'x', { ...MACHINE })).id;
+    await client.spans.update(empty, null);
+    const dog = (await client.spans.create(layers.lemma, [morphIds[1]], 'dog')).id;
+    const det = (await client.relations.create(layers.relation, dog, empty, 'det', { ...MACHINE }))
+      .id;
+    expect((await client.spans.get(empty)).value).toBeNull();
+
+    await seedAuth(page);
+    await page.addInitScript(() => {
+      localStorage.setItem(
+        'ud-annotation-visible-fields',
+        JSON.stringify({ lemma: true, xpos: true, upos: true, feats: true }),
+      );
+    });
+    await page.goto(`/#/projects/${T.projectId}/documents/${T.documentId}/annotate`);
+    await expect(page.locator('.token-form', { hasText: 'dog' }).first()).toBeVisible({
+      timeout: 15000,
+    });
+    // The head is the parser's, so the word is a stop and its ✓ is there.
+    await expect(page.locator('.word-accept')).toHaveCount(1);
+    await page.locator(`[id="${morphIds[0]}-lemma"]`).focus();
+    await page.keyboard.press('Control+Enter');
+
+    await expect
+      .poll(async () => (await client.relations.get(det)).metadata?.provConfirmed, {
+        timeout: 8000,
+      })
+      .toBe(true);
+    const lemma = await client.spans.get(empty);
+    expect(lemma.value).toBeNull();
+    expect(lemma.metadata?.provConfirmed).toBeUndefined();
+    // Nothing is left to review on the word: its ✓ retires.
+    await expect(page.locator('.word-accept')).toHaveCount(0, { timeout: 8000 });
+  } finally {
+    await client.projects.delete(T.projectId).catch((e) => console.error('cleanup failed:', e));
+  }
+});

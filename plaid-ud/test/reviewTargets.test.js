@@ -175,3 +175,29 @@ test('an enhanced edge is a stop and is material, a suppressor is neither', () =
   assert.equal(wordHasMaterial(enhanced, 'w2', needsReview), true);
   assert.equal(wordHasMaterial(enhanced, 'w3', needsReview), false);
 });
+
+// REV-JOIN20-2: a lemma the assistant's discard emptied (no value, the
+// machine's) is no cell to review: its word is a stop only for its head.
+test('an empty machine lemma is not a stop or a marked cell, the head on it still is', () => {
+  const emptied = (id, { head } = {}) => ({
+    ...word(id),
+    lemma: { id: `${id}-lem`, value: null, metadata: machine },
+    head,
+  });
+  const sentences = [
+    {
+      id: 's',
+      tokens: [emptied('a'), emptied('b'), word('c', { lemma: {} })],
+      relations: [{ id: 'r', source: 'c-lem', target: 'b-lem', metadata: machine }],
+    },
+  ];
+  assert.deepEqual(
+    reviewWords(sentences, needsReview).map((w) => w.tokenId),
+    ['b'],
+  );
+  assert.deepEqual(markedFields(findWord(sentences, 'a'), needsReview), []);
+  assert.deepEqual(markedFields(findWord(sentences, 'b'), needsReview), []);
+  // A machine lemma with a value is still marked.
+  const kept = { ...word('d'), lemma: { id: 'd-lem', value: 'dog', metadata: machine } };
+  assert.deepEqual(markedFields(kept, needsReview), ['lemma']);
+});

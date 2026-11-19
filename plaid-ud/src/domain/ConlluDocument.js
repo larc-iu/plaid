@@ -66,6 +66,7 @@ import { normalizeFeature, featureRefusal, spaceRefusal } from '../utils/feats.j
 import { fieldName } from '../utils/fieldNames.js';
 import { isProvKey } from '../utils/provenanceUi.js';
 import { SENT_ID } from '../utils/udMetadata.js';
+import { isEmptyMachineLemma } from './reviewTargets.js';
 
 // The rows of an edit, each made under the id this page minted for it, as
 // `_settle` takes them.
@@ -2123,6 +2124,8 @@ export class ConlluDocument extends DocumentModel {
       const [label, refuse] = closedField.get(layer.id) || [];
       for (const span of layer.spans || []) {
         if (Array.isArray(span.tokens) && span.tokens.some((t) => idSet.has(t))) {
+          // An empty machine lemma holds nothing to accept (REV-JOIN20-2).
+          if (layer === info.lemmaLayer && isEmptyMachineLemma(span)) continue;
           const verify = this.writer.confirmStamp(span.metadata);
           if (!verify) continue;
           if (refuse?.(span.value)) left.push({ label, value: span.value, token: span.tokens[0] });

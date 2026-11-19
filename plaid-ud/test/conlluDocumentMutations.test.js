@@ -768,3 +768,34 @@ test('re-typing a feature already on the word keeps its provProb', async () => {
   const after = doc.layerInfo.featuresLayer.spans.find((s) => s.id === feat.id);
   assert.equal(after.metadata.provProb, 0.8);
 });
+
+// REV-JOIN20-2 (H3-10-1): the assistant's discard of lemmas only leaves a lemma
+// span with no value, the machine's, where a machine head still hangs. Accept,
+// pressed for the parser's head, stamped that empty lemma verified, and Parse
+// then refused the sentence. An empty machine lemma is nothing to accept.
+test('confirmTokens accepts the head and leaves an empty machine lemma as it is', async () => {
+  const raw = rawDocFromConllu(INPUT, 'mut-doc');
+  const client = provClient();
+  const doc = new ConlluDocument({
+    raw,
+    client: withOps(client),
+    project: reviewedProject,
+    user: { id: 'lead@x.com', isAdmin: false },
+  });
+  const machine = { prov: 'inferred', provSource: 'service:stanza-parser' };
+  const noun = doc.layerInfo.uposLayer.spans.find((s) => s.value === 'NOUN');
+  noun.metadata = { ...machine };
+  const lemma = doc.layerInfo.lemmaLayer.spans.find((s) => s.value === 'perro');
+  lemma.value = null;
+  lemma.metadata = { ...machine };
+  const det = doc.layerInfo.relationLayer.relations.find((r) => r.value === 'det');
+  det.metadata = { ...machine };
+  const el = doc.layerInfo.lemmaLayer.spans.find((s) => s.id === det.target);
+
+  assert.equal(await doc.confirmTokens([...noun.tokens, ...el.tokens]), true);
+  const spans = client.calls.filter((c) => c[0] === 'spans.patchMetadata').map((c) => c[1]);
+  const relations = client.calls.filter((c) => c[0] === 'relations.patchMetadata').map((c) => c[1]);
+  assert.deepEqual(spans, [noun.id]);
+  assert.deepEqual(relations, [det.id]);
+  assert.deepEqual(doc.layerInfo.lemmaLayer.spans.find((s) => s.id === lemma.id).metadata, machine);
+});

@@ -20,6 +20,20 @@ const spansOf = (entry) => [
   ...(entry.feats || []),
 ];
 
+/**
+ * A lemma span with no value that is still the machine's: what the
+ * assistant's discard of lemmas leaves where a head still hangs on the word.
+ * It holds nothing to review, so it is no stop and no marked cell, and Accept
+ * leaves it as it is rather than stamp an empty lemma verified (REV-JOIN20-2).
+ */
+export const isEmptyMachineLemma = (span) =>
+  !!span && (span.value === null || span.value === '') && isMachine(span.metadata);
+
+// The spans of a word that hold something to review: all but an empty
+// machine lemma.
+const reviewSpansOf = (entry) =>
+  spansOf(entry).filter((s) => !(s && s === entry.lemma && isEmptyMachineLemma(s)));
+
 /** Every word in the document, in reading order: `{ sentenceId, tokenId }`. */
 export function wordsInOrder(sentences) {
   const out = [];
@@ -58,7 +72,7 @@ export function reviewWords(sentences, reviewable) {
     for (const entry of sentence.tokens || []) {
       const tokenId = entry.token.id;
       const marked =
-        byRelation.has(tokenId) || spansOf(entry).some((s) => s && reviewable(s.metadata));
+        byRelation.has(tokenId) || reviewSpansOf(entry).some((s) => s && reviewable(s.metadata));
       if (marked) out.push({ sentenceId: sentence.id, tokenId });
     }
   }
@@ -105,7 +119,8 @@ const REVIEW_FIELDS = Object.freeze(['lemma', 'xpos', 'upos', 'feats']);
 
 export function markedFields(entry, reviewable) {
   if (!entry) return [];
-  const marked = (span) => !!span && reviewable(span.metadata);
+  const marked = (span) =>
+    !!span && !(span === entry.lemma && isEmptyMachineLemma(span)) && reviewable(span.metadata);
   return REVIEW_FIELDS.filter((field) =>
     field === 'feats' ? (entry.feats || []).some(marked) : marked(entry[field]),
   );

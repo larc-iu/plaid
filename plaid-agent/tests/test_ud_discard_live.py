@@ -172,3 +172,32 @@ def test_a_lemma_whose_arc_stays_keeps_its_place_unverified(parsed):
     assert all(sp.get('value') is None and is_machine(sp.get('metadata')) for sp in lemma['spans'])
     assert len([r for rl in lemma['relation_layers'] for r in rl['relations']]) == 5
     assert _parse_refuses(raw, s) == set()
+
+
+def test_a_confirm_after_a_discard_of_lemmas_takes_the_heads_and_leaves_the_empty_lemmas(parsed):
+    """REV-JOIN20-2: after a discard of lemmas only, every head stays the
+    parser's on a valueless machine lemma. A confirm of the whole document
+    took those empty lemmas too, as the grid's Accept did, and stamped them
+    verified. It takes the heads and the other values, and leaves each empty
+    lemma the machine's."""
+    s = parsed
+    ud = load_project(s.client, s.project_id)
+    ws = Workspace(s.client, ud)
+    assert 'Planned' in call_tool(ws, 'discard_predictions', {'document': 'Viaje', 'field': 'lemma'})
+    execute_plan(s.client, ws.ops, source='s', label='l', stamp_mode='verified', project=ud)
+
+    ud = load_project(s.client, s.project_id)
+    ws = Workspace(s.client, ud)
+    said = call_tool(ws, 'confirm', {'document': 'Viaje'})
+    assert 'Planned' in said and 'lemma' not in said, said
+    execute_plan(s.client, ws.ops, source='s', label='l', stamp_mode='verified', project=ud)
+
+    raw, project = _stored(s)
+    words = _layer(raw, s.ids[WORD_LAYER])
+    lemma = next(sl for sl in words['span_layers'] if sl['id'] == s.ids[LEMMA])
+    assert len(lemma['spans']) == 5
+    assert all(sp.get('value') is None and is_machine(sp.get('metadata')) for sp in lemma['spans'])
+    relations = [r for rl in lemma['relation_layers'] for r in rl['relations']]
+    assert len(relations) == 5 and not any(is_machine(r.get('metadata')) for r in relations)
+    # The grid holds nothing up for review: the empty lemmas are no stop.
+    assert _grid(raw, project)[0]['words'] == 0

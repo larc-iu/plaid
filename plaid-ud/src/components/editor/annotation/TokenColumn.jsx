@@ -6,6 +6,7 @@ import { resolveColor } from '../../../utils/udVocab.js';
 import { EditableCell } from './EditableCell.jsx';
 import { FeaturesCell } from './FeaturesCell.jsx';
 import { useEditorSession } from './editorSession.js';
+import { isEmptyMachineLemma } from '../../../domain/reviewTargets.js';
 
 // One word's column: its form and its annotation cells.
 const Column = React.memo(
@@ -42,9 +43,12 @@ const Column = React.memo(
     // (:focus-within); mouse reveal is JS with a short close-delay so the ✓
     // survives the trip up across the dependency tree's SVG (which otherwise drops
     // a pure-CSS column hover before you can reach it).
+    // A lemma the assistant's discard emptied, still the machine's, holds
+    // nothing to review: no mark on its cell, and no ✓ for it alone.
+    const lemma = isEmptyMachineLemma(data.lemma) ? null : data.lemma;
     const wordInferred =
       relationInferred ||
-      [data.form, data.lemma, data.xpos, data.upos, ...(data.feats || [])].some(
+      [data.form, lemma, data.xpos, data.upos, ...(data.feats || [])].some(
         (span) => !!span && reviewable(span.metadata),
       );
     const showCheck = !isReadOnly && onConfirmTokens && wordInferred;
@@ -149,7 +153,7 @@ const Column = React.memo(
               tokenForm={data.tokenForm}
               tabOrder={getTabIndex(index, 'lemma')}
               columnWidth={columnWidth}
-              provMeta={data.lemma?.metadata}
+              provMeta={lemma?.metadata}
               onNavigate={onNavigate}
               onPrecedent={askPrecedent}
             />

@@ -1,5 +1,5 @@
 import React, { useMemo, useCallback, useRef } from 'react';
-import { hasDiscardable } from '../../../domain/reviewTargets.js';
+import { hasDiscardable, isEmptyMachineLemma } from '../../../domain/reviewTargets.js';
 import { DependencyTree } from './DependencyTree.jsx';
 import { EnhancedArcs } from './EnhancedArcs.jsx';
 import {
@@ -230,10 +230,15 @@ export const SentenceRow = React.memo(
     // never thrown away by a keyboard chord.
     const holds = useCallback(
       (predicate) => {
+        // An empty machine lemma holds nothing to accept (REV-JOIN20-2).
         const onSpans = tokenData.some((d) =>
-          [d.form, d.lemma, d.xpos, d.upos, ...(d.feats || [])].some(
-            (span) => !!span && predicate(span.metadata),
-          ),
+          [
+            d.form,
+            isEmptyMachineLemma(d.lemma) ? null : d.lemma,
+            d.xpos,
+            d.upos,
+            ...(d.feats || []),
+          ].some((span) => !!span && predicate(span.metadata)),
         );
         return onSpans || arcs.some((r) => predicate(r.metadata));
       },
