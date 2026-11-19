@@ -13,7 +13,7 @@ from typing import TYPE_CHECKING, Any
 
 from plaid_client.document_lock import writes_landed, writes_started
 from plaid_client.http import (
-    _UNSET, IDEMPOTENCY_HEADER, NO_PIN, REPLAYED_HEADER, PlaidAPIError, build_api_error,
+    _UNSET, IDEMPOTENCY_HEADER, NO_PIN, REPLAYED_HEADER, TRANSPORT_ERRORS, PlaidAPIError, build_api_error,
     extract_document_versions, is_replayed, json_body, network_error, next_idempotency_key, note_server_clock,
     prepare_request, restamp_document_version, wire_timeout, with_retries,
 )
@@ -243,7 +243,7 @@ def post_batch(client, url, data, key, timeout):
                                        timeout=wire_timeout(timeout))
         except PlaidAPIError:
             raise
-        except Exception as e:
+        except TRANSPORT_ERRORS as e:
             raise network_error(e, url, 'POST') from e
         note_server_clock(client, getattr(resp, 'headers', None))
         if not resp.ok:
@@ -350,7 +350,10 @@ def send_chunks(client, ops: list[dict], stamped_documents: list | None, stamped
         e.committed = len(results_out)
         e.committed_results = results_out
         raise
-    except Exception as e:
+    except TRANSPORT_ERRORS as e:
+        # An answer that broke off or could not be read. Anything else (a
+        # value json cannot encode, REV-SJ1-R2-2) is the caller's or this
+        # client's, never the network's, and goes up as it is.
         error = PlaidAPIError(f'Network error: {e} at {client.base_url}/api/v1/batch',
                               url=f'{client.base_url}/api/v1/batch', method='POST',
                               original_error=e)

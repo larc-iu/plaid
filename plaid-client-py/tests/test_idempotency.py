@@ -655,3 +655,36 @@ def test_what_a_failed_split_batch_saved_is_marked_when_a_saved_request_was_repl
         b.submit()
     assert caught.value.committed == MAX_BATCH_OPS
     assert was_replayed(caught.value.committed_results)
+
+
+# REV-SJ1-R2-2: only what the transport raises is a network error (status 0,
+# "core out of reach"). A value json cannot encode in a batch was called a
+# network error, which a job worker answers by dropping the job and taking it
+# up again, ten times over.
+
+def test_a_batch_value_json_cannot_encode_is_the_callers_mistake_not_a_network_error():
+    import datetime
+    client = PlaidClient('http://x', 'tok', **FAST)
+    client.session = recording_session([[{'status': 201, 'body': {'id': 's'}}]])
+    b = client.batch()
+    b.spans.create('L', ['t'], datetime.date(2026, 1, 1))
+    with pytest.raises(TypeError, match='not JSON serializable'):
+        b.submit()
+    assert client.session.sent == []
+
+
+def test_a_fault_on_the_way_out_is_not_a_network_error_and_a_lost_connection_is():
+    client = PlaidClient('http://x', 'tok', **FAST)
+
+    def broken(**kw):
+        raise ValueError('a fault in the client')
+    client.session.request = broken
+    with pytest.raises(ValueError, match='a fault in the client'):
+        client.projects.get('p')
+
+    def lost(**kw):
+        raise requests_lib.ConnectionError('Connection refused')
+    client.session.request = lost
+    with pytest.raises(PlaidAPIError) as e:
+        client.projects.get('p')
+    assert e.value.status == 0 and isinstance(e.value.original_error, requests_lib.ConnectionError)

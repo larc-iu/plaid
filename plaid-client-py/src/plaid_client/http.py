@@ -1,3 +1,4 @@
+import http.client
 import itertools
 import json
 import logging
@@ -6,6 +7,9 @@ import threading
 import time
 from email.utils import parsedate_to_datetime
 from urllib.parse import urlencode, quote
+
+import requests
+import urllib3
 
 from plaid_client.document_lock import writes_landed, writes_started
 from plaid_client.ids import uuid7
@@ -628,6 +632,16 @@ def restamp_document_version(path, version):
     return f'{base}?{"&".join(params)}' if params else base
 
 
+# What the transport raises for a request that got no answer: requests' own
+# errors, and the socket's, urllib3's and http.client's that get past it.
+# Anything else raised on the way (a value json cannot encode, a fault in this
+# client) is no network error, and goes up as it is: called "Network error"
+# with status 0, a caller's mistake read as core out of reach, which a job
+# worker answers by dropping the job to take it up again (REV-SJ1-R2-2).
+TRANSPORT_ERRORS = (requests.exceptions.RequestException, OSError, urllib3.exceptions.HTTPError,
+                    http.client.HTTPException)
+
+
 def network_error(e, url, method):
     """The error for a request that got no answer: a timeout, or any other
     failure to reach the server, with ``e`` as its ``original_error``."""
@@ -672,7 +686,7 @@ def _read_download(response, url, method, to_path, on_progress):
                 chunk = next(pieces)
             except StopIteration:
                 break
-            except Exception as e:
+            except TRANSPORT_ERRORS as e:
                 raise network_error(e, url, method) from e
             if out is not None:
                 out.write(chunk)
@@ -828,7 +842,7 @@ def make_request(client, method, path, *, body=None, raw_body=None, form_data=Fa
             resp = client.session.request(**kwargs)
         except UploadAborted:
             raise
-        except Exception as e:
+        except TRANSPORT_ERRORS as e:
             if signal is not None and signal.is_set():
                 raise UploadAborted('The upload was stopped') from e
             raise network_error(e, url, method)
