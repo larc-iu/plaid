@@ -215,13 +215,23 @@ export const toCheckRows = (job) => {
   const refused = sum(docs, (d) => (d.refused?.length ?? 0) + (d.refusedMore ?? 0));
   add('refused', refused, `${countOf(refused, 'change')} not done, refused`, 'blank');
 
-  const people = noticeCounts(report).peoplesValuesChanged;
+  // People's links a lexicon change took or moved outside the job's documents
+  // are in no row of its own (REV-SJ3-R2-3): said apart, never as one of the
+  // job's documents.
+  const { peoplesValuesChanged: people, peoplesOutside: outside } = noticeCounts(report);
   const touched = docs.filter((d) => (d.counts?.peoplesValuesChanged ?? 0) > 0).length;
+  const elsewhere = Math.min(outside, people);
+  const where =
+    elsewhere === 0
+      ? `in ${countOf(touched, 'document')}`
+      : elsewhere === people
+        ? "outside the job's documents"
+        : `${(people - elsewhere).toLocaleString()} in ${countOf(touched, 'document')} and ` +
+          `${elsewhere.toLocaleString()} outside the job's documents`;
   check(
     'people',
     people,
-    `${countOf(people, ...VALUES_PEOPLE_WROTE)} people wrote that the job changed or removed, in ` +
-      `${countOf(touched, 'document')}`,
+    `${countOf(people, ...VALUES_PEOPLE_WROTE)} people wrote that the job changed or removed, ${where}`,
   );
 
   // The text the job edited, which its notice says (R4). Values written

@@ -281,6 +281,56 @@ describe('what to check', () => {
     ]);
   });
 
+  // REV-SJ3-R2-3: people's links an entry delete or merge took outside the
+  // job's documents are in no document of the job, so "in N documents" never
+  // counts them.
+  it.each([
+    [
+      'only inside, one document',
+      [{ peoplesValuesChanged: 2 }, {}],
+      {},
+      '2 values, morphemes or links people wrote that the job changed or removed, in 1 document',
+    ],
+    [
+      'only inside, two documents',
+      [{ peoplesValuesChanged: 2 }, { peoplesValuesChanged: 1 }],
+      {},
+      '3 values, morphemes or links people wrote that the job changed or removed, in 2 documents',
+    ],
+    [
+      'only outside',
+      [{ peoplesOutside: 2 }, {}],
+      {},
+      "2 values, morphemes or links people wrote that the job changed or removed, outside the job's documents",
+    ],
+    [
+      'inside one document and outside',
+      [{ peoplesValuesChanged: 1, peoplesOutside: 1 }, {}],
+      {},
+      '2 values, morphemes or links people wrote that the job changed or removed, ' +
+        "1 in 1 document and 1 outside the job's documents",
+    ],
+    [
+      'inside two documents and outside, from the totals',
+      [{ peoplesValuesChanged: 2, peoplesOutside: 3 }, { peoplesValuesChanged: 1 }],
+      { peoplesValuesChanged: 6 },
+      '6 values, morphemes or links people wrote that the job changed or removed, ' +
+        "3 in 2 documents and 3 outside the job's documents",
+    ],
+  ])("says where people's work the job changed lies: %s", (_, counts, totals, said) => {
+    const report = {
+      totals,
+      documents: counts.map((c, i) => ({
+        documentId: `d${i + 1}`,
+        name: `Story ${i + 1}`,
+        state: 'done',
+        counts: c,
+      })),
+    };
+    const rows = toCheckRows({ state: 'done', report });
+    expect(rows.filter((r) => r.key === 'people').map((r) => r.text)).toEqual([said]);
+  });
+
   // REV-RP-6: the documents the plan did not work, and the text the job
   // changed (the old page's notice), each a row. Values written outside the
   // setup and changes not written as edited during the job stay totals rows,
@@ -573,7 +623,7 @@ describe('what to check adds up with what it opens', () => {
         documentChecks(d).some((c) => c.kind === r.filter),
       ).length;
       const counted =
-        r.filter === 'people' ? Number(r.text.match(/in (\d+) documents?$/)[1]) : n(r);
+        r.filter === 'people' ? Number(r.text.match(/in (\d+) documents?(?: and |$)/)[1]) : n(r);
       expect([r.filter, counted]).toEqual([r.filter, shown]);
     }
     // Lists: a row's count is its tab's.
