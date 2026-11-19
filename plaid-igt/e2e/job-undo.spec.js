@@ -254,27 +254,23 @@ test('a job is undone but for what a person changed since, which is listed', asy
     timeout: 20_000,
   });
 
-  // The undo undone from one document's History (a redo of that document's
-  // part): the rest of the undo stands, so the job still reads undone.
+  // A job's undo is final (JU): its entry in History offers no Undo, and core
+  // refuses one, so the job still reads undone.
   await page.goto(`/#/projects/${projectId}/jobs/${job.id}`);
   await page.getByTestId('job-undone').getByRole('link', { name: 'Show in History' }).click();
   await expect(page.getByTestId('history-changes')).toBeVisible({ timeout: 20_000 });
-  await page
-    .getByTestId('history-changes')
-    .getByRole('button', { name: 'Undo', exact: true })
-    .click();
-  const redo = page.getByRole('dialog');
-  await expect(redo.getByText('Comparing…')).toHaveCount(0, { timeout: 20_000 });
-  await redo.getByRole('button', { name: 'Undo', exact: true }).click();
-  await expect(redo).toHaveCount(0, { timeout: 20_000 });
+  await expect(page.getByTestId('change-count')).toBeVisible();
+  await expect(
+    page.getByTestId('history-changes').getByRole('button', { name: 'Undo', exact: true }),
+  ).toHaveCount(0);
+  const { undone } = await client.jobs.get(job.id);
+  const refused = await client.audit.undo(undone.operation).then(
+    () => null,
+    (err) => err,
+  );
+  expect(refused?.status).toBe(422);
+  expect(refused?.responseData?.code).toBe('job-undo-final');
   await page.goto(`/#/projects/${projectId}/jobs/${job.id}`);
   await expect(page.getByTestId('job-undone')).toContainText('Undone by you', { timeout: 20_000 });
   await expect(page.getByRole('button', { name: 'Undo job' })).toHaveCount(0);
-
-  // The whole undo undone: the line goes and Undo job is offered again.
-  const { undone } = await client.jobs.get(job.id);
-  await client.audit.undo(undone.operation);
-  await page.reload();
-  await expect(page.getByRole('button', { name: 'Undo job' })).toBeVisible({ timeout: 20_000 });
-  await expect(page.getByTestId('job-undone')).toHaveCount(0);
 });
