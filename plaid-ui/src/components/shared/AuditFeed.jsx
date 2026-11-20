@@ -45,7 +45,8 @@ const placeOf = (entry) => entry.documents?.[0] || entry.projects?.[0] || null;
 // column silently stopped linking is the kind of loss nobody reports, so a
 // caller that forgets one is loud in development, the way the package's other
 // app-supplied facts are. Return null FROM a builder to render that one name as
-// plain text.
+// plain text. A builder answers a route in the app (a string) or `{ href }`, a
+// page in another app, which is a full page load and so a plain anchor.
 const assertHrefBuilders = ({ projectHref, documentHref }) => {
   const missing = [
     typeof projectHref === 'function' ? null : 'projectHref',
@@ -55,6 +56,17 @@ const assertHrefBuilders = ({ projectHref, documentHref }) => {
     throw new Error(`AuditFeed needs href builders from the app: ${missing.join(', ')}.`);
   }
 };
+
+const PlaceLink = ({ href, children }) =>
+  typeof href === 'string' ? (
+    <Link to={href} className="hover:underline">
+      {children}
+    </Link>
+  ) : (
+    <a href={href.href} className="hover:underline">
+      {children}
+    </a>
+  );
 
 export const AuditFeed = ({
   fetchPage,
@@ -188,13 +200,7 @@ export const AuditFeed = ({
                 return (
                   <Fragment key={document.id}>
                     {i > 0 && ', '}
-                    {href ? (
-                      <Link to={href} className="hover:underline">
-                        {document.name}
-                      </Link>
-                    ) : (
-                      document.name
-                    )}
+                    {href ? <PlaceLink href={href}>{document.name}</PlaceLink> : document.name}
                   </Fragment>
                 );
               })}
@@ -204,13 +210,7 @@ export const AuditFeed = ({
         }
         if (project) {
           const href = projectHref(project);
-          return href ? (
-            <Link to={href} className="hover:underline">
-              {project.name}
-            </Link>
-          ) : (
-            project.name
-          );
+          return href ? <PlaceLink href={href}>{project.name}</PlaceLink> : project.name;
         }
         return '';
       },

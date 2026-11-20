@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Link } from 'react-router-dom';
 import { Button } from '@ui/components/ui/button';
 import { Badge } from '@ui/components/ui/badge';
 import { DataTable } from '@ui/components/shared/data-table';
@@ -8,6 +7,7 @@ import { ownerOf } from '@ui/domain/appOwners.js';
 import { notifySuccess, notifyError, humanizeError } from '@/utils/feedback';
 import { findBaselineTextLayer, readInitialized } from '../../domain/igtConfig';
 import { compareNames, textIncludes } from '@ui/domain/collation.js';
+import { ProjectLink } from './projectLinks';
 import { projectRole } from '@larc-iu/plaid-client';
 
 // Every project on the server, including the ones this admin has no role in.
@@ -15,16 +15,11 @@ import { projectRole } from '@larc-iu/plaid-client';
 // everywhere else is who is on each, which app owns it, and whether anyone has
 // touched it lately.
 
-// Which app owns the project, and where its name leads. This one knows its own
-// for certain, from its own config module; every other app is `ownerOf` in the
-// shared package, which pairs each recogniser with the URL that app opens a
-// project at. A second copy of that table here is how two apps start
-// disagreeing about what a project is, and how a fourth app is forgotten.
-//
-// A project this app owns opens through the router. Every other opens in the
-// app that owns it, because this app's project route is its setup wizard, and
-// running that over a corpus another app set up is the wrong thing to do to
-// someone else's work.
+// Which app owns the project. This one knows its own for certain, from its own
+// config module; every other app is `ownerOf` in the shared package. A second
+// copy of that table here is how two apps start disagreeing about what a
+// project is, and how a fourth app is forgotten. Where its name leads is
+// `projectTarget`, which every project link in the admin area shares.
 const shapeOf = (project) => {
   if (readInitialized(project.config)) return 'IGT';
   const owner = ownerOf(project);
@@ -79,19 +74,7 @@ export const AdminProjects = ({ client, currentUser }) => {
       sort: (p) => p.name,
       compare: compareNames,
       // A project's name is its way in, and it leads to the app that owns it.
-      // Another app is a full page load, so a plain anchor, not a router Link.
-      render: (p) => {
-        const owner = readInitialized(p.config) ? null : ownerOf(p);
-        return owner ? (
-          <a href={owner.url(p.id)} className="font-medium hover:underline">
-            {p.name}
-          </a>
-        ) : (
-          <Link to={`/projects/${p.id}`} className="font-medium hover:underline">
-            {p.name}
-          </Link>
-        );
-      },
+      render: (p) => <ProjectLink project={p} className="font-medium hover:underline" />,
     },
     {
       key: 'shape',

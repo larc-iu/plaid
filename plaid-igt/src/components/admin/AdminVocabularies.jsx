@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { DataTable } from '@ui/components/shared/data-table';
 import { notifyError, humanizeError } from '@/utils/feedback';
 import { textIncludes } from '@ui/domain/collation.js';
+import { ProjectLink } from './projectLinks';
 
 // Every vocabulary belongs to one project and other projects may link it, so
 // which projects use one is invisible from inside any of them. This is the
@@ -50,6 +51,7 @@ export const AdminVocabularies = ({ client }) => {
         ...v,
         // The project's name, or its id when the list does not hold it.
         homeLabel: home?.name ?? v.project,
+        home: home ?? { id: v.project },
         projects: home ? [home, ...others] : others,
       };
     });
@@ -71,9 +73,9 @@ export const AdminVocabularies = ({ client }) => {
       label: 'Project',
       sort: (v) => (v.homeLabel || '').toLowerCase(),
       render: (v) => (
-        <Link to={`/projects/${v.project}`} dir="auto" className="hover:underline">
+        <ProjectLink project={v.home} dir="auto" className="hover:underline">
           {v.homeLabel}
-        </Link>
+        </ProjectLink>
       ),
     },
     {
@@ -83,14 +85,12 @@ export const AdminVocabularies = ({ client }) => {
       render: (v) => (
         <span className="flex flex-wrap gap-x-2 gap-y-1">
           {v.projects.map((p) => (
-            <Link
+            <ProjectLink
               key={p.id}
-              to={`/projects/${p.id}`}
+              project={p}
               dir="auto"
               className="text-muted-foreground hover:underline"
-            >
-              {p.name}
-            </Link>
+            />
           ))}
         </span>
       ),

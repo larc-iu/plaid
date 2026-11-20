@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Link } from 'react-router-dom';
 import { RefreshCw } from 'lucide-react';
 import { Button } from '@ui/components/ui/button';
 import { Badge } from '@ui/components/ui/badge';
@@ -9,6 +8,7 @@ import { notifySuccess, notifyError, humanizeError } from '@/utils/feedback';
 import { useConfirm } from '@ui/components/shared/ConfirmProvider';
 import { compareNames, textIncludes } from '@ui/domain/collation.js';
 import { countOf } from '@ui/lib/plural.js';
+import { ProjectLink } from './projectLinks';
 
 // Services register per project, so "is the analyze service up" can only be
 // answered one project at a time. This asks every project at once.
@@ -300,9 +300,9 @@ export const AdminServices = ({ client, currentUser }) => {
                   </Badge>
                 </td>
                 <td className="py-1 pr-3">
-                  <Link to={`/projects/${e.project.id}`} className="hover:underline">
+                  <ProjectLink project={e.project} className="hover:underline">
                     {e.project.name}
-                  </Link>
+                  </ProjectLink>
                 </td>
                 <td className="py-1 pr-3 text-muted-foreground" title={fullTimestamp(e.lastSeenAt)}>
                   {e.online ? 'Now' : e.lastSeenAt ? timeAgo(e.lastSeenAt) : ''}

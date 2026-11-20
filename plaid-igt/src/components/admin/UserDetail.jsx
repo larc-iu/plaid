@@ -15,6 +15,7 @@ import { projectRole } from '@larc-iu/plaid-client';
 import { useLatestCall } from '@ui/hooks/useLatestCall.js';
 import { TYPE } from '@ui/lib/typeScale.js';
 import { cn } from '@ui/lib/utils';
+import { ProjectLink, documentTarget, projectTarget } from './projectLinks';
 
 // One account: what they can reach, what they have been doing, and what is
 // holding a session open in their name.
@@ -23,6 +24,8 @@ export const UserDetail = ({ client, userId, backTo, onEdit, dialogs }) => {
   const confirm = useConfirm();
   const [user, setUser] = useState(null);
   const [projects, setProjects] = useState([]);
+  // Every project, by id, for where the feed's links lead.
+  const [projectsById, setProjectsById] = useState(new Map());
   const [tokens, setTokens] = useState([]);
   const [tally, setTally] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -45,13 +48,19 @@ export const UserDetail = ({ client, userId, backTo, onEdit, dialogs }) => {
       ]);
       if (!isCurrent()) return;
       setUser(u);
+      setProjectsById(new Map((projectList || []).map((p) => [p.id, p])));
       setProjects(
         (projectList || [])
           .map((p) => {
             // Explicit membership only: this lists the projects this account
             // was added to, so an admin's implicit reach does not belong here.
             const role = projectRole(p, userId);
-            return { id: p.id, name: p.name, role: role && role[0].toUpperCase() + role.slice(1) };
+            return {
+              id: p.id,
+              name: p.name,
+              project: p,
+              role: role && role[0].toUpperCase() + role.slice(1),
+            };
           })
           .filter((p) => p.role),
       );
@@ -155,9 +164,9 @@ export const UserDetail = ({ client, userId, backTo, onEdit, dialogs }) => {
                 sort: (p) => p.name,
                 compare: compareNames,
                 render: (p) => (
-                  <Link to={`/projects/${p.id}`} className="hover:underline">
+                  <ProjectLink project={p.project} className="hover:underline">
                     {p.name}
-                  </Link>
+                  </ProjectLink>
                 ),
               },
               {
@@ -239,8 +248,10 @@ export const UserDetail = ({ client, userId, backTo, onEdit, dialogs }) => {
             title="Recent activity"
             id="user-activity"
             resetKey={userId}
-            projectHref={(project) => `/projects/${project.id}`}
-            documentHref={(document, project) => `/projects/${project.id}/documents/${document.id}`}
+            projectHref={(project) => projectTarget(projectsById.get(project.id) ?? project)}
+            documentHref={(document, project) =>
+              documentTarget(document, projectsById.get(project.id) ?? project)
+            }
             empty="Nothing recorded."
             fetchPage={({ limit, cursor }) =>
               client.users.auditPage(userId, { limit, cursor, order: 'desc', opsLimit: 1 })

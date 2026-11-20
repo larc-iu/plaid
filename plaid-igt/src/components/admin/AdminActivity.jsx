@@ -1,11 +1,14 @@
 import { useEffect, useState } from 'react';
 import { ActivityPanel } from '@ui/components/shared/ActivityPanel';
+import { documentTarget, projectTarget } from './projectLinks';
 
 // The instance-wide half of the activity view. The roster it passes is the
 // account directory, so "no changes in this window" names people who exist
-// and have not worked, which the tally alone cannot say.
+// and have not worked, which the tally alone cannot say. The project list,
+// read once, says where the feed's links lead.
 export const AdminActivity = ({ client }) => {
   const [roster, setRoster] = useState([]);
+  const [projectsById, setProjectsById] = useState(new Map());
 
   useEffect(() => {
     let alive = true;
@@ -13,6 +16,12 @@ export const AdminActivity = ({ client }) => {
       .list()
       .then((all) => {
         if (alive) setRoster((all || []).filter((u) => !u.deactivatedAt));
+      })
+      .catch(() => {});
+    client.projects
+      .list()
+      .then((all) => {
+        if (alive) setProjectsById(new Map((all || []).map((p) => [p.id, p])));
       })
       .catch(() => {});
     return () => {
@@ -24,8 +33,10 @@ export const AdminActivity = ({ client }) => {
     <ActivityPanel
       client={client}
       roster={roster}
-      projectHref={(project) => `/projects/${project.id}`}
-      documentHref={(document, project) => `/projects/${project.id}/documents/${document.id}`}
+      projectHref={(project) => projectTarget(projectsById.get(project.id) ?? project)}
+      documentHref={(document, project) =>
+        documentTarget(document, projectsById.get(project.id) ?? project)
+      }
     />
   );
 };

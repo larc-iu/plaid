@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Link } from 'react-router-dom';
 import { Link2, Copy, Check } from 'lucide-react';
 import { Button } from '@ui/components/ui/button';
 import { Input } from '@ui/components/ui/input';
@@ -26,6 +25,7 @@ import { notifySuccess, notifyError, humanizeError } from '@/utils/feedback';
 import { useConfirm } from '@ui/components/shared/ConfirmProvider';
 import { InviteStatusBadge } from '@ui/components/shared/InviteStatusBadge.jsx';
 import { inviteLinkFor, GRANT_ROLES, cap, inviteRevocable } from '@ui/domain/invites.js';
+import { ProjectLink } from './projectLinks';
 import { ROLE_HINTS } from '@/domain/roleGrants.js';
 import { textIncludes } from '@ui/domain/collation.js';
 import { countOf } from '@ui/lib/plural.js';
@@ -209,9 +209,12 @@ export const AdminInvites = ({ client }) => {
           <span className="flex flex-wrap items-center gap-1">
             {i.grantAdmin && <Badge variant="destructive">Admin</Badge>}
             {i.projectId && (
-              <Link to={`/projects/${i.projectId}`} className="hover:underline">
+              <ProjectLink
+                project={projects.find((p) => p.id === i.projectId) ?? { id: i.projectId }}
+                className="hover:underline"
+              >
                 {projectName(i.projectId)}
-              </Link>
+              </ProjectLink>
             )}
             {i.projectRole && <span className="text-muted-foreground">{i.projectRole}</span>}
             {!i.grantAdmin && !i.projectId && (
