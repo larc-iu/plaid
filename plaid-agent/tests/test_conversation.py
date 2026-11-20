@@ -132,9 +132,10 @@ def test_items_and_plan_settlement():
                                          'proposed': []}, \
         'a settled plan keeps its card and drops what only approving it needed'
     undated = lambda item: {k: v for k, v in item.items() if k != 'created_at'}  # noqa: E731
-    assert undated(error_item('Stopped.', stopped=True)) == {'kind': 'error', 'text': 'Stopped.', 'stopped': True}
-    assert undated(error_item('x')) == {'kind': 'error', 'text': 'x'}
-    assert error_item('x')['created_at'].endswith('Z')
+    assert undated(error_item('Stopped.', 'stopped')) == {'kind': 'error', 'text': 'Stopped.', 'reason': 'stopped',
+                                                       'stopped': True}
+    assert undated(error_item('x', 'other')) == {'kind': 'error', 'text': 'x', 'reason': 'other'}
+    assert error_item('x', 'other')['created_at'].endswith('Z')
 
 
 def test_store_round_trip_and_ownership():

@@ -525,7 +525,7 @@ def test_the_reasoning_of_a_call_stopped_while_it_reasoned_is_kept_in_a_round_of
     assert agent.turn_reply_round(e.value) == rnd['id']
     assert rnd['thinking'] == 'Weighing the glosses.' and rnd['said'] == 'Half' and rnd['asked'] == 'hi'
     from plaid_agent.core.conversation import error_item
-    item = error_item('Stopped.', stopped=True, reply_round=agent.turn_reply_round(e.value))
+    item = error_item('Stopped.', 'stopped', reply_round=agent.turn_reply_round(e.value))
     assert item['reply_round'] == rnd['id'] and item['reply_thought'] is True
 
 

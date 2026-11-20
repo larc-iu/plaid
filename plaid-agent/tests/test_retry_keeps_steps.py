@@ -159,7 +159,7 @@ def _answering(seen, text='Done.'):
 
 
 def _cut():
-    e = TurnFailed(cut_line(32768))
+    e = TurnFailed(cut_line(32768), 'output-limit')
     e.cut_at = 32768
     return e
 

@@ -172,14 +172,14 @@ def test_the_record_keeps_a_failed_or_stopped_turns_steps(monkeypatch, exc, stop
 
 
 def test_every_item_is_dated():
-    for item in (user_item('q'), assistant_item('a', None, [], [], '', 'm'), error_item('x')):
+    for item in (user_item('q'), assistant_item('a', None, [], [], '', 'm'), error_item('x', 'other')):
         assert ISO_MS.match(item['created_at'])
 
 
 def test_prune_drops_an_older_failed_turns_steps():
     steps = [{'id': f'c{i}', 'name': 'search', 'kind': 'read', 'label': 'Searched', 'round': 'r'} for i in range(3)]
-    conv = {'messages': [], 'display': [user_item('a'), error_item('failed', steps=steps), user_item('b'),
-                                        error_item('failed', steps=steps)]}
+    conv = {'messages': [], 'display': [user_item('a'), error_item('failed', 'other', steps=steps), user_item('b'),
+                                        error_item('failed', 'other', steps=steps)]}
     out = prune(conv, budget=conversation_bytes(conv) - 100)
     assert out['display'][1]['steps'] == []
     assert out['display'][3]['steps'], 'the item on screen keeps its steps'

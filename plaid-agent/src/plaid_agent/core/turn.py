@@ -19,7 +19,7 @@ from .guidelines import in_reading_order
 from .limits import TRANSCRIPT_WINDOW_SHARE
 from .reach import Reach
 from .agent import (TurnCancelled, TurnFailed, turn_reply_round, turn_trace, context_window, ended_line,
-                    failed_turn_messages, model_failure_line, run_turn, token_counter)
+                    failed_turn_messages, failure_reason, model_failure_line, run_turn, token_counter)
 from .files import Attachments, FileKeeper
 from .garble import seed
 from .guidelines import in_context as guidelines_in_context
@@ -188,7 +188,8 @@ class Turn:
             line = self.turn_failure_line(e)
             self._write(store, conv_id,
                         turn_ending(conv, conv['messages'],
-                                    error_item(line, model=model, version=self.version, service=self.service_id)),
+                                    error_item(line, failure_reason(e), model=model, version=self.version,
+                                               service=self.service_id)),
                         request_id, model)
             response_helper.error(line)
             return
@@ -234,7 +235,8 @@ class Turn:
             gone = isinstance(e, ServiceRequestGone) or getattr(response_helper, 'gone', False) is True
             self._write(store, conv_id,
                         turn_ending(conv, transcript,
-                                    error_item(CONNECTION_LOST_LINE if gone else 'Stopped.', stopped=not gone,
+                                    error_item(CONNECTION_LOST_LINE if gone else 'Stopped.',
+                                               'connection-lost' if gone else 'stopped',
                                                model=model, version=self.version,
                                                service=self.service_id, steps=steps, partial=partial,
                                                reply_round=turn_reply_round(e)),
@@ -257,8 +259,8 @@ class Turn:
             kept = failed_turn_messages(e)
             line = self.turn_failure_line(e, kept=bool(kept))
             steps, partial = turn_trace(e)
-            item = error_item(line, model=model, version=self.version, service=self.service_id, steps=steps,
-                              partial=partial, reply_round=turn_reply_round(e))
+            item = error_item(line, failure_reason(e), model=model, version=self.version, service=self.service_id,
+                              steps=steps, partial=partial, reply_round=turn_reply_round(e))
             # Its tool results stay for the next message, so what it read of
             # each sentence stays too, for the numbers read there to be held
             # to it (REV-SVB-13, `earlier_reads`).
@@ -337,7 +339,7 @@ class Turn:
                 try:
                     self._write(store, conv_id,
                                 turn_ending(conv, transcript,
-                                            error_item(said, model=model, version=self.version,
+                                            error_item(said, 'too-large', model=model, version=self.version,
                                                        service=self.service_id)),
                                 request_id, model)
                 except Exception:  # noqa: BLE001 - the answer still goes out

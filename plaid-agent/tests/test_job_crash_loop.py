@@ -64,7 +64,7 @@ def test_skipped_sentences_past_cores_cap_are_counted_and_not_listed(monkeypatch
     job = start(client)
 
     def answer(asked, n, kwargs):
-        raise agent.TurnFailed('The model wrote 32,768 tokens without finishing.')
+        raise agent.TurnFailed('The model wrote 32,768 tokens without finishing.', 'output-limit')
     use(monkeypatch, Model(answer))
     assert runner(job).document('d1') == 'done'
     row = job.rows['d1']

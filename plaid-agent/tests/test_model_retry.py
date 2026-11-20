@@ -58,8 +58,8 @@ def _refusals():
         'bad request': litellm.BadRequestError('malformed transcript', **kw),
         'key': litellm.AuthenticationError('bad key', **kw),
         'policy': litellm.ContentPolicyViolationError('refused', **kw),
-        'cap': TurnFailed(cut_line(32768)),
-        'repeating': TurnFailed(agent.REPEATING_LINE),
+        'cap': TurnFailed(cut_line(32768), 'output-limit'),
+        'repeating': TurnFailed(agent.REPEATING_LINE, 'no-answer'),
         'bug': RuntimeError('a bug'),
     }
 
@@ -227,7 +227,7 @@ KEPT = [{'role': 'assistant', 'content': None,
 
 
 def _cut():
-    e = TurnFailed(cut_line(32768))
+    e = TurnFailed(cut_line(32768), 'output-limit')
     e.cut_at = 32768  # as `unless_capped` raises it
     return e
 

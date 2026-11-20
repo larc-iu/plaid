@@ -121,7 +121,7 @@ def test_a_cancelled_turn_is_settled_as_stopped(monkeypatch):
     conv, meta = store.load('c1')
     item = dict(conv['display'][-1])
     assert item.pop('created_at')
-    assert item == {'kind': 'error', 'text': 'Stopped.', 'stopped': True,
+    assert item == {'kind': 'error', 'text': 'Stopped.', 'reason': 'stopped', 'stopped': True,
                     'model': 'fake/model', 'version': _service().version,
                     'service': 'igt:assist:fake'}
     assert [m['role'] for m in conv['messages']] == ['user'], 'the question stays for the next turn to read'

@@ -547,12 +547,26 @@ def earlier_reads(display: List[Dict[str, Any]]) -> Dict[str, Dict[str, str]]:
     return out
 
 
-def error_item(text: str, stopped: bool = False, model: Optional[str] = None,
+#: Why a turn ended without an answer, as its error item records it
+#: (``reason``): the person pressed Stop (``stopped``), the server dropped the
+#: request or the turn never wrote its end (``connection-lost``,
+#: :data:`CONNECTION_LOST_LINE`, :data:`LOST_LINE`), a model call reached its
+#: output cap (``output-limit``, `agent.cut_line`), the model returned nothing
+#: usable (``no-answer``: an empty reply, the repeat guard), the provider
+#: failed or refused after its retries (``model``, `agent.model_failure_line`),
+#: the answer was too large for the record (``too-large``, `turn.STANDIN`), or
+#: anything else (``other``). A closed set, each set by the code that ends the
+#: turn that way and never read from the line.
+ERROR_REASONS = ('stopped', 'connection-lost', 'output-limit', 'no-answer', 'model', 'too-large', 'other')
+
+
+def error_item(text: str, reason: str, model: Optional[str] = None,
                version: Optional[str] = None, service: Optional[str] = None,
                steps: Optional[List[Dict[str, Any]]] = None,
                partial: Optional[str] = None, reply_round: Optional[str] = None) -> Dict[str, Any]:
-    """A turn that ended without an answer. ``model``, ``version`` and
-    ``service`` say which assistant it was asked of, as on an answer.
+    """A turn that ended without an answer, for ``reason`` (one of
+    :data:`ERROR_REASONS`). ``model``, ``version`` and ``service`` say which
+    assistant it was asked of, as on an answer.
 
     ``steps`` are the tool calls the turn made before it failed or was
     stopped, as an answer's are (`trace.trace_step`), each naming the round
@@ -566,8 +580,10 @@ def error_item(text: str, stopped: bool = False, model: Optional[str] = None,
     twice.
     ``reply_round`` names the round that keeps the reasoning of the model
     call under way (`agent.turn_reply_round`), as an answer's does."""
-    item: Dict[str, Any] = {'kind': 'error', 'text': text, 'created_at': now_iso()}
-    if stopped:
+    if reason not in ERROR_REASONS:
+        raise ValueError(f'unknown error reason {reason!r}')
+    item: Dict[str, Any] = {'kind': 'error', 'text': text, 'reason': reason, 'created_at': now_iso()}
+    if reason == 'stopped':
         item['stopped'] = True
     if steps:
         item['steps'] = steps
@@ -1281,7 +1297,7 @@ def rewind_for_retry(conv: Dict[str, Any]) -> Optional[Tuple[Dict[str, Any], Dic
     if last >= 0 and not kept and all(isinstance(m, dict) and m.get('role') == 'user' for m in after):
         messages = messages[:last] + after
     if i == len(display) - 1:
-        display.append({'kind': 'error', 'lost': True, 'text': LOST_LINE, 'created_at': now_iso()})
+        display.append({**error_item(LOST_LINE, 'connection-lost'), 'lost': True})
     question = {k: asked[k] for k in ('text', 'files', 'projects', 'where') if asked.get(k)}
     question.setdefault('text', text)
     return {'messages': messages, 'display': display}, question

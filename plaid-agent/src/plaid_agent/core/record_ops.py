@@ -359,7 +359,7 @@ class RecordOps:
             except ValueError as e:
                 self._write(ctx.store, ctx.conv_id,
                             turn_ending(conv, conv['messages'],
-                                        error_item(str(e), model=self.cfg.model, version=self.version,
+                                        error_item(str(e), 'other', model=self.cfg.model, version=self.version,
                                                    service=self.service_id)),
                             ctx.request_id)
                 ctx.helper.error(str(e))

@@ -479,7 +479,7 @@ def test_an_empty_reply_is_a_failed_turn_with_its_own_line(monkeypatch):
     store = _seed(client)
 
     def empty(*a, **k):
-        raise TurnFailed(EMPTY_REPLY)
+        raise TurnFailed(EMPTY_REPLY, 'no-answer')
 
     monkeypatch.setattr(turn_mod, 'run_turn', empty)
     helper = Helper()
@@ -487,7 +487,7 @@ def test_an_empty_reply_is_a_failed_turn_with_its_own_line(monkeypatch):
     conv, _meta = store.load('c1')
     item = dict(conv['display'][-1])
     assert item.pop('created_at')
-    assert item == {'kind': 'error', 'text': EMPTY_REPLY, 'model': 'fake/model',
+    assert item == {'kind': 'error', 'text': EMPTY_REPLY, 'reason': 'no-answer', 'model': 'fake/model',
                     'version': _service().version, 'service': 'igt:assist:fake'}
     assert [m['role'] for m in conv['messages']] == ['user'], 'the question stays for the next turn to read'
 

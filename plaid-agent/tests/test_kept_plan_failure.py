@@ -97,7 +97,7 @@ def test_the_stored_reply_says_what_happened_and_keeps_the_text_clipped(monkeypa
     client = FakeClient()
     store = _seed(client)
     looped = 'Staged 47 changes.\n' + '\n'.join([LOOP] * 3000)
-    failure = TurnFailed(cut_line(32768))
+    failure = TurnFailed(cut_line(32768), 'output-limit')
 
     def run(cfg, kit, ws, system, transcript, on_progress, cancelled=None, on_text=None):
         return TurnResult(f'({cut_line(32768)})', [], [], {'sent': 1, 'received': 2},
@@ -125,7 +125,7 @@ def test_a_generic_failure_reads_as_the_service_says_it():
 
 def test_an_answer_and_an_error_item_hold_their_text_to_the_same_rule():
     long = 'x' * (PARTIAL_MAX_CHARS * 3)
-    assert len(error_item('Stopped.', partial=long)['partial']) < PARTIAL_MAX_CHARS + 100
+    assert len(error_item('Stopped.', 'stopped', partial=long)['partial']) < PARTIAL_MAX_CHARS + 100
     assert 'partial' not in assistant_item('Hi.', None, [], [], '', 'm')
     assert 'failed' not in assistant_item('Hi.', None, [], [], '', 'm')
     short = assistant_item('(x)', None, [], [], '', 'm', failed=True, partial='So far.')

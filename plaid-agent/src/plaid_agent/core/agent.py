@@ -481,7 +481,7 @@ def _complete_once(cfg: ModelConfig, kwargs: Dict[str, Any], on_text: Callable[[
                 on_thinking(clean_reasoning(thought) or '')
             if text:
                 on_text(text)
-            raise TurnFailed(REPEATING_LINE) from None
+            raise TurnFailed(REPEATING_LINE, 'no-answer') from None
         # A timeout, a rate limit or a provider that is down is not a provider
         # that refuses to stream: asking again at once without streaming would
         # only fail the same way, and :func:`_complete` decides about retries.
@@ -643,7 +643,12 @@ class TurnCancelled(Exception):
 class TurnFailed(Exception):
     """The turn ended without an answer worth keeping. Its message is written
     for the reader, and the turn is recorded as failed (with Retry), exactly
-    as a provider error would be."""
+    as a provider error would be. ``reason`` is the error item's
+    (`conversation.ERROR_REASONS`), named where it is raised."""
+
+    def __init__(self, line: str, reason: str):
+        super().__init__(line)
+        self.reason = reason
 
 
 EMPTY_REPLY = 'The model returned an empty reply.'
@@ -1164,6 +1169,16 @@ def turn_trace(e: BaseException):
     return list(getattr(e, 'turn_steps', None) or []), getattr(e, 'turn_partial', None) or ''
 
 
+def failure_reason(e: BaseException) -> str:
+    """The reason a turn that failed with ``e`` is recorded with
+    (`conversation.ERROR_REASONS`): the one :class:`TurnFailed` was raised
+    with, ``model`` for a failure of the model provider
+    (:func:`model_failure_line` has a line for it), else ``other``."""
+    if isinstance(e, TurnFailed):
+        return e.reason
+    return 'model' if model_failure_line(e) is not None else 'other'
+
+
 def turn_messages(e: BaseException) -> List[Dict[str, Any]]:
     """The messages a turn that ended with ``e`` added to the transcript, as
     :func:`run_turn` left them on the exception: its calls and their results,
@@ -1458,7 +1473,7 @@ def _run_turn(cfg, kit, ws, system, transcript, on_progress, cancelled, on_text,
             if not _holds_work(ws):
                 # Asked twice and nothing came back, and nothing was planned:
                 # a failed turn, which the reader can retry, not an answer.
-                raise TurnFailed(EMPTY_REPLY)
+                raise TurnFailed(EMPTY_REPLY, 'no-answer')
             # The plan is the substance of this turn and the card shows it,
             # so keep it rather than throw it away with the missing words.
             text = f'({EMPTY_REPLY})'
@@ -1539,7 +1554,7 @@ def _run_turn(cfg, kit, ws, system, transcript, on_progress, cancelled, on_text,
         print(f'{cfg.model}: a model call reached the output limit '
               f'({written:,} tokens written, the limit is {limit:,})' if limit
               else f'{cfg.model}: a model call reached the output limit')
-        e = TurnFailed(cut_line(written))
+        e = TurnFailed(cut_line(written), 'output-limit')
         # What the provider counted for the call, which the turn's usage
         # adds when the turn goes on without it (`keep_the_plan`).
         e.usage = usage

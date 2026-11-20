@@ -38,7 +38,7 @@ def repeating(asked, n, kwargs):
     what was staged, REV-RW-6), so nothing it staged is written."""
     if n == 1:
         return reply(calls=analyse(asked))
-    raise core_job.TurnFailed(core_job.REPEATING_LINE)
+    raise core_job.TurnFailed(core_job.REPEATING_LINE, 'no-answer')
 
 
 def test_a_stretch_over_the_round_cap_is_halved_into_three_and_two(monkeypatch):
@@ -93,8 +93,8 @@ def test_nothing_a_failed_stretch_staged_is_written(monkeypatch):
 
 
 @pytest.mark.parametrize('kind,raise_it', [
-    ('output', lambda: core_job.TurnFailed('The model wrote 32,768 tokens without finishing.')),
-    ('repeating', lambda: core_job.TurnFailed(core_job.REPEATING_LINE)),
+    ('output', lambda: core_job.TurnFailed('The model wrote 32,768 tokens without finishing.', 'output-limit')),
+    ('repeating', lambda: core_job.TurnFailed(core_job.REPEATING_LINE, 'no-answer')),
 ])
 def test_a_one_sentence_stretch_is_skipped_with_the_kind_of_its_failure(monkeypatch, kind, raise_it):
     client, job = _job(1)
