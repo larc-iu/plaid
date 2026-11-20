@@ -656,23 +656,27 @@ def test_the_set_field_line_says_set_analysis_as_its_description_does():
 
 
 @pytest.mark.parametrize('fills, said, unsaid', [
-    (('segmentation',), ['Segment each word with set_analysis', 'the instructions said to segment the words nobody '
-                         'analysed.', 'Segmented s6. Left s7.w2, a name nobody has analysed.'],
-     ['gloss', 'Gloss', 'analyze_sentence', 'translat']),
-    (('segmentation', 'sl-gloss'), ['Segment each word with set_analysis'], ['analyze_sentence', 'translat']),
+    (('segmentation',), ['Stage the words to segment with analyze_sentence first, its items in the columns '
+                         '["forms"].', 'the instructions said to segment the words nobody analysed.',
+                         'Segmented s6. Left s7.w2, a name nobody has analysed.'],
+     ['gloss', 'Gloss', 'set_analysis', 'translat', 'look up only']),
+    (('segmentation', 'sl-gloss'), ['Stage the words to segment with analyze_sentence first, its items in the '
+                                    'columns ["forms"].'], ['set_analysis', 'translat']),
     (('segmentation', 'sl-mgloss'), ['the instructions said to segment and gloss the words nobody analysed.',
-                                     'Glossed s6. Left s7.w2', 'analyze_sentence'], ['translat']),
+                                     'Glossed s6. Left s7.w2', 'analyze_sentence'], ['translat', 'columns']),
     (('segmentation', 'sl-trans'), ['segment the words nobody analysed and to translate empty translations',
-                                    'set the translation of s7', 'Segmented s6 and translated s7.'],
-     ['analyze_sentence', 'Glossed']),
+                                    'set the translation of s7', 'Segmented s6 and translated s7.',
+                                    'its items in the columns ["forms"]'],
+     ['set_analysis', 'Glossed']),
     (('segmentation', 'sl-mgloss', 'sl-trans'), ['segment and gloss the words nobody analysed and to translate'],
-     []),
+     ['columns']),
 ], ids=['segmentation', 'with-a-word-field', 'glossing', 'translating', 'glossing-and-translating'])
 def test_a_segmenting_piece_is_told_its_task_by_what_its_plan_fills(fills, said, unsaid):
     """REV-DF-D-10: a job that segments and does not gloss gets no glossing
-    example and no glossing-shaped line (analyze_sentence takes a gloss for
-    every word, so it segments with set_analysis). One prompt, its task
-    lines and worked piece built from the targets."""
+    example and no glossing-shaped line. Since its items take the columns
+    its plan fills (lines.piece_columns), it segments with analyze_sentence
+    too, told its columns once, and is promised no lookup of links. One
+    prompt, its task lines and worked piece built from the targets."""
     from plaid_agent.igt import targets as tg
     project = _project()
     fill = [t for t in tg.fillable(project) if t.id in fills]

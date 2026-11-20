@@ -66,7 +66,7 @@ from ..core.provenance import Requester
 from ..core.tools import Refusal, ToolError
 from ..core.version import agent_version
 from . import evidence, jobapply, similar, targets as tg, toolkit
-from .lines import COLUMNS as ITEM_COLUMNS, columns_of
+from .lines import COLUMNS as ITEM_COLUMNS, columns_of, filled_columns
 from .plan import LEXICON_MAINTAINER, REPAIR_OF, PlanOutOfDate, check_entries, execute_plan
 from .project import (VIRTUAL_PREFIX, IgtProject, Sentence, Word, is_virtual, load_project, parse_document,
                       render_sentence)
@@ -918,6 +918,14 @@ def chosen_word_fields(people: Counter, job: Counter) -> Dict[str, Any]:
 def rendering(analysis: Dict[str, Any], gloss: Optional[str], entries: Optional[Dict[str, str]] = None) -> str:
     """An analysis in one short readable line, ``ka-n=da ‘go-PST=3SG’``, with
     the entries it links where ``entries`` names them."""
+    return rendering_of(analysis, [gloss] if gloss else [], entries)
+
+
+def rendering_of(analysis: Dict[str, Any], fields: List[str], entries: Optional[Dict[str, str]] = None) -> str:
+    """:func:`rendering` with the values of each morpheme field of
+    ``fields`` (names, in order), ``ka-n=da ‘go-PST=3SG’ ‘v-sfx=pro’``:
+    every one, "_" where a morpheme has none, when a morpheme holds one of
+    them, else the forms alone."""
     ms = analysis.get('morphemes') or []
 
     def joined(parts):
@@ -926,12 +934,35 @@ def rendering(analysis: Dict[str, Any], gloss: Optional[str], entries: Optional[
             out += ('' if i == 0 else '=' if m.get('equals') else '-') + p
         return out
     line = joined([m.get('form') or '_' for m in ms])
-    if gloss and any(gloss in (m.get('fields') or {}) for m in ms):
-        line += ' ‘' + joined([(m.get('fields') or {}).get(gloss) or '_' for m in ms]) + '’'
+    if any(f in (m.get('fields') or {}) for f in fields for m in ms):
+        line += ''.join(' ‘' + joined([(m.get('fields') or {}).get(f) or '_' for m in ms]) + '’' for f in fields)
     linked = [entries.get(m['entry'], '?') for m in ms if m.get('entry')] if entries is not None else []
     if linked:
         line += ' (entries ' + ', '.join(linked) + ')'
     return line
+
+
+#: The key of a proposed analysis naming the morpheme fields its from and
+#: to show, when they are more than the gloss (``holds_change`` compares by
+#: them). Hidden from read_job, as the page ignores it.
+MORPHEME_FIELDS = 'morpheme_fields'
+
+
+def shown_fields(project: IgtProject, names) -> List[str]:
+    """The morpheme fields a report renders an analysis by: the gloss field,
+    as ever, and every other morpheme field of ``names`` (those the analysis
+    or the change holds a value for), in analyze_sentence's column order
+    (``lines.columns_of``)."""
+    g = project.gloss_field('Morpheme')
+    held = set(names) | ({g.name} if g is not None else set())
+    return [f.name for _n, f in columns_of(project, [f for f in project.fields_by_scope('Morpheme') if f.name in held])]
+
+
+def shown(analysis: Dict[str, Any], project: IgtProject) -> str:
+    """An analysis as the report shows it: :func:`rendering_of` by
+    :func:`shown_fields` of the morpheme fields it holds a value for."""
+    held = {n for m in analysis.get('morphemes') or [] for n in (m.get('fields') or {})}
+    return rendering_of(analysis, shown_fields(project, held))
 
 
 def holds_change(doc, project: IgtProject, change: Dict[str, Any]) -> bool:
@@ -956,8 +987,9 @@ def holds_change(doc, project: IgtProject, change: Dict[str, Any]) -> bool:
         sp = holder.fields.get(f.name) if holder is not None else None
         return sp is not None and sp.value not in (None, '') and _cut(sp.value, JOB_CHANGE_VALUE_CHARS) == to
     if change.get('kind') == 'set_analysis' and w is not None and word_state(w) != 'unanalyzed':
-        gloss = getattr(project.gloss_field('Morpheme'), 'name', None)
-        return _cut(rendering(word_analysis(w), gloss), JOB_CHANGE_VALUE_CHARS) == to
+        # By every morpheme field the change writes (``IgtRunner.describe``).
+        fields = change.get(MORPHEME_FIELDS) or shown_fields(project, ())
+        return _cut(rendering_of(word_analysis(w), fields), JOB_CHANGE_VALUE_CHARS) == to
     return False
 
 
@@ -4823,7 +4855,7 @@ class IgtRunner:
         self.people_index(ws, project)
         own = {s.id for s in part}
         skip = frozenset(i for i, x in enumerate(self.examples) if x['id'] in own)
-        columns = columns_of(project, [t.field for t in kinds if t.field is not None])
+        columns = filled_columns(project, kinds)
         names = ['forms'] + [n for n, _f in columns]
         return similar.block([self.examples[i] for i in similar.pick(self.pool, queries, skip=skip)],
                              [f.name for _n, f in columns],
@@ -4993,11 +5025,16 @@ class IgtRunner:
                 mine.setdefault(row.get('form'), []).append({**row, 'analysis': json.loads(row['analysis'])})
         if not surfaces and not fields:
             return ''
-        gloss = getattr(project.gloss_field('Morpheme'), 'name', None)
+        # Analyses show the morpheme fields the stretch fills, in
+        # analyze_sentence's columns, named under the head unless they are
+        # its default (the gloss).
+        columns = filled_columns(project, fill)
+        shows = [f.name for _n, f in columns]
+        names = [n for n, _f in columns]
         entries = self.entry_forms(ws, project)
-        return evidence.block(ws, project, surfaces, people, mine, lambda a: rendering(a, gloss, entries),
+        return evidence.block(ws, project, surfaces, people, mine, lambda a: rendering_of(a, shows, entries),
                               budget=budget, lexicon=lexicon and any(t.lexicon for t in fill), fields=fields,
-                              nowhere=nowhere)
+                              nowhere=nowhere, columns=None if names in ([], ['gloss']) else names)
 
     def precedent(self, ws: Workspace, project: IgtProject, st: Stretch) -> str:
         """The precedent of a document's or a selection's piece: the
@@ -5807,13 +5844,13 @@ class IgtRunner:
         from .jobapply import sentence_of
         hit = _found(doc, token_of(op))
         ref = field = before = after = None
+        extra: Dict[str, Any] = {}
         if hit is not None:
             s, w, m = hit
             ref = f's{s.index}' + (f'.w{w.index}' if w is not None else '') + (
                 f'.m{m.index}' if m is not None and not m.virtual else '')
         elif sentence_of(op, doc) is not None:
             ref = f's{sentence_of(op, doc).index}'
-        gloss = getattr(project.gloss_field('Morpheme'), 'name', None)
         planned = op.get('planned_word')
         if planned is not None and hit is not None:
             # A word of a retyped sentence, by its number once retyped.
@@ -5829,13 +5866,19 @@ class IgtRunner:
                 before = sp.value if sp is not None else None
             after = op.get('value')
         elif kind == 'set_analysis':
+            # Every morpheme field the op writes a value of, before and after.
+            by_layer = {f.layer_id: f.name for f in project.fields_by_scope('Morpheme')}
+            fields = shown_fields(project, {by_layer[f.get('layer_id')] for m in op.get('morphemes') or []
+                                            for f in m.get('fields') or [] if f.get('layer_id') in by_layer})
+            if fields != shown_fields(project, ()):
+                extra = {MORPHEME_FIELDS: fields}
             if hit is not None and hit[1] is not None and word_state(hit[1]) != 'unanalyzed':
-                before = rendering(word_analysis(hit[1]), gloss)
-            layer = getattr(project.gloss_field('Morpheme'), 'layer_id', None)
-            after = rendering({'morphemes': [{'form': m.get('form'), 'equals': m.get('equals_before'),
-                                              'fields': {gloss: f.get('value') for f in m.get('fields') or []
-                                                         if f.get('layer_id') == layer}}
-                                             for m in op.get('morphemes') or []]}, gloss)
+                before = rendering_of(word_analysis(hit[1]), fields)
+            after = rendering_of({'morphemes': [{'form': m.get('form'), 'equals': m.get('equals_before'),
+                                                 'fields': {by_layer[f.get('layer_id')]: f.get('value')
+                                                            for f in m.get('fields') or []
+                                                            if by_layer.get(f.get('layer_id')) in fields}}
+                                                for m in op.get('morphemes') or []]}, fields)
         elif kind == 'link':
             if hit is not None and hit[2] is not None and hit[2].link is not None:
                 before = hit[2].link.form
@@ -5847,7 +5890,7 @@ class IgtRunner:
         what = (op.get('label') or kind or '')
         return {'kind': kind, 'document_id': doc.id, 'document': doc.name, 'ref': ref, 'field': field,
                 'from': _cut(before, JOB_CHANGE_VALUE_CHARS), 'to': _cut(after, JOB_CHANGE_VALUE_CHARS),
-                'label': _cut(what, JOB_CHANGE_VALUE_CHARS)}
+                'label': _cut(what, JOB_CHANGE_VALUE_CHARS), **extra}
 
     # --- what a job keeps besides its writes (CONTRACT, added by JG) -------------------
 
@@ -6415,7 +6458,6 @@ class IgtRunner:
         client = job.client()
         self.read_people(project)
         people = self.people
-        gloss = getattr(project.gloss_field('Morpheme'), 'name', None)
         docs = {}
         for d in job.order:
             if (job.rows.get(d) or {}).get('state') == 'gone':
@@ -6479,7 +6521,7 @@ class IgtRunner:
                 target, by = next(iter(keys), None), None
             if by is not None and target is None:
                 left.append({'form': form, 'reason': LEFT_BY_RULE.get(by, by),
-                             'analyses': [{'analysis': rendering(v['analysis'], gloss), 'count': len(v['words'])}
+                             'analyses': [{'analysis': shown(v['analysis'], project), 'count': len(v['words'])}
                                           for v in keys.values()]})
             # The job's analyses of the form on words harmonize leaves whole
             # (``harmonize_bar``), listed by reason, but for those already
@@ -6488,7 +6530,7 @@ class IgtRunner:
                 others = [v for k, v in slots.items() if k != target]
                 if others:
                     left.append({'form': form, 'reason': why,
-                                 'analyses': [{'analysis': rendering(v['analysis'], gloss),
+                                 'analyses': [{'analysis': shown(v['analysis'], project),
                                                'count': len(v['words'])} for v in others]})
             if by is None or target is None:
                 continue
@@ -6507,7 +6549,7 @@ class IgtRunner:
         #: stayed in use, or under the lock it was found changed, or its
         #: rewrite was refused
         unwritten: Dict[Tuple[str, str], str] = {}
-        self.harmonize_done = with_earlier(earlier, self.harmonize_report(moves, left, written, unwritten, gloss))
+        self.harmonize_done = with_earlier(earlier, self.harmonize_report(moves, left, written, unwritten, project))
         for d in job.order:
             if d not in rewrites:
                 continue
@@ -6520,11 +6562,12 @@ class IgtRunner:
                 written |= {(d, wid) for wid in done['written']}
                 unwritten.update({(d, wid): why for wid, why in done['left'].items()})
             self.harmonize_done = with_earlier(earlier,
-                                              self.harmonize_report(moves, left, written, unwritten, gloss))
+                                              self.harmonize_report(moves, left, written, unwritten, project))
         return self.harmonize_done
 
     @staticmethod
-    def harmonize_report(moves, left, written: set, unwritten: Dict[Tuple[str, str], str], gloss) -> Dict[str, Any]:
+    def harmonize_report(moves, left, written: set, unwritten: Dict[Tuple[str, str], str],
+                         project: IgtProject) -> Dict[str, Any]:
         """Harmonize's part of the report from what was written: a form is
         changed with the words rewritten (each analysis's count and the
         documents it was rewritten in), and left, by reason, with the words
@@ -6539,13 +6582,13 @@ class IgtRunner:
             for v in m['from'].values():
                 done = [(d, w) for d, w in v['words'] if (d, w) in written]
                 if done:
-                    moved.append({'analysis': rendering(v['analysis'], gloss), 'count': len(done),
+                    moved.append({'analysis': shown(v['analysis'], project), 'count': len(done),
                                   'documents': sorted({d for d, _ in done})})
                 why = Counter(unwritten[x] for x in v['words'] if x in unwritten)
                 for reason, n in sorted(why.items()):
-                    kept.setdefault(reason, []).append({'analysis': rendering(v['analysis'], gloss), 'count': n})
+                    kept.setdefault(reason, []).append({'analysis': shown(v['analysis'], project), 'count': n})
             if moved:
-                changed.append({'form': m['form'], 'to': rendering(m['to'], gloss), 'by': m['by'], 'from': moved})
+                changed.append({'form': m['form'], 'to': shown(m['to'], project), 'by': m['by'], 'from': moved})
             for reason, analyses in sorted(kept.items()):
                 held.append({'form': m['form'], 'reason': reason, 'analyses': analyses})
         return {'changed': changed, 'left': list(left) + held}

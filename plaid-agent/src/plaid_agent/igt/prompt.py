@@ -5,6 +5,7 @@ below where they go: the plan contract, the staging rules, how to cite, and
 what run_code is for. Everything here is IGT's own.
 """
 
+import json
 import re
 from typing import Optional
 
@@ -142,11 +143,14 @@ _JOB_NOTHING_READ_FIRST = '''- Use the tools rather than guessing, and follow th
 #: evidence (REV-DF3-8).
 _JOB_ORTHOGRAPHY_READ_FIRST = '''- The message says what is empty in your piece. Fill what is empty with \
 set_orthography.'''
-#: The bullet of a job that segments and does not gloss (REV-DF-D-10):
-#: analyze_sentence takes a gloss for every word, set_analysis forms alone.
+#: The bullet of a job that segments and does not gloss (REV-DF-D-10): its
+#: analyze_sentence links nothing, so no lookup is promised.
 _JOB_SEGMENTS_READ_FIRST = '''- The message says what is empty in your piece, how those forms were analysed and the \
-lexicon entries in them. Segment each word with set_analysis, giving its morphemes' forms and only the values the \
-job fills.'''
+lexicon entries in them. Stage the words to segment with analyze_sentence first.'''
+#: Where the bullets above name analyze_sentence, after which a piece whose
+#: items take other columns than "FORMS GLOSS" is told them, once.
+_ANALYZE_FIRST = 'Stage the words to segment with analyze_sentence first'
+assert _ANALYZE_FIRST in _JOB_SENTENCES_READ_FIRST and _ANALYZE_FIRST in _JOB_SEGMENTS_READ_FIRST
 
 #: set_field and set_analysis, as set_analysis's own description has it
 #: since KM (REV-DAY-P-9).
@@ -323,8 +327,8 @@ def _job_segments_example(gloss: bool, sentence: Optional[str]) -> tuple:
                   '\'PRS\' and ku \'INF\'. You staged one analyze_sentence for s6 with w1 as na-ku-ja (prefix PRS, '
                   'prefix INF, stem come) and w3 as le-o as people have it')
     else:
-        staged = ('It showed that people analysed "leo" as le-o twice. You staged set_analysis for s6.w1 as na-ku-ja '
-                  'and for s6.w3 as le-o as people have it')
+        staged = ('It showed that people analysed "leo" as le-o twice. You staged one analyze_sentence for s6 with w1 '
+                  'as na-ku-ja and w3 as le-o as people have it')
     did = (f'The message showed s4 and s5 as context and s6 and s7 as your piece, and the instructions said to {task}. '
            f'{staged}{then}. You left w2 of s7, a name you could not place.')
     done = ('Glossed s6' if gloss else 'Segmented s6') + {'translation': ' and translated s7', 'field': ' and filled s7',
@@ -430,17 +434,25 @@ def job_segments_system(project: IgtProject, targets) -> str:
     read-first bullet and worked piece by what else the plan fills: the
     gloss (the configuration's morpheme gloss field), a sentence level
     target (the translation by its role, or another). Glossing and
-    translating is :data:`JOB_SENTENCES_SYSTEM` (REV-DF-D-10)."""
+    translating is :data:`JOB_SENTENCES_SYSTEM` (REV-DF-D-10). Items in
+    other columns than "FORMS GLOSS" (``lines.piece_columns``) are named
+    once, in the read-first bullet."""
+    from .lines import COLUMNS, piece_columns
     ids = {t.id for t in targets}
     gloss_field, translation = project.gloss_field('Morpheme'), project.gloss_field('Sentence')
     gloss = gloss_field is not None and gloss_field.layer_id in ids
     sentences = [t for t in targets if t.scope == 'Sentence']
     sentence = None if not sentences else 'translation' if translation is not None and any(
         t.id == translation.layer_id for t in sentences) else 'field'
-    if gloss and sentence == 'translation':
+    columns = piece_columns(project, targets)
+    if gloss and sentence == 'translation' and columns == COLUMNS:
         return JOB_SENTENCES_SYSTEM
     did, note = _job_segments_example(gloss, sentence)
-    return _sentences_system(_JOB_SENTENCES_READ_FIRST if gloss else _JOB_SEGMENTS_READ_FIRST, did, note)
+    read = _JOB_SENTENCES_READ_FIRST if gloss else _JOB_SEGMENTS_READ_FIRST
+    if columns != COLUMNS:
+        read = read.replace(_ANALYZE_FIRST, f'{_ANALYZE_FIRST}, its items in the columns '
+                            + json.dumps(columns, ensure_ascii=False))
+    return _sentences_system(read, did, note)
 
 
 #: The tagsets' first line in a job's prompt: nobody sees the value as the

@@ -87,8 +87,9 @@ JOB_LIST_PER_PAGE = 10
 
 #: Keys of a row that name nothing the model can read or plan with: a
 #: sentence's token id and a word's offset (the page's link into the grid),
-#: and History's group ids.
-_HIDDEN = ('sentence_id', 'begin', 'gloss_group', 'harmonize_group', 'updated_at', 'position')
+#: and History's group ids, and the fields a proposed analysis is compared
+#: by (``job.MORPHEME_FIELDS``), which its from and to already show.
+_HIDDEN = ('sentence_id', 'begin', 'gloss_group', 'harmonize_group', 'updated_at', 'position', 'morpheme_fields')
 
 
 # --- the record ------------------------------------------------------------------

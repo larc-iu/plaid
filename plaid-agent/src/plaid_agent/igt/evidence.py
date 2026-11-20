@@ -38,6 +38,15 @@ from .vocab import ROLE_GLOSS
 ANALYSED_HEAD = 'How these forms were analysed before (by people in this project, and earlier in this job):'
 NOWHERE_HEAD = 'Analysed nowhere before: '
 ENTRIES_HEAD = 'Lexicon entries spelled inside these forms (form ‘gloss’ type):'
+#: The line under :data:`ANALYSED_HEAD` naming what an analysis shows after
+#: its forms, when that is not the gloss alone.
+COLUMNS_LINE = 'Each analysis: forms '
+
+
+def columns_line(columns) -> str:
+    """'Each analysis: forms ‘gloss’ ‘Morph POS’.' of analyze_sentence's
+    ``columns`` after "forms"."""
+    return COLUMNS_LINE + ' '.join(f'‘{c}’' for c in columns) + '.'
 
 
 def form_of(surface: str, cfg) -> str:
@@ -138,7 +147,8 @@ def _top(values: Dict[str, int]) -> str:
 
 def block(ws, project: IgtProject, surfaces: Iterable[str], people: Dict[str, Dict[str, Dict[str, Any]]],
           mine: Dict[str, List[Dict[str, Any]]], render, budget: int = JOB_EVIDENCE_CHARS,
-          lexicon: bool = True, fields: Iterable[FieldEvidence] = (), nowhere: bool = True) -> str:
+          lexicon: bool = True, fields: Iterable[FieldEvidence] = (), nowhere: bool = True,
+          columns: Optional[List[str]] = None) -> str:
     """The block for the piece whose words empty of segmentation have
     ``surfaces``, and whose units empty in each field it fills are named by
     ``fields`` (:class:`FieldEvidence`, one section each, after the
@@ -151,11 +161,14 @@ def block(ws, project: IgtProject, surfaces: Iterable[str], people: Dict[str, Di
     to the lexicon are listed (a target linked to the lexicon). The
     precedent of a document's or a selection's piece is this block without
     the forms filled nowhere (``nowhere`` False) and the entries: one code
-    path."""
-    return _block(ws, project, surfaces, people, mine, render, budget, lexicon, list(fields), nowhere=nowhere)
+    path. ``columns``: the morpheme fields ``render`` shows after the forms,
+    named under the analyses' head (:func:`columns_line`), None when they
+    are the gloss alone or none."""
+    return _block(ws, project, surfaces, people, mine, render, budget, lexicon, list(fields), nowhere=nowhere,
+                  columns=columns)
 
 
-def _block(ws, project, surfaces, people, mine, render, budget, lexicon, fields, nowhere=True) -> str:
+def _block(ws, project, surfaces, people, mine, render, budget, lexicon, fields, nowhere=True, columns=None) -> str:
     cfg = project.ignored_cfg
     sections = []  # (head, nowhere head, lines, forms nowhere, left-out text)
     surfaces = list(surfaces)
@@ -192,7 +205,8 @@ def _block(ws, project, surfaces, people, mine, render, budget, lexicon, fields,
                 analysed.append(f'- "{typed[form]}": ' + ' | '.join(bits))
             else:
                 none.append(typed[form])
-        sections.append((ANALYSED_HEAD, NOWHERE_HEAD, analysed, none,
+        head = ANALYSED_HEAD + ('\n' + columns_line(columns) if columns else '')
+        sections.append((head, NOWHERE_HEAD, analysed, none,
                          lambda n: f'how {n} form{"" if n == 1 else "s"} were analysed (analyses_of reads them)'))
     for fe in fields:
         fforms = list(dict.fromkeys(f for f in (form_of(s, cfg) for s in fe.surfaces) if f))

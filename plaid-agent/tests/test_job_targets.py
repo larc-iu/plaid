@@ -454,14 +454,16 @@ def test_a_morpheme_holding_nothing_inside_a_chain_is_named_by_its_word():
 
 
 @pytest.mark.parametrize('fills,offered', [
-    (('segmentation',), {'set_analysis'}),
-    (('segmentation', MPOS), {'set_analysis'}),
+    (('segmentation',), {'set_analysis', 'analyze_sentence'}),
+    (('segmentation', MPOS), {'set_analysis', 'analyze_sentence'}),
     (('segmentation', MGLOSS), {'set_analysis', 'analyze_sentence'}),
+    ((MPOS,), set()),
 ])
-def test_a_piece_that_segments_without_the_gloss_is_offered_set_analysis_alone(fills, offered):
-    """REV-DF3-8: analyze_sentence takes a gloss for every word, so a piece
-    whose plan segments without filling the gloss field is offered
-    set_analysis alone, as its prompt says to segment with it."""
+def test_a_piece_that_segments_is_offered_analyze_sentence_whatever_morpheme_fields_it_fills(fills, offered):
+    """REV-DF3-8 held analyze_sentence back from a piece that segments
+    without the gloss, when it took a gloss for every word. Its items now
+    take the columns the piece fills (lines.piece_columns), so every piece
+    that segments is offered it."""
     from plaid_agent.igt import toolkit
     project, _ = _parsed()
     targets = [t for t in tg.fillable(project) if t.id in fills]
