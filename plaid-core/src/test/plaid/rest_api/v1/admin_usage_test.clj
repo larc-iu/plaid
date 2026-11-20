@@ -7,6 +7,7 @@
                                             with-rest-handler with-admin with-test-users
                                             api-call admin-request user1-request]]
             [plaid.rest-api.v1.auth :as auth]
+            [plaid.sql.common :as psc]
             [plaid.test-helpers :as h :refer [with-rpc-state-started]]
             [ring.mock.request :as mock]))
 
@@ -63,3 +64,23 @@
       (is (= [] (:entries (:body (h/get-audit-tally admin-request p {:user-id "user2@example.com"}))))))
     (testing "it is still the admin's alone across every project"
       (is (= 403 (:status (h/get-audit-tally user1-request nil {:user-id "user1@example.com"})))))))
+
+;; When each named token last wrote: the newest operation carrying its id.
+(deftest a-token-says-when-it-last-wrote
+  (let [p (h/create-test-project admin-request "Usage Tokens")
+        _ (api-call admin-request {:method :post :path (str "/api/v1/projects/" p "/writers/user1@example.com")})
+        used (auth/issue-api-token! fix/db "fake-secret" "user1@example.com" "used" "user1@example.com")
+        idle (auth/issue-api-token! fix/db "fake-secret" "user1@example.com" "idle" "user1@example.com")
+        _ (is (= 201 (:status (create-doc! (as (:token used)) p "first"))))
+        _ (Thread/sleep 5)
+        _ (is (= 201 (:status (create-doc! (as (:token used)) p "second"))))
+        _ (is (= 201 (:status (create-doc! user1-request p "by login"))))
+        newest (:ts (psc/q1 fix/db {:select [[[:max :ts] :ts]] :from [:operations]
+                                    :where [:= :token_id (:id used)]}))
+        listed (:entries (:body (api-call admin-request {:method :get :path "/api/v1/users/user1@example.com/tokens"})))
+        by-name (into {} (map (juxt :api-token/name identity)) listed)]
+    (is (some? newest))
+    (is (= newest (:api-token/last-write-at (by-name "used"))))
+    (testing "a token that never wrote has no time"
+      (is (contains? by-name "idle"))
+      (is (nil? (:api-token/last-write-at (by-name "idle")))))))

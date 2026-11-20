@@ -200,6 +200,18 @@ export const UserDetail = ({ client, userId, backTo, onEdit, dialogs }) => {
                 ),
               },
               {
+                key: 'lastWrite',
+                label: 'Last write',
+                sort: (t) => (t.lastWriteAt ? new Date(t.lastWriteAt).getTime() : null),
+                className: 'text-muted-foreground',
+                render: (t) =>
+                  t.lastWriteAt ? (
+                    <span title={fullTimestamp(t.lastWriteAt)}>{timeAgo(t.lastWriteAt)}</span>
+                  ) : (
+                    'Never'
+                  ),
+              },
+              {
                 key: 'actions',
                 label: '',
                 headerClassName: 'w-24',

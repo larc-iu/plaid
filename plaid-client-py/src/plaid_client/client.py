@@ -1276,7 +1276,8 @@ class ApiTokensResource(_Resource):
         """List a user's named API tokens.
 
         Never includes the signed token string itself — that is only returned
-        once, by create(). Transparently follows server-side pagination cursors
+        once, by create(). Each carries ``last_write_at``, the time of the
+        newest operation it signed, None for one that never wrote. Transparently follows server-side pagination cursors
         and returns the full flat list.
 
         Args:

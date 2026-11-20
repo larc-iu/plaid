@@ -1471,7 +1471,7 @@ A token cannot manage accounts or passwords, create or revoke tokens, or make in
 
 An administrator sees an **Admin** link in the top bar, covering the whole server rather than one project.
 
-* **Users** is the account directory: create, edit, deactivate and reactivate accounts, and mint a password-reset link. Deactivating signs the person out and takes away their project roles and API tokens, but leaves their work and their name on it.
+* **Users** is the account directory: create, edit, deactivate and reactivate accounts, and mint a password-reset link. Deactivating signs the person out and takes away their project roles and API tokens, but leaves their work and their name on it. An account's page lists its API tokens with when each last made a change.
 * **Invites** is every invitation link on the server. It can also mint a numbered set of single-use links in one step, and a link with **No project** creates an account and grants nothing else.
 * **Activity** is the same view described under <<_activity>>, across every project.
 * **Projects** lists every project on the server, with a way in for an administrator who was never added.

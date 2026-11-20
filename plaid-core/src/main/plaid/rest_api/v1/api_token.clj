@@ -59,7 +59,8 @@
     :middleware [pra/wrap-login-required wrap-self-or-admin pra/wrap-path-user-required]}
 
    [""
-    {:get {:summary "List a user's named API tokens (never includes the signed token itself); keyset-paginated."
+    {:get {:summary (str "List a user's named API tokens (never includes the signed token itself); keyset-paginated. "
+                         "Each carries last-write-at, the time of the newest operation it signed, null for one that never wrote.")
            :parameters {:query (into [:map] pagination/query-params)}
            :handler (fn [{{{:keys [user-id]} :path query :query} :parameters db :db}]
                       (pagination/list-response query (fn [opts] (api-token/list-for-user db user-id opts))))}

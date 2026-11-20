@@ -125,4 +125,31 @@ describe('UserDetail', () => {
     expect(c.audit.tally).toHaveBeenCalledWith({ userId: 'u@x.com' });
     await view.unmount();
   });
+
+  it('says when each token last wrote', async () => {
+    localStorage.clear();
+    const c = client([]);
+    const recent = new Date(Date.now() - 3 * 3600 * 1000).toISOString();
+    c.apiTokens.list = vi.fn(async () => [
+      { id: 't1', name: 'Parser', createdAt: '2026-11-01T00:00:00Z', lastWriteAt: recent },
+      { id: 't2', name: 'Idle', createdAt: '2026-11-02T00:00:00Z', lastWriteAt: null },
+    ]);
+    const view = await renderComponent(
+      <MemoryRouter>
+        <UserDetail client={c} userId="u@x.com" backTo="/admin/users" onEdit={() => {}} />
+      </MemoryRouter>,
+    );
+    await view.step(async () => {});
+    const table = all(view.container, 'table').find((t) => t.textContent.includes('Parser'));
+    const heads = all(table, 'th').map((th) => th.textContent.trim());
+    const col = heads.indexOf('Last write');
+    expect(col).toBeGreaterThan(-1);
+    const cell = (name) =>
+      all(table, 'tbody tr')
+        .find((tr) => tr.textContent.includes(name))
+        .querySelectorAll('td')[col].textContent;
+    expect(cell('Parser')).toBe('3 hours ago');
+    expect(cell('Idle')).toBe('Never');
+    await view.unmount();
+  });
 });

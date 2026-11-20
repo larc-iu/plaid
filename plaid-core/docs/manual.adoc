@@ -93,6 +93,7 @@ Signing out of an app forgets the sign-in in that browser only.
 To end every sign-in of your account on every device, call `client.auth.logout_everywhere()` (`client.auth.logoutEverywhere()` in JavaScript).
 Named API tokens are not affected, and are revoked one at a time with `api_tokens.revoke` (`apiTokens.revoke`).
 Each user mints their own named API tokens on the profile page of any app, which shows a new token once, to be copied.
+`api_tokens.list` (`apiTokens.list`) gives each token's `last-write-at`, the time of the newest change made with it, or null for a token that never wrote.
 
 A named API token acts as its owner, but since it never expires, it cannot do the few things that would outlive revoking it.
 It cannot change a password, mint or revoke API tokens, or mint an invite.

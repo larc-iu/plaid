@@ -748,6 +748,7 @@
  * @property {string} name
  * @property {string} createdAt
  * @property {string | null} revokedAt
+ * @property {string | null} [lastWriteAt] - On a list's entries: the time of the newest operation the token signed, null for one that never wrote
  */
 
 /**
