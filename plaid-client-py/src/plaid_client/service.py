@@ -419,6 +419,8 @@ class BaseService(ABC):
         self.extras = build_extras(tasks=tasks or [], summary=summary,
                                    parameters=parameters, extra=extras,
                                    delegation=delegation)
+        # Registered, so the admin Services tab says which version is connected.
+        self.extras['version'] = self.version
         self.client: Optional[PlaidClient] = None
         # One registration per served project (a service can serve many at once;
         # see :meth:`run`). The lock makes the instance single-flight ACROSS all

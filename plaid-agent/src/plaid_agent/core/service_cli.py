@@ -127,6 +127,13 @@ class ServiceCli:
               + (' (--max-output-tokens).' if args.max_tokens else '.'))
         if self.cfg.reasoning_effort:
             print(f'  Reasoning effort: {self.cfg.reasoning_effort} (--reasoning-effort).')
+        # The settings in force, for the admin Services tab. Never a key or an
+        # address: every member of a project can read a service's extras.
+        self.extras['max_output_tokens'] = self.cfg.max_tokens
+        if window:
+            self.extras['context_window'] = window
+        if self.cfg.reasoning_effort:
+            self.extras['reasoning_effort'] = self.cfg.reasoning_effort
         # Ask the model one question before registering. A service that cannot
         # reach its model has nothing to offer, and the operator is here NOW.
         started = time.monotonic()
@@ -160,6 +167,7 @@ class ServiceCli:
             # operator's problem now, not a user's mid-conversation.
             where = f' at {self.web_cfg.api_base}' if self.web_cfg.api_base else ''
             print(f'Web lookup: {self.web_cfg.backend}{where}')
+            self.extras['web_search'] = self.web_cfg.backend
             try:
                 print(f'  {ping_search(self.web_cfg, self.PING_QUERY)} results for a test search.')
             except Exception as e:  # noqa: BLE001 - the provider's own complaint is what helps

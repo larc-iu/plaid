@@ -177,6 +177,19 @@ def test_a_service_knows_its_own_version():
     assert Svc('s', 'S', 'd').version == service_version(__file__)
 
 
+def test_a_service_registers_its_version():
+    """The admin Services tab shows which version of each service is
+    connected, from the extras every registration carries."""
+    from plaid_client import BaseService
+    from plaid_client.service import service_version
+
+    class Svc(BaseService):
+        def process_request(self, request_data, response_helper):
+            pass
+
+    assert Svc('s', 'S', 'd').extras['version'] == service_version(__file__)
+
+
 def test_machine_detail_names_the_model_and_version_first():
     from plaid_client.service import machine_detail
     assert machine_detail('1+ab', model='m', language='x') == {'model': 'm', 'version': '1+ab', 'language': 'x'}

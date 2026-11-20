@@ -136,6 +136,14 @@ export const TASKS = Object.freeze({
  *   short `description`.
  * @property {ServiceParam[]} [parameters] Ordered parameter schema, rendered
  *   into a form by the UI.
+ * @property {string} [version] Which version of the service is connected
+ *   (every service built on plaid-client-py's `BaseService` registers it).
+ * @property {string} [model] The model it runs, when it names one.
+ * @property {string} [modelPool] The name of the model key it draws on.
+ * @property {number} [maxOutputTokens] Assistants: the most one model call may write.
+ * @property {number} [contextWindow] Assistants: the context window in force, when known.
+ * @property {string} [reasoningEffort] Assistants: the reasoning effort, when set.
+ * @property {string} [webSearch] Assistants: the web search provider, when on.
  */
 
 /**

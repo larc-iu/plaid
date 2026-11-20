@@ -682,6 +682,11 @@ client.messages.serve(project_id, service_info, handle_request, extras)
 `summary`:: A longer description in Markdown, for what the one-line `description` cannot say.
 `parameters`:: The arguments a user may set for each request. Each has a `key`, a `label` and a `type` (`string`, `number`, `boolean`, `enum`, `multiselect`, or `field`, one of the project's annotation fields), with an optional `default`.
 
+A Python `BaseService` also registers its `version`, the one it stamps on what it writes (see <<Provenance>>), and a service run with `--model-pool` registers that name as `model_pool`.
+The assistants register `model`, `max_output_tokens` and, when each is known or given, `context_window`, `reasoning_effort` and `web_search` (the provider's name).
+The igt Administration page lists these per service.
+Every member of a project can read a service's `extras`, so a key or a provider's address never goes in them.
+
 A parameter's value reaches the service under exactly the `key` it declared.
 A Python `BaseService` receives every declared parameter coerced against the schema, as the apps' request forms coerce it.
 A parameter left out takes its default, a number is held to its `min` and `max`, an `enum` value not offered is the default, and a `string` left blank takes its default when it has one.

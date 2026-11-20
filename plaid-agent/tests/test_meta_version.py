@@ -57,3 +57,26 @@ def test_the_service_advertises_its_version(monkeypatch):
     svc = AssistantService()
     svc.setup(service_args())
     assert svc.extras['version'] == svc.version
+
+
+def test_the_service_registers_the_settings_in_force(monkeypatch):
+    """The admin Services tab lists what each assistant runs with: the output
+    cap and the context window in force, the reasoning effort and the web
+    search provider when given, and never a key or an address."""
+    from plaid_agent.core import service_cli
+    from plaid_agent.igt.service import AssistantService
+    monkeypatch.setattr(agent.litellm, 'completion', lambda **kw: SimpleNamespace(choices=[SimpleNamespace()]))
+    monkeypatch.setattr(service_cli, 'ping_search', lambda cfg, q=None: 3)
+    svc = AssistantService()
+    svc.setup(service_args(max_tokens=9000, context_window=196608, reasoning_effort='low', api_key='sk-secret',
+                           api_base='http://model.example', web_search='brave', web_search_key='wk'))
+    assert {k: svc.extras.get(k) for k in ('max_output_tokens', 'context_window', 'reasoning_effort',
+                                            'web_search')} == \
+        {'max_output_tokens': 9000, 'context_window': 196608, 'reasoning_effort': 'low', 'web_search': 'brave'}
+    told = repr(svc.extras)
+    assert 'sk-secret' not in told and 'model.example' not in told and 'wk' not in told
+
+    plain = AssistantService()
+    plain.setup(service_args(model='openai/no-such-model-known'))
+    assert plain.extras['max_output_tokens'] == plain.cfg.max_tokens
+    assert not {'context_window', 'reasoning_effort', 'web_search'} & set(plain.extras)
