@@ -89,6 +89,20 @@ to 20 sentences a call, each on its own.'''
 COLUMNS = ['forms', 'gloss']
 
 
+def column_name(gloss, f) -> str:
+    """Morpheme field ``f``'s column: "gloss" for the gloss field
+    (``gloss``, ``project.gloss_field('Morpheme')``), else its own name."""
+    return 'gloss' if gloss is not None and f.layer_id == gloss.layer_id else f.name
+
+
+def columns_of(project: IgtProject, fields) -> List[Tuple[str, Any]]:
+    """``[(column, field)]`` of items holding morpheme ``fields``, after
+    "forms": the gloss field's first when it is one of them, then the others
+    in order."""
+    g = project.gloss_field('Morpheme')
+    return sorted(((column_name(g, f), f) for f in fields), key=lambda x: x[0] != 'gloss')
+
+
 class _Refused(Exception):
     """A sentence not staged, with what the answer says of it."""
 
@@ -223,7 +237,7 @@ def _columns(ws: Workspace, item: Dict[str, Any], label: str):
         f = ws.project.field(name)
         if f.scope != 'Morpheme':
             raise _Refused(f'{label} not staged: "{f.name}" is a {f.scope} field: set_field sets it.')
-        out.append(('gloss' if g is not None and f.layer_id == g.layer_id else f.name, f))
+        out.append((column_name(g, f), f))
     names = [n for n, _f in out]
     if names[:1] != ['forms'] or len(set(names)) != len(names) or (g is not None and 'gloss' not in names):
         raise _Refused(f'{label} not staged: columns starts with "forms", has "gloss", and names each once.')

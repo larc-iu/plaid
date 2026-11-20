@@ -66,6 +66,7 @@ from ..core.provenance import Requester
 from ..core.tools import Refusal, ToolError
 from ..core.version import agent_version
 from . import evidence, jobapply, similar, targets as tg, toolkit
+from .lines import COLUMNS as ITEM_COLUMNS, columns_of
 from .plan import LEXICON_MAINTAINER, REPAIR_OF, PlanOutOfDate, check_entries, execute_plan
 from .project import (VIRTUAL_PREFIX, IgtProject, Sentence, Word, is_virtual, load_project, parse_document,
                       render_sentence)
@@ -4785,10 +4786,10 @@ class IgtRunner:
         punctuation and ignored tokens are no words, as parse_document reads
         them), and the job wrote nothing in it (``job_piece`` on a word's
         pieces or a sentence field). Each with its id, text, translation,
-        words as analyze_sentence takes them (:func:`similar.word_item` of
-        :func:`people_analysis`) and features (:func:`similar.features`)."""
+        words (each its :func:`people_analysis`, every field kept: a stretch
+        renders the fields it fills, :func:`similar.block`) and features
+        (:func:`similar.features`)."""
         cfg = project.ignored_cfg
-        gloss = getattr(project.gloss_field('Morpheme'), 'name', None)
         translation = getattr(project.gloss_field('Sentence'), 'name', None)
         out = []
         for s in doc.sentences:
@@ -4799,19 +4800,21 @@ class IgtRunner:
                 continue
             t = s.fields.get(translation) if translation else None
             out.append({'id': s.id, 'text': s.text, 'translation': (t.value or '').strip() if t is not None else '',
-                        'words': [similar.word_item(people_analysis(w, job_id), gloss) for w in s.words],
+                        'words': [people_analysis(w, job_id) for w in s.words],
                         'feats': similar.features(evidence.form_of(w.surface, cfg) for w in s.words)})
         return out
 
     def similar_sentences(self, ws: Workspace, project: IgtProject, st: Stretch, part: List[Sentence]) -> str:
         """The similar sentences of a piece in sentences (:func:`similar.block`):
-        only when segmentation is among the stretch's targets, for each
-        sentence of the piece with a word empty for it, from people's
-        analysed sentences as the walk last read them, never one of the
-        piece's own."""
-        if not any(t.id == tg.SEGMENTATION for t in st.targets):
-            return ''
-        empty = {w.id for w in st.words.values() if tg.empty(tg.SEGMENTED, w=w)}
+        only when segmentation or a morpheme field is among the stretch's
+        targets, for each sentence of the piece with a word empty for one of
+        them, from people's analysed sentences as the walk last read them,
+        never one of the piece's own. Each word shows its forms and the
+        morpheme fields the stretch fills, in analyze_sentence's columns
+        (:func:`.lines.columns_of`), named under the head unless they are its
+        default."""
+        kinds = [t for t in st.targets if t.segments or t.scope == 'Morpheme']
+        empty = {w.id for w in st.words.values() if tg.empty_in_word(w, kinds)}
         cfg = project.ignored_cfg
         queries = [similar.features(evidence.form_of(w.surface, cfg) for w in s.words)
                    for s in part if any(w.id in empty for w in s.words)]
@@ -4820,7 +4823,11 @@ class IgtRunner:
         self.people_index(ws, project)
         own = {s.id for s in part}
         skip = frozenset(i for i, x in enumerate(self.examples) if x['id'] in own)
-        return similar.block([self.examples[i] for i in similar.pick(self.pool, queries, skip=skip)])
+        columns = columns_of(project, [t.field for t in kinds if t.field is not None])
+        names = ['forms'] + [n for n, _f in columns]
+        return similar.block([self.examples[i] for i in similar.pick(self.pool, queries, skip=skip)],
+                             [f.name for _n, f in columns],
+                             None if names == ITEM_COLUMNS or not columns else names)
 
     def entry_forms(self, ws: Workspace, project: IgtProject) -> Dict[str, str]:
         """Entry id to the address a tool names it by (``gam#2``, a sense
