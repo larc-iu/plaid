@@ -3309,8 +3309,10 @@ class AdminResource(_Resource):
         """Everything about the server in one read.
 
         Version and JVM uptime, database size and per-table row counts, media
-        directory usage, backup configuration and the backups on disk, and the
-        settings an operator gets asked to confirm. Carries no secrets. Runs a
+        directory usage, backup configuration, the backups on disk and how the
+        last run since the server started ended (``backup.last_run``: ``at``,
+        ``ok``, ``scheduled``), and the settings an operator gets asked to
+        confirm. Carries no secrets. Runs a
         count per table and walks the media directory, so call it when someone
         asks, not on a timer.
         """

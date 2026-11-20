@@ -160,6 +160,12 @@
   ;; manual one could meet the nightly one.
   (atom nil))
 
+(defonce ^:private last-run
+  ;; The last backup run since the server started, nil before the first:
+  ;; `{:at <Instant it ended> :ok <wrote a backup> :scheduled <the nightly one>}`.
+  ;; A failed run leaves no file, so the directory alone cannot say it failed.
+  (atom nil))
+
 (declare write-backup!)
 
 (defn- remove-leftovers!
@@ -179,11 +185,16 @@
    prune to the `retention` newest. Returns the zip File on success, nil on
    failure (failures are logged, never thrown — a bad backup must not crash the
    scheduler or the server), and `::running` without starting one while
-   another is being written."
-  [ds dir retention]
+   another is being written. `by` is `:schedule` or `:hand`, kept with the
+   outcome in `last-run`."
+  [ds dir retention by]
   (let [started (java.time.Instant/now)]
     (if (compare-and-set! running nil started)
-      (try (write-backup! ds dir retention)
+      (try (let [zip (write-backup! ds dir retention)]
+             (reset! last-run {:at (java.time.Instant/now)
+                               :ok (some? zip)
+                               :scheduled (= :schedule by)})
+             zip)
            (finally (reset! running nil)))
       (do (log/info "Database backup not started: another is being written")
           ::running))))
@@ -228,7 +239,8 @@
 (defn status
   "What the backup facility is configured to do and what it has actually
    produced: the `[backup]` settings plus every zip in the directory, newest
-   first, with its size and modification time.
+   first, with its size and modification time, and `last-run`, how the last
+   run since the server started ended (absent before the first).
 
    Reads the directory rather than remembering what the scheduler did, so it
    is still right after a restart, and still right about backups taken by
@@ -237,6 +249,7 @@
   (let [{:keys [enabled? directory retention time]} (backup-config)
         ;; Read once, so a backup ending meanwhile cannot give `running ""`.
         started @running
+        run  @last-run
         dir  (io/file directory)
         zips (when (.isDirectory dir)
                (->> (.listFiles dir)
@@ -252,7 +265,8 @@
              :retention retention
              :time      time
              :backups   (or zips [])}
-      started (assoc :running (str started)))))
+      started (assoc :running (str started))
+      run (assoc :last-run (update run :at str)))))
 
 (defn run-now!
   "Take a backup immediately, outside the schedule. Returns the same
@@ -262,7 +276,7 @@
    asked for by hand."
   [ds]
   (let [{:keys [directory retention]} (backup-config)
-        zip (backup-once! ds directory retention)]
+        zip (backup-once! ds directory retention :hand)]
     (when (= ::running zip)
       (throw (ex-info "A backup is already being written. It is listed here when it is done."
                       {:code 409})))
@@ -289,7 +303,7 @@
         delay-ms (ms-until-next (parse-time time) (LocalDateTime/now))
         task (reify Runnable
                (run [_]
-                 (try (backup-once! ds directory retention)
+                 (try (backup-once! ds directory retention :schedule)
                       (catch Throwable t (log/error t "Database backup task error")))
                  (when-not (.isShutdown exec)
                    (schedule-next! exec ds))))]

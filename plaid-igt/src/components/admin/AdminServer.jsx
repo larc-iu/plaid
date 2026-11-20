@@ -4,6 +4,7 @@ import { Button } from '@ui/components/ui/button';
 import { Badge } from '@ui/components/ui/badge';
 import { DataTable } from '@ui/components/shared/data-table';
 import { Loading } from '@ui/components/shared/Loading.jsx';
+import { Notice } from '@ui/components/shared/Notice.jsx';
 import { formatBytes } from '@/utils/formatBytes';
 import { timeAgo, fullTimestamp } from '@ui/lib/formatTime.js';
 import { notifySuccess, notifyError, notifyWarning, humanizeError } from '@/utils/feedback';
@@ -43,6 +44,25 @@ const Facts = ({ rows }) => (
 // The report counts every table, so not more often than this.
 const BACKUP_POLL_MS = 15000;
 const BACKUP_POLL_FOR_MS = 30 * 60 * 1000;
+
+// A nightly backup older than this is a missed night.
+const BACKUP_STALE_MS = 26 * 3600 * 1000;
+
+// What is broken about the backups, or null. Ages are on the server's clock,
+// its start plus its uptime, so a browser's wrong clock cannot raise it.
+const backupProblem = (backup, jvm) => {
+  if (!backup.enabled) return null;
+  if (backup.lastRun && !backup.lastRun.ok) return 'The last backup failed.';
+  const serverNow = Date.parse(jvm.startedAt) + jvm.uptimeMs;
+  const newest = backup.backups?.[0] ? Date.parse(backup.backups[0].modified) : -Infinity;
+  if (jvm.uptimeMs > BACKUP_STALE_MS && serverNow - newest > BACKUP_STALE_MS) {
+    return 'No backup in the last 26 hours.';
+  }
+  return null;
+};
+
+const lastRunText = ({ at, ok, scheduled }) =>
+  `${timeAgo(at)}, ${ok ? 'Succeeded' : 'Failed'}${scheduled ? '' : ', by hand'}`;
 
 const duration = (ms) => {
   if (!Number.isFinite(ms)) return '';
@@ -150,15 +170,17 @@ export const AdminServer = ({ client }) => {
         }
         return;
       }
+      setReport((r) => (r ? { ...r, backup: result } : r));
       if (result.ok) {
         notifySuccess(result.backups?.[0]?.name || 'Backup written', 'Backup complete');
-        setReport((r) => (r ? { ...r, backup: result } : r));
       } else {
         notWritten();
       }
     } catch (err) {
-      if (statusOf(err) === 500 && err.responseData?.ok === false) notWritten();
-      else notifyError(humanizeError(err), 'Failed to back up');
+      if (statusOf(err) === 500 && err.responseData?.ok === false) {
+        setReport((r) => (r ? { ...r, backup: err.responseData } : r));
+        notWritten();
+      } else notifyError(humanizeError(err), 'Failed to back up');
     } finally {
       if (shown.current) setBackingUpSince(null);
     }
@@ -203,6 +225,7 @@ export const AdminServer = ({ client }) => {
   if (!report) return null;
 
   const { jvm, database, media, backup, settings } = report;
+  const problem = backupProblem(backup, jvm);
   return (
     <div className="flex flex-col gap-4">
       <div className="flex justify-end">
@@ -210,6 +233,7 @@ export const AdminServer = ({ client }) => {
           <RefreshCw className="h-4 w-4" /> Refresh
         </Button>
       </div>
+      {problem && <Notice tone="error">{problem}</Notice>}
 
       <div className="grid gap-4 md:grid-cols-2">
         <Section title="Server">
@@ -289,6 +313,14 @@ export const AdminServer = ({ client }) => {
           <Facts
             rows={[
               ['Schedule', backup.enabled ? `Daily at ${backup.time}` : 'Off'],
+              [
+                'Last run',
+                backup.lastRun ? (
+                  <span title={fullTimestamp(backup.lastRun.at)}>
+                    {lastRunText(backup.lastRun)}
+                  </span>
+                ) : null,
+              ],
               ['Keep', `${backup.retention} most recent`],
               ['Directory', backup.directory],
             ]}

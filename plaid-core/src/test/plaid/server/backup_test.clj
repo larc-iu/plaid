@@ -25,7 +25,7 @@
 (deftest backup-is-validated-before-publication
   (with-temp-directory
     (fn [dir]
-      (let [zip (backup/backup-once! db dir 2)]
+      (let [zip (backup/backup-once! db dir 2 :hand)]
         (is (some? zip))
         (is (.exists zip))
         (with-open [archive (ZipFile. zip)]
@@ -38,7 +38,7 @@
 (deftest the-zip-holds-plaid-db
   (with-temp-directory
     (fn [dir]
-      (let [zip (backup/backup-once! db dir 2)]
+      (let [zip (backup/backup-once! db dir 2 :hand)]
         (with-open [archive (ZipFile. zip)]
           (is (= ["plaid.db"] (mapv #(.getName %) (enumeration-seq (.entries archive))))))))))
 
@@ -52,7 +52,7 @@
     (fn [dir]
       (doseq [stamp ["20200101-030000" "20200102-030000" "20200103-030000"]]
         (old-zip! dir stamp))
-      (let [zip (backup/backup-once! db dir 2)]
+      (let [zip (backup/backup-once! db dir 2 :hand)]
         (is (= #{"plaid-backup-20200103-030000.zip" (.getName zip)}
                (set (map #(.getName %) (.listFiles dir)))))))))
 
@@ -92,7 +92,7 @@
                           #(with-redefs-fn {#'backup/snapshot! (fn [ds f]
                                                                  (snapshot! ds f)
                                                                  (corrupt! f))}
-                             (fn [] (backup/backup-once! db dir 1))))]
+                             (fn [] (backup/backup-once! db dir 1 :hand))))]
         (is (nil? zip))
         (is (= [(.getName older)] (mapv #(.getName %) (.listFiles dir)))
             "no new zip, no temporary file, and the older zip is kept")
@@ -108,7 +108,7 @@
                          (fn [_ zip]
                            (spit zip "partial")
                            (throw (ex-info "simulated zip failure" {})))}
-          #(is (nil? (backup/backup-once! db dir 2))))
+          #(is (nil? (backup/backup-once! db dir 2 :hand))))
         (is (empty? (.listFiles dir)))))))
 
 (defn- while-a-backup-is-written
@@ -122,7 +122,7 @@
                                           @release
                                           (zip-file! src zip))}
       (fn []
-        (let [first-run (future (backup/backup-once! db dir 2))]
+        (let [first-run (future (backup/backup-once! db dir 2 :hand))]
           (try
             (is (deref entered 30000 false) "the first backup started")
             (f)
@@ -139,7 +139,7 @@
        dir
        (fn []
          (testing "a second one is not started"
-           (is (= ::backup/running (backup/backup-once! db dir 2))))
+           (is (= ::backup/running (backup/backup-once! db dir 2 :hand))))
          (testing "one asked for by hand is refused with 409"
            (let [e (try (backup/run-now! db) nil (catch clojure.lang.ExceptionInfo e e))]
              (is (= 409 (:code (ex-data e))))
@@ -150,7 +150,7 @@
       (testing "and once it is written, the next one runs"
         (is (nil? (:running (backup/status))))
         (Thread/sleep 1100)
-        (is (instance? java.io.File (backup/backup-once! db dir 2)))))))
+        (is (instance? java.io.File (backup/backup-once! db dir 2 :hand)))))))
 
 (deftest the-default-directory-is-beside-the-database
   ;; Unset, backups go next to the database file wherever the server was
@@ -193,7 +193,7 @@
   (with-temp-directory
     (fn [dir]
       (leftovers! dir)
-      (let [zip (backup/backup-once! db dir 5)]
+      (let [zip (backup/backup-once! db dir 5 :hand)]
         (is (= #{(.getName zip)} (names dir)))))))
 
 (deftest leftovers-stay-while-a-backup-is-written
@@ -209,3 +209,27 @@
              (is (some #(.endsWith ^String % ".db.tmp") before))
              (#'backup/remove-leftovers!)
              (is (= before (names dir))))))))))
+
+;; ADM-SRV-1: the Server tab says whether the last backup failed, which the
+;; directory alone cannot say (a failed run leaves no file).
+(deftest every-run-is-remembered
+  (with-temp-directory
+    (fn [dir]
+      (testing "a scheduled run that wrote its backup"
+        (backup/backup-once! db dir 2 :schedule)
+        (let [last-run (:last-run (backup/status))]
+          (is (true? (:ok last-run)))
+          (is (true? (:scheduled last-run)))
+          (is (some? (java.time.Instant/parse (:at last-run))))))
+      (testing "a run by hand that wrote nothing"
+        (with-redefs-fn {#'backup/zip-file! (fn [_ _] (throw (ex-info "simulated zip failure" {})))}
+          #(backup/backup-once! db dir 2 :hand))
+        (let [last-run (:last-run (backup/status))]
+          (is (false? (:ok last-run)))
+          (is (false? (:scheduled last-run)))))
+      (testing "Back up now answers the run it just made"
+        (with-redefs [plaid.server.config/config {:plaid.backup/config {:directory (str dir)}}]
+          (let [result (backup/run-now! db)]
+            (is (true? (:ok result)))
+            (is (true? (:ok (:last-run result))))
+            (is (false? (:scheduled (:last-run result))))))))))

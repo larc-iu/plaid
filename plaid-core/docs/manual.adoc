@@ -2310,6 +2310,7 @@ Every night at `[backup] time` (03:00 by default) Plaid writes a snapshot of the
 Each backup is a zip holding one file, `plaid.db`, the database.
 A snapshot that fails SQLite's quick check is not kept: the log says so at ERROR, and the backups from earlier nights stay as they are.
 An admin can also take a backup by hand from the admin pages.
+The admin pages say how the last backup since the server started ended, and while nightly backups are on they warn when it failed or when no backup has been written in the last 26 hours of the server running.
 
 The backups protect against a bad edit but not against a lost machine.
 Copy the newest backup somewhere else on a schedule, together with `data/media/`, `data/config.toml` and `data/jwt-secret.txt`, which the zip does not hold.

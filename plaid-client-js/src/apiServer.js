@@ -181,7 +181,8 @@ export function adminApi(client) {
     /**
      * Everything about the server in one read: version and JVM uptime,
      * database size and per-table row counts, media directory usage, backup
-     * configuration and the backups on disk, and the settings an operator
+     * configuration, the backups on disk and how the last run since the
+     * server started ended (`backup.lastRun`), and the settings an operator
      * gets asked to confirm. Carries no secrets. Runs a count per table and
      * walks the media directory, so open it, do not poll it. Admin only.
      * @returns {Promise<ServerReport>}

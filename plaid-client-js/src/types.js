@@ -450,6 +450,9 @@
  * @property {number} retention
  * @property {string} time
  * @property {Array<{name: string, bytes: number, modified: string}>} backups
+ * @property {{at: string, ok: boolean, scheduled: boolean}} [lastRun] - How the
+ *   last run since the server started ended: when, whether it wrote a backup,
+ *   and whether it was the nightly one. Absent before the first run.
  * @property {boolean} [ok]
  */
 
