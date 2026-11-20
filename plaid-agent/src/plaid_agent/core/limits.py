@@ -230,6 +230,13 @@ JOB_PRECEDENT_CHARS = 8000
 JOB_EVIDENCE_CHARS = 8000
 #: The shortest entry form the evidence block looks for inside a word.
 JOB_EVIDENCE_MIN_ENTRY = 1
+#: The analysed sentences of the project most like its own that a piece of a
+#: job planned in sentences is handed: the number the evaluation of
+#: 2026-11-19 measured (the plain prompt of the 20 nearest beat a job).
+JOB_SIMILAR_SENTENCES = 20
+#: The most characters those sentences may take: twenty sentences of about
+#: 600 characters each with their analyses, under 5,000 tokens of Latin script.
+JOB_SIMILAR_CHARS = 12000
 #: Model calls one stretch may make. A 21st fails the stretch.
 JOB_STRETCH_MAX_ROUNDS = 20
 #: The model call that carries the decide-now line.

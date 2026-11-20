@@ -65,7 +65,7 @@ from ..core.prompt import (JOB_ANSWER_AGAIN, JOB_FINDINGS_ANSWER_AGAIN, JOB_FIND
 from ..core.provenance import Requester
 from ..core.tools import Refusal, ToolError
 from ..core.version import agent_version
-from . import evidence, jobapply, targets as tg, toolkit
+from . import evidence, jobapply, similar, targets as tg, toolkit
 from .plan import LEXICON_MAINTAINER, REPAIR_OF, PlanOutOfDate, check_entries, execute_plan
 from .project import (VIRTUAL_PREFIX, IgtProject, Sentence, Word, is_virtual, load_project, parse_document,
                       render_sentence)
@@ -1589,6 +1589,8 @@ class JobWorkspace(Workspace):
         self.findings = False
         #: the piece's message holds evidence (:meth:`IgtRunner.message`, D29)
         self.handed_evidence = False
+        #: ... and the project's similar sentences (BRIEF-SS)
+        self.handed_similar = False
         #: the piece ended without finishing, with work staged: the kind of
         #: what ended it (``budget``: its closing call, BRIEF RW B2), None
         #: when it ended by itself
@@ -2553,7 +2555,13 @@ class IgtRunner:
         self.precedent_people: Dict[str, Any] = {}
         #: the field values index (:meth:`values_of`), read with ``people``
         self.values: Dict[Tuple[str, str], Dict[str, Dict[str, int]]] = {}
-        self.people_read: Dict[str, Tuple[Any, Dict[str, Any], Dict[Tuple[str, str], Any], Dict[str, Any]]] = {}
+        self.people_read: Dict[str, Tuple[Any, Dict[str, Any], Dict[Tuple[str, str], Any], Dict[str, Any],
+                                          List[Dict[str, Any]]]] = {}
+        #: the sentences people analysed (:meth:`examples_of`) in document
+        #: order, and their features' weights (``similar.Pool``), read with
+        #: ``people``
+        self.examples: List[Dict[str, Any]] = []
+        self.pool: Optional[similar.Pool] = None
         #: what harmonize has written so far, for the report of a job stopped in it
         self.harmonize_done: Optional[Dict[str, Any]] = None
         #: document id -> the job's writing rows of it (:meth:`writing_rows`),
@@ -4434,7 +4442,8 @@ class IgtRunner:
         ws.only_new = self.only_new(project)
         # A plan that fills nothing ends each piece with its findings (RPF-A5).
         system = build_job_prompt(project, sentences=sentences, edits_text=ws.edits_text, targets=ws.fills,
-                                  findings=self.fills_nothing(), evidence=ws.handed_evidence)
+                                  findings=self.fills_nothing(), evidence=ws.handed_evidence,
+                                  similar=ws.handed_similar)
         transcript = [{'role': 'user', 'content': message}]
         seed(ws.seen, system, transcript, lambda tool, args: True)
         ws.findings = self.fills_nothing()
@@ -4618,14 +4627,21 @@ class IgtRunner:
         # A piece of a plan in sentences is handed the evidence its model
         # would otherwise look up (igt/evidence.py), a document's or a
         # selection's the precedent alone.
+        # It is followed by the sentences of the project most like its own
+        # (igt/similar.py, BRIEF-SS).
+        like = ''
         if self.in_sentences() and not whole:
             precedent = self.evidence(ws, project, st)
+            like = self.similar_sentences(ws, project, st, part)
         else:
             precedent = self.precedent(ws, project, st)
-        if precedent:
-            lines += ['', precedent]
-        # The prompt says the message holds evidence only when it does (D29).
+        for block in (precedent, like):
+            if block:
+                lines += ['', block]
+        # The prompt says the message holds evidence, and similar sentences,
+        # only when it does (D29).
         ws.handed_evidence = bool(precedent)
+        ws.handed_similar = bool(like)
         lines += self.instructions_lines()
         if whole:
             lines += ['', f'Your piece: the whole document "{doc.name}", {_n(len(doc.sentences), "sentence")}.']
@@ -4681,12 +4697,18 @@ class IgtRunner:
                 continue
             self.people_read[d['id']] = (d.get('version'), self.people_of(doc, self.job.id),
                                          self.values_of(doc, self.job.id),
-                                         self.people_of(doc, self.job.id, per_value=True))
+                                         self.people_of(doc, self.job.id, per_value=True),
+                                         self.examples_of(doc, project, self.job.id))
         listed_ids = {d['id'] for d in listed}
+        # The sentences people analysed, in document order, their weights
+        # computed again only when they changed (BRIEF-SS).
+        examples = [x for d in listed if d['id'] in self.people_read for x in self.people_read[d['id']][4]]
+        if self.pool is None or examples != self.examples:
+            self.examples, self.pool = examples, similar.Pool([x['feats'] for x in examples])
         index: Dict[str, Dict[str, Any]] = {}
         shown: Dict[str, Dict[str, Any]] = {}
         values: Dict[Tuple[str, str], Dict[str, Dict[str, int]]] = {}
-        for did, (_, part, vals, by_value) in self.people_read.items():
+        for did, (_, part, vals, by_value, _examples) in self.people_read.items():
             if did not in listed_ids:
                 continue
             for into, of in ((index, part), (shown, by_value)):
@@ -4754,6 +4776,51 @@ class IgtRunner:
                     for name, sp in m.fields.items():
                         add(name, sp, w.surface if m.virtual else m.form)
         return out
+
+    @staticmethod
+    def examples_of(doc, project: IgtProject, job_id: Optional[str] = None) -> List[Dict[str, Any]]:
+        """One document's sentences people analysed, the similar sentences'
+        pool (BRIEF-SS): a sentence counts when it has words and each is
+        ``protected``, as the LLM glossing service takes its examples (its
+        punctuation and ignored tokens are no words, as parse_document reads
+        them), and the job wrote nothing in it (``job_piece`` on a word's
+        pieces or a sentence field). Each with its id, text, translation,
+        words as analyze_sentence takes them (:func:`similar.word_item` of
+        :func:`people_analysis`) and features (:func:`similar.features`)."""
+        cfg = project.ignored_cfg
+        gloss = getattr(project.gloss_field('Morpheme'), 'name', None)
+        translation = getattr(project.gloss_field('Sentence'), 'name', None)
+        out = []
+        for s in doc.sentences:
+            if not s.words or any(word_state(w) != 'protected' for w in s.words):
+                continue
+            if any(job_piece(p, job_id) for w in s.words for p in word_pieces(w)) or any(
+                    job_piece(sp.metadata, job_id) for sp in s.fields.values()):
+                continue
+            t = s.fields.get(translation) if translation else None
+            out.append({'id': s.id, 'text': s.text, 'translation': (t.value or '').strip() if t is not None else '',
+                        'words': [similar.word_item(people_analysis(w, job_id), gloss) for w in s.words],
+                        'feats': similar.features(evidence.form_of(w.surface, cfg) for w in s.words)})
+        return out
+
+    def similar_sentences(self, ws: Workspace, project: IgtProject, st: Stretch, part: List[Sentence]) -> str:
+        """The similar sentences of a piece in sentences (:func:`similar.block`):
+        only when segmentation is among the stretch's targets, for each
+        sentence of the piece with a word empty for it, from people's
+        analysed sentences as the walk last read them, never one of the
+        piece's own."""
+        if not any(t.id == tg.SEGMENTATION for t in st.targets):
+            return ''
+        empty = {w.id for w in st.words.values() if tg.empty(tg.SEGMENTED, w=w)}
+        cfg = project.ignored_cfg
+        queries = [similar.features(evidence.form_of(w.surface, cfg) for w in s.words)
+                   for s in part if any(w.id in empty for w in s.words)]
+        if not queries:
+            return ''
+        self.people_index(ws, project)
+        own = {s.id for s in part}
+        skip = frozenset(i for i, x in enumerate(self.examples) if x['id'] in own)
+        return similar.block([self.examples[i] for i in similar.pick(self.pool, queries, skip=skip)])
 
     def entry_forms(self, ws: Workspace, project: IgtProject) -> Dict[str, str]:
         """Entry id to the address a tool names it by (``gam#2``, a sense

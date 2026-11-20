@@ -12,7 +12,7 @@ from fixtures import FakeClient, fake_ws, lexicon_raw
 from job_fixtures import JobClient, Model, call, document, empty_words, reply, runner, start, use
 
 from plaid_agent.core.job import run_job
-from plaid_agent.igt import evidence
+from plaid_agent.igt import evidence, similar
 
 # Each test runs as scripted and with set_field and link_entry in the items form (BRIEF SP item 2).
 pytestmark = pytest.mark.usefixtures('both_forms')
@@ -39,7 +39,9 @@ def _small(plan='sentences'):
 def test_the_block_of_a_small_piece_exactly(monkeypatch):
     asked = _asked(monkeypatch, _small())
     assert len(asked) == 1
-    block = asked[0].split('\n\nInstructions from')[0].split('Empty in s1: ')[1].split('\n\n', 1)[1]
+    # The similar sentences follow it (test_job_similar).
+    block = asked[0].split('\n\nInstructions from')[0].split('\n\n' + similar.HEAD)[0]
+    block = block.split('Empty in s1: ')[1].split('\n\n', 1)[1]
     assert block == '\n'.join([
         'How these forms were analysed before (by people in this project, and earlier in this job):',
         '- "ka": people: ka ‘eat’ (1)',

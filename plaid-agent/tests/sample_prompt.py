@@ -138,8 +138,10 @@ def render_job() -> str:
              render_tool(toolkit.PLAN_WORK),
              '\n## A piece of a plan in sentences\n', 'Of a glossing plan (it fills segmentation and the morpheme '
              'gloss field). Its system prompt (its message also holds the evidence block, '
-             '`src/plaid_agent/igt/evidence.py`):\n', '```text',
-             prompt.build_job_prompt(ws.project, sentences=True, targets=in_sentences.fills).rstrip(), '```\n',
+             '`src/plaid_agent/igt/evidence.py`, and the similar sentences, `src/plaid_agent/igt/similar.py`):\n',
+             '```text',
+             prompt.build_job_prompt(ws.project, sentences=True, targets=in_sentences.fills, similar=True).rstrip(),
+             '```\n',
              f'Its {len(short)} tools (`toolkit.sentences_piece_tools` of what the plan fills, analyses_of without "'
              + toolkit.CHECK_FIRST.strip() + '", less `toolkit.TEXT_TOOLS` unless the plan sets edits_text): '
              + ', '.join(t['function']['name'] for t in short) + '.\n',

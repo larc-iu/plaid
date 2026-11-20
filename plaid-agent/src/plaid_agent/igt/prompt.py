@@ -493,8 +493,15 @@ NO_TEXT_EDITS = (('deletions and text edits included', 'deletions included'),
                  ('replace_in_field, respell_all, copy_to_orthography', 'replace_in_field, copy_to_orthography'))
 
 
+#: What a piece in sentences is told of the similar sentences its message
+#: holds after the evidence (igt/similar.py, BRIEF-SS), only when it holds
+#: them.
+JOB_STAGE_SIMILAR = (' The sentences of this project most like yours show its conventions for forms nobody analysed '
+                     'before. Each analysis is still yours to decide.')
+
+
 def build_job_prompt(project: IgtProject, sentences: bool = False, edits_text: bool = False, targets=None,
-                     findings: bool = False, evidence: bool = True) -> str:
+                     findings: bool = False, evidence: bool = True, similar: bool = False) -> str:
     """The system prompt of every piece of a job on ``project``: the chat's
     prompt with the job's paragraphs, the project's shape and its guidelines
     whole, and the code section where the sandbox is. A piece of a plan in
@@ -507,7 +514,8 @@ def build_job_prompt(project: IgtProject, sentences: bool = False, edits_text: b
     the job's report, in place of a short note (RPF-A5). A piece whose
     message holds no evidence (``evidence`` False: a selection's, one of a
     plan that fills nothing, sentence fields only) is not told it does
-    (D29)."""
+    (D29). One whose message holds the similar sentences (``similar``) is
+    told what they show (:data:`JOB_STAGE_SIMILAR`)."""
     targets = list(targets or ())
     if not sentences:
         template = JOB_SYSTEM
@@ -525,6 +533,9 @@ def build_job_prompt(project: IgtProject, sentences: bool = False, edits_text: b
         out = out.replace(ORTHOGRAPHY_SAID, ORTHOGRAPHY_INSTEAD)
     if not evidence:
         out = out.replace(shared.JOB_STAGE_EVIDENCE, '')
+    elif similar:
+        assert shared.JOB_STAGE_EVIDENCE in out
+        out = out.replace(shared.JOB_STAGE_EVIDENCE, shared.JOB_STAGE_EVIDENCE + JOB_STAGE_SIMILAR)
     if findings:
         assert shared.JOB_NOTE in out
         out = out.replace(shared.JOB_NOTE, shared.JOB_FINDINGS_NOTE)
