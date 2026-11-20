@@ -357,6 +357,15 @@
                                                        :pattern pattern
                                                        :include-values? (true? include-values))))))}}]
 
+   ["/user-data/sizes"
+    {:get {:summary (str "How much private user data each account holds: one entry per account "
+                         "with any, its <code>user-id</code>, how many <code>entries</code> and "
+                         "their total size in <code>bytes</code> (the stored JSON, UTF-8). "
+                         "Assistant conversations and their attachments are kept there. "
+                         "Not paginated: one row per person.")
+           :handler (fn [{db :db}]
+                      {:status 200 :body {:entries (user-data/sizes-by-user db)}})}}]
+
    ["/logs"
     {:get {:summary (str "What this process has logged, structured and filtered, from an "
                          "in-memory buffer that is kept whether or not a log file is "

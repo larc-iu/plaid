@@ -18,6 +18,7 @@ import { useDetailParam } from '@ui/hooks/useDetailParam.js';
 import { UserAdminDialogs } from '@ui/components/shared/UserAdminDialogs.jsx';
 import { UserDetail } from './UserDetail';
 import { textIncludes } from '@ui/domain/collation.js';
+import { formatBytes } from '@/utils/formatBytes';
 
 // The whole account directory. The project Access tab resolves one project's
 // members; this browses everyone, and opens onto what one person has been
@@ -37,8 +38,11 @@ export const AdminUsers = ({ client, currentUser }) => {
       // The whole directory, then filtered and paged here: a local filter
       // keeps the roster sortable and countable without a round trip per
       // keystroke, and list() follows every cursor so nothing is dropped
-      // silently at some page boundary.
-      setUsers((await client.users.list()) || []);
+      // silently at some page boundary. Each account's private data size
+      // comes from one read that sums them all.
+      const [list, sizes] = await Promise.all([client.users.list(), client.admin.userDataSizes()]);
+      const bytes = new Map((sizes || []).map((s) => [s.userId, s.bytes]));
+      setUsers((list || []).map((u) => ({ ...u, privateBytes: bytes.get(u.id) ?? null })));
     } catch (err) {
       console.error('Error loading users:', err);
       notifyError(humanizeError(err), 'Failed to load the accounts');
@@ -110,6 +114,14 @@ export const AdminUsers = ({ client, currentUser }) => {
           )}
         </div>
       ),
+    },
+    {
+      key: 'privateData',
+      label: 'Private data',
+      sort: (u) => u.privateBytes,
+      align: 'right',
+      className: 'tabular-nums text-muted-foreground',
+      render: (u) => (u.privateBytes == null ? '' : formatBytes(u.privateBytes)),
     },
     {
       key: 'actions',

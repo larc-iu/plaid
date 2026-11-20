@@ -183,3 +183,16 @@
                       :row->entity (fn [row]
                                      (assoc (row->entry row include-values?)
                                             :user-id (:user_id row)))})))
+
+(defn sizes-by-user
+  "`[{:user-id :entries :bytes}]`, one row per account holding any private
+  data: how many entries it has and the total size of their stored JSON in
+  bytes (UTF-8, as `max-value-bytes` counts them). One grouped scan of the
+  primary key. An account with none has no row."
+  [db]
+  (mapv (fn [{:keys [user_id entries bytes]}] {:user-id user_id :entries entries :bytes bytes})
+        (psc/q db {:select [:user_id [[:count :*] :entries]
+                            [[:sum [:length [:cast :value :blob]]] :bytes]]
+                   :from :user_data
+                   :group-by [:user_id]
+                   :order-by [:user_id]})))

@@ -109,6 +109,7 @@ It is not a place for annotation data, which belongs in layers where it is share
 A key is any string but `.` and `..`, which no URL can carry, and apps namespace theirs (`igt:assistant:<project>:...`).
 A value is any JSON document up to `[user_data] max_value_mb` (5 MB by default), counted in UTF-8 bytes.
 The store can be listed by key prefix or by a glob over the whole key (`igt:assistant:*:meta:*`), with or without values.
+An administrator reads how much each account holds with `admin.user_data_sizes` (`admin.userDataSizes`, `GET /admin/user-data/sizes`): per account with any, the number of entries and their total size in bytes.
 
 Every entry has a `version` that each write raises by one.
 A write that passes the version it was made from (`?version=`, or the `version` option of `user_data.put` / `userData.put`) is refused with 409 when another write landed in between.

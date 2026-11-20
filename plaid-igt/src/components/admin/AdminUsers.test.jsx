@@ -33,6 +33,9 @@ const fakeClient = () => ({
   projects: { list: vi.fn(async () => []) },
   apiTokens: { list: vi.fn(async () => []) },
   audit: { tally: vi.fn(async () => []) },
+  admin: {
+    userDataSizes: vi.fn(async () => [{ userId: 'ada@example.com', entries: 3, bytes: 1500 }]),
+  },
 });
 
 const at = (url, client = fakeClient()) =>
@@ -98,6 +101,24 @@ describe('a deactivated account', () => {
     );
     expect(items).toContain('Reactivate');
     expect(items).not.toContain('Create password reset link');
+    await unmount();
+  });
+});
+
+describe('the private data column', () => {
+  it("shows each account's private data size, blank for none", async () => {
+    const { container, client, step, unmount } = await at('/admin?tab=users');
+    await step(async () => {});
+    expect(client.admin.userDataSizes).toHaveBeenCalled();
+    const heads = [...container.querySelectorAll('th')].map((th) => th.textContent.trim());
+    const col = heads.indexOf('Private data');
+    expect(col).toBeGreaterThan(-1);
+    const cell = (name) =>
+      [...container.querySelectorAll('tbody tr')]
+        .find((tr) => tr.textContent.includes(name))
+        .querySelectorAll('td')[col].textContent;
+    expect(cell('Ada Lovelace')).toBe('1.5 KB');
+    expect(cell('bob@example.com')).toBe('');
     await unmount();
   });
 });

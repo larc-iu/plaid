@@ -108,6 +108,11 @@
 /** @typedef {UserDataEntry & {userId: string}} AdminUserDataEntry */
 
 /**
+ * How much private user data one account holds (`admin.userDataSizes`).
+ * @typedef {{userId: string, entries: number, bytes: number}} UserDataSize
+ */
+
+/**
  * One user's activity over a scope and window (`audit.tally`).
  * @typedef {object} ActivityTallyRow
  * @property {{id: string, displayName?: string}} user

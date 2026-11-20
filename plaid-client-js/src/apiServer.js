@@ -39,6 +39,7 @@ export const BACKUP_TIMEOUT_MS = 30 * 60 * 1000;
  * @typedef {import("./types.js").VocabItemRestoreSummary} VocabItemRestoreSummary
  * @typedef {import("./types.js").UserDataEntry} UserDataEntry
  * @typedef {import("./types.js").AdminUserDataEntry} AdminUserDataEntry
+ * @typedef {import("./types.js").UserDataSize} UserDataSize
  * @typedef {import("./types.js").ActivityTallyRow} ActivityTallyRow
  * @typedef {import("./types.js").ConstraintRepair} ConstraintRepair
  * @typedef {import("./types.js").ValueSetRule} ValueSetRule
@@ -335,6 +336,15 @@ export function adminApi(client) {
           "include-values": includeValues,
         },
       }),
+    /**
+     * How much private user data each account holds: one entry per account
+     * with any, with how many entries and their total size in bytes (the
+     * stored JSON, UTF-8). Assistant conversations and their attachments are
+     * kept there. Admin only.
+     * @returns {Promise<UserDataSize[]>}
+     */
+    userDataSizes: async () =>
+      (await client._request("GET", "/api/v1/admin/user-data/sizes")).entries,
     /**
      * Every project's assistant jobs, newest first, each as a project's job
      * list gives it (no documents, no report, `documentCount`) with

@@ -3460,6 +3460,13 @@ class AdminResource(_Resource):
                          query={'prefix': prefix, 'pattern': pattern,
                                 'include-values': include_values or None})
 
+    def user_data_sizes(self) -> Any:
+        """How much private user data each account holds: one entry per
+        account with any, ``{user_id, entries, bytes}``, the number of entries
+        and their total size in bytes (the stored JSON, UTF-8). Assistant
+        conversations and their attachments are kept there. Admin only."""
+        return self._request('GET', '/api/v1/admin/user-data/sizes')['entries']
+
     def jobs(self) -> Any:
         """Every project's assistant jobs, newest first, each as a project's
         job list gives it (no documents, no report, ``document_count``) with

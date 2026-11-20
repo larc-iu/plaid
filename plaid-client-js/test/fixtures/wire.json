@@ -17,6 +17,7 @@
   "admin.server": {"args":[],"outcome":"ok","sends":[{"method":"GET","path":"/api/v1/admin/server"}],"batch":"wire"},
   "admin.userData": {"args":[{"prefix":"a0.prefix","pattern":"a0.pattern","includeValues":"a0.includeValues"}],"outcome":"ok","sends":[{"method":"GET","path":"/api/v1/admin/user-data","query":{"include-values":"a0.includeValues","limit":"1000","pattern":"a0.pattern","prefix":"a0.prefix"}}],"batch":"wire"},
   "admin.userDataPage": {"args":[{"prefix":"a0.prefix","pattern":"a0.pattern","includeValues":"a0.includeValues","limit":"a0.limit","cursor":"a0.cursor"}],"outcome":"ok","sends":[{"method":"GET","path":"/api/v1/admin/user-data","query":{"cursor":"a0.cursor","include-values":"a0.includeValues","limit":"a0.limit","pattern":"a0.pattern","prefix":"a0.prefix"}}],"batch":"wire"},
+  "admin.userDataSizes": {"args":[],"outcome":"ok","sends":[{"method":"GET","path":"/api/v1/admin/user-data/sizes"}],"batch":"wire"},
   "apiTokens.create": {"args":["a0","a1","a2"],"outcome":"ok","sends":[{"body":{"name":"a1"},"method":"POST","path":"/api/v1/users/a0/tokens","query":{"audit-message":"a2","group-id":"<uuid>","group-message":"op"}}],"batch":"threw"},
   "apiTokens.iterPages": {"args":["a0",{"pageSize":"a1.pageSize"}],"outcome":"ok","sends":[{"method":"GET","path":"/api/v1/users/a0/tokens","query":{"limit":"a1.pageSize"}}],"batch":"wire"},
   "apiTokens.list": {"args":["a0"],"outcome":"ok","sends":[{"method":"GET","path":"/api/v1/users/a0/tokens","query":{"limit":"1000"}}],"batch":"wire"},

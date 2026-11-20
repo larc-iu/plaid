@@ -84,3 +84,24 @@
     (testing "a token that never wrote has no time"
       (is (contains? by-name "idle"))
       (is (nil? (:api-token/last-write-at (by-name "idle")))))))
+
+;; How much private data each account holds, in bytes of its stored JSON.
+(deftest private-data-is-summed-by-user
+  (let [put! (fn [who user k v]
+               (api-call who {:method :put :path (str "/api/v1/users/" user "/data/" k) :body v}))
+        stored (fn [user] (:n (psc/q1 fix/db {:select [[[:sum [:length [:cast :value :blob]]] :n]]
+                                              :from [:user_data] :where [:= :user_id user]})))]
+    (is (= 200 (:status (put! user1-request "user1@example.com" "igt:a" {:title "ə ŋ"}))))
+    (is (= 200 (:status (put! user1-request "user1@example.com" "igt:b" [1 2 3]))))
+    (let [resp (api-call admin-request {:method :get :path "/api/v1/admin/user-data/sizes"})
+          rows (:entries (:body resp))
+          mine (first (filter #(= "user1@example.com" (:user-id %)) rows))]
+      (is (= 200 (:status resp)))
+      (is (= {:user-id "user1@example.com" :entries 2 :bytes (stored "user1@example.com")} mine))
+      (is (< (:n (psc/q1 fix/db {:select [[[:sum [:length :value]] :n]] :from [:user_data]
+                                 :where [:= :user_id "user1@example.com"]}))
+             (:bytes mine))
+          "bytes, not characters: ə and ŋ are two each")
+      (is (not-any? #(= "user2@example.com" (:user-id %)) rows) "an account with none has no row"))
+    (testing "an admin's alone"
+      (is (= 403 (:status (api-call user1-request {:method :get :path "/api/v1/admin/user-data/sizes"})))))))
