@@ -22,6 +22,24 @@ import { countOf } from '@ui/lib/plural.js';
 // there is nothing to forget, only the id to release.
 const isRegistration = (e) => e.seen !== false;
 
+const tokens = (n) => (typeof n === 'number' ? `${n.toLocaleString()} tokens` : null);
+
+// What a registration says it runs, in the order the expanded row lists it.
+const FACTS = [
+  ['Model', (x) => x.model],
+  ['Version', (x) => x.version],
+  ['Model key', (x) => x.modelPool],
+  ['Output limit', (x) => tokens(x.maxOutputTokens)],
+  ['Context window', (x) => tokens(x.contextWindow)],
+  ['Reasoning effort', (x) => x.reasoningEffort],
+  ['Web search', (x) => x.webSearch],
+];
+
+const factsOf = (entry) =>
+  FACTS.map(([label, read]) => [label, read(entry.extras || {})]).filter(([, v]) => v);
+
+const byFreshest = (a, b) => String(b.lastSeenAt || '').localeCompare(String(a.lastSeenAt || ''));
+
 const groupByService = (registrations) => {
   const byId = new Map();
   registrations.forEach((r) => {
@@ -32,14 +50,19 @@ const groupByService = (registrations) => {
     const online = entries.filter((e) => e.online);
     // The name and description are stored per registration. They agree in
     // practice, so the freshest one speaks for the service.
-    const freshest = [...entries].sort((a, b) =>
-      String(b.lastSeenAt || '').localeCompare(String(a.lastSeenAt || '')),
-    )[0];
+    const freshest = [...entries].sort(byFreshest)[0];
+    // What it runs: an online registration's word, else the freshest one's.
+    const runs = ([...online].sort(byFreshest)[0] || freshest)?.extras || {};
+    const differ = (key) => new Set(online.map((e) => e.extras?.[key] ?? '')).size > 1;
     return {
       serviceId,
       serviceName: freshest?.serviceName || serviceId,
       description: freshest?.description || '',
       tasks: [...new Set(entries.flatMap((e) => e.extras?.tasks || []))],
+      model: runs.model || '',
+      version: runs.version || '',
+      modelPool: runs.modelPool || '',
+      versionsDiffer: differ('version') || differ('model'),
       entries: [...entries].sort((a, b) => compareNames(a.project.name, b.project.name)),
       projects: entries.length,
       online: online.length,
@@ -166,6 +189,33 @@ export const AdminServices = ({ client, currentUser }) => {
       ),
     },
     {
+      key: 'model',
+      label: 'Model',
+      sort: (r) => r.model,
+      render: (r) => r.model,
+    },
+    {
+      key: 'version',
+      label: 'Version',
+      sort: (r) => r.version,
+      render: (r) => (
+        <>
+          <span className="font-mono text-xs">{r.version}</span>
+          {r.versionsDiffer && (
+            <span data-differ className="pl-2 text-muted-foreground">
+              Versions differ
+            </span>
+          )}
+        </>
+      ),
+    },
+    {
+      key: 'modelPool',
+      label: 'Model key',
+      sort: (r) => r.modelPool,
+      render: (r) => r.modelPool,
+    },
+    {
       key: 'tasks',
       label: 'Tasks',
       sort: (r) => r.tasks.join(', '),
@@ -259,6 +309,15 @@ export const AdminServices = ({ client, currentUser }) => {
                 </td>
                 <td className="py-1 pr-3 text-muted-foreground">
                   {e.claimedBy ? `Held by ${e.claimedBy}` : ''}
+                </td>
+                <td className="py-1 pr-3">
+                  <div data-facts className="flex flex-wrap gap-x-3">
+                    {factsOf(e).map(([label, value]) => (
+                      <span key={label} data-fact>
+                        <span className="text-muted-foreground">{label}</span> {value}
+                      </span>
+                    ))}
+                  </div>
                 </td>
                 <td className="py-1 text-right">
                   {heldByOther(e) && (
