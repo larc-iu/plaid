@@ -607,6 +607,17 @@ def title_from(text: str) -> str:
     return t[:TITLE_MAX - 1] + '…' if len(t) > TITLE_MAX else t
 
 
+def error_facts(conv: Dict[str, Any]) -> Dict[str, Any]:
+    """How many error items the conversation shows (``errors``) and the
+    newest one's reason and time (``last_error``, None when there is none),
+    for the admin Assistant tab's list. An item written before reasons has
+    none."""
+    errors = [d for d in conv['display'] if isinstance(d, dict) and d.get('kind') == 'error']
+    last = errors[-1] if errors else None
+    return {'errors': len(errors),
+            'last_error': {'reason': last.get('reason'), 'at': last.get('created_at')} if last else None}
+
+
 def build_meta(prev: Optional[Dict[str, Any]], conv_id: str, conv: Dict[str, Any], service_id: Optional[str],
                model: Optional[str], pending: Optional[Dict[str, Any]] = None,
                version: Optional[str] = None) -> Dict[str, Any]:
@@ -624,6 +635,7 @@ def build_meta(prev: Optional[Dict[str, Any]], conv_id: str, conv: Dict[str, Any
         'model': model or prev.get('model'),
         'version': version or prev.get('version'),
         'turns': sum(1 for d in conv['display'] if d.get('kind') == 'user'),
+        **error_facts(conv),
         'pending': pending,
         # The document a docked conversation is about. The app writes it when
         # it opens the conversation and never again, so this rewrite is the
@@ -639,12 +651,14 @@ def build_meta(prev: Optional[Dict[str, Any]], conv_id: str, conv: Dict[str, Any
 
 def kept_meta(prev: Dict[str, Any], conv: Optional[Dict[str, Any]] = None, **fields) -> Dict[str, Any]:
     """The sidebar entry ``prev`` with ``fields`` set. With ``conv`` (the
-    transcript changed), its turn count and ``updated_at`` follow it, so the
-    list's order and a reader's change check see it. Without, both stay: a
-    hold, a rename or a cleared marker moves nothing a reader rereads."""
+    transcript changed), its turn count, its error counts and ``updated_at``
+    follow it, so the list's order and a reader's change check see it.
+    Without, they stay: a hold, a rename or a cleared marker moves nothing a
+    reader rereads."""
     meta = dict(prev)
     if conv is not None:
         meta['turns'] = sum(1 for d in conv['display'] if isinstance(d, dict) and d.get('kind') == 'user')
+        meta.update(error_facts(conv))
         meta['updated_at'] = now_iso()
     meta.update(fields)
     return meta
