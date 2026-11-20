@@ -179,8 +179,9 @@ export function serverApi(client) {
 export function adminApi(client) {
   return {
     /**
-     * Everything about the server in one read: version and JVM uptime,
-     * database size and per-table row counts, media directory usage, backup
+     * Everything about the server in one read: version, the commit the build
+     * was made from and JVM uptime, database size, per-table row counts and
+     * the migrations applied, media directory usage, backup
      * configuration, the backups on disk and how the last run since the
      * server started ended (`backup.lastRun`), and the settings an operator
      * gets asked to confirm. Carries no secrets. Runs a count per table and

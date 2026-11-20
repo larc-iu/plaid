@@ -2,7 +2,8 @@
   "The instance-operations endpoints. What matters here is less the numbers
   they report than the two contracts around them: only an admin gets in, and
   the handful of writes only ever unblock."
-  (:require [clojure.string :as str]
+  (:require [clojure.java.io :as io]
+            [clojure.string :as str]
             [clojure.test :refer :all]
             [ring.mock.request :as mock]
             [plaid.fixtures :refer [with-db with-mount-states with-rest-handler
@@ -14,6 +15,7 @@
             [plaid.server.backup :as backup]
             [plaid.server.locks :as locks]
             [plaid.server.log-buffer :as log-buffer]
+            [plaid.server.version :as version]
             [plaid.sql.user-data :as user-data]
             [plaid.test-helpers :refer :all]))
 
@@ -73,6 +75,19 @@
     (testing "The private-data cap reported is the one the store enforces"
       (is (= (user-data/max-value-bytes) (:user-data-value-bytes (:settings body))))
       (is (= (* 5 1024 1024) (:user-data-value-bytes (:settings body)))))
+
+    (testing "The build's commit is reported, and none for a run from source"
+      (is (contains? body :commit))
+      (is (= version/commit (:commit body))))
+
+    (testing "The migrations applied: how many, and the newest by its file's name (SQL or code)"
+      (let [ups (->> (.listFiles (io/file (io/resource "migrations")))
+                     (map #(.getName %))
+                     (keep #(second (re-matches #"(.+)\.(?:up\.sql|edn)" %)))
+                     sort)
+            {:keys [applied latest]} (:migrations (:database body))]
+        (is (= (count ups) applied))
+        (is (= (last ups) latest))))
 
     (testing "No secret is in the report"
       (let [flat (pr-str body)]

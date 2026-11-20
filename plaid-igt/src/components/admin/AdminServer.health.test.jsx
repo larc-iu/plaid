@@ -140,3 +140,32 @@ describe('backup health', () => {
     await view.unmount();
   });
 });
+
+describe('build', () => {
+  it('shows the commit the build was made from beside the version', async () => {
+    const commit = 'cd03a068a87666a3e4a95204606894e83b766b89';
+    const view = await show(report({ version: '0.3.0', commit }));
+    expect(fact('Version')).toBe('0.3.0 (cd03a068a)');
+    const dd = [...document.querySelectorAll('dt')].find((d) => d.textContent === 'Version');
+    expect(dd.nextElementSibling.querySelector(`[title="${commit}"]`)).toBeTruthy();
+    await view.unmount();
+  });
+
+  it('shows the version alone for a run from source', async () => {
+    const view = await show(report({ version: 'dev', commit: null }));
+    expect(fact('Version')).toBe('dev');
+    await view.unmount();
+  });
+
+  it('shows the migrations applied, the newest named', async () => {
+    const view = await show(
+      report({
+        database: {
+          migrations: { applied: 47, latest: '20261118153000-spans-statistics-whole' },
+        },
+      }),
+    );
+    expect(fact('Migrations')).toBe('47 applied, latest 20261118153000-spans-statistics-whole');
+    await view.unmount();
+  });
+});

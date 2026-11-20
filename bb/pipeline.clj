@@ -476,7 +476,13 @@
       ;; The mark, for the root landing page the jar serves at /. Same file the
       ;; three SPAs serve, copied rather than duplicated (see wrap-root-landing).
       (fs/copy "plaid-ui/public/plaid.svg" "plaid-core/resources/plaid.svg" {:replace-existing true})
-      (spit "plaid-core/resources/version.edn" (str "{:version \"" version "\"}\n"))
+      ;; The commit is HEAD of the tree being built (the tag's commit in
+      ;; release.yml), shown on the admin Server tab. Nil outside a git checkout.
+      (spit "plaid-core/resources/version.edn"
+            (str (pr-str {:version version
+                          :commit (let [{:keys [exit out]} (p/sh "git" "rev-parse" "HEAD")]
+                                    (when (zero? exit) (str/trim out)))})
+                 "\n"))
       ;; The JavaScript client, served at /client/plaid-client.js to pages that
       ;; import it instead of bundling their own (see wrap-client-js). The
       ;; package's own files in its own layout, unbundled: its modules import

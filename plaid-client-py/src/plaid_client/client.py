@@ -3308,8 +3308,10 @@ class AdminResource(_Resource):
     def server(self) -> Any:
         """Everything about the server in one read.
 
-        Version and JVM uptime, database size and per-table row counts, media
-        directory usage, backup configuration, the backups on disk and how the
+        Version, the ``commit`` the build was made from (None in a run from
+        source) and JVM uptime, database size, per-table row counts and the
+        migrations applied (``database.migrations``: ``applied``, ``latest``),
+        media directory usage, backup configuration, the backups on disk and how the
         last run since the server started ended (``backup.last_run``: ``at``,
         ``ok``, ``scheduled``), and the settings an operator gets asked to
         confirm. Carries no secrets. Runs a

@@ -459,9 +459,12 @@
 /**
  * @typedef {object} ServerReport
  * @property {string} version
+ * @property {string | null} commit - The commit the build was made from, null
+ *   in a run from source.
  * @property {{uptimeMs: number, startedAt: string, java: string, heapUsed: number, heapMax: number}} jvm
  * @property {{path: string | null, bytes: number | null, walBytes: number | null,
  *   slowQueryThresholdMs?: number, journalMode?: string, maxPoolSize?: number,
+ *   migrations: {applied: number, latest: string} | null,
  *   tables: Record<string, number | null>}} database
  * @property {{directory: string, files: number, bytes: number, orphans: number, orphanBytes: number}} media
  * @property {BackupStatus} backup

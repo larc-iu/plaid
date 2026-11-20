@@ -239,7 +239,23 @@ export const AdminServer = ({ client }) => {
         <Section title="Server">
           <Facts
             rows={[
-              ['Version', report.version],
+              [
+                'Version',
+                report.commit ? (
+                  <>
+                    {report.version} (<span title={report.commit}>{report.commit.slice(0, 9)}</span>
+                    )
+                  </>
+                ) : (
+                  report.version
+                ),
+              ],
+              [
+                'Migrations',
+                database.migrations
+                  ? `${database.migrations.applied} applied, latest ${database.migrations.latest}`
+                  : null,
+              ],
               ['Uptime', `${duration(jvm.uptimeMs)} (since ${fullTimestamp(jvm.startedAt)})`],
               ['Java', jvm.java],
               ['Heap', `${formatBytes(jvm.heapUsed)} of ${formatBytes(jvm.heapMax)}`],

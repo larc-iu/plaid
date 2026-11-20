@@ -85,6 +85,19 @@
        :awaiting   (.getThreadsAwaitingConnection pool)})
     (catch Throwable _ nil)))
 
+(defn- migrations-report
+  "How many migrations the database has applied, and the newest, named as
+  its file is (`<id>-<description>`). Leaves out the row migratus holds
+  while one runs. Nil when the table cannot be read."
+  [db]
+  (try
+    (let [where [:> :id 0]
+          newest (psc/q1 db {:select [:id :description] :from [:schema_migrations]
+                             :where where :order-by [[:id :desc]] :limit 1})]
+      {:applied (:n (psc/q1 db {:select [[[:count :*] :n]] :from [:schema_migrations] :where where}))
+       :latest  (when newest (str (:id newest) "-" (:description newest)))})
+    (catch Exception _ nil)))
+
 (defn- database-report [db]
   (let [path (-> config :plaid.server.sql/config :main-db-path)
         file (when path (io/file path))
@@ -96,6 +109,7 @@
             :bytes     (:bytes page)
             :wal-bytes (when (and wal-file (.exists wal-file)) (.length wal-file))
             :pool      (pool-report db)
+            :migrations (migrations-report db)
             :tables    (table-counts db)}
            (pragmas db))))
 
@@ -202,8 +216,10 @@
     :middleware [[pra/wrap-admin-required]]}
 
    ["/server"
-    {:get {:summary (str "Everything about this server in one read: version and JVM uptime, "
-                         "database size and per-table row counts, media directory usage, "
+    {:get {:summary (str "Everything about this server in one read: version, the commit it "
+                         "was built from (null in a run from source) and JVM uptime, "
+                         "database size, per-table row counts and the migrations applied, "
+                         "media directory usage, "
                          "backup configuration, the backups actually on disk and how the last "
                          "run since the start ended (<code>last-run</code>), and the "
                          "settings an operator gets asked to confirm. No secrets: the JWT "
@@ -213,6 +229,7 @@
            :handler (fn [{db :db}]
                       {:status 200
                        :body {:version  version/version
+                              :commit   version/commit
                               :jvm      (jvm-report)
                               :database (database-report db)
                               :media    (media/stats db)
