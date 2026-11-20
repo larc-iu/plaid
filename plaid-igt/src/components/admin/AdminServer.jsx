@@ -231,7 +231,14 @@ export const AdminServer = ({ client }) => {
     try {
       await client.admin.clearRateLimits({ ip, userId });
       setRateLimits(await client.admin.rateLimits());
-      notifySuccess(userId ? `${userId} at ${ip} cleared` : `${ip} cleared`);
+      // One account's row also clears the address's own buckets (core's
+      // `clear-buckets!`), so its toast names them. An address clears all.
+      if (userId) {
+        notifySuccess(
+          `Also cleared: Address and Invite failures from ${ip}.`,
+          `${userId} at ${ip} cleared`,
+        );
+      } else notifySuccess(ip ? `${ip} cleared` : 'Every address cleared');
     } catch (err) {
       notifyError(humanizeError(err), 'Failed to clear');
     }

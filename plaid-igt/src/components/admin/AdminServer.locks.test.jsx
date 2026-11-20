@@ -122,3 +122,49 @@ describe('Open documents', () => {
     await view.unmount();
   });
 });
+
+describe('Clear', () => {
+  const failures = {
+    logins: [{ ip: '10.0.0.7', userId: 'ana@example.com', failures: 6, limit: 5, blocked: true }],
+    ips: [{ ip: '10.0.0.7', failures: 6, limit: 30, blocked: false }],
+    invites: [],
+  };
+  const clears = () => all(document.body, 'button').filter((b) => b.textContent.trim() === 'Clear');
+
+  it("names everything a sign-in row's Clear clears", async () => {
+    const client = clientWith({ rateLimits: failures });
+    const view = await show(client);
+    const signIn = [...document.querySelectorAll('tbody tr')].find((tr) =>
+      tr.textContent.startsWith('Sign-in'),
+    );
+    await view.step(() => signIn.querySelector('button').click());
+    expect(client.admin.clearRateLimits).toHaveBeenCalledWith({
+      ip: '10.0.0.7',
+      userId: 'ana@example.com',
+    });
+    expect(feedback.notifySuccess).toHaveBeenCalledWith(
+      'Also cleared: Address and Invite failures from 10.0.0.7.',
+      'ana@example.com at 10.0.0.7 cleared',
+    );
+    await view.unmount();
+  });
+
+  it("names the address an address row's Clear clears", async () => {
+    const view = await show(clientWith({ rateLimits: failures }));
+    expect(clears()).toHaveLength(2);
+    const address = [...document.querySelectorAll('tbody tr')].find((tr) =>
+      tr.textContent.startsWith('Address'),
+    );
+    await view.step(() => address.querySelector('button').click());
+    expect(feedback.notifySuccess).toHaveBeenCalledWith('10.0.0.7 cleared');
+    await view.unmount();
+  });
+
+  it('says Clear all cleared every address', async () => {
+    const view = await show(clientWith({ rateLimits: failures }));
+    const clearAll = all(document.body, 'button').find((b) => b.textContent.trim() === 'Clear all');
+    await view.step(() => clearAll.click());
+    expect(feedback.notifySuccess).toHaveBeenCalledWith('Every address cleared');
+    await view.unmount();
+  });
+});
