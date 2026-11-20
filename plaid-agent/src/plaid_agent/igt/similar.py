@@ -56,7 +56,7 @@ def word_item(analysis: Dict[str, Any], fields: Sequence[str] = ()) -> str:
 
 def holds(example: Dict[str, Any], word_fields: frozenset) -> bool:
     """Whether a word of ``example`` holds a person's value of one of
-    ``word_fields`` (word field names), as its ``people_fields`` names
+    ``word_fields`` (word field layer ids), as its ``people_fields`` names
     them."""
     return not example['people_fields'].isdisjoint(word_fields)
 

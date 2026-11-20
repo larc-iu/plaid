@@ -898,6 +898,17 @@ def people_analysis(w: Word, job_id: Optional[str]) -> Dict[str, Any]:
     return a
 
 
+def word_field_ids(targets: Iterable[Target]) -> frozenset:
+    """The layer ids of the word fields among ``targets`` when they hold
+    word fields and neither segmentation nor a morpheme field, else none:
+    the similar sentences of such a job, or stretch, are those holding a
+    person's value of one of them, segmented or not."""
+    kinds = [t for t in targets if t.segments or (t.field is not None and t.scope in ('Word', 'Morpheme'))]
+    if not kinds or any(t.segments or t.scope != 'Word' for t in kinds):
+        return frozenset()
+    return frozenset(t.field.layer_id for t in kinds)
+
+
 def harmonized_part(analysis: Dict[str, Any]) -> Dict[str, Any]:
     """What harmonize compares an analysis by: the morphemes (form, type,
     "=", their fields, their entries), never ``made``. The word fields do not
@@ -2600,13 +2611,14 @@ class IgtRunner:
         #: ``people``
         self.examples: List[Dict[str, Any]] = []
         self.pool: Optional[similar.Pool] = None
-        #: every sentence with words the job wrote nothing in that is
-        #: analysed or holds a person's word field value
-        #: (:meth:`examples_of`), in document order, read with
-        #: ``people``, and per set of word field names a stretch that fills
-        #: only word fields asked for, those of them holding a person's value
-        #: of one and their pool (:meth:`word_field_pool`)
+        #: the sentences :meth:`examples_of` keeps, in document order, read
+        #: with ``people``: those people analysed, and for a job whose plan
+        #: fills only word fields (their layer ids ``kept_fields``,
+        #: :func:`word_field_ids`) those holding a person's value of one;
+        #: per set of word field layer ids a stretch asked for, those of them
+        #: holding one and their pool (:meth:`word_field_pool`)
         self.candidates: List[Dict[str, Any]] = []
+        self.kept_fields: frozenset = frozenset()
         self.word_pools: Dict[frozenset, Tuple[List[Dict[str, Any]], similar.Pool]] = {}
         #: what harmonize has written so far, for the report of a job stopped in it
         self.harmonize_done: Optional[Dict[str, Any]] = None
@@ -4729,6 +4741,9 @@ class IgtRunner:
         moved since they were read last (the job's own writes and people's),
         never the whole project twice (REV-J-B S3-10)."""
         ws = Workspace(self.job.client(), project)
+        # The word fields whose sentences are kept unanalysed too: the plan's,
+        # when it fills only word fields (the plan is fixed for the job).
+        kept = word_field_ids(self.targets(project))
         listed = ws.documents()
         stale = [d for d in listed if d.get('version') is None
                  or (self.people_read.get(d['id']) or (None,))[0] != d.get('version')]
@@ -4744,7 +4759,7 @@ class IgtRunner:
             self.people_read[d['id']] = (d.get('version'), self.people_of(doc, self.job.id),
                                          self.values_of(doc, self.job.id),
                                          self.people_of(doc, self.job.id, per_value=True),
-                                         self.examples_of(doc, project, self.job.id))
+                                         self.examples_of(doc, project, self.job.id, kept))
         listed_ids = {d['id'] for d in listed}
         # The sentences people analysed, in document order, their weights
         # computed again only when they changed. The word field pools only
@@ -4755,7 +4770,7 @@ class IgtRunner:
             self.examples, self.pool = examples, similar.Pool([x['feats'] for x in examples])
         if self.word_pools and candidates != self.candidates:
             self.word_pools = {}
-        self.candidates = candidates
+        self.candidates, self.kept_fields = candidates, kept
         index: Dict[str, Dict[str, Any]] = {}
         shown: Dict[str, Dict[str, Any]] = {}
         values: Dict[Tuple[str, str], Dict[str, Dict[str, int]]] = {}
@@ -4829,20 +4844,23 @@ class IgtRunner:
         return out
 
     @staticmethod
-    def examples_of(doc, project: IgtProject, job_id: Optional[str] = None) -> List[Dict[str, Any]]:
+    def examples_of(doc, project: IgtProject, job_id: Optional[str] = None,
+                    word_fields: frozenset = frozenset()) -> List[Dict[str, Any]]:
         """One document's candidates for the similar sentences' pools: every
         sentence that has words (its punctuation and ignored tokens are no
         words, as parse_document reads them), that the job wrote nothing in
         (``job_piece`` on a word's pieces or a sentence field), and that is
-        ``analysed`` or holds a person's value of a word field. It is
-        ``analysed`` when each word is ``protected``, as the LLM glossing
+        ``analysed`` or holds a person's value of one of ``word_fields``
+        (layer ids: a job's whose plan fills only word fields, else none). It
+        is ``analysed`` when each word is ``protected``, as the LLM glossing
         service takes its examples: those are the pool of a stretch that
         segments or fills a morpheme field. Each with its id, text,
         translation, words (each its :func:`people_analysis`, every field
-        kept: a stretch renders the fields it fills, :func:`similar.block`,
-        and its surface), the word fields a word of it holds a person's value
-        of (``people_fields``, by name, unique in the project) and features
-        (:func:`similar.features`)."""
+        kept, its surface NFC, and its word values the job did not write by
+        layer id, ``word_ids``: a stretch renders the fields it fills under
+        their names as they are then, :meth:`similar_sentences`), which of
+        ``word_fields`` a word of it holds a person's value of
+        (``people_fields``) and features (:func:`similar.features`)."""
         cfg = project.ignored_cfg
         translation = getattr(project.gloss_field('Sentence'), 'name', None)
         out = []
@@ -4850,8 +4868,10 @@ class IgtRunner:
             if not s.words:
                 continue
             analysed = all(word_state(w) == 'protected' for w in s.words)
-            held = frozenset(n for w in s.words for n, sp in w.fields.items() if peoples(sp.metadata, sp.value))
-            # Neither pool takes a sentence that is neither.
+            if not analysed and not word_fields:
+                continue
+            held = frozenset(sp.layer_id for w in s.words for sp in w.fields.values()
+                             if sp.layer_id in word_fields and peoples(sp.metadata, sp.value))
             if not analysed and not held:
                 continue
             if any(job_piece(p, job_id) for w in s.words for p in word_pieces(w)) or any(
@@ -4860,13 +4880,16 @@ class IgtRunner:
             t = s.fields.get(translation) if translation else None
             out.append({'id': s.id, 'text': s.text, 'translation': (t.value or '').strip() if t is not None else '',
                         'analysed': analysed, 'people_fields': held,
-                        'words': [{**people_analysis(w, job_id), 'surface': w.surface} for w in s.words],
+                        'words': [{**people_analysis(w, job_id), 'surface': _nfc(w.surface),
+                                   'word_ids': {sp.layer_id: _nfc(sp.value) for sp in w.fields.values()
+                                                if sp.value not in (None, '') and not job_piece(sp.metadata, job_id)}}
+                                  for w in s.words],
                         'feats': similar.features(evidence.form_of(w.surface, cfg) for w in s.words)})
         return out
 
     def word_field_pool(self, word_fields: frozenset) -> Tuple[List[Dict[str, Any]], similar.Pool]:
         """The pool of a stretch that fills the word fields ``word_fields``
-        (names) and neither segmentation nor a morpheme field: the
+        (layer ids) and neither segmentation nor a morpheme field: the
         candidates a word of which holds a person's value of one of them
         (:func:`similar.holds`), built once until the candidates change."""
         got = self.word_pools.get(word_fields)
@@ -4887,7 +4910,11 @@ class IgtRunner:
         the targets' order, by the field's name in the project. A stretch
         that fills word fields and neither segmentation nor a morpheme field
         draws from the sentences a word of which holds a person's value of
-        one of them (:meth:`word_field_pool`), segmented or not."""
+        one of them (:meth:`word_field_pool`), segmented or not, when the
+        walk kept them (:attr:`kept_fields`, the plan's). A stretch's targets
+        are its job's plan's, so it always did: else it would take the
+        analysed pool. A word field's values are found by its layer id and
+        shown under its name as the project names it now."""
         kinds = [t for t in st.targets if t.segments or (t.field is not None and t.scope in ('Word', 'Morpheme'))]
         empty = {w.id for w in st.words.values() if tg.empty_in_word(w, kinds)}
         cfg = project.ignored_cfg
@@ -4896,19 +4923,22 @@ class IgtRunner:
         if not queries:
             return ''
         self.people_index(ws, project)
-        word_fields = [t.field.name for t in kinds if t.scope == 'Word' and t.field is not None]
-        if all(t.scope == 'Word' and not t.segments for t in kinds):
-            examples, pool = self.word_field_pool(frozenset(word_fields))
+        named = {t.field.layer_id: t.field.name for t in kinds if t.scope == 'Word' and t.field is not None}
+        ids = word_field_ids(kinds)
+        if ids and ids <= self.kept_fields:
+            examples, pool = self.word_field_pool(ids)
         else:
             examples, pool = self.examples, self.pool
         own = {s.id for s in part}
         skip = frozenset(i for i, x in enumerate(examples) if x['id'] in own)
         columns = filled_columns(project, kinds)
         names = ['forms'] + [n for n, _f in columns]
-        return similar.block([examples[i] for i in similar.pick(pool, queries, skip=skip)],
-                             [f.name for _n, f in columns],
+        taken = [examples[i] for i in similar.pick(pool, queries, skip=skip)]
+        taken = [{**x, 'words': [{**a, 'word': {named[lid]: v for lid, v in a['word_ids'].items() if lid in named}}
+                                 for a in x['words']]} for x in taken]
+        return similar.block(taken, [f.name for _n, f in columns],
                              None if names == ITEM_COLUMNS or not columns else names,
-                             word_fields=word_fields)
+                             word_fields=list(named.values()))
 
     def entry_forms(self, ws: Workspace, project: IgtProject) -> Dict[str, str]:
         """Entry id to the address a tool names it by (``gam#2``, a sense

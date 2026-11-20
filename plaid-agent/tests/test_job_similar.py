@@ -555,3 +555,54 @@ def test_a_word_field_pool_costs_little_on_many_candidates(n, capsys):
     with capsys.disabled():
         print(f'\nWord field pool timing, {n} candidates ({len(held)} held): filter {1000 * (t1 - t0):.1f} ms, '
               f'weights {1000 * (t2 - t1):.0f} ms (once per change), a piece of 5 sentences {1000 * (t3 - t2):.0f} ms')
+
+
+# --- what a job keeps (round 2) ----------------------------------------------------
+
+def _kept(monkeypatch, client, fills):
+    """The candidates the job's runner kept after its run."""
+    job = start(client, id=J, documents=['A'], fills=fills)
+    use(monkeypatch, Model(lambda asked, n, kwargs: reply('Done.')))
+    r = runner(job)
+    run_job(job, r)
+    return r.candidates
+
+
+def _filled_unsegmented():
+    """:func:`_people` beside unsegmented sentences people gave a Role, and
+    one they gave a word Gloss only."""
+    raw = document('P', 'Other', [
+        {'words': [('gamdi', [('gam', 'fish'), ('di', 'ERG')], 'human'), ('ka', [('ka', 'eat')], 'human')]},
+        {'words': ['gamdo', 'zo']}, {'words': ['gamdu', 'zu']},
+        {'words': [{'form': 'gamde', 'who': 'human', 'gloss': ('fish.X', 'human')}, 'ze']}])
+    return with_values(raw, [(ROLE, 'P-s2w1', 'agent', 'human'), (ROLE, 'P-s3w2', 'act', 'human')])
+
+
+def test_a_job_that_segments_keeps_only_the_analysed_sentences(monkeypatch):
+    client = JobClient({'A': document('A', 'Doc A', [{'words': ['gamda', 'zo']}]), 'P': _filled_unsegmented()},
+                       project=fields_project())
+    kept = _kept(monkeypatch, client, ('segmentation', ROLE))
+    assert [x['text'] for x in kept] == ['gamdi ka.'] and all(x['analysed'] for x in kept), kept
+
+
+def test_a_word_field_job_keeps_the_sentences_holding_its_own_fields_only(monkeypatch):
+    """The sentence holding only a word Gloss is not kept for a job that
+    fills Role: its pool is by layer id."""
+    client = JobClient({'A': document('A', 'Doc A', [{'words': ['gamda', 'zo']}]), 'P': _filled_unsegmented()},
+                       project=fields_project())
+    kept = _kept(monkeypatch, client, (ROLE,))
+    assert [x['text'] for x in kept] == ['gamdi ka.', 'gamdo zo.', 'gamdu zu.'], kept
+    assert [x['people_fields'] for x in kept] == [frozenset(), frozenset({ROLE}), frozenset({ROLE})]
+    assert kept[1]['words'][0]['word_ids'] == {ROLE: 'agent'}
+
+
+def test_a_decomposed_surface_is_shown_composed(monkeypatch):
+    """A word of a project with no morpheme layer, its accent typed as a
+    combining mark: its forms are NFC, as morpheme forms are."""
+    decomposed = 'game' + chr(0x301)
+    people = _without_morphemes(with_values(document('P', 'Other', [{'words': [decomposed, 'ka']}]),
+                                            [(ROLE, 'P-s1w1', 'animate', 'human')]))
+    client = JobClient({'A': _without_morphemes(document('A', 'Doc A', [{'words': ['gamda', 'zo']}])), 'P': people},
+                       project=_without_morphemes(_animacy_project()))
+    (asked, _), = _run(monkeypatch, client, fills=(ROLE,))
+    assert _block(asked).split('\n')[-2] == 'Words: ["gam' + chr(0xe9) + '", "ka"]', asked
