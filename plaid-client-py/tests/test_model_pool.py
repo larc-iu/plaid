@@ -31,6 +31,12 @@ def test_the_flag_lands_in_the_services_extras():
     assert service.extras['model_pool'] == 'reallms'
 
 
+def test_the_extras_name_the_model():
+    service = _Service()
+    llm.setup_service(service, _args())
+    assert service.extras['model'] == 'm'
+
+
 def test_without_the_flag_the_extras_name_no_pool():
     service = _Service()
     llm.setup_service(service, _args())

@@ -704,6 +704,9 @@ def setup_service(service, args) -> ChatModel:
     if args.service_id:
         service.service_id = args.service_id
     service.service_name = args.service_name or f'{service.service_name} ({args.model})'
+    # Which model it asks, as the assistants register theirs: the admin
+    # Services tab shows it.
+    service.extras['model'] = args.model
     if args.model_pool:
         service.extras['model_pool'] = args.model_pool
     print(f'Model: {args.model}' + (f' via {args.api_base}' if args.api_base else ''))
