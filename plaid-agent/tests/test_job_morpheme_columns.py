@@ -202,6 +202,24 @@ def _named(*fields):
     return p
 
 
+@pytest.mark.parametrize('name', ['Gloss', 'gloss', 'GLOSS'])
+def test_the_gloss_field_named_gloss_is_the_default_glossing_job(monkeypatch, name):
+    """The second review's probe: the gloss field's own name, "Gloss", was
+    counted as a second column named "gloss", so the ordinary glossing job of
+    a project whose morpheme gloss field is called Gloss lost analyze_sentence."""
+    p = _named()
+    for tk in p['text_layers'][0]['token_layers']:
+        for sl in tk['span_layers']:
+            if sl['id'] == MGLOSS:
+                sl['name'] = name
+    _client, model, finished, written = _job(monkeypatch, ('segmentation', MGLOSS),
+                                             [{'ref': 's1', 'words': ['ka-ta A-B', 'mo C']}],
+                                             project=p, instructions='Segment and gloss.')
+    names = {t['function']['name'] for t in model.calls[0]['kwargs']['tools']}
+    assert 'analyze_sentence' in names, names
+    assert [vs for _w, ms in _values(written) for _f, vs in ms], written
+
+
 @pytest.mark.parametrize('name', ['gloss', 'Gloss', 'forms', 'FORMS'])
 def test_a_field_named_as_a_column_is_never_taken_for_it(monkeypatch, name):
     """The review's probe: a target field named "gloss" was taken for the

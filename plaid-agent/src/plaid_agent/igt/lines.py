@@ -117,7 +117,7 @@ def piece_spec(project: IgtProject, targets) -> Optional[List[Tuple[str, Any]]]:
     Such a piece segments with set_analysis, a word a call."""
     g = project.gloss_field('Morpheme')
     spec = [('forms', None)] + filled_columns(project, targets)
-    names = [n.casefold() for n, f in spec] + [f.name.casefold() for n, f in spec if f is not None and f.name != n]
+    names = [n.casefold() for n, f in spec] + [f.name.casefold() for n, f in spec if f is not None and f.name.casefold() != n.casefold()]
     if len(set(names)) != len(names):
         return None
     if any(f.name.strip().casefold() in ('forms', 'gloss') for _n, f in spec[1:]
