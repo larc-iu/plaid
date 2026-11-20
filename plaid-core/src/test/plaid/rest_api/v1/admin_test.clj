@@ -132,6 +132,24 @@
         (assert-ok r)
         (is (= "not-held" (:result (:body r))))))))
 
+(deftest locks-name-the-document-its-project-and-the-holder
+  ;; ADM-SRV-3: the Server tab showed two raw ids per lock.
+  (let [proj (create-test-project admin-request "Named lock project")
+        doc (create-test-document admin-request proj "Named lock doc")]
+    (try
+      (locks/acquire-lock! doc "user1@example.com")
+      (let [[entry :as entries] (:entries (:body (admin-get "/locks")))]
+        (is (= 1 (count entries)))
+        (is (= {:document-id doc
+                :document-name "Named lock doc"
+                :project-id proj
+                :project-name "Named lock project"
+                :user-id "user1@example.com"
+                :user-name "user1"}
+               (dissoc entry :expires-at)))
+        (is (int? (:expires-at entry))))
+      (finally (locks/force-release! doc)))))
+
 (deftest rate-limit-buckets-can-be-read-and-cleared
   (testing "A quiet server reports no buckets, and the window it measures"
     (let [r (admin-get "/rate-limits")]

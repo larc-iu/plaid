@@ -214,8 +214,12 @@ export function adminApi(client) {
       }),
     /**
      * Documents currently held by an editing lock, with who holds each and
-     * when it expires on its own. Admin only.
-     * @returns {Promise<{entries: Array<{documentId: string, userId: string, expiresAt: number}>}>}
+     * when it expires on its own (epoch milliseconds). Each entry names its
+     * document, the document's project and the holder, null for whichever is
+     * gone. Admin only.
+     * @returns {Promise<{entries: Array<{documentId: string, documentName: string | null,
+     *   projectId: string | null, projectName: string | null, userId: string,
+     *   userName: string | null, expiresAt: number}>}>}
      */
     locks: () => client._request("GET", "/api/v1/admin/locks"),
     /**

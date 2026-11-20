@@ -153,6 +153,28 @@
    :static-resources-path (-> config :plaid.server.middleware/static-resources-path)})
 
 ;; ============================================================
+;; Locks
+;; ============================================================
+
+(defn- named-locks
+  "Every live lock, each with its document's name, its project's id and
+  name, and the holder's display name, nil for whichever is gone. Locks are
+  few and short-lived, so two reads per lock."
+  [db]
+  (mapv (fn [{:keys [document-id user-id] :as lock}]
+          (let [doc (psc/q1 db {:select [[:d.name :document_name] [:p.id :project_id] [:p.name :project_name]]
+                                :from [[:documents :d]]
+                                :join [[:projects :p] [:= :p.id :d.project_id]]
+                                :where [:= :d.id (str document-id)]})
+                user (psc/q1 db {:select [:display_name] :from [:users] :where [:= :id user-id]})]
+            (assoc lock
+                   :document-name (:document_name doc)
+                   :project-id (:project_id doc)
+                   :project-name (:project_name doc)
+                   :user-name (:display_name user))))
+        (locks/list-locks)))
+
+;; ============================================================
 ;; Log tail
 ;; ============================================================
 
@@ -265,12 +287,14 @@
 
    ["/locks"
     {:get {:summary (str "Documents currently held by an editing lock, with who holds each "
-                         "and when it expires on its own. A lock is advisory and short-lived; "
+                         "and when it expires on its own. Each entry names its document, the "
+                         "document's project (id and name) and the holder (display name). "
+                         "A lock is advisory and short-lived; "
                          "this is how a document that refuses writes becomes visible to "
                          "anyone but the writer being refused.")
-           :handler (fn [_]
+           :handler (fn [{db :db}]
                       {:status 200
-                       :body {:entries (locks/list-locks)}})}}]
+                       :body {:entries (named-locks db)}})}}]
 
    ["/locks/:document-id"
     {:parameters {:path [:map [:document-id :uuid]]}

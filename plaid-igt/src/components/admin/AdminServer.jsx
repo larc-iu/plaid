@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { RefreshCw } from 'lucide-react';
 import { Button } from '@ui/components/ui/button';
 import { Badge } from '@ui/components/ui/badge';
@@ -11,6 +12,8 @@ import { notifySuccess, notifyError, notifyWarning, humanizeError } from '@/util
 import { isUnknownOutcome, isUnreachable, statusOf } from '@ui/lib/errors.js';
 import { formatElapsed } from '@ui/hooks/useRunProgress.js';
 import { useConfirm } from '@ui/components/shared/ConfirmProvider';
+import { ownerOf } from '@ui/domain/appOwners.js';
+import { readInitialized } from '../../domain/igtConfig';
 
 // What the server is doing and what it is sitting on. Read-only except for
 // three buttons, each of which only ever unblocks something.
@@ -64,6 +67,21 @@ const backupProblem = (backup, jvm) => {
 const lastRunText = ({ at, ok, scheduled }) =>
   `${timeAgo(at)}, ${ok ? 'Succeeded' : 'Failed'}${scheduled ? '' : ', by hand'}`;
 
+// Where an open document's project and the document itself lead. A project
+// this app owns opens through the router, another app's project in that app
+// as a page load (as on the Projects tab). Only this app's documents link:
+// another app's project has no route here, and the setup wizard is the wrong
+// place to send its documents. A project not in `projects` opens here.
+const lockLinks = (lock, projects) => {
+  const project = projects.get(lock.projectId);
+  const ours = project ? readInitialized(project.config) : false;
+  const owner = project && !ours ? ownerOf(project) : null;
+  return {
+    project: owner ? { href: owner.url(lock.projectId) } : { to: `/projects/${lock.projectId}` },
+    document: ours ? `/projects/${lock.projectId}/documents/${lock.documentId}` : null,
+  };
+};
+
 const duration = (ms) => {
   if (!Number.isFinite(ms)) return '';
   const s = Math.floor(ms / 1000);
@@ -79,6 +97,9 @@ export const AdminServer = ({ client }) => {
   const confirm = useConfirm();
   const [report, setReport] = useState(null);
   const [locks, setLocks] = useState([]);
+  // Every project by id, read only while a document is open, for where its
+  // links lead.
+  const [projects, setProjects] = useState(() => new Map());
   const [rateLimits, setRateLimits] = useState(null);
   const [loading, setLoading] = useState(true);
   // When the backup this page is waiting for was started, null when none.
@@ -107,8 +128,11 @@ export const AdminServer = ({ client }) => {
         client.admin.locks(),
         client.admin.rateLimits(),
       ]);
+      const open = lk.entries || [];
+      const all = open.length ? (await client.projects.list()) || [] : [];
       setReport(srv);
-      setLocks(lk.entries || []);
+      setLocks(open);
+      setProjects(new Map(all.map((p) => [p.id, p])));
       setRateLimits(rl);
     } catch (err) {
       console.error('Error loading server report:', err);
@@ -189,7 +213,7 @@ export const AdminServer = ({ client }) => {
   const breakLock = async (lock) => {
     const ok = await confirm({
       title: 'Release this lock?',
-      description: `Held by ${lock.userId}. Releasing lets anyone write to the document again.`,
+      description: `Held by ${lock.userName || lock.userId}. Releasing lets anyone write to the document again.`,
       confirmLabel: 'Release',
       destructive: true,
     });
@@ -387,15 +411,50 @@ export const AdminServer = ({ client }) => {
             {
               key: 'document',
               label: 'Document',
-              sort: (l) => l.documentId,
-              className: 'font-mono text-xs',
-              render: (l) => l.documentId,
+              sort: (l) => (l.documentName || '').toLowerCase(),
+              render: (l) => {
+                const to = lockLinks(l, projects).document;
+                const name = l.documentName || l.documentId;
+                return to ? (
+                  <Link to={to} dir="auto" className="hover:underline">
+                    {name}
+                  </Link>
+                ) : (
+                  <span dir="auto">{name}</span>
+                );
+              },
+            },
+            {
+              key: 'project',
+              label: 'Project',
+              sort: (l) => (l.projectName || '').toLowerCase(),
+              render: (l) => {
+                if (!l.projectId) return null;
+                const { href, to } = lockLinks(l, projects).project;
+                // Another app is a full page load, so a plain anchor.
+                return href ? (
+                  <a href={href} dir="auto" className="hover:underline">
+                    {l.projectName}
+                  </a>
+                ) : (
+                  <Link to={to} dir="auto" className="hover:underline">
+                    {l.projectName}
+                  </Link>
+                );
+              },
             },
             {
               key: 'user',
               label: 'Held by',
-              sort: (l) => l.userId,
-              render: (l) => l.userId,
+              sort: (l) => (l.userName || l.userId).toLowerCase(),
+              render: (l) => <span title={l.userId}>{l.userName || l.userId}</span>,
+            },
+            {
+              key: 'expires',
+              label: 'Expires',
+              sort: (l) => l.expiresAt,
+              className: 'text-xs text-muted-foreground',
+              render: (l) => <span title={fullTimestamp(l.expiresAt)}>{timeAgo(l.expiresAt)}</span>,
             },
             {
               key: 'actions',

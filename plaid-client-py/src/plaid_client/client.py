@@ -3344,7 +3344,12 @@ class AdminResource(_Resource):
 
     def locks(self) -> Any:
         """Documents currently held by an editing lock, with who holds each
-        and when it expires on its own."""
+        and when it expires on its own (epoch milliseconds).
+
+        Each entry carries ``document_id``, ``document_name``, ``project_id``,
+        ``project_name``, ``user_id``, ``user_name`` (the holder's display
+        name) and ``expires_at``. A name is None when its record is gone.
+        """
         return self._request('GET', '/api/v1/admin/locks')
 
     def release_lock(self, document_id: str) -> Any:
