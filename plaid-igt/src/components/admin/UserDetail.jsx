@@ -129,9 +129,10 @@ export const UserDetail = ({ client, userId, backTo, onEdit, dialogs }) => {
           </div>
 
           {tally && (
-            <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-5">
               {[
                 ['Changes', tally.changes.toLocaleString()],
+                ['By services and jobs', tally.delegatedChanges.toLocaleString()],
                 ['Documents', tally.documents.toLocaleString()],
                 ['First', timeAgo(tally.firstTs)],
                 ['Last', timeAgo(tally.lastTs)],

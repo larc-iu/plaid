@@ -639,6 +639,12 @@
   rows it wrote), how many distinct documents were touched, and the first and
   last timestamps.
 
+  `delegated-changes` is how many of those changes were written on a
+  delegated token (`credential` \"delegated\"): a job's token, or the
+  token a service is handed for the person who asked it. Those are the
+  person's changes made by a job or a service. A named API token is the
+  person's own script, and counts as their own work, as a login does.
+
   One grouped scan, served by `idx_operations_project_ts` when a project is
   given. No post-images are read: this counts operations, it does not
   reconstruct anything, which is why it costs nothing like an as-of read.
@@ -657,6 +663,8 @@
         rows (psc/q db (cond-> {:select   [:user_id
                                            [[:count :*] :operations]
                                            [[:count [:distinct unit-key]] :changes]
+                                           [[:count [:distinct [:case [:= :credential "delegated"] unit-key]]]
+                                            :delegated_changes]
                                            [[:count [:distinct :document_id]] :documents]
                                            [[:min :ts] :first_ts]
                                            [[:max :ts] :last_ts]]
@@ -666,11 +674,12 @@
         users (batch-fetch-by-ids db :users (map :user_id rows))
         by-day (when daily? (tally-daily db where))]
     (->> rows
-         (mapv (fn [{:keys [user_id operations changes documents first_ts last_ts]}]
+         (mapv (fn [{:keys [user_id operations changes delegated_changes documents first_ts last_ts]}]
                  (cond-> {:user       (or (select-user (get users user_id))
                                           {:user/id user_id})
                           :operations operations
                           :changes    changes
+                          :delegated-changes delegated_changes
                           :documents  documents
                           :first-ts   first_ts
                           :last-ts    last_ts}

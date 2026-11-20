@@ -170,6 +170,8 @@
        "logical actions, folded the same way the audit feed folds them, so a "
        "single \"Confirm word analysis\" counts once however many rows it "
        "wrote; <code>operations</code> is the unfolded row count. "
+       "<code>delegated-changes</code> is how many of those changes a job or a service "
+       "made for the person, on a delegated token; a named API token is the person's own. "
        "<code>documents</code> counts distinct documents touched. An "
        "operation of kind <code>repair</code> is nobody's activity and is not "
        "counted, though the feed still shows it. Only users "

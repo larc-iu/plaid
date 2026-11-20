@@ -148,6 +148,16 @@ export const ActivityPanel = ({ client, projectId, roster, projectHref, document
         </div>
       ),
     },
+    // Of those changes, the ones a job or a service made for the person (the
+    // tally's `delegatedChanges`). "Changes" stays the total.
+    {
+      key: 'delegated',
+      label: 'By services and jobs',
+      sort: (row) => row.delegatedChanges,
+      align: 'right',
+      className: 'tabular-nums',
+      render: (row) => (row.delegatedChanges ? row.delegatedChanges.toLocaleString() : ''),
+    },
     {
       key: 'documents',
       label: 'Documents',

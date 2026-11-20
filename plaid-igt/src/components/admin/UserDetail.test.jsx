@@ -95,4 +95,32 @@ describe('UserDetail', () => {
     expect(view.container.textContent).toContain('No active tokens.');
     await view.unmount();
   });
+
+  it('shows how many of the changes jobs and services made, beside the total', async () => {
+    localStorage.clear();
+    const c = client([]);
+    c.audit.tally = vi.fn(async () => [
+      {
+        user: { id: 'u@x.com' },
+        operations: 12,
+        changes: 9,
+        delegatedChanges: 4,
+        documents: 2,
+        firstTs: '2026-11-01T00:00:00Z',
+        lastTs: '2026-11-02T00:00:00Z',
+      },
+    ]);
+    const view = await renderComponent(
+      <MemoryRouter>
+        <UserDetail client={c} userId="u@x.com" backTo="/admin/users" onEdit={() => {}} />
+      </MemoryRouter>,
+    );
+    await view.step(async () => {});
+    const stat = (label) =>
+      all(view.container, '.rounded-md.border').find((n) => n.firstChild?.textContent === label)
+        ?.lastChild?.textContent;
+    expect(stat('Changes')).toBe('9');
+    expect(stat('By services and jobs')).toBe('4');
+    await view.unmount();
+  });
 });

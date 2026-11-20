@@ -77,3 +77,28 @@ describe('the activity panel when the project changes under it', () => {
     await view.unmount();
   });
 });
+
+describe('the people table', () => {
+  it('shows the changes jobs and services made for each person beside the total', async () => {
+    const d = deferredClient();
+    const view = await renderComponent(panel(d.client, 'A'));
+    await view.step(async () =>
+      d.settle('A', [
+        { ...row('ada', 9), delegatedChanges: 4 },
+        { ...row('bea', 2), delegatedChanges: 0 },
+      ]),
+    );
+    const heads = texts(view.container, 'th');
+    expect(heads).toContain('Changes');
+    expect(heads).toContain('By services and jobs');
+    const cells = (name) =>
+      [...view.container.querySelectorAll('tbody tr')]
+        .find((tr) => tr.textContent.includes(name))
+        .querySelectorAll('td');
+    const col = heads.indexOf('By services and jobs');
+    expect(cells('ada')[col].textContent).toBe('4');
+    // None is a blank cell.
+    expect(cells('bea')[col].textContent).toBe('');
+    await view.unmount();
+  });
+});

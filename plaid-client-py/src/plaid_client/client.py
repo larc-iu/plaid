@@ -3652,7 +3652,9 @@ class AuditResource(_Resource):
 
         ``changes`` is the number of logical actions, folded the way the audit
         feed folds them, so one "Confirm word analysis" counts once however
-        many rows it wrote; ``operations`` is the unfolded row count. Only
+        many rows it wrote; ``operations`` is the unfolded row count.
+        ``delegated_changes`` is how many of those changes a job or a service
+        made for the person, on a delegated token. Only
         users who did something appear — subtract from the roster you already
         hold to find the ones who did not.
 

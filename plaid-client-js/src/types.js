@@ -113,6 +113,7 @@
  * @property {{id: string, displayName?: string}} user
  * @property {number} operations
  * @property {number} changes
+ * @property {number} delegatedChanges - Of `changes`, how many a job or a service made for the person (on a delegated token)
  * @property {number} documents
  * @property {string} firstTs
  * @property {string} lastTs
