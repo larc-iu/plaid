@@ -64,7 +64,7 @@ const groupByService = (registrations) => {
       modelPool: runs.modelPool || '',
       versionsDiffer: differ('version') || differ('model'),
       entries: [...entries].sort((a, b) => compareNames(a.project.name, b.project.name)),
-      projects: entries.length,
+      projects: entries.filter(isRegistration).length,
       online: online.length,
       lastSeenAt: entries
         .map((e) => e.lastSeenAt)

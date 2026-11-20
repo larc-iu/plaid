@@ -164,6 +164,17 @@ describe('AdminServices what each service runs', () => {
       ['Version 1.0+bb'],
     ]);
   });
+
+  it('counts registrations only in the row, as in the header', async () => {
+    const view = await render(
+      client({
+        p1: [svc({})],
+        p2: [{ serviceId: 'analyzer', online: false, seen: false, claimedBy: 'gone@x.com' }],
+      }),
+    );
+    expect(cellOf(view, 'Projects').textContent).toBe('1');
+    expect(view.container.textContent).toContain('1 registration');
+  });
 });
 
 describe('AdminServices release', () => {
