@@ -4843,14 +4843,15 @@ class IgtRunner:
 
     def similar_sentences(self, ws: Workspace, project: IgtProject, st: Stretch, part: List[Sentence]) -> str:
         """The similar sentences of a piece in sentences (:func:`similar.block`):
-        only when segmentation or a morpheme field is among the stretch's
-        targets, for each sentence of the piece with a word empty for one of
-        them, from people's analysed sentences as the walk last read them,
-        never one of the piece's own. Each word shows its forms and the
-        morpheme fields the stretch fills, in analyze_sentence's columns
+        only when segmentation, a morpheme field or a word field is among the
+        stretch's targets, for each sentence of the piece with a word empty
+        for one of them, from people's analysed sentences as the walk last
+        read them, never one of the piece's own. Each word shows its forms and
+        the morpheme fields the stretch fills, in analyze_sentence's columns
         (:func:`.lines.columns_of`), named under the head unless they are its
-        default."""
-        kinds = [t for t in st.targets if t.segments or t.scope == 'Morpheme']
+        default, and each word field it fills is a line under the words, in
+        the targets' order, by the field's name in the project."""
+        kinds = [t for t in st.targets if t.segments or (t.field is not None and t.scope in ('Word', 'Morpheme'))]
         empty = {w.id for w in st.words.values() if tg.empty_in_word(w, kinds)}
         cfg = project.ignored_cfg
         queries = [similar.features(evidence.form_of(w.surface, cfg) for w in s.words)
@@ -4864,7 +4865,8 @@ class IgtRunner:
         names = ['forms'] + [n for n, _f in columns]
         return similar.block([self.examples[i] for i in similar.pick(self.pool, queries, skip=skip)],
                              [f.name for _n, f in columns],
-                             None if names == ITEM_COLUMNS or not columns else names)
+                             None if names == ITEM_COLUMNS or not columns else names,
+                             word_fields=[t.field.name for t in kinds if t.scope == 'Word' and t.field is not None])
 
     def entry_forms(self, ws: Workspace, project: IgtProject) -> Dict[str, str]:
         """Entry id to the address a tool names it by (``gam#2``, a sense

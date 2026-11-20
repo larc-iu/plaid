@@ -9,7 +9,7 @@ import time
 
 import pytest
 
-from fixtures import MGLOSS, TRANS
+from fixtures import GLOSS, MGLOSS, TRANS
 from job_fixtures import (MPOS, ROLE, JobClient, Model, document, fields_project, reply, runner, start, use,
                           with_values)
 
@@ -209,13 +209,156 @@ def test_a_job_whose_morpheme_fields_are_full_in_the_piece_gets_no_block(monkeyp
         assert similar.HEAD not in asked and JOB_STAGE_SIMILAR not in system, asked
 
 
-def test_a_word_level_field_alone_gets_no_block(monkeypatch):
-    client = JobClient({'A': document('A', 'Doc A', [{'words': ['gamda', 'zo']}]), 'P': _people()},
+# --- word fields: a line each under the words -----------------------------------------
+
+def _renamed(project, names):
+    """``project`` (raw) with the fields of ``names`` (layer id -> name)
+    renamed."""
+    for tk in project['text_layers'][0]['token_layers']:
+        for sl in tk['span_layers']:
+            if sl['id'] in names:
+                sl['name'] = names[sl['id']]
+    return project
+
+
+def _animacy_client(piece):
+    """fields_project with its word field Role named Animacy, the piece's
+    document ``piece`` (sentences) and :func:`_people` with "gamdi"
+    animate."""
+    return JobClient({'A': document('A', 'Doc A', piece),
+                      'P': with_values(_people(), [(ROLE, 'P-s1w1', 'animate', 'human')])},
+                     project=_renamed(fields_project(), {ROLE: 'Animacy'}))
+
+
+def test_a_job_that_fills_a_word_field_on_segmented_words_gets_the_block_exactly(monkeypatch):
+    """Nothing is empty for segmentation, Animacy is: the words show their
+    forms alone, the field a line under them, "_" for a word with none."""
+    client = _animacy_client([{'words': [('gamda', [('gam', 'fish'), ('da', 'x')], 'human'),
+                                         ('zo', [('zo', 'y')], 'human')]}])
+    (asked, system), = _run(monkeypatch, client, fills=(ROLE,))
+    assert _block(asked) == '\n'.join([
+        similar.HEAD,
+        '',
+        'lili mumu.',
+        'Words: ["lili", "mu-mu"]',
+        'Animacy: ["_", "_"]',
+        '',
+        'gamdi ka.',
+        'Translation: The fish ate.',
+        'Words: ["gam-di", "ka"]',
+        'Animacy: ["animate", "_"]',
+    ]), asked
+    assert JOB_STAGE_SIMILAR in system
+
+
+def test_a_job_that_segments_glosses_and_fills_a_word_field_sees_its_columns_and_the_fields_line(monkeypatch):
+    (asked, system), = _run(monkeypatch, _animacy_client([{'words': ['gamda', 'zo']}]),
+                            fills=('segmentation', MGLOSS, ROLE))
+    assert _block(asked) == '\n'.join([
+        similar.HEAD,
+        '',
+        'lili mumu.',
+        'Words: ["lili sing", "mu-mu REP-REP"]',
+        'Animacy: ["_", "_"]',
+        '',
+        'gamdi ka.',
+        'Translation: The fish ate.',
+        'Words: ["gam-di fish-ERG", "ka eat"]',
+        'Animacy: ["animate", "_"]',
+    ]), asked
+    assert JOB_STAGE_SIMILAR in system
+
+
+def test_a_word_field_not_a_target_is_never_shown(monkeypatch):
+    """Animacy holds a value in the pool, the job glosses: no line of it."""
+    (asked, _), = _run(monkeypatch, _animacy_client([{'words': ['gamda', 'zo']}]), fills=('segmentation', MGLOSS))
+    block = _block(asked)
+    assert block and 'Animacy' not in block, block
+
+
+def test_word_field_lines_go_in_target_order(monkeypatch):
+    """Two word fields, named in the plan Gloss then Animacy: their lines in
+    that order, each its own values."""
+    people = with_values(document('P', 'Other', [
+        {'words': [{'form': 'gamdi', 'morphs': [('gam', 'fish'), ('di', 'ERG')], 'who': 'human',
+                    'gloss': ('fish.ERG', 'human')}, ('ka', [('ka', 'eat')], 'human')]}]),
+        [(ROLE, 'P-s1w2', 'act', 'human')])
+    client = JobClient({'A': document('A', 'Doc A', [{'words': ['gamda']}]), 'P': people},
                        project=fields_project())
-    pieces = _run(monkeypatch, client, fills=(ROLE,))
+    (asked, _), = _run(monkeypatch, client, fills=(GLOSS, ROLE))
+    assert _block(asked).split('\n')[-2:] == ['Gloss: ["fish.ERG", "_"]', 'Role: ["_", "act"]'], asked
+
+
+def _one_name_people():
+    """:func:`_people` with "gamdi" given a word gloss and a word Role, and
+    Morph POS on its morphemes: values that differ from its morphemes'
+    glosses, so a swap shows."""
+    raw = document('P', 'Other', [
+        {'words': [{'form': 'gamdi', 'morphs': [('gam', 'fish'), ('di', 'ERG')], 'who': 'human',
+                    'gloss': ('fish.ERG', 'human')}, ('ka', [('ka', 'eat')], 'human')],
+         'translation': ('The fish ate.', 'human')}])
+    return with_values(raw, [(ROLE, 'P-s1w1', 'agent', 'human'), (MPOS, 'P-s1w1m1', 'N', 'human'),
+                             (MPOS, 'P-s1w1m2', 'CASE', 'human')])
+
+
+def test_a_word_field_and_a_morpheme_field_both_named_gloss_are_each_under_their_own_name(monkeypatch):
+    """The morpheme gloss field named Gloss, as the word gloss field is: the
+    project shows them as "Gloss (Morpheme)" and "Gloss (Word)". The morpheme
+    one is the gloss column of the words, the word one its own line."""
+    client = JobClient({'A': document('A', 'Doc A', [{'words': ['gamda', 'zo']}]), 'P': _one_name_people()},
+                       project=_renamed(fields_project(), {MGLOSS: 'Gloss'}))
+    (asked, _), = _run(monkeypatch, client, fills=('segmentation', MGLOSS, GLOSS))
+    assert _block(asked) == '\n'.join([
+        similar.HEAD,
+        '',
+        'gamdi ka.',
+        'Translation: The fish ate.',
+        'Words: ["gam-di fish-ERG", "ka eat"]',
+        'Gloss (Word): ["fish.ERG", "_"]',
+    ]), asked
+
+
+def test_a_word_field_and_a_morpheme_field_of_one_other_name_are_never_swapped(monkeypatch):
+    """Morph POS renamed Role, as the word field is: "Role (Morpheme)" a
+    column of the words, "Role (Word)" its own line."""
+    client = JobClient({'A': document('A', 'Doc A', [{'words': ['gamda', 'zo']}]), 'P': _one_name_people()},
+                       project=_renamed(fields_project(), {MPOS: 'Role'}))
+    (asked, _), = _run(monkeypatch, client, fills=(ROLE, MPOS))
+    assert _block(asked) == '\n'.join([
+        similar.HEAD,
+        'Columns of the words: ["forms", "Role (Morpheme)"]',
+        '',
+        'gamdi ka.',
+        'Translation: The fish ate.',
+        'Words: ["gam-di N-CASE", "ka _"]',
+        'Role (Word): ["agent", "_"]',
+    ]), asked
+
+
+def test_a_word_field_full_in_the_piece_gets_no_block(monkeypatch):
+    """Every word of the piece holds Animacy: no sentence ranks the pool."""
+    piece = with_values(document('A', 'Doc A', [{'words': ['gamda', 'zo']}]),
+                        [(ROLE, 'A-s1w1', 'animate', 'human'), (ROLE, 'A-s1w2', 'inanimate', 'human')])
+    client = JobClient({'A': piece, 'P': with_values(_people(), [(ROLE, 'P-s1w1', 'animate', 'human')])},
+                       project=_renamed(fields_project(), {ROLE: 'Animacy'}))
+    pieces = _run(monkeypatch, client, fills=(ROLE, TRANS))
     assert pieces
     for asked, system in pieces:
-        assert similar.HEAD not in asked and JOB_STAGE_SIMILAR not in system
+        assert similar.HEAD not in asked and JOB_STAGE_SIMILAR not in system, asked
+
+
+def test_the_cut_counts_the_word_field_lines():
+    """At a budget all three examples fit without their word field line,
+    the least alike is dropped once the lines are shown."""
+    examples = [{'text': f'sentence {i}.', 'words': [{**_analysis(f'w{i}', f'g{i}'), 'word': {'Animacy': 'animate'}}]}
+                for i in range(3)]
+    shown = [similar.lines_of(x, word_fields=['Animacy']) for x in examples]
+    assert shown[0].split('\n')[-1] == 'Animacy: ["animate"]'
+    budget = len(similar.HEAD) + sum(len(x) + 2 for x in shown[:2])
+    assert similar.block(examples, budget=budget).count('Words: ') == 3
+    cut = similar.block(examples, word_fields=['Animacy'], budget=budget)
+    assert cut.split('\n\n') == [similar.HEAD, shown[1], shown[0]]
+    assert len(cut) == budget
 
 
 def test_no_pool_no_block_and_the_prompt_says_nothing_of_it(monkeypatch):
