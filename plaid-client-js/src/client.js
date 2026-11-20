@@ -64,6 +64,7 @@ import { bodyOf } from "./families.js";
  * @typedef {import("./types.js").VocabItemRestoreSummary} VocabItemRestoreSummary
  * @typedef {import("./types.js").UserDataEntry} UserDataEntry
  * @typedef {import("./types.js").AdminUserDataEntry} AdminUserDataEntry
+ * @typedef {import("./types.js").UserDataSize} UserDataSize
  * @typedef {import("./types.js").ActivityTallyRow} ActivityTallyRow
  * @typedef {import("./types.js").ConstraintRepair} ConstraintRepair
  * @typedef {import("./types.js").ValueSetRule} ValueSetRule
