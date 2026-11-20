@@ -329,6 +329,23 @@ export function adminApi(client) {
           "include-values": includeValues,
         },
       }),
+    /**
+     * Every project's assistant jobs, newest first, each as a project's job
+     * list gives it (no documents, no report, `documentCount`) with
+     * `projectName`, the name of its project. Transparently follows
+     * pagination cursors and returns the full flat array. Admin only.
+     * @returns {Promise<import("./types.js").Job[]>}
+     */
+    jobs: () => listAll(client, "/api/v1/admin/jobs"),
+    /**
+     * One page of every project's assistant jobs, newest first. Admin only.
+     * @param {object} [opts]
+     * @param {number} [opts.limit] - Page size (1..1000; server default 100)
+     * @param {string} [opts.cursor] - Opaque cursor from a previous page
+     * @returns {Promise<import("./types.js").Page<import("./types.js").Job>>}
+     */
+    jobsPage: ({ limit, cursor } = {}) =>
+      listPage(client, "/api/v1/admin/jobs", { limit, cursor }),
   };
 }
 

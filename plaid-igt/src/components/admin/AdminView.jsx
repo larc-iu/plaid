@@ -9,6 +9,7 @@ import { AdminActivity } from './AdminActivity';
 import { AdminProjects } from './AdminProjects';
 import { AdminVocabularies } from './AdminVocabularies';
 import { AdminServices } from './AdminServices';
+import { AdminJobs } from './AdminJobs';
 import { AdminAssistant } from './AdminAssistant';
 import { AdminServer } from './AdminServer';
 import { AdminLogs } from './AdminLogs';
@@ -26,6 +27,7 @@ const TABS = [
   'projects',
   'vocabularies',
   'services',
+  'jobs',
   'assistant',
   'server',
   'logs',
@@ -71,6 +73,9 @@ export const AdminView = () => {
           <TabsTrigger value="services" to={tabHref('/admin', 'services')}>
             Services
           </TabsTrigger>
+          <TabsTrigger value="jobs" to={tabHref('/admin', 'jobs')}>
+            Jobs
+          </TabsTrigger>
           <TabsTrigger value="assistant" to={tabHref('/admin', 'assistant')}>
             Assistant
           </TabsTrigger>
@@ -99,6 +104,9 @@ export const AdminView = () => {
         </TabsContent>
         <TabsContent value="services">
           <AdminServices client={client} currentUser={user} />
+        </TabsContent>
+        <TabsContent value="jobs">
+          <AdminJobs client={client} />
         </TabsContent>
         <TabsContent value="assistant">
           <AdminAssistant client={client} />

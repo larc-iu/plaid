@@ -26,6 +26,7 @@
             [plaid.server.log-buffer :as log-buffer]
             [plaid.server.version :as version]
             [plaid.sql.common :as psc]
+            [plaid.sql.job :as job]
             [plaid.sql.user-data :as user-data]
             [taoensso.timbre :as log])
   (:import [java.io File RandomAccessFile]
@@ -234,6 +235,15 @@
                            (if (= 409 (:code (ex-data e)))
                              {:status 409 :body {:error (ex-message e)}}
                              (throw e)))))}}]
+
+   ["/jobs"
+    {:get {:summary (str "Every project's assistant jobs, newest first; keyset-paginated. "
+                         "Entries are as a project's job list gives them (no documents, no "
+                         "report, a count of documents), each with the name of its project. "
+                         "A job is read, stopped and undone through its own routes.")
+           :parameters {:query (into [:map] pagination/query-params)}
+           :handler (fn [{{query :query} :parameters db :db}]
+                      (pagination/list-response query #(job/list-all-page db %)))}}]
 
    ["/locks"
     {:get {:summary (str "Documents currently held by an editing lock, with who holds each "

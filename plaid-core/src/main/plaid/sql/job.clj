@@ -353,6 +353,34 @@
      :next-cursor (when (= (count rows) lim)
                     (let [r (peek rows)] [(:created_at r) (str (:id r))]))}))
 
+(defn list-all-page
+  "One page of every project's jobs, newest first by `(created_at, id)`, as
+  `list-page` gives a project's, each with `:job/project-name`. For the
+  operator's list. A project being deleted is left out, as its jobs answer
+  as unknown ones."
+  [db {:keys [limit cursor-vals]}]
+  (let [lim (pg/clamp-limit limit)
+        seek (pg/keyset-where [:j.created_at :j.id] cursor-vals :desc)
+        rows (psc/q db {:select [:j.* [:p.name :project_name]
+                                 [{:select [[[:count :*]]]
+                                   :from [[:job_documents :jd]]
+                                   :where [:= :jd.job_id :j.id]}
+                                  :document_count]]
+                        :from [[:jobs :j]]
+                        :join [[:projects :p] [:= :p.id :j.project_id]]
+                        :where (cond-> [:and [:= :p.deleted_at nil]]
+                                 seek (conj seek))
+                        :order-by [[:j.created_at :desc] [:j.id :desc]]
+                        :limit lim})]
+    {:entries (let [undone (undone-by-job db (map (comp str :id) rows))]
+                (mapv #(cond-> (assoc (row->job db % #{:list})
+                                      :job/document-count (:document_count %)
+                                      :job/project-name (:project_name %))
+                         (clojure.core/get undone (str (:id %))) (assoc :job/undone (clojure.core/get undone (str (:id %)))))
+                      rows))
+     :next-cursor (when (= (count rows) lim)
+                    (let [r (peek rows)] [(:created_at r) (str (:id r))]))}))
+
 ;; ============================================================
 ;; Start
 ;; ============================================================

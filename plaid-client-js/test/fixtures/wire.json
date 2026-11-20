@@ -7,6 +7,8 @@
   "PlaidClient.redeemInvite": {"args":["http://wire.test","a1",{"email":"a2.email","password":"a2.password","displayName":"a2.displayName"},"a3"],"outcome":"ok","sends":[{"body":{"code":"a1","display-name":"a2.displayName","email":"a2.email","password":"a2.password"},"method":"POST","path":"/api/v1/invites/redeem"}]},
   "admin.backup": {"args":[],"outcome":"ok","sends":[{"method":"POST","path":"/api/v1/admin/backup"}],"batch":"wire"},
   "admin.clearRateLimits": {"args":[{"ip":"a0.ip","userId":"a0.userId"}],"outcome":"ok","sends":[{"method":"DELETE","path":"/api/v1/admin/rate-limits","query":{"ip":"a0.ip","user-id":"a0.userId"}}],"batch":"wire"},
+  "admin.jobs": {"args":[],"outcome":"ok","sends":[{"method":"GET","path":"/api/v1/admin/jobs","query":{"limit":"1000"}}],"batch":"wire"},
+  "admin.jobsPage": {"args":[{"limit":"a0.limit","cursor":"a0.cursor"}],"outcome":"ok","sends":[{"method":"GET","path":"/api/v1/admin/jobs","query":{"cursor":"a0.cursor","limit":"a0.limit"}}],"batch":"wire"},
   "admin.locks": {"args":[],"outcome":"ok","sends":[{"method":"GET","path":"/api/v1/admin/locks"}],"batch":"wire"},
   "admin.logFile": {"args":[{"lines":"a0.lines"}],"outcome":"ok","sends":[{"method":"GET","path":"/api/v1/admin/logs/file","query":{"lines":"a0.lines"}}],"batch":"wire"},
   "admin.logs": {"args":[{"limit":"a0.limit","q":"a0.q","level":"a0.level","status":"a0.status","user":"a0.user","method":"a0.method"}],"outcome":"ok","sends":[{"method":"GET","path":"/api/v1/admin/logs","query":{"level":"a0.level","limit":"a0.limit","method":"a0.method","q":"a0.q","status":"a0.status","user":"a0.user"}}],"batch":"wire"},

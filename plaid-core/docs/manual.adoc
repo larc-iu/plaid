@@ -938,6 +938,8 @@ It works only while the job is running or stopping on the worker it was issued t
 Once the job ends, or another worker takes it, the token is refused with 401 and `job-ended`.
 Once they can no longer write in the project, the job fails, and no further token is issued.
 
+An administrator reads every project's jobs in one list, newest first, with `admin.jobs` (`GET /admin/jobs`): each entry is as a project's job list gives it, with the name of its project.
+
 The worker sends each write of a job under Idempotency-Keys of a seed of its own (`<seed>.<n>`).
 When an answer is lost, or the worker stopped while a write was on its way, `POST /api/v1/jobs/{id}/landed` with `refs`, the seeds, answers `keys`, the keys of every write the job's starter made in its project under them.
 The server keeps each operation's key in the audit log, so for a write it records in History the answer holds at any time.

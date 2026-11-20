@@ -171,3 +171,29 @@
         resp (start! (:st world) (:p world) {:documents [(:d1 world) (:dq world)]})]
     (is (= 400 (:status resp)))
     (is (= "documents: 1 is not a document of this project." (-> resp :body :error)) "names nothing outside")))
+
+;; The operator's list (the admin area's Jobs tab): every project's jobs,
+;; newest first, each with its project's name. An admin's alone.
+(deftest every-projects-jobs-by-role
+  (let [world (jh/world!)
+        {:keys [p q st]} world
+        j1 (job-id (start! st p))
+        _ (Thread/sleep 5)
+        j2 (job-id (start! admin-request q))
+        expected {:st 403 :w 403 :m 403 :r 403 :n 403 :a 200 :s 403}]
+    (doseq [c columns]
+      (testing (name c)
+        (is (= (expected c) (:status (call (world c) :get "/api/v1/admin/jobs"))))))
+    (let [entries (:entries (:body (call admin-request :get "/api/v1/admin/jobs")))]
+      (is (= [[j2 "Jobs Q"] [j1 "Jobs P"]] (mapv (juxt :job/id :job/project-name) entries)))
+      (is (= [1 2] (mapv :job/document-count entries)))
+      (is (= #{"waiting"} (set (map :job/state entries))))
+      (is (not-any? #(contains? % :job/documents) entries)))
+    (testing "pages by cursor"
+      (let [page1 (:body (call admin-request :get "/api/v1/admin/jobs?limit=1"))
+            page2 (:body (call admin-request :get (str "/api/v1/admin/jobs?limit=1&cursor=" (:next-cursor page1))))]
+        (is (= [j2] (mapv :job/id (:entries page1))))
+        (is (= [j1] (mapv :job/id (:entries page2))))))
+    (testing "a project being deleted leaves the list"
+      (psc/execute! fix/db {:update :projects :set {:deleted_at (psc/now-iso)} :where [:= :id q]})
+      (is (= [j1] (mapv :job/id (:entries (:body (call admin-request :get "/api/v1/admin/jobs")))))))))

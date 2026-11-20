@@ -49,6 +49,7 @@ const TABS = [
   'projects',
   'vocabularies',
   'services',
+  'jobs',
   'assistant',
   'server',
   'logs',

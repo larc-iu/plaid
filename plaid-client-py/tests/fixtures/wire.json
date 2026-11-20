@@ -7,6 +7,8 @@
   "PlaidClient.redeem_invite": {"args":["http://wire.test","a1","a2","a3","a4"],"kwargs":{"batch_timeout":"kw.batch_timeout","retry_delays":"kw.retry_delays"},"outcome":"ok","sends":[{"body":{"code":"a1","display-name":"a4","email":"a3","password":"a2"},"method":"POST","path":"/api/v1/invites/redeem"}]},
   "admin.backup": {"args":[],"kwargs":{},"outcome":"ok","sends":[{"method":"POST","path":"/api/v1/admin/backup"}],"batch":"wire"},
   "admin.clear_rate_limits": {"args":[],"kwargs":{"ip":"kw.ip","user_id":"kw.user_id"},"outcome":"ok","sends":[{"method":"DELETE","path":"/api/v1/admin/rate-limits","query":{"ip":"kw.ip","user-id":"kw.user_id"}}],"batch":"wire"},
+  "admin.jobs": {"args":[],"kwargs":{},"outcome":"ok","sends":[{"method":"GET","path":"/api/v1/admin/jobs","query":{"limit":"1000"}}],"batch":"wire"},
+  "admin.jobs_page": {"args":[],"kwargs":{"limit":"kw.limit","cursor":"kw.cursor"},"outcome":"ok","sends":[{"method":"GET","path":"/api/v1/admin/jobs","query":{"cursor":"kw.cursor","limit":"kw.limit"}}],"batch":"wire"},
   "admin.locks": {"args":[],"kwargs":{},"outcome":"ok","sends":[{"method":"GET","path":"/api/v1/admin/locks"}],"batch":"wire"},
   "admin.log_file": {"args":[],"kwargs":{"lines":"kw.lines"},"outcome":"ok","sends":[{"method":"GET","path":"/api/v1/admin/logs/file","query":{"lines":"kw.lines"}}],"batch":"wire"},
   "admin.logs": {"args":[],"kwargs":{"limit":"kw.limit","q":"kw.q","level":"kw.level","status":"kw.status","user":"kw.user","method":"kw.method"},"outcome":"ok","sends":[{"method":"GET","path":"/api/v1/admin/logs","query":{"level":"kw.level","limit":"kw.limit","method":"kw.method","q":"kw.q","status":"kw.status","user":"kw.user"}}],"batch":"wire"},

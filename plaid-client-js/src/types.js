@@ -322,6 +322,7 @@
  * @property {Object<string, any>} [setup] - What the job was set up with, as its start sent it (`jobs.create`). Absent for a job started with none
  * @property {JobDocument[]} [documents]
  * @property {number} [documentCount] - On a list's entries: how many documents the job holds
+ * @property {string} [projectName] - On the entries of every project's list (`admin.jobs`): the name of its project
  * @property {JobReport | null} [report]
  * @property {boolean} [wrote] - On `jobs.get` only: History holds a change the job wrote (an operation under a group its document rows name), whatever its report counts
  * @property {{operation: string, time: string, user: string}} [undone] - Present while the job stands undone (`jobs.undo`): the undo's operation, its time and who undid it. Absent again once that undo is itself undone

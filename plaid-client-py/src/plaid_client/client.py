@@ -3450,6 +3450,23 @@ class AdminResource(_Resource):
                          query={'prefix': prefix, 'pattern': pattern,
                                 'include-values': include_values or None})
 
+    def jobs(self) -> Any:
+        """Every project's assistant jobs, newest first, each as a project's
+        job list gives it (no documents, no report, ``document_count``) with
+        ``project_name``, the name of its project. Transparently follows
+        server-side pagination cursors and returns the full flat list. Admin
+        only."""
+        return list_all(self._client, '/api/v1/admin/jobs')
+
+    def jobs_page(self, *, limit: int | None = None, cursor: str | None = None) -> Any:
+        """One page of every project's assistant jobs, newest first. Admin only.
+
+        Args:
+            limit: Page size (1..1000)
+            cursor: Opaque cursor from a previous page's ``next_cursor``
+        """
+        return list_page(self._client, '/api/v1/admin/jobs', limit=limit, cursor=cursor)
+
 
 class AuditResource(_Resource):
     """The audit log across every project, and the per-user aggregate.
