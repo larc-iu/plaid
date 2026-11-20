@@ -50,6 +50,24 @@ const META_PATTERN = '*:assistant:*:meta:*';
 // cannot.
 const OWN_APP = 'igt';
 
+// Why a turn ended without an answer, in words: the error item's `reason`
+// and the entry's `lastError.reason` (plaid_agent conversation.py
+// `ERROR_REASONS`). An item written before reasons has none and is not named.
+const ERROR_KINDS = {
+  stopped: 'Stopped',
+  'connection-lost': 'Connection lost',
+  'output-limit': 'Output limit',
+  'no-answer': 'No answer',
+  model: 'Model failed',
+  'too-large': 'Too large to save',
+  other: 'Other',
+};
+
+const lastErrorTitle = (last) =>
+  `Last error: ${[ERROR_KINDS[last?.reason], isTime(last?.at) ? fullTimestamp(last.at) : null]
+    .filter(Boolean)
+    .join(', ')}`;
+
 const isTime = (v) => typeof v === 'string' && !Number.isNaN(new Date(v).getTime());
 
 // `<app>:assistant:<project>:meta:<id>`. Both ids are UUIDs, so no segment can
@@ -207,6 +225,7 @@ const ConversationDetail = ({ client, row, backTo }) => {
                     adapter={adapter}
                     rounds={!row.projectExists || closedAt.has(i) ? null : rounds}
                     hideLine={unanswered && hidesStopped(display, i)}
+                    errorKind={d.kind === 'error' ? ERROR_KINDS[d.reason] : null}
                     {...turnContext(display, i)}
                     homeName={row.projectName}
                     canWrite={false}
@@ -230,6 +249,7 @@ export const AdminAssistant = ({ client }) => {
   const [users, setUsers] = useState([]);
   const [projects, setProjects] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [withErrors, setWithErrors] = useState(false);
   // The open conversation lives in the URL beside `?tab=assistant`, so its
   // title is a real link: middle-click opens it in a new tab, and a pasted
   // address opens it too. Every other param stays.
@@ -283,6 +303,10 @@ export const AdminAssistant = ({ client }) => {
           meta,
           title: meta.title || 'Untitled',
           turns: typeof meta.turns === 'number' ? meta.turns : null,
+          // How many error items it shows, and the newest one's reason and
+          // time. An entry written before the count has none.
+          errors: typeof meta.errors === 'number' && meta.errors > 0 ? meta.errors : null,
+          lastError: meta.lastError || null,
           model: meta.model || null,
           // When the conversation last changed, the time the assistant's own
           // list shows. The store row's stamp moves with every hold renewal of
@@ -372,6 +396,16 @@ export const AdminAssistant = ({ client }) => {
       render: (r) => (r.turns === null ? '—' : r.turns),
     },
     {
+      key: 'errors',
+      label: 'Errors',
+      sort: (r) => r.errors,
+      align: 'right',
+      className: 'tabular-nums text-muted-foreground',
+      headerClassName: 'w-20',
+      render: (r) =>
+        r.errors === null ? null : <span title={lastErrorTitle(r.lastError)}>{r.errors}</span>,
+    },
+    {
       key: 'model',
       label: 'Assistant',
       sort: (r) => (r.model || '').toLowerCase(),
@@ -389,7 +423,7 @@ export const AdminAssistant = ({ client }) => {
 
   return (
     <DataTable
-      rows={rows}
+      rows={withErrors ? rows.filter((r) => r.errors !== null) : rows}
       columns={columns}
       rowKey={(r) => r.key}
       id="admin-assistant"
@@ -406,6 +440,16 @@ export const AdminAssistant = ({ client }) => {
       empty="No conversations."
       noMatch={(q) => `No conversations match “${q}”.`}
       loading={loading}
+      actions={
+        <Button
+          variant={withErrors ? 'secondary' : 'outline'}
+          size="sm"
+          aria-pressed={withErrors}
+          onClick={() => setWithErrors((on) => !on)}
+        >
+          With errors
+        </Button>
+      }
     />
   );
 };

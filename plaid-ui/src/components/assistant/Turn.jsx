@@ -209,6 +209,9 @@ export const Turn = ({
   // Saves a file this reply made for the user. Absent where the viewer cannot
   // read the owner's store, and then the file is only named.
   onDownloadFile = null,
+  // An error item's kind in words, drawn before its line (the admin
+  // Assistant tab names why each turn ended).
+  errorKind = null,
 }) => {
   const shownFiles = useExport()?.fileBody ?? null;
   if (item.kind === 'user') {
@@ -300,8 +303,10 @@ export const Turn = ({
           <AssistantMarkdown>{item.partial}</AssistantMarkdown>
         </div>
       ) : null;
+    const kind = errorKind ? <span className="mr-2 font-medium">{errorKind}</span> : null;
     const line = hideLine ? null : item.stopped ? (
       <div className="rounded-lg border border-dashed px-3 py-2 text-sm text-muted-foreground">
+        {kind}
         {item.text}
       </div>
     ) : (
@@ -309,6 +314,7 @@ export const Turn = ({
         role="alert"
         className="rounded-lg border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive"
       >
+        {kind}
         {item.text}
       </div>
     );

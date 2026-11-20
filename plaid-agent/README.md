@@ -201,6 +201,13 @@ the reply and on a turn that ended without one (stopped or failed). Both are
 per turn because the operator may restart the service on another model or
 another release in the middle of a conversation.
 
+A turn that ended without an answer also records why, as `reason`, one of
+`stopped`, `connection-lost`, `output-limit`, `no-answer`, `model`,
+`too-large` and `other` (`conversation.ERROR_REASONS`), set by the code that
+ended it. The sidebar entry counts those turns (`errors`) and names the
+newest one's reason and time (`last_error`, `{reason, at}`), which the admin
+Assistant tab lists.
+
 The version is `<release>+<hash>`, for example `1.4.0+3fa9c2d1`: the
 plaid-agent release (`0.0.0` in a checkout), then the first 8 hex digits of
 the SHA-256 of the app's system prompt template, every tool schema and the

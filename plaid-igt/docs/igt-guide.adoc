@@ -1477,7 +1477,7 @@ An administrator sees an **Admin** link in the top bar, covering the whole serve
 * **Vocabularies** shows which projects use each vocabulary, and which vocabularies no project uses.
 * **Services** shows which services are running across every project. A service that has gone for good can be forgotten here.
 * **Jobs** lists every project's assistant jobs, newest first, and says whether a job worker is running. A row opens the job's page.
-* **Assistant** is every conversation anyone has had with the assistant, readable and downloadable.
+* **Assistant** is every conversation anyone has had with the assistant, readable and downloadable. **Errors** counts each conversation's turns that ended without an answer, and on hover names why the last one ended: **Stopped**, **Connection lost**, **Output limit**, **No answer**, **Model failed**, **Too large to save** or **Other**. **With errors** lists only those conversations, and an open conversation names the kind beside each such turn.
 * **Server** reports the version, the database, the backups, and which documents are open for editing. From it you can take a backup now, release a document someone left open, or clear a sign-in block for someone who mistyped their password too many times.
 * **Logs** is what the server has been doing since it last started: the requests, with the account behind each one, and the warnings and errors. **Live** keeps the page up to date while a problem is happening.
 
