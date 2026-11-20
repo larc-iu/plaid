@@ -263,6 +263,36 @@
         (is (string? (:seen-at w)))
         (is (= "m1" (:model w)))))))
 
+(deftest the-worker-says-what-it-runs
+  (let [settings {:version "0.0.0+3fa9c2d1" :model-pool "reallms" :context-window 196608
+                  :max-output-tokens 65536 :piece-output-tokens 0 :reasoning-effort "low" :apps ["igt"]}
+        claim (fn [body] (call admin-request :post "/api/v1/jobs/claim"
+                               (merge {:worker-id jh/worker-a :model "m1" :apps ["igt"]} body)))
+        worker (fn [] (:body (call admin-request :get "/api/v1/jobs/worker")))]
+    (is (nil? (:settings (worker))) "none before a worker asks")
+    (is (= 204 (:status (claim {:settings settings}))))
+    (is (= settings (:settings (worker))) "the last claim's settings, as sent")
+    (testing "a heartbeat leaves them"
+      (let [{:keys [p st]} (jh/world!)
+            j (job-id (start! st p))]
+        (is (= 200 (:status (claim {:settings settings}))))
+        (fix/assert-ok (heartbeat! j jh/worker-a))
+        (is (= settings (:settings (worker))))
+        (fix/assert-ok (finish! j jh/worker-a "done"))))
+    (testing "a claim without settings says none"
+      (is (= 204 (:status (claim {}))))
+      (is (nil? (:settings (worker)))))
+    (testing "refused when not an object or too long, and nothing is kept"
+      (is (= 204 (:status (claim {:settings settings}))))
+      (let [r (claim {:settings ["igt"]})]
+        (is (= 400 (:status r)))
+        (is (= "settings: give a JSON object." (-> r :body :error))))
+      (let [r (claim {:settings {:version (apply str (repeat 2100 "é"))}})]
+        (is (= 400 (:status r)))
+        (is (= "The settings are 2,114 characters as JSON. A worker's settings are at most 2,000."
+               (-> r :body :error))))
+      (is (= settings (:settings (worker)))))))
+
 (deftest a-lapsed-lease-is-taken-over
   (let [{:keys [p st d1]} (jh/world!)
         j (job-id (start! st p))]

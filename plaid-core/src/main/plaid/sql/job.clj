@@ -72,6 +72,11 @@
   "The longest setup, in characters of its JSON text as stored."
   4000)
 
+(def worker-settings-max-chars
+  "The longest settings a worker's claim sends, in characters of their JSON
+  text. Kept in memory and shown to administrators, so bounded as a setup is."
+  2000)
+
 (def report-max-bytes
   "The largest report, as JSON text in UTF-8."
   1000000)
@@ -397,6 +402,18 @@
                (let [c (name-order/compare-names na nb)]
                  (if (zero? c) (compare ia ib) c))))
        (mapv first)))
+
+(defn check-worker-settings!
+  "Refuse a claim's `settings` that are not an object or are longer than
+  `worker-settings-max-chars` as JSON."
+  [settings]
+  (when (some? settings)
+    (when-not (map? settings)
+      (refuse 400 {:error "settings: give a JSON object."}))
+    (let [n (cp/cp-count (psc/write-json settings))]
+      (when (> n worker-settings-max-chars)
+        (refuse 400 {:error (str "The settings are " (grouped n) " characters as JSON. A worker's settings are at most "
+                                 (grouped worker-settings-max-chars) ".")})))))
 
 (defn- check-start!
   "The start body's document ids, or a 400 for the first rule it breaks

@@ -125,6 +125,28 @@ def test_claim_answers_the_job_and_its_token_and_none_on_204():
     assert _sent(client)[0]['body'] == {'worker-id': 'w1', 'model': 'm', 'apps': ['igt']}
 
 
+def test_claim_sends_what_the_worker_runs_and_worker_answers_it():
+    client = _client([Response(204), {'seen-at': '2026-11-20T00:00:00Z', 'model': 'm', 'settings': {
+        'model-pool': 'reallms', 'max-output-tokens': 65536}, 'instructions-max-chars': 2000, 'documents-max': 500}])
+    client.jobs.claim('w1', 'm', ['igt'], settings={'model_pool': 'reallms', 'max_output_tokens': 65536})
+    assert _sent(client)[0]['body'] == {'worker-id': 'w1', 'model': 'm', 'apps': ['igt'], 'settings': {
+        'model-pool': 'reallms', 'max-output-tokens': 65536}}
+    assert client.jobs.worker()['settings'] == {'model_pool': 'reallms', 'max_output_tokens': 65536}
+
+
+def test_fake_claim_keeps_the_last_claims_settings():
+    client, _ = _fake()
+    jobs = client.jobs
+    assert jobs.worker()['settings'] is None
+    jobs.claim('w1', 'm', ['igt'], settings={'version': '1+aa', 'apps': ['igt']})
+    assert jobs.worker()['settings'] == {'version': '1+aa', 'apps': ['igt']}
+    jobs.claim('w1', 'm', ['igt'])
+    assert jobs.worker()['settings'] is None
+    _refused(lambda: jobs.claim('w1', 'm', ['igt'], settings=['igt']), 400, 'settings: give a JSON object.')
+    _refused(lambda: jobs.claim('w1', 'm', ['igt'], settings={'version': 'é' * 2100}), 400,
+             "The settings are 2,114 characters as JSON. A worker's settings are at most 2,000.")
+
+
 def test_heartbeat_sends_none_to_clear_a_field_and_leaves_out_a_field_it_leaves():
     client = _client([{'state': 'running', 'token': 'jwt2', 'lease-s': 120}])
     beat = client.jobs.heartbeat('j1', 'w1', phase='working', waiting_for=None, current_document='d1')
@@ -398,8 +420,8 @@ def test_fake_claim_takes_the_oldest_and_holds_the_one_slot_until_the_lease_laps
     client, clock = _fake()
     jobs = client.jobs
     assert jobs.claim('w1', 'm', ['igt']) is None
-    assert jobs.worker() == {'seen_at': '1970-01-12T13:46:40.000Z', 'model': 'm', 'instructions_max_chars': 2000,
-                            'documents_max': 500}
+    assert jobs.worker() == {'seen_at': '1970-01-12T13:46:40.000Z', 'model': 'm', 'settings': None,
+                             'instructions_max_chars': 2000, 'documents_max': 500}
     first = jobs.create('p2', 'igt', 'Gloss.')
     second = jobs.create('p1', 'igt', 'Gloss.')
     claimed = jobs.claim('w1', 'm', ['igt'])

@@ -551,19 +551,21 @@
 ;; whether people are using the model key it draws on, which is read from the
 ;; service registry above.
 
-(defonce ^:private job-worker (atom {:seen-at nil :model nil}))
+(defonce ^:private job-worker (atom {:seen-at nil :model nil :settings nil}))
 
 (defn record-job-worker!
-  "Note that a job worker asked for work or reported now, and the model it
-  runs when it names one."
-  [model]
-  (swap! job-worker (fn [w] (cond-> (assoc w :seen-at (System/currentTimeMillis))
-                              model (assoc :model model))))
-  nil)
+  "Note that a job worker asked for work or reported now, and, when it names
+  its model (a claim does), that model and the settings it sent with it."
+  ([model] (record-job-worker! model nil))
+  ([model settings]
+   (swap! job-worker (fn [w] (cond-> (assoc w :seen-at (System/currentTimeMillis))
+                               model (assoc :model model :settings settings))))
+   nil))
 
 (defn job-worker-seen
-  "`{:seen-at <ms or nil> :model <string or nil>}`: when a job worker last
-  asked for work or reported, since core started."
+  "`{:seen-at <ms or nil> :model <string or nil> :settings <map or nil>}`:
+  when a job worker last asked for work or reported, since core started, and
+  what its last claim said it runs."
   []
   @job-worker)
 
@@ -845,7 +847,7 @@
   run before / outside `mount/start`."
   []
   (reset! event-bus-drop-count 0)
-  (reset! job-worker {:seen-at nil :model nil})
+  (reset! job-worker {:seen-at nil :model nil :settings nil})
   (try (reset! client-registry {}) (catch Exception _))
   (try (reset! channel-mappings {}) (catch Exception _))
   (try (reset! heartbeat-registry {}) (catch Exception _))

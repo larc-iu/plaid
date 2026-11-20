@@ -100,7 +100,8 @@
       (testing (name c)
         (is (= (if (= :s c) 403 200) (:status resp)))
         (when (not= :s c)
-          (is (= {:seen-at nil :model nil :instructions-max-chars 2000 :documents-max 500} (:body resp))))))))
+          (is (= {:seen-at nil :model nil :settings nil :instructions-max-chars 2000 :documents-max 500}
+                 (:body resp))))))))
 
 (deftest worker-routes-are-the-admins
   (let [world (jh/world!)

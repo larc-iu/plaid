@@ -1485,10 +1485,12 @@ class Worker:
                  client_for: Callable[[str], Any], pool: Optional[str] = None, idle_s: float = 30,
                  now: Callable[[], float] = time.time, sleep: Callable[[float], None] = time.sleep,
                  heartbeat_s: float = JOB_HEARTBEAT_S, worker_id: Optional[str] = None,
-                 secrets: Optional[Tuple[str, ...]] = None):
+                 secrets: Optional[Tuple[str, ...]] = None, settings: Optional[Dict[str, Any]] = None):
         self.admin = admin
         #: the model's key and address, never shown (:attr:`Job.secrets`)
         self.secrets = secrets
+        #: what it runs with, sent with each claim for the admin Jobs tab
+        self.settings = settings
         self.runners = runners
         self.model = model
         self.client_for = client_for
@@ -1502,7 +1504,7 @@ class Worker:
     def once(self) -> Optional[Dict[str, Any]]:
         """Ask for one job and run it. The claimed job's answer, or None when
         there was none to take."""
-        claimed = self.admin.jobs.claim(self.worker_id, self.model, sorted(self.runners))
+        claimed = self.admin.jobs.claim(self.worker_id, self.model, sorted(self.runners), settings=self.settings)
         if not claimed:
             return None
         job = Job(self.admin, claimed, self.worker_id, client_for=self.client_for, pool=self.pool, now=self.now,

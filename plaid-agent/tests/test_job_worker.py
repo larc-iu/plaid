@@ -239,6 +239,30 @@ def test_the_flags_are_the_contracts():
     assert jobworker.parser().parse_args(['--url', 'u', '--model', 'm']).reasoning_effort is None
 
 
+def test_the_worker_says_what_it_runs_with_each_claim():
+    """The admin Jobs tab shows the worker's settings, which its claim sends
+    and core keeps. Never a key or an address."""
+    from plaid_agent.core.agent import ModelConfig
+    args = jobworker.parser().parse_args(['--url', 'u', '--model', 'm', '--api-base', 'http://model.example',
+                                          '--api-key', 'sk-secret', '--context-window', '196608',
+                                          '--model-pool', 'reallms', '--max-output-tokens', '9000',
+                                          '--piece-output-tokens', '4000', '--reasoning-effort', 'low'])
+    cfg = ModelConfig(model='m', api_base=args.api_base, api_key=args.api_key, max_tokens=9000,
+                      context_window=196608, reasoning_effort='low')
+    settings = jobworker.worker_settings(args, cfg)
+    assert settings == {'version': igt_job.job_version(), 'model_pool': 'reallms', 'context_window': 196608,
+                        'max_output_tokens': 9000, 'piece_output_tokens': 4000, 'reasoning_effort': 'low',
+                        'apps': ['igt']}
+    assert 'sk-secret' not in repr(settings) and 'model.example' not in repr(settings)
+    plain = jobworker.parser().parse_args(['--url', 'u', '--model', 'openai/no-such-model-known'])
+    assert jobworker.worker_settings(plain, ModelConfig(model=plain.model, max_tokens=32768)) == {
+        'version': igt_job.job_version(), 'max_output_tokens': 32768, 'apps': ['igt']}, 'each only when set'
+
+    client = _client()
+    Worker(client, {}, 'fake/m', client_for=lambda token: client, settings=settings).once()
+    assert client.jobs.worker()['settings'] == settings
+
+
 def test_the_assistants_take_model_pool_into_their_extras(monkeypatch):
     from plaid_agent.core import service_cli
     from test_service_flow import _service

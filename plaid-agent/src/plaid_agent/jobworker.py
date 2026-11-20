@@ -34,13 +34,15 @@ from types import SimpleNamespace
 from plaid_client import BaseService, PlaidClient
 from plaid_client.workflows.llm import add_model_pool_argument, add_timeout_argument
 
-from .core.agent import ModelConfig, ModelTooSlow, output_cap, ping_model
+from .core.agent import ModelConfig, ModelTooSlow, context_window, output_cap, ping_model
 from .core.job import Worker, not_answering
 from .core.limits import JOB_IDLE_POLL_S, JOB_MODEL_RETRY_S, JOB_PIECE_OUTPUT_TOKENS
-from .igt.job import runner_factory
+from .igt.job import job_version as igt_job_version, runner_factory
 
 #: The apps a worker can run, and how it builds each one's runner.
 APPS = {'igt': runner_factory}
+#: Which version of each app's runner this is.
+VERSIONS = {'igt': igt_job_version}
 
 
 class ScriptedModel:
@@ -146,6 +148,21 @@ def parser() -> argparse.ArgumentParser:
     return p
 
 
+def worker_settings(args, cfg: ModelConfig) -> dict:
+    """What the worker runs with, as its startup prints it, sent with each
+    claim so the admin Jobs tab can show it: each setting only when it is
+    set, and never a key or an address (every member of a project can read
+    it)."""
+    out = {'version': ', '.join(VERSIONS[app]() for app in sorted(args.apps)),
+           'model_pool': args.model_pool,
+           'context_window': context_window(cfg.model, cfg.context_window),
+           'max_output_tokens': cfg.max_tokens,
+           'piece_output_tokens': args.piece_output_tokens,
+           'reasoning_effort': cfg.reasoning_effort,
+           'apps': sorted(args.apps)}
+    return {k: v for k, v in out.items() if v}
+
+
 def job_secrets(api_key, api_base):
     """What no reader of a job is shown of an error's words (REV-SJ1-1): the
     model's key, from ``--api-key`` or the environment litellm reads, and the
@@ -190,7 +207,8 @@ def main(argv=None) -> int:
     runners = {app: APPS[app](cfg, trace_dir=args.trace_dir, count=count,
                               piece_output_tokens=args.piece_output_tokens) for app in args.apps}
     worker = Worker(admin, runners, cfg.model, client_for=lambda token: PlaidClient(args.url, token),
-                    pool=args.model_pool, idle_s=JOB_IDLE_POLL_S, secrets=job_secrets(args.api_key, args.api_base))
+                    pool=args.model_pool, idle_s=JOB_IDLE_POLL_S, secrets=job_secrets(args.api_key, args.api_base),
+                    settings=worker_settings(args, cfg))
     print(f'Worker {worker.worker_id} asking for jobs of {", ".join(args.apps)} every {JOB_IDLE_POLL_S} s.')
     if args.once:
         worker.once()

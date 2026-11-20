@@ -3915,15 +3915,16 @@ class JobsResource(_Resource):
                              timeout=self._client.batch_timeout, no_operation=True)
 
     def worker(self) -> Any:
-        """When a job worker last asked for work since core started, and the
-        model it runs: ``{seen_at, model, instructions_max_chars,
-        documents_max}``, ``seen_at`` and ``model`` None when none has asked.
-        ``instructions_max_chars`` is the longest instructions a job takes,
-        ``documents_max`` the most
+        """When a job worker last asked for work since core started, the
+        model it runs and the settings its last claim sent: ``{seen_at, model,
+        settings, instructions_max_chars, documents_max}``, ``seen_at``,
+        ``model`` and ``settings`` None when none has asked (``settings``
+        also when the last claim sent none). ``instructions_max_chars`` is
+        the longest instructions a job takes, ``documents_max`` the most
         documents."""
         return self._request('GET', '/api/v1/jobs/worker')
 
-    def claim(self, worker_id: str, model: str, apps: list) -> Any:
+    def claim(self, worker_id: str, model: str, apps: list, *, settings: Any = None) -> Any:
         """The worker asks for a job. Admin only.
 
         Answers ``{job, token, heartbeat_s}``: the job it now holds, the token
@@ -3937,10 +3938,15 @@ class JobsResource(_Resource):
             worker_id: The worker's id, a UUID it minted when it started
             model: The model the worker runs
             apps: The apps whose jobs it takes
+            settings: What else it runs with, an object of at most 2,000
+                characters as JSON, kept by core until the next claim and
+                answered by :meth:`worker`. Never a key or an address: every
+                member of a project can read it.
         """
-        return _or_none(self._request('POST', '/api/v1/jobs/claim',
-                                      body={'worker_id': worker_id, 'model': model, 'apps': apps},
-                                      out_of_band=True))
+        body = {'worker_id': worker_id, 'model': model, 'apps': apps}
+        if settings is not None:
+            body['settings'] = settings
+        return _or_none(self._request('POST', '/api/v1/jobs/claim', body=body, out_of_band=True))
 
     def heartbeat(self, job_id: str, worker_id: str, *, phase: Any = _UNSET, message: Any = _UNSET,
                   waiting_for: Any = _UNSET, current_document: Any = _UNSET) -> Any:

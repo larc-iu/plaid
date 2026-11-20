@@ -2538,7 +2538,7 @@ class IgtRunner:
         #: scripted model), else the model's own, the one ``Pace`` budgets
         #: with (REV-JR1-1: the worker gives none for a real model)
         self.count = count or token_counter(cfg.model)
-        self.version = agent_version([JOB_SYSTEM], toolkit.TOOLS)
+        self.version = job_version()
         self.detail = {'model': cfg.model, 'version': self.version, JOB_DETAIL_KEY: job.id}
         self.source = job_source(cfg.model)
         self.names: Dict[str, str] = {}
@@ -7241,6 +7241,12 @@ class IgtRunner:
 
 #: The unit a target's blanks are counted in, by its level.
 UNIT = {'Word': 'word', 'Morpheme': 'morpheme', 'Sentence': 'sentence'}
+
+
+def job_version() -> str:
+    """Which version of the igt job runner this is, as each job's writes
+    stamp it and the worker's claim says it."""
+    return agent_version([JOB_SYSTEM], toolkit.TOOLS)
 
 
 def runner_factory(cfg: ModelConfig, trace_dir: Optional[str] = None, count=None,

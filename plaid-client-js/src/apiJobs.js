@@ -169,12 +169,13 @@ export function jobsApi(client) {
         noOperation: true,
       }),
     /**
-     * When a job worker last asked for work since core started, and the
-     * model it runs: `{seenAt, model, instructionsMaxChars, documentsMax}`,
-     * `seenAt` and `model` null when none has asked. `instructionsMaxChars`
-     * is the longest instructions a job takes, `documentsMax` the most
-     * documents.
-     * @returns {Promise<{seenAt: string | null, model: string | null, instructionsMaxChars: number, documentsMax: number}>}
+     * When a job worker last asked for work since core started, the model
+     * it runs and the settings its last claim sent:
+     * `{seenAt, model, settings, instructionsMaxChars, documentsMax}`,
+     * `seenAt`, `model` and `settings` null when none has asked (`settings`
+     * also when the last claim sent none). `instructionsMaxChars` is the
+     * longest instructions a job takes, `documentsMax` the most documents.
+     * @returns {Promise<{seenAt: string | null, model: string | null, settings: Record<string, any> | null, instructionsMaxChars: number, documentsMax: number}>}
      */
     worker: () => client._request("GET", "/api/v1/jobs/worker"),
     /**
@@ -188,13 +189,17 @@ export function jobsApi(client) {
      * @param {object} [opts]
      * @param {string} [opts.model] - The model the worker runs
      * @param {string[]} [opts.apps] - The apps whose jobs it takes
+     * @param {Record<string, any>} [opts.settings] - What else it runs with,
+     *   an object of at most 2,000 characters as JSON, kept by core until the
+     *   next claim and answered by `worker()`. Never a key or an address:
+     *   every member of a project can read it.
      * @returns {Promise<{job: Job, token: string, heartbeatS: number} | null>}
      */
-    claim: async (workerId, { model, apps } = {}) =>
+    claim: async (workerId, { model, apps, settings } = {}) =>
       orNull(
         await client._request("POST", "/api/v1/jobs/claim", {
           outOfBand: true,
-          body: bodyOf({ "worker-id": workerId, model, apps }),
+          body: bodyOf({ "worker-id": workerId, model, apps, settings }),
         }),
       ),
     /**

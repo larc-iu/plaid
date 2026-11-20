@@ -1991,6 +1991,7 @@ _JOB_HEARTBEAT_S = 30
 _JOB_DOCUMENTS_MAX = 500
 _JOB_INSTRUCTIONS_MAX_CHARS = 2000
 _JOB_SETUP_MAX_CHARS = 4000
+_JOB_WORKER_SETTINGS_MAX_CHARS = 2000
 
 
 def _composed(value):
@@ -2058,7 +2059,7 @@ class _FakeJobs:
         self.rows = {}
         #: job id -> {(form, key): decision row}
         self.decision_rows = {}
-        self._seen = {'seen_at': None, 'model': None}
+        self._seen = {'seen_at': None, 'model': None, 'settings': None}
         self._seq = itertools.count()
         self._tokens = itertools.count(1)
 
@@ -2342,9 +2343,21 @@ class _FakeJobs:
         return {**self._seen, 'instructions_max_chars': _JOB_INSTRUCTIONS_MAX_CHARS, 'documents_max': _JOB_DOCUMENTS_MAX}
 
     # -- the worker's calls --
-    def claim(self, worker_id, model, apps):
-        self.calls.append(('claim', {'worker_id': worker_id, 'model': model, 'apps': list(apps)}))
-        self._seen = {'seen_at': self._iso(), 'model': model}
+    def claim(self, worker_id, model, apps, *, settings=None):
+        self.calls.append(('claim', {'worker_id': worker_id, 'model': model, 'apps': list(apps),
+                                     **({'settings': settings} if settings is not None else {})}))
+        if settings is not None:
+            # as core checks a claim's settings, before it notes the worker
+            path = '/api/v1/jobs/claim'
+            if not isinstance(settings, dict):
+                raise self._refuse(400, 'POST', path, 'settings: give a JSON object.')
+            settings = _composed(settings)
+            n = len(json.dumps(settings, ensure_ascii=False, separators=(',', ':')))
+            if n > _JOB_WORKER_SETTINGS_MAX_CHARS:
+                raise self._refuse(400, 'POST', path, f'The settings are {n:,} characters as JSON. '
+                                                      f"A worker's settings are at most "
+                                                      f'{_JOB_WORKER_SETTINGS_MAX_CHARS:,}.')
+        self._seen = {'seen_at': self._iso(), 'model': model, 'settings': settings}
         if any(self._live_lease(j) for j in self.rows.values()):
             return None
         while True:

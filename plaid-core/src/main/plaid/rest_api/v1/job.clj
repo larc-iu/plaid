@@ -174,29 +174,41 @@
      {:conflicting true
       :post (merge worker-only
                    {:summary (str "Worker: take the next job, or 204 when there is none or one is running. "
-                                  "Answers the job, a token for its starter and the heartbeat interval. Admin only.")
+                                  "Answers the job, a token for its starter and the heartbeat interval. "
+                                  "<code>settings</code>, an object of at most 2,000 characters as JSON, says what "
+                                  "the worker runs, kept until the next claim and answered by "
+                                  "<code>GET /jobs/worker</code>. Admin only.")
                     :parameters {:body [:map
                                         [:worker-id :uuid]
                                         [:model :string]
-                                        [:apps [:vector :string]]]}
-                    :handler (fn [{{{:keys [worker-id model apps]} :body} :parameters db :db user-id :user/id :as request}]
-                               (events/record-job-worker! model)
-                               (if-let [j (job/claim! db {:worker-id worker-id :worker-user user-id
-                                                          :model model :apps apps})]
-                                 {:status 200
-                                  :body {:job j
-                                         :token (job-token request (:job/project j) (:job/id j) worker-id (:job/started-by j))
-                                         :heartbeat-s 30}}
-                                 {:status 204}))})}]
+                                        [:apps [:vector :string]]
+                                        ;; any JSON: refused in words when it is not an object
+                                        [:settings {:optional true} :any]]}
+                    :handler (fn [{{{:keys [worker-id model apps settings]} :body} :parameters db :db user-id :user/id
+                                   :as request}]
+                               (answer
+                                (fn []
+                                  (job/check-worker-settings! settings)
+                                  (events/record-job-worker! model settings)
+                                  (if-let [j (job/claim! db {:worker-id worker-id :worker-user user-id
+                                                             :model model :apps apps})]
+                                    {:status 200
+                                     :body {:job j
+                                            :token (job-token request (:job/project j) (:job/id j) worker-id
+                                                              (:job/started-by j))
+                                            :heartbeat-s 30}}
+                                    {:status 204}))))})}]
 
     ["/worker"
      {:conflicting true
       :get {:summary (str "When a job worker last asked for work or reported, since the server started, "
-                          "and the model it runs, with the longest instructions and the most documents a job takes.")
+                          "and the model it runs and the settings its last claim sent, with the longest "
+                          "instructions and the most documents a job takes.")
             :handler (fn [_]
-                       (let [{:keys [seen-at model]} (events/job-worker-seen)]
+                       (let [{:keys [seen-at model settings]} (events/job-worker-seen)]
                          {:status 200 :body {:seen-at (iso seen-at)
                                              :model model
+                                             :settings settings
                                              :instructions-max-chars job/instructions-max-chars
                                              :documents-max job/documents-max}}))}}]
 

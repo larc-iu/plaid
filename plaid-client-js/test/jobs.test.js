@@ -243,6 +243,42 @@ test("claim answers the job and its token, and null on 204", async () => {
   }
 });
 
+test("claim sends what the worker runs, and worker answers it", async () => {
+  const net = capture([
+    { status: 204 },
+    {
+      status: 200,
+      body: {
+        "seen-at": "2026-11-20T00:00:00Z",
+        model: "m",
+        settings: { "model-pool": "reallms", "max-output-tokens": 65536 },
+        "instructions-max-chars": 2000,
+        "documents-max": 500,
+      },
+    },
+  ]);
+  try {
+    const client = new PlaidClient("http://x", "tok");
+    await client.jobs.claim("w1", {
+      model: "m",
+      apps: ["igt"],
+      settings: { modelPool: "reallms", maxOutputTokens: 65536 },
+    });
+    assert.deepEqual(net.sent[0].body, {
+      "worker-id": "w1",
+      model: "m",
+      apps: ["igt"],
+      settings: { "model-pool": "reallms", "max-output-tokens": 65536 },
+    });
+    assert.deepEqual((await client.jobs.worker()).settings, {
+      modelPool: "reallms",
+      maxOutputTokens: 65536,
+    });
+  } finally {
+    net.restore();
+  }
+});
+
 test("heartbeat sends null to clear a field and leaves out a field it leaves", async () => {
   const net = capture([{ status: 200, body: { state: "running", token: "jwt2", "lease-s": 120 } }]);
   try {

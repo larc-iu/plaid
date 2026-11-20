@@ -73,6 +73,50 @@ describe('Admin jobs', () => {
     await view.unmount();
   });
 
+  it('says what a running worker runs on a second line, each fact only when sent', async () => {
+    const settings = {
+      version: '0.0.0+3fa9c2d1',
+      modelPool: 'reallms',
+      contextWindow: 196608,
+      maxOutputTokens: 65536,
+      pieceOutputTokens: 4000,
+      reasoningEffort: 'low',
+      apps: ['igt'],
+    };
+    const view = await mount([], { seenAt: new Date().toISOString(), model: 'm1', settings });
+    const facts = () =>
+      [...document.body.querySelectorAll('[data-worker-settings] [data-fact]')].map(
+        (f) => f.textContent,
+      );
+    expect(facts()).toEqual([
+      'Version 0.0.0+3fa9c2d1',
+      'Model key reallms',
+      'Context window 196,608 tokens',
+      'Output limit 65,536 tokens',
+      'Piece output limit 4,000 tokens',
+      'Reasoning effort low',
+      'Apps igt',
+    ]);
+    await view.unmount();
+    const some = await mount([], {
+      seenAt: new Date().toISOString(),
+      model: 'm1',
+      settings: { version: '1+aa', maxOutputTokens: 100 },
+    });
+    expect(facts()).toEqual(['Version 1+aa', 'Output limit 100 tokens']);
+    await some.unmount();
+  });
+
+  it('shows no settings once the worker is not running', async () => {
+    const view = await mount([], {
+      seenAt: '2020-01-01T00:00:00Z',
+      model: 'm1',
+      settings: { version: '1+aa' },
+    });
+    expect(document.body.querySelector('[data-worker-settings]')).toBeNull();
+    await view.unmount();
+  });
+
   it('says a running job’s worker has gone silent', async () => {
     const view = await mount(
       [job({ state: 'running', lapsed: true, heartbeatAt: null, finishedAt: null })],

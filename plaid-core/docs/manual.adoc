@@ -912,7 +912,7 @@ When a job ends without its worker (stopped while no worker reports, failed for 
 |as an undo of one entry (see <<Undo of one entry>>). 409 until the job has ended
 
 |`GET /api/v1/jobs/worker`
-|anyone signed in: `seen-at`, when a worker last asked for work or reported since the server started, its `model`, and the limits `instructions-max-chars` and `documents-max`
+|anyone signed in: `seen-at`, when a worker last asked for work or reported since the server started, its `model`, the `settings` its last claim sent (null when it sent none), and the limits `instructions-max-chars` and `documents-max`
 
 |`POST /api/v1/jobs/claim`, `GET /api/v1/jobs/model-busy`, and a job's `heartbeat`, `documents/{id}`, `decisions`, `decisions/lookup` and `finish`
 |an admin
@@ -930,6 +930,7 @@ The worker keeps one decision of the form `" piece"` for its plan and for each p
 
 The worker runs under an administrator's named API token.
 It asks for work with `jobs.claim`, which answers the next job, a token for the person who started it and the heartbeat interval, or 204.
+A claim may carry `settings`, an object of at most 2,000 characters as JSON saying what the worker runs, which the server keeps until the next claim and `jobs.worker` answers. `plaid-job-worker` sends its `version`, `model-pool`, `context-window`, `max-output-tokens`, `piece-output-tokens`, `reasoning-effort` and `apps`, each only when set, and never a key or an address.
 While any job is running the server gives out no other: a worker that asks first gets a running or stopping job whose worker has lapsed, oldest first, then the oldest waiting job of an app it runs.
 A job whose starter can no longer write the project is failed with `starter-access` instead of being given out.
 While it works the worker sends `jobs.heartbeat` every 30 seconds, which answers the job's state and a fresh token.

@@ -28,6 +28,24 @@ const workerLine = (worker) => {
   return `No job worker is running. The last one asked for work ${timeAgo(worker.seenAt)}.`;
 };
 
+const tokens = (n) => (typeof n === 'number' ? `${n.toLocaleString()} tokens` : null);
+
+// What the running worker's last claim said it runs, each only when sent.
+const SETTINGS = [
+  ['Version', (s) => s.version],
+  ['Model key', (s) => s.modelPool],
+  ['Context window', (s) => tokens(s.contextWindow)],
+  ['Output limit', (s) => tokens(s.maxOutputTokens)],
+  ['Piece output limit', (s) => tokens(s.pieceOutputTokens)],
+  ['Reasoning effort', (s) => s.reasoningEffort],
+  ['Apps', (s) => (Array.isArray(s.apps) ? s.apps.join(', ') : null)],
+];
+
+const workerSettings = (worker) =>
+  worker && workerSeen(worker) && worker.settings
+    ? SETTINGS.map(([label, read]) => [label, read(worker.settings)]).filter(([, v]) => v)
+    : [];
+
 export const AdminJobs = ({ client }) => {
   const [jobs, setJobs] = useState(null);
   const [worker, setWorker] = useState(null);
@@ -148,12 +166,22 @@ export const AdminJobs = ({ client }) => {
     return <LoadError onRetry={() => setAttempt((n) => n + 1)}>Failed to list the jobs</LoadError>;
 
   const line = workerLine(worker);
+  const settings = workerSettings(worker);
   return (
     <div>
       {line && (
-        <p data-worker className="pb-3 text-sm text-muted-foreground">
-          {line}
-        </p>
+        <div className="pb-3 text-sm text-muted-foreground">
+          <p data-worker>{line}</p>
+          {settings.length > 0 && (
+            <p data-worker-settings className="flex flex-wrap gap-x-3 text-xs">
+              {settings.map(([label, value]) => (
+                <span key={label} data-fact>
+                  {label} {value}
+                </span>
+              ))}
+            </p>
+          )}
+        </div>
       )}
       <DataTable
         id="admin-jobs"
