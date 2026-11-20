@@ -12,8 +12,8 @@ import { notifySuccess, notifyError, notifyWarning, humanizeError } from '@/util
 import { isUnknownOutcome, isUnreachable, statusOf } from '@ui/lib/errors.js';
 import { formatElapsed } from '@ui/hooks/useRunProgress.js';
 import { useConfirm } from '@ui/components/shared/ConfirmProvider';
-import { ownerOf } from '@ui/domain/appOwners.js';
 import { readInitialized } from '../../domain/igtConfig';
+import { projectTarget } from './projectTarget';
 
 // What the server is doing and what it is sitting on. Read-only except for
 // three buttons, each of which only ever unblocks something.
@@ -75,9 +75,10 @@ const lastRunText = ({ at, ok, scheduled }) =>
 const lockLinks = (lock, projects) => {
   const project = projects.get(lock.projectId);
   const ours = project ? readInitialized(project.config) : false;
-  const owner = project && !ours ? ownerOf(project) : null;
+  // Where every admin project link leads (`projectTarget`).
+  const target = project ? projectTarget(project) : `/projects/${lock.projectId}`;
   return {
-    project: owner ? { href: owner.url(lock.projectId) } : { to: `/projects/${lock.projectId}` },
+    project: typeof target === 'string' ? { to: target } : target,
     document: ours ? `/projects/${lock.projectId}/documents/${lock.documentId}` : null,
   };
 };

@@ -254,6 +254,7 @@ def test_the_timeout_flag_reaches_the_model():
     class _Service:
         service_name = 'LLM glossing'
         service_id = 'llm-analyzer'
+        extras = {}
 
     assert llm.setup_service(_Service(), args).timeout == 45
 
@@ -263,6 +264,7 @@ def test_setup_service_takes_the_operators_identity_overrides():
         service_name = 'LLM glossing'
         service_id = 'llm-analyzer'
         REQUEST_SECRETS = ()
+        extras = {}
 
     args = types.SimpleNamespace(model='ollama/llama3.1', api_base=None, api_key='sk-flag',
                                  temperature=0.0, max_tokens=None, timeout=60,
