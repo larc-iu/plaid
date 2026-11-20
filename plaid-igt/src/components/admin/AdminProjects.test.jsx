@@ -144,4 +144,13 @@ describe('AdminProjects', () => {
     ]);
     expect(texts(view.container, 'tbody tr td:nth-child(2)')).toEqual(['Other app']);
   });
+
+  // A project with only lexicon work read "Never" under "Last change", which
+  // counts document changes alone. The heading says so.
+  it('names its last-change column for what it counts', async () => {
+    const view = await render([udProject()]);
+    const heads = texts(view.container, 'thead th');
+    expect(heads).toContain('Last document change');
+    expect(heads).not.toContain('Last change');
+  });
 });

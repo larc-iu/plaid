@@ -139,10 +139,10 @@ test('a chosen order survives leaving the page and coming back', async ({ page }
 });
 
 test('a blank sorts as the smallest value, not pinned to the bottom', async ({ page }) => {
-  // Projects nobody has touched read "Never" under Last change. Ascending they
+  // Projects nobody has touched read "Never" under Last document change. Ascending they
   // come first, because never IS the oldest, and descending they go last.
   await openTab(page, 'projects');
-  const header = page.getByRole('button', { name: 'Last change' });
+  const header = page.getByRole('button', { name: 'Last document change' });
   await expect(header).toBeVisible();
 
   const lastChange = async () =>

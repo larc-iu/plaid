@@ -103,7 +103,7 @@ export const AdminProjects = ({ client, currentUser }) => {
     },
     {
       key: 'updated',
-      label: 'Last change',
+      label: 'Last document change',
       sort: (p) => (p.lastModified ? new Date(p.lastModified).getTime() : null),
       className: 'text-muted-foreground',
       render: (p) => (
