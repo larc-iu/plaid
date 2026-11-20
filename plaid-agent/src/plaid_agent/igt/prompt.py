@@ -494,7 +494,7 @@ NO_TEXT_EDITS = (('deletions and text edits included', 'deletions included'),
 
 
 #: What a piece in sentences is told of the similar sentences its message
-#: holds after the evidence (igt/similar.py, BRIEF-SS), only when it holds
+#: holds after the evidence (igt/similar.py), only when it holds
 #: them.
 JOB_STAGE_SIMILAR = (' The sentences of this project most like yours show its conventions for forms nobody analysed '
                      'before. Each analysis is still yours to decide.')

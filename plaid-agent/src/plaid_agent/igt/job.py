@@ -1589,7 +1589,7 @@ class JobWorkspace(Workspace):
         self.findings = False
         #: the piece's message holds evidence (:meth:`IgtRunner.message`, D29)
         self.handed_evidence = False
-        #: ... and the project's similar sentences (BRIEF-SS)
+        #: ... and the project's similar sentences
         self.handed_similar = False
         #: the piece ended without finishing, with work staged: the kind of
         #: what ended it (``budget``: its closing call, BRIEF RW B2), None
@@ -4628,7 +4628,7 @@ class IgtRunner:
         # would otherwise look up (igt/evidence.py), a document's or a
         # selection's the precedent alone.
         # It is followed by the sentences of the project most like its own
-        # (igt/similar.py, BRIEF-SS).
+        # (igt/similar.py).
         like = ''
         if self.in_sentences() and not whole:
             precedent = self.evidence(ws, project, st)
@@ -4701,7 +4701,7 @@ class IgtRunner:
                                          self.examples_of(doc, project, self.job.id))
         listed_ids = {d['id'] for d in listed}
         # The sentences people analysed, in document order, their weights
-        # computed again only when they changed (BRIEF-SS).
+        # computed again only when they changed.
         examples = [x for d in listed if d['id'] in self.people_read for x in self.people_read[d['id']][4]]
         if self.pool is None or examples != self.examples:
             self.examples, self.pool = examples, similar.Pool([x['feats'] for x in examples])
@@ -4780,7 +4780,7 @@ class IgtRunner:
     @staticmethod
     def examples_of(doc, project: IgtProject, job_id: Optional[str] = None) -> List[Dict[str, Any]]:
         """One document's sentences people analysed, the similar sentences'
-        pool (BRIEF-SS): a sentence counts when it has words and each is
+        pool: a sentence counts when it has words and each is
         ``protected``, as the LLM glossing service takes its examples (its
         punctuation and ignored tokens are no words, as parse_document reads
         them), and the job wrote nothing in it (``job_piece`` on a word's

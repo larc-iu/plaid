@@ -60,8 +60,7 @@ from plaid_client.workflows.igt.analyze import (AnalysisProgress, begin_analysis
                                                 read_analysis_request)
 
 DEFAULT_SERVICE_ID = 'llm-analyzer'
-MAX_EXAMPLE_DOCS = 25  # documents scanned for example sentences per run
-DEFAULT_EXAMPLES = 8
+DEFAULT_EXAMPLES = 20
 DEFAULT_LEXICON_BUDGET = 60  # entries per prompt
 TAGSET_BUDGET = 300  # tags shown to the model when the gloss field is held to a tagset
 
@@ -296,16 +295,16 @@ def render_sentence(sentence, gloss_layer_id, entry_types=None) -> Optional[str]
 
 
 def load_examples(client, project_id, layers, gloss_field, translation_field,
-                  exclude_doc_id, max_docs=MAX_EXAMPLE_DOCS, on_progress=None,
+                  exclude_doc_id, on_progress=None,
                   entry_types=None) -> List[dict]:
     """Fully person-analyzed (or verified) sentences from other documents of
     the project: [{text, translation, line, feats}]. `entry_types` is as
     render_sentence takes it."""
     pool = []
     docs = [d for d in (client.projects.list_documents(project_id) or []) if d['id'] != exclude_doc_id]
-    for n, d in enumerate(docs[:max_docs]):
+    for n, d in enumerate(docs):
         if on_progress:
-            on_progress(n, min(len(docs), max_docs))
+            on_progress(n, len(docs))
         try:
             doc = client.documents.get(d['id'], include_body=True)
             sentences, gloss_layer_id = derive(doc, *layers, gloss_field=gloss_field,
