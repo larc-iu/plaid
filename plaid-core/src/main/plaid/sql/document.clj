@@ -494,9 +494,9 @@
   the same rows under fresh ids, and it satisfies the token-layer
   constraints for exactly the reason the source does. Texts, tokens,
   spans, relations and vocab links come across with their ordered token
-  lists and their metadata, as does the document's own metadata, each
-  under one :insert audit row carrying a full post-image, so the copy
-  reads back through history like any other document.
+  lists and their metadata, as does the document's own metadata. Like an
+  import's, the rows the copy makes write no audit row of their own
+  (`plaid.sql.audit-write`, `unrecorded-document?`).
 
   Apps keep ids of the document's own rows inside metadata (a span that
   names its sentence token, say). In the copy's metadata, a value that is
