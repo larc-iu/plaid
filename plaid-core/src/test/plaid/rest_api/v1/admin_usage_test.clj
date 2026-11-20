@@ -47,3 +47,19 @@
           (is ((if scope = <=) 4 (:changes mine)) "changes stays the total")
           (is (= 2 (:delegated-changes mine)))
           (is (= 0 (:delegated-changes admin))))))))
+
+;; The user page asks for one person's row, not every person's.
+(deftest the-tally-answers-one-person
+  (let [p (h/create-test-project admin-request "Usage One")
+        _ (api-call admin-request {:method :post :path (str "/api/v1/projects/" p "/writers/user1@example.com")})]
+    (is (= 201 (:status (create-doc! user1-request p "theirs"))))
+    (doseq [[label scope] [["instance" nil] ["project" p]]]
+      (testing label
+        (let [all (:entries (:body (h/get-audit-tally admin-request scope)))
+              one (:entries (:body (h/get-audit-tally admin-request scope {:user-id "user1@example.com"})))]
+          (is (< 1 (count all)))
+          (is (= [(row-of all "user1@example.com")] one)))))
+    (testing "a person with nothing in the scope has no row"
+      (is (= [] (:entries (:body (h/get-audit-tally admin-request p {:user-id "user2@example.com"}))))))
+    (testing "it is still the admin's alone across every project"
+      (is (= 403 (:status (h/get-audit-tally user1-request nil {:user-id "user1@example.com"})))))))

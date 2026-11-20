@@ -161,6 +161,7 @@
 
 (def ^:private tally-query
   [:map
+   [:user-id {:optional true} schema/user-id]
    [:start-time {:optional true} instant-param]
    [:end-time {:optional true} instant-param]
    [:daily {:optional true} boolean?]])
@@ -176,7 +177,8 @@
        "operation of kind <code>repair</code> is nobody's activity and is not "
        "counted, though the feed still shows it. Only users "
        "who did something appear — subtract from the roster you already hold "
-       "to find the ones who did not. Pass <code>?daily=true</code> to add "
+       "to find the ones who did not. <code>?user-id=</code> keeps one person's row. "
+       "Pass <code>?daily=true</code> to add "
        "<code>by-day</code>, a list of <code>{date, changes}</code> oldest "
        "first, at the cost of a second grouped scan. Not paginated: the row count is the number of "
        "people, not the number of operations."))
@@ -529,9 +531,10 @@
      :get {:summary    (str "Per-user activity in a project. " tally-doc)
            :middleware [[pra/wrap-maintainer-required get-project-id-from-audit-path]]
            :parameters {:query tally-query}
-           :handler    (fn [{{{:keys [project-id]} :path {:keys [start-time end-time daily]} :query} :parameters db :db}]
+           :handler    (fn [{{{:keys [project-id]} :path {:keys [user-id start-time end-time daily]} :query} :parameters db :db}]
                          {:status 200
                           :body   {:entries (audit/activity-tally db {:project-id  project-id
+                                                                      :user-id     user-id
                                                                       :start-time  start-time
                                                                       :end-time    end-time
                                                                       :daily?      daily})}})}}]
@@ -591,8 +594,9 @@
     {:get {:summary    (str "Per-user activity across every project. Admin only. " tally-doc)
            :middleware [[pra/wrap-admin-required]]
            :parameters {:query tally-query}
-           :handler    (fn [{{{:keys [start-time end-time daily]} :query} :parameters db :db}]
+           :handler    (fn [{{{:keys [user-id start-time end-time daily]} :query} :parameters db :db}]
                          {:status 200
-                          :body   {:entries (audit/activity-tally db {:start-time start-time
+                          :body   {:entries (audit/activity-tally db {:user-id    user-id
+                                                                      :start-time start-time
                                                                       :end-time   end-time
                                                                       :daily?     daily})}})}}]])

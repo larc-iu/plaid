@@ -222,6 +222,7 @@ It also records what kind of credential signed it, as `credential`: `login` for 
 This tells a script run on a person's token apart from that person's own edits.
 
 The activity tally (`audit.tally`, `GET /audit/tally`, or a project's `GET /projects/{id}/audit/tally`) counts each person's `changes`, and among them `delegated-changes`, the ones made on a delegated token: by a service for its requester, or by an assistant job for its starter.
+`user-id` (`userId`, `user_id`) keeps one person's row.
 
 === Logical operations
 

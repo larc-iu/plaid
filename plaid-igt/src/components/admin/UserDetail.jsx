@@ -41,7 +41,7 @@ export const UserDetail = ({ client, userId, backTo, onEdit, dialogs }) => {
         client.users.get(userId),
         client.projects.list(),
         client.apiTokens.list(userId).catch(() => []),
-        client.audit.tally().catch(() => []),
+        client.audit.tally({ userId }).catch(() => []),
       ]);
       if (!isCurrent()) return;
       setUser(u);
@@ -57,7 +57,7 @@ export const UserDetail = ({ client, userId, backTo, onEdit, dialogs }) => {
       );
       // A revoked token is kept for the audit log but no longer works.
       setTokens((tokenList || []).filter((t) => !t.revokedAt));
-      setTally((tallyRows || []).find((r) => r.user?.id === userId) || null);
+      setTally(tallyRows?.[0] || null);
     } catch (err) {
       if (!isCurrent()) return;
       setUser(null);

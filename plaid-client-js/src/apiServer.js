@@ -535,6 +535,7 @@ export function auditApi(client) {
      * Without one, instance-wide and admin only.
      * @param {object} [opts]
      * @param {string} [opts.projectId] - Scope to one project
+     * @param {string} [opts.userId] - Only this person's row
      * @param {string} [opts.startTime] - Only count at or after this instant
      * @param {string} [opts.endTime] - Only count at or before this instant
      * @param {boolean} [opts.daily] - Also return `byDay`, a list of
@@ -542,12 +543,13 @@ export function auditApi(client) {
      *   grouped scan
      * @returns {Promise<ActivityTallyRow[]>}
      */
-    tally: async ({ projectId, startTime, endTime, daily } = {}) => {
+    tally: async ({ projectId, userId, startTime, endTime, daily } = {}) => {
       const path = projectId
         ? apiPath`/api/v1/projects/${projectId}/audit/tally`
         : "/api/v1/audit/tally";
       const result = await client._request("GET", path, {
         queryParams: {
+          "user-id": userId,
           "start-time": startTime,
           "end-time": endTime,
           daily,

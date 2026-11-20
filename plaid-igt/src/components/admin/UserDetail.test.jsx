@@ -121,6 +121,8 @@ describe('UserDetail', () => {
         ?.lastChild?.textContent;
     expect(stat('Changes')).toBe('9');
     expect(stat('By services and jobs')).toBe('4');
+    // One person's row, not every person's.
+    expect(c.audit.tally).toHaveBeenCalledWith({ userId: 'u@x.com' });
     await view.unmount();
   });
 });

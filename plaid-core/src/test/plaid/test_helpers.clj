@@ -409,8 +409,9 @@
   "Per-user activity counts. With `project-id`, the project-scoped read."
   ([user-request-fn] (get-audit-tally user-request-fn nil {}))
   ([user-request-fn project-id] (get-audit-tally user-request-fn project-id {}))
-  ([user-request-fn project-id {:keys [start-time end-time daily]}]
+  ([user-request-fn project-id {:keys [start-time end-time daily user-id]}]
    (let [params (cond-> []
+                  user-id    (conj (str "user-id=" user-id))
                   start-time (conj (str "start-time=" start-time))
                   end-time   (conj (str "end-time=" end-time))
                   daily      (conj "daily=true"))]

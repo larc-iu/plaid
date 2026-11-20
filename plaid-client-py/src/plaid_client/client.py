@@ -3646,8 +3646,9 @@ class AuditResource(_Resource):
                              query_params={'dry-run': 'true' if dry_run else None},
                              timeout=self._client.batch_timeout, no_operation=True)
 
-    def tally(self, *, project_id: str | None = None, start_time: str | None = None,
-              end_time: str | None = None, daily: bool | None = None) -> Any:
+    def tally(self, *, project_id: str | None = None, user_id: str | None = None,
+              start_time: str | None = None, end_time: str | None = None,
+              daily: bool | None = None) -> Any:
         """Per-user activity counts.
 
         ``changes`` is the number of logical actions, folded the way the audit
@@ -3663,6 +3664,7 @@ class AuditResource(_Resource):
 
         Args:
             project_id: Scope to one project
+            user_id: Only this person's row
             start_time: Only count at or after this instant
             end_time: Only count at or before this instant
             daily: Also return ``by_day``, a list of ``{date, changes}`` per
@@ -3671,8 +3673,8 @@ class AuditResource(_Resource):
         path = (f'/api/v1/projects/{segment(project_id)}/audit/tally' if project_id
                 else '/api/v1/audit/tally')
         result = self._request('GET', path,
-                               query_params={'start-time': start_time, 'end-time': end_time,
-                                             'daily': daily})
+                               query_params={'user-id': user_id, 'start-time': start_time,
+                                             'end-time': end_time, 'daily': daily})
         return result['entries']
 
 

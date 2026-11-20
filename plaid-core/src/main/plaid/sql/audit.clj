@@ -601,11 +601,13 @@
   (audit-page db {:source [:operations]} [start-time end-time] opts))
 
 (defn- tally-scope
-  "WHERE for the aggregate reads: an optional project scope plus the window,
-  and never a repair, which is nobody's activity (`not-repair`)."
-  [project-id start-time end-time]
+  "WHERE for the aggregate reads: an optional project scope, an optional
+  person, plus the window, and never a repair, which is nobody's activity
+  (`not-repair`)."
+  [project-id user-id start-time end-time]
   (conj-where (cond-> (conj (ts-where start-time end-time) (not-repair :operations.group_id) outside-removed-projects)
-                project-id (conj [:= :project_id project-id]))))
+                project-id (conj [:= :project_id project-id])
+                user-id (conj [:= :user_id user-id]))))
 
 (defn- tally-daily
   "`{user-id [{:date \"2026-09-08\" :changes n} ...]}`, oldest first. `ts` is
@@ -657,9 +659,11 @@
   and subtracts.
 
   `:daily?` adds `:by-day`, a list of `{:date :changes}` per user, oldest
-  first, for a sparkline. It is a second grouped scan, so it is opt-in."
-  [db {:keys [project-id start-time end-time daily?]}]
-  (let [where (tally-scope project-id start-time end-time)
+  first, for a sparkline. It is a second grouped scan, so it is opt-in.
+
+  `:user-id` keeps that one person's row, served by `idx_operations_user_ts`."
+  [db {:keys [project-id user-id start-time end-time daily?]}]
+  (let [where (tally-scope project-id user-id start-time end-time)
         rows (psc/q db (cond-> {:select   [:user_id
                                            [[:count :*] :operations]
                                            [[:count [:distinct unit-key]] :changes]
