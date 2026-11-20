@@ -980,7 +980,8 @@ TEXT_TOOLS = ('append_text', 'retype_sentence', 'split_sentence', 'merge_sentenc
 #: fills: the field tool and two reads.
 SENTENCES_ALWAYS = ('set_field', 'read_lexicon', 'analyses_of')
 #: Offered when segmentation is a target: analyze_sentence's items then take
-#: "forms" and the morpheme fields the plan fills (``lines.job_columns``).
+#: "forms" and the morpheme fields the plan fills (``lines.piece_spec``), and
+#: where a column could be read as another, set_analysis alone.
 SENTENCES_SEGMENTATION = ('analyze_sentence', 'set_analysis')
 #: Offered when a target is linked to the lexicon.
 SENTENCES_LEXICON = ('link_entry', 'create_entry')
@@ -994,14 +995,17 @@ def sentences_piece_tools(targets, project=None) -> tuple:
     """The tools a piece of a plan in sentences is offered, from what the
     plan fills (the owner's steer of 2026-11-15: never a fixed glossing
     list): :data:`SENTENCES_ALWAYS`, the analysis tools when segmentation is a
-    target, the entry tools when a target
+    target (set_analysis alone when ``lines.piece_spec`` finds a column
+    that could be read as another), the entry tools when a target
     is linked to the lexicon, and the sentence text tools (offered only when
     the plan edits the text). The toolkit has no other path to the rest, on
     purpose (BRIEF-EV)."""
     from .targets import SEGMENTATION
     out = SENTENCES_ALWAYS
     if any(t.id == SEGMENTATION for t in targets):
-        out += SENTENCES_SEGMENTATION
+        from .lines import piece_spec
+        out += SENTENCES_SEGMENTATION if project is None or piece_spec(project, targets) is not None \
+            else ('set_analysis',)
     if any(t.lexicon for t in targets):
         out += SENTENCES_LEXICON
     if any(t.orthography is not None for t in targets):
@@ -1168,13 +1172,13 @@ def job_entry_facts() -> str:
 def _worded_for(ws, t: Dict[str, Any]) -> Dict[str, Any]:
     """``t`` with its next step worded by who reads it
     (``core.tools.next_step``): retype_sentence's, a later turn a job does
-    not have (REV-DF5-3), analyze_sentence's in a piece whose items take
-    other columns than "FORMS GLOSS" (``lines.piece_tool``), and create_entry's, which in a job is said to be
+    not have (REV-DF5-3), analyze_sentence's in a piece in sentences, whose
+    items take its own columns alone (``lines.piece_tool``), and create_entry's, which in a job is said to be
     never to correct an existing entry (:data:`JOB_NEW_ENTRY`)."""
     from ..core.tools import next_step
-    from .lines import COLUMNS, job_columns, piece_tool
-    if t['function']['name'] == 'analyze_sentence' and job_columns(ws) not in (None, COLUMNS):
-        # Its items take the piece's columns, not "FORMS GLOSS".
+    from .lines import job_columns, piece_tool
+    if t['function']['name'] == 'analyze_sentence' and job_columns(ws):
+        # Its items take the piece's columns and no other.
         return piece_tool(t, job_columns(ws))
     if t['function']['name'] == 'create_entry':
         said = t['function']['description'] + next_step(ws, '', JOB_NEW_ENTRY)

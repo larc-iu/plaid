@@ -147,6 +147,12 @@ set_orthography.'''
 #: analyze_sentence links nothing, so no lookup is promised.
 _JOB_SEGMENTS_READ_FIRST = '''- The message says what is empty in your piece, how those forms were analysed and the \
 lexicon entries in them. Stage the words to segment with analyze_sentence first.'''
+#: The bullet of a piece not offered analyze_sentence, whose columns could
+#: be read as other fields (``lines.piece_spec``): set_analysis, as before
+#: columns.
+_JOB_SET_ANALYSIS_READ_FIRST = '''- The message says what is empty in your piece, how those forms were analysed and the \
+lexicon entries in them. Segment each word with set_analysis, giving its morphemes' forms and only the values the \
+job fills.'''
 #: Where the bullets above name analyze_sentence, after which a piece whose
 #: items take other columns than "FORMS GLOSS" is told them, once.
 _ANALYZE_FIRST = 'Stage the words to segment with analyze_sentence first'
@@ -311,7 +317,7 @@ _JOB_SENTENCES_EXAMPLE_DID = _JOB_EXAMPLE_DID.replace(
 assert _JOB_SENTENCES_EXAMPLE_DID != _JOB_EXAMPLE_DID
 
 
-def _job_segments_example(gloss: bool, sentence: Optional[str]) -> tuple:
+def _job_segments_example(gloss: bool, sentence: Optional[str], analyze: bool = True) -> tuple:
     """The worked piece and note of a piece in sentences of a job that
     segments, built from what its plan fills (REV-DF-D-10, one prompt, parts
     by target kind): glossing too (``gloss``: the morpheme field the
@@ -322,7 +328,11 @@ def _job_segments_example(gloss: bool, sentence: Optional[str]) -> tuple:
     task += {'translation': ' and to translate empty translations', 'field': ' and to fill an empty sentence field',
              None: ''}[sentence]
     then = {'translation': ', and set the translation of s7', 'field': ', and set that field on s7', None: ''}[sentence]
-    if gloss:
+    if not analyze:
+        # A piece not offered analyze_sentence (``lines.piece_spec``).
+        staged = ('It showed that people analysed "leo" as le-o twice. You staged set_analysis for s6.w1 as na-ku-ja '
+                  'and for s6.w3 as le-o as people have it')
+    elif gloss:
         staged = ('It showed that people analysed "leo" as le-o \'today-DEF\' twice. It listed the entries na '
                   '\'PRS\' and ku \'INF\'. You staged one analyze_sentence for s6 with w1 as na-ku-ja (prefix PRS, '
                   'prefix INF, stem come) and w3 as le-o as people have it')
@@ -436,7 +446,8 @@ def job_segments_system(project: IgtProject, targets) -> str:
     target (the translation by its role, or another). Glossing and
     translating is :data:`JOB_SENTENCES_SYSTEM` (REV-DF-D-10). Items in
     other columns than "FORMS GLOSS" (``lines.piece_columns``) are named
-    once, in the read-first bullet."""
+    once, in the read-first bullet. A piece whose columns could be read as
+    other fields (None) segments with set_analysis and is told no columns."""
     from .lines import COLUMNS, piece_columns
     ids = {t.id for t in targets}
     gloss_field, translation = project.gloss_field('Morpheme'), project.gloss_field('Sentence')
@@ -447,7 +458,10 @@ def job_segments_system(project: IgtProject, targets) -> str:
     columns = piece_columns(project, targets)
     if gloss and sentence == 'translation' and columns == COLUMNS:
         return JOB_SENTENCES_SYSTEM
-    did, note = _job_segments_example(gloss, sentence)
+    did, note = _job_segments_example(gloss, sentence, analyze=columns is not None)
+    if columns is None:
+        # Told nothing of columns, offered set_analysis alone.
+        return _sentences_system(_JOB_SET_ANALYSIS_READ_FIRST, did, note)
     read = _JOB_SENTENCES_READ_FIRST if gloss else _JOB_SEGMENTS_READ_FIRST
     if columns != COLUMNS:
         read = read.replace(_ANALYZE_FIRST, f'{_ANALYZE_FIRST}, its items in the columns '

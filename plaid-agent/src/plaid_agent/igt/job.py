@@ -915,17 +915,13 @@ def chosen_word_fields(people: Counter, job: Counter) -> Dict[str, Any]:
     return json.loads(sorted(counts.items(), key=lambda kv: (-kv[1], kv[0]))[0][0]) if counts else {}
 
 
-def rendering(analysis: Dict[str, Any], gloss: Optional[str], entries: Optional[Dict[str, str]] = None) -> str:
-    """An analysis in one short readable line, ``ka-n=da ‘go-PST=3SG’``, with
-    the entries it links where ``entries`` names them."""
-    return rendering_of(analysis, [gloss] if gloss else [], entries)
-
-
-def rendering_of(analysis: Dict[str, Any], fields: List[str], entries: Optional[Dict[str, str]] = None) -> str:
-    """:func:`rendering` with the values of each morpheme field of
-    ``fields`` (names, in order), ``ka-n=da ‘go-PST=3SG’ ‘v-sfx=pro’``:
-    every one, "_" where a morpheme has none, when a morpheme holds one of
-    them, else the forms alone."""
+def rendering(analysis: Dict[str, Any], gloss: Optional[str], entries: Optional[Dict[str, str]] = None,
+              others: Iterable[str] = ()) -> str:
+    """An analysis in one short readable line, ``ka-n=da ‘go-PST=3SG’``: the
+    gloss (``gloss``, the field's name) quoted when a morpheme holds one,
+    then each morpheme field of ``others`` a morpheme holds, by its name,
+    ``[Morph POS: v-sfx=pro; Note: _-a=_]`` ("_" for a morpheme with none),
+    and the entries it links where ``entries`` names them."""
     ms = analysis.get('morphemes') or []
 
     def joined(parts):
@@ -933,36 +929,45 @@ def rendering_of(analysis: Dict[str, Any], fields: List[str], entries: Optional[
         for i, (m, p) in enumerate(zip(ms, parts)):
             out += ('' if i == 0 else '=' if m.get('equals') else '-') + p
         return out
+
+    def values(f):
+        return joined([(m.get('fields') or {}).get(f) or '_' for m in ms])
     line = joined([m.get('form') or '_' for m in ms])
-    if any(f in (m.get('fields') or {}) for f in fields for m in ms):
-        line += ''.join(' ‘' + joined([(m.get('fields') or {}).get(f) or '_' for m in ms]) + '’' for f in fields)
+    if gloss and any(gloss in (m.get('fields') or {}) for m in ms):
+        line += ' ‘' + values(gloss) + '’'
+    named = [f'{f}: {values(f)}' for f in others if f != gloss and any(f in (m.get('fields') or {}) for m in ms)]
+    if named:
+        line += ' [' + '; '.join(named) + ']'
     linked = [entries.get(m['entry'], '?') for m in ms if m.get('entry')] if entries is not None else []
     if linked:
         line += ' (entries ' + ', '.join(linked) + ')'
     return line
 
 
-#: The key of a proposed analysis naming the morpheme fields its from and
-#: to show, when they are more than the gloss (``holds_change`` compares by
-#: them). Hidden from read_job, as the page ignores it.
+#: The key of a proposed analysis naming the morpheme fields besides the
+#: gloss its from and to show, when it writes any (``holds_change``
+#: compares by them). Hidden from read_job, as the page ignores it.
 MORPHEME_FIELDS = 'morpheme_fields'
 
 
-def shown_fields(project: IgtProject, names) -> List[str]:
-    """The morpheme fields a report renders an analysis by: the gloss field,
-    as ever, and every other morpheme field of ``names`` (those the analysis
-    or the change holds a value for), in analyze_sentence's column order
-    (``lines.columns_of``)."""
-    g = project.gloss_field('Morpheme')
-    held = set(names) | ({g.name} if g is not None else set())
-    return [f.name for _n, f in columns_of(project, [f for f in project.fields_by_scope('Morpheme') if f.name in held])]
+def other_fields(project: IgtProject, names) -> List[str]:
+    """The morpheme fields of ``names`` other than the gloss field, in
+    analyze_sentence's column order (``lines.columns_of``): those a report
+    names after an analysis's gloss (:func:`rendering`)."""
+    names = set(names)
+    return [f.name for n, f in columns_of(project, [f for f in project.fields_by_scope('Morpheme') if f.name in names])
+            if n != 'gloss']
+
+
+def gloss_name(project: IgtProject) -> Optional[str]:
+    return getattr(project.gloss_field('Morpheme'), 'name', None)
 
 
 def shown(analysis: Dict[str, Any], project: IgtProject) -> str:
-    """An analysis as the report shows it: :func:`rendering_of` by
-    :func:`shown_fields` of the morpheme fields it holds a value for."""
+    """An analysis as the report shows it: :func:`rendering` with every
+    morpheme field it holds a value for."""
     held = {n for m in analysis.get('morphemes') or [] for n in (m.get('fields') or {})}
-    return rendering_of(analysis, shown_fields(project, held))
+    return rendering(analysis, gloss_name(project), others=other_fields(project, held))
 
 
 def holds_change(doc, project: IgtProject, change: Dict[str, Any]) -> bool:
@@ -988,8 +993,8 @@ def holds_change(doc, project: IgtProject, change: Dict[str, Any]) -> bool:
         return sp is not None and sp.value not in (None, '') and _cut(sp.value, JOB_CHANGE_VALUE_CHARS) == to
     if change.get('kind') == 'set_analysis' and w is not None and word_state(w) != 'unanalyzed':
         # By every morpheme field the change writes (``IgtRunner.describe``).
-        fields = change.get(MORPHEME_FIELDS) or shown_fields(project, ())
-        return _cut(rendering_of(word_analysis(w), fields), JOB_CHANGE_VALUE_CHARS) == to
+        return _cut(rendering(word_analysis(w), gloss_name(project), others=change.get(MORPHEME_FIELDS) or ()),
+                    JOB_CHANGE_VALUE_CHARS) == to
     return False
 
 
@@ -5025,16 +5030,15 @@ class IgtRunner:
                 mine.setdefault(row.get('form'), []).append({**row, 'analysis': json.loads(row['analysis'])})
         if not surfaces and not fields:
             return ''
-        # Analyses show the morpheme fields the stretch fills, in
-        # analyze_sentence's columns, named under the head unless they are
-        # its default (the gloss).
-        columns = filled_columns(project, fill)
-        shows = [f.name for _n, f in columns]
-        names = [n for n, _f in columns]
+        # Analyses show the gloss, which tells two splits of one spelling
+        # apart whatever the job fills (the owner, 2026-11-20), and the
+        # other morpheme fields the stretch fills, each by its name.
+        others = [f.name for n, f in filled_columns(project, fill) if n != 'gloss']
+        gloss = gloss_name(project)
         entries = self.entry_forms(ws, project)
-        return evidence.block(ws, project, surfaces, people, mine, lambda a: rendering_of(a, shows, entries),
+        return evidence.block(ws, project, surfaces, people, mine, lambda a: rendering(a, gloss, entries, others),
                               budget=budget, lexicon=lexicon and any(t.lexicon for t in fill), fields=fields,
-                              nowhere=nowhere, columns=None if names in ([], ['gloss']) else names)
+                              nowhere=nowhere)
 
     def precedent(self, ws: Workspace, project: IgtProject, st: Stretch) -> str:
         """The precedent of a document's or a selection's piece: the
@@ -5868,17 +5872,18 @@ class IgtRunner:
         elif kind == 'set_analysis':
             # Every morpheme field the op writes a value of, before and after.
             by_layer = {f.layer_id: f.name for f in project.fields_by_scope('Morpheme')}
-            fields = shown_fields(project, {by_layer[f.get('layer_id')] for m in op.get('morphemes') or []
+            gloss = gloss_name(project)
+            others = other_fields(project, {by_layer[f.get('layer_id')] for m in op.get('morphemes') or []
                                             for f in m.get('fields') or [] if f.get('layer_id') in by_layer})
-            if fields != shown_fields(project, ()):
-                extra = {MORPHEME_FIELDS: fields}
+            if others:
+                extra = {MORPHEME_FIELDS: others}
             if hit is not None and hit[1] is not None and word_state(hit[1]) != 'unanalyzed':
-                before = rendering_of(word_analysis(hit[1]), fields)
-            after = rendering_of({'morphemes': [{'form': m.get('form'), 'equals': m.get('equals_before'),
-                                                 'fields': {by_layer[f.get('layer_id')]: f.get('value')
-                                                            for f in m.get('fields') or []
-                                                            if by_layer.get(f.get('layer_id')) in fields}}
-                                                for m in op.get('morphemes') or []]}, fields)
+                before = rendering(word_analysis(hit[1]), gloss, others=others)
+            after = rendering({'morphemes': [{'form': m.get('form'), 'equals': m.get('equals_before'),
+                                              'fields': {by_layer[f.get('layer_id')]: f.get('value')
+                                                         for f in m.get('fields') or []
+                                                         if by_layer.get(f.get('layer_id')) in [gloss, *others]}}
+                                             for m in op.get('morphemes') or []]}, gloss, others=others)
         elif kind == 'link':
             if hit is not None and hit[2] is not None and hit[2].link is not None:
                 before = hit[2].link.form

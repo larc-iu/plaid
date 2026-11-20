@@ -108,25 +108,66 @@ def filled_columns(project: IgtProject, targets) -> List[Tuple[str, Any]]:
     return columns_of(project, [t.field for t in targets if t.scope == 'Morpheme' and t.field is not None])
 
 
-def piece_columns(project: IgtProject, targets) -> List[str]:
-    """The columns of the items of a job's piece that fills ``targets``:
-    "forms", then each morpheme field it fills (:func:`filled_columns`)."""
-    return ['forms'] + [n for n, _f in filled_columns(project, targets)]
+def piece_spec(project: IgtProject, targets) -> Optional[List[Tuple[str, Any]]]:
+    """The columns of the items of a job's piece that fills ``targets``,
+    ``[(column, field)]``: "forms" (field None), then each morpheme field it
+    fills (:func:`filled_columns`). None when a column could be read as
+    another: two of its names (a column's, a field's own) the same but for
+    case, or a field that is not the gloss field named "forms" or "gloss".
+    Such a piece segments with set_analysis, a word a call."""
+    g = project.gloss_field('Morpheme')
+    spec = [('forms', None)] + filled_columns(project, targets)
+    names = [n.casefold() for n, f in spec] + [f.name.casefold() for n, f in spec if f is not None and f.name != n]
+    if len(set(names)) != len(names):
+        return None
+    if any(f.name.strip().casefold() in ('forms', 'gloss') for _n, f in spec[1:]
+           if g is None or f.layer_id != g.layer_id):
+        return None
+    return spec
+
+
+def piece_columns(project: IgtProject, targets) -> Optional[List[str]]:
+    """The column names of :func:`piece_spec`, or None."""
+    spec = piece_spec(project, targets)
+    return None if spec is None else [n for n, _f in spec]
+
+
+def job_spec(ws) -> Optional[List[Tuple[str, Any]]]:
+    """:func:`piece_spec` of a job's piece in sentences, by what its plan
+    fills: an item names exactly those columns, each resolved against them
+    alone, and a sentence naming none takes them. ``[]`` for a piece that
+    takes no columns (its piece_spec is None), None outside such a piece,
+    where the chat's rule holds."""
+    if not getattr(ws, 'in_sentences', False):
+        return None
+    return piece_spec(ws.project, getattr(ws, 'fills', ())) or []
 
 
 def job_columns(ws) -> Optional[List[str]]:
-    """The columns a job's piece in sentences takes (:func:`piece_columns`
-    of what its plan fills): an item names exactly those, and a sentence
-    naming none takes them. None elsewhere, where the chat's rule holds."""
-    if not getattr(ws, 'in_sentences', False):
-        return None
-    return piece_columns(ws.project, getattr(ws, 'fills', ()))
+    """The column names of :func:`job_spec`."""
+    spec = job_spec(ws)
+    return None if spec is None else [n for n, _f in spec]
+
+
+#: What a job's piece's analyze_sentence says of a value an item cannot hold.
+_UNWRITABLE = ('A form or value holding a space, "-", "=" or "_" cannot be written here: give "_" for that word '
+               'and use set_analysis.')
+#: HELP's paragraph of other columns, which a job's piece does not take.
+_OTHER_FIELDS = ('''Other morpheme fields: columns names an item's columns, e.g. "columns": ["forms", "gloss", "POS"] and \
+items like "na-ku-ja PRS-INF-come v-asp-v".
+
+''')
+assert _OTHER_FIELDS in HELP
+#: What the chat's description offers behind help, and a job's piece's.
+_HELP_FOR, _JOB_HELP_FOR = ('help: true for the rest (other fields, words left as they are, new_entries).',
+                            'help: true for the rest (words left as they are, new_entries).')
 
 
 def piece_help(columns: List[str]) -> str:
     """analyze_sentence as a job's piece whose items take ``columns``, not
-    the default, is told it: the item's shape, "_", and a link only where
-    "gloss" is a column (links go by form and gloss)."""
+    the default, is told it: the item's shape, "_", what an item cannot
+    hold, and a link only where "gloss" is a column (links go by form and
+    gloss)."""
     values = columns[1:]
     shown = {'gloss': ('PRS-INF-come', 'today=DEF')}
     ex = [' '.join(['na-ku-ja'] + [shown.get(c, ('A-B-C',))[0] for c in values]),
@@ -139,7 +180,8 @@ def piece_help(columns: List[str]) -> str:
            + ', e.g. ' + json.dumps({'ref': 's4', 'words': ex}, ensure_ascii=False)
            + (', A to E standing for values' if [c for c in values if c != 'gloss'] else '')
            + '. "_" as an item leaves that word as it is' + (', and as one value gives that morpheme none.' if values
-                                                              else '.'))
+                                                              else '.')
+           + ' ' + _UNWRITABLE)
     if 'gloss' in columns:
         out += (' Each glossed morpheme is linked to the one entry with that form and gloss; the answer lists those '
                 'with several or none.')
@@ -147,8 +189,14 @@ def piece_help(columns: List[str]) -> str:
 
 
 def piece_tool(t: Dict[str, Any], columns: List[str]) -> Dict[str, Any]:
-    """analyze_sentence's schema ``t`` for such a piece: :func:`piece_help`
-    as its description, no help, and without "gloss" no new entries."""
+    """analyze_sentence's schema ``t`` for a job's piece in sentences: with
+    the default columns, the chat's, its help offering no other column;
+    with others, :func:`piece_help` as its description, no help, and
+    without "gloss" no new entries."""
+    if columns == COLUMNS:
+        said = t['function']['description']
+        assert _HELP_FOR in said
+        return {**t, 'function': {**t['function'], 'description': said.replace(_HELP_FOR, _JOB_HELP_FOR)}}
     drop = ('help',) if 'gloss' in columns else ('help', 'new_entries', 'lexicon')
     params = t['function']['parameters']
     props = {k: v for k, v in params['properties'].items() if k not in drop}
@@ -164,7 +212,12 @@ def t_analyze_sentence(ws: Workspace, document: Optional[str] = None, sentences:
                        new_entries: bool = False, lexicon: Optional[str] = None, help: bool = False) -> str:
     if help:
         piece = job_columns(ws)
-        return HELP if piece in (None, COLUMNS) else piece_help(piece)
+        if piece is None:
+            return HELP
+        if not piece:
+            raise ToolError('This piece segments with set_analysis, a word a call.', kind='not-allowed')
+        # A job's piece is told only of the columns it takes.
+        return HELP.replace(_OTHER_FIELDS, '') if piece == COLUMNS else piece_help(piece)
     if not ws.project.morpheme_layer_id:
         raise ToolError('This project has no morpheme layer.', kind='not-found')
     if not document:
@@ -274,14 +327,16 @@ def _pieces(word: str) -> Tuple[List[str], List[str]]:
 
 def _columns(ws: Workspace, item: Dict[str, Any], label: str):
     """``[(name, field)]``: what each column of an item is, "forms" first,
-    ``field`` None for it. The gloss field's own name is the gloss."""
-    piece = job_columns(ws)
-    names = item.get('columns') or piece or COLUMNS
+    ``field`` None for it. The gloss field's own name is the gloss. In a
+    job's piece (:func:`job_spec`) each name is resolved against the piece's
+    own columns alone, by a column's name or its field's, so a column only
+    ever means a field the piece fills."""
+    spec = job_spec(ws)
+    if spec is not None:
+        return _piece_columns(spec, item, label)
+    names = item.get('columns') or COLUMNS
     if not isinstance(names, list) or not all(isinstance(n, str) for n in names):
         raise _Refused(f'{label} not staged: columns is a list of names, e.g. ["forms", "gloss", "POS"].')
-    # A job's piece writes no field its plan does not fill.
-    takes = _Refused(f'{label} not staged: this piece\'s items take the columns '
-                     f'{json.dumps(piece, ensure_ascii=False)}, "forms" first, each once.')
     g = ws.project.gloss_field('Morpheme')
     out = []
     for name in names:
@@ -292,24 +347,37 @@ def _columns(ws: Workspace, item: Dict[str, Any], label: str):
         if key == 'gloss' and g is not None:
             out.append(('gloss', g))
             continue
-        try:
-            f = ws.project.field(name)
-        except ToolError:
-            if piece is None:
-                raise
-            raise takes
+        f = ws.project.field(name)
         if f.scope != 'Morpheme':
-            if piece is not None:
-                raise takes
             raise _Refused(f'{label} not staged: "{f.name}" is a {f.scope} field: set_field sets it.')
         out.append((column_name(g, f), f))
     names = [n for n, _f in out]
-    if piece is not None:
-        if names[:1] != ['forms'] or len(set(names)) != len(names) or set(names) != set(piece):
-            raise takes
-        return out
     if names[:1] != ['forms'] or len(set(names)) != len(names) or (g is not None and 'gloss' not in names):
         raise _Refused(f'{label} not staged: columns starts with "forms", has "gloss", and names each once.')
+    return out
+
+
+def _piece_columns(spec: List[Tuple[str, Any]], item: Dict[str, Any], label: str):
+    """:func:`_columns` in a job's piece: the names given, each a column of
+    ``spec`` by its name or its field's (case aside), every one once,
+    "forms" first; none given, ``spec`` itself."""
+    if not spec:
+        raise _Refused(f'{label} not staged: this piece segments with set_analysis, a word a call.')
+    names = item.get('columns')
+    if not names:
+        return list(spec)
+    takes = _Refused(f'{label} not staged: this piece\'s items take the columns '
+                     f'{json.dumps([n for n, _f in spec], ensure_ascii=False)}, "forms" first, each once.')
+    if not isinstance(names, list) or not all(isinstance(n, str) for n in names):
+        raise takes
+    by = {}
+    for n, f in spec:
+        by[n.casefold()] = (n, f)
+        if f is not None:
+            by[f.name.casefold()] = (n, f)
+    out = [by.get(name.strip().casefold()) for name in names]
+    if None in out or out[:1] != [spec[0]] or len(set(n for n, _f in out)) != len(out) or len(out) != len(spec):
+        raise takes
     return out
 
 
@@ -412,7 +480,7 @@ def _stage_sentence(ws: Workspace, doc: IgtDoc, item: Dict[str, Any], new_entrie
     items = item.get('words')
     if not isinstance(items, list) or not items:
         piece = job_columns(ws)
-        if piece not in (None, COLUMNS):
+        if piece and piece != COLUMNS:
             raise _Refused(f'{label} not staged: give words, one item per word of the ref, in the columns '
                            f'{json.dumps(piece, ensure_ascii=False)}.')
         raise _Refused(f'{label} not staged: give words, one "FORMS GLOSS" item per word of the ref, e.g. '

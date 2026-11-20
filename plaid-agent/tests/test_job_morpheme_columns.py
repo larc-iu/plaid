@@ -22,14 +22,14 @@ from plaid_agent.igt.project import load_project
 
 J = 'JMC'
 POS_COLUMNS = ["forms", "Morph POS"]
-#: analyze_sentence's description in a glossing job's piece, as it was
-#: before non-gloss columns (4ad569f28).
+#: analyze_sentence's description in a glossing job's piece: the chat's,
+#: less the other fields its help offers, which a job's piece does not take.
 DEFAULT_DESCRIPTION = (
     'PLAN: segment and gloss sentences word by word. Each sentence is {ref, words}, words one "FORMS GLOSS" item per '
     'word of the ref, in order: morphemes apart by "-" or "=", one space before the gloss, e.g. {"ref": "s4", "words": '
     '["na-ku-ja PRS-INF-come", "le=o today=DEF"]}. Each glossed morpheme is linked to the one entry with that form '
-    'and gloss; the answer lists those with several or none. help: true for the rest (other fields, words left as '
-    'they are, new_entries).')
+    'and gloss; the answer lists those with several or none. help: true for the rest (words left as they are, '
+    'new_entries).')
 
 
 def _tool(model, name, n=0):
@@ -41,12 +41,13 @@ def _answers(model):
     return [m['content'] for c in model.calls[-1:] for m in c['kwargs']['messages'] if m['role'] == 'tool']
 
 
-def _job(monkeypatch, fills, sentences, raw=None, instructions='Segment the words and fill Morph POS.'):
+def _job(monkeypatch, fills, sentences, raw=None, instructions='Segment the words and fill Morph POS.',
+         project=None):
     """A job over ``raw`` (two blank words, kata and mo, by default) whose
     piece stages one analyze_sentence of ``sentences``: the client, the
     model, the finished job and every op written."""
     raw = raw or document('d1', 'Story', [{'words': ['kata', 'mo']}])
-    client = JobClient({'d1': raw}, project=fields_project())
+    client = JobClient({'d1': raw}, project=project or fields_project())
     job = start(client, instructions, id=J, fills=fills)
     written, real = [], igt_job.execute_plan
 
@@ -124,7 +125,19 @@ def test_the_default_glossing_job_is_told_offered_and_shown_what_it_was(monkeypa
             'several or none.') in system
     assert 'columns' not in system
     asked = model.calls[0]['asked']
-    assert '- "ka": people: ka ‘go’ (1)' in asked and 'Each analysis:' not in asked and 'Columns' not in asked
+    assert '- "ka": people: ka ‘go’ (1)' in asked and '[' not in asked.split('- "ka"')[1].split('\n')[0]
+    assert 'Columns' not in asked
+    # Its help offers no column the piece does not take; the chat's does.
+    from plaid_agent.igt import toolkit
+    from plaid_agent.igt.lines import HELP
+    from plaid_agent.igt.workspace import Workspace
+    ws = igt_job.JobWorkspace(_client, load_project(_client, 'p1'))
+    ws.in_sentences, ws.fills = True, [t for t in igt_job.tg.fillable(ws.project) if t.id in ('segmentation', MGLOSS)]
+    said = toolkit.call_tool(ws, 'analyze_sentence', {'help': True})
+    assert 'columns' not in said and '"POS"' not in said, said
+    assert said == HELP.replace('Other morpheme fields: columns names an item\'s columns, e.g. "columns": ["forms", '
+                                '"gloss", "POS"] and items like "na-ku-ja PRS-INF-come v-asp-v".\n\n', '')
+    assert toolkit.call_tool(Workspace(_client, ws.project), 'analyze_sentence', {'help': True}) == HELP
 
 
 def test_a_job_that_fills_two_morpheme_fields_sees_both_in_the_evidence_block(monkeypatch):
@@ -134,7 +147,7 @@ def test_a_job_that_fills_two_morpheme_fields_sees_both_in_the_evidence_block(mo
                                              [{'ref': 's2', 'words': ['ka go V']}], raw=raw)
     asked = model.calls[0]['asked']
     assert 'How these forms were analysed before (by people in this project, and earlier in this job):\n' \
-           'Each analysis: forms ‘gloss’ ‘Morph POS’.\n- "ka": people: ka ‘go’ ‘V’ (1)' in asked, asked
+           '- "ka": people: ka ‘go’ [Morph POS: V] (1)' in asked, asked
     said = _tool(model, 'analyze_sentence')['function']['description']
     assert json.dumps(['forms', 'gloss', 'Morph POS']) in said and 'linked' in said, said
     assert _values(written) == [('d1-s2w1', [('ka', {MGLOSS: 'go', MPOS: 'V'})])]
@@ -148,6 +161,92 @@ def test_a_job_that_segments_only_takes_forms_alone(monkeypatch):
     assert finished['state'] == 'done'
     assert _values(written) == [('d1-s1w1', [('ka', {}), ('ta', {})]), ('d1-s1w2', [('mo', {})])]
     assert json.dumps(['forms']) in model.calls[0]['kwargs']['messages'][0]['content']
+
+
+def test_a_job_that_segments_only_sees_the_gloss_in_its_evidence(monkeypatch):
+    """The owner, 2026-11-20: the gloss of a past analysis tells two splits
+    of one spelling apart, so a job that only segments sees it, though its
+    items take "forms" alone."""
+    raw = document('d1', 'Story', [{'words': [('kata', [('ka', 'go'), ('ta', 'PST')], 'human')]}, {'words': ['kata']}])
+    _client, model, finished, _written = _job(monkeypatch, ('segmentation',), [{'ref': 's2', 'words': ['ka-ta']}],
+                                              raw=raw, instructions='Segment.')
+    assert '- "kata": people: ka-ta ‘go-PST’ (1)' in model.calls[0]['asked'], model.calls[0]['asked']
+    said = _tool(model, 'analyze_sentence')['function']['description']
+    assert json.dumps(['forms']) in said
+
+
+def test_an_unknown_column_is_refused_with_the_pieces_columns_and_names_no_other_field(monkeypatch):
+    _client, model, finished, written = _job(monkeypatch, ('segmentation', MPOS), [
+        {'ref': 's1', 'words': ['ka-ta x-y', 'mo z'], 'columns': ['forms', 'Foo']}])
+    assert not [o for o in written if o.get('kind') == 'set_analysis']
+    (answer,) = _answers(model)
+    assert f"this piece's items take the columns {json.dumps(POS_COLUMNS)}" in answer, answer
+    assert 'Role' not in answer and 'Note' not in answer and 'Translation' not in answer, answer
+
+
+# --- a column means a field the piece fills, by identity --------------------------------------------------
+
+def _named(*fields):
+    """The project of fields_project with morpheme fields ``(id, name)``
+    added, the word field Gloss renamed Word Gloss (a name is no role)."""
+    from job_fixtures import FIELD_LAYERS
+    p = fields_project()
+    layers = {tk['id']: tk for tk in p['text_layers'][0]['token_layers']}
+    for layer_id, name in fields:
+        layers[FIELD_LAYERS[MPOS][0]]['span_layers'].append(
+            {'id': layer_id, 'name': name, 'config': {'igt': {'scope': 'Morpheme'}}})
+    for tk in p['text_layers'][0]['token_layers']:
+        for sl in tk['span_layers']:
+            if sl['id'] == 'sl-gloss':
+                sl['name'] = 'Word Gloss'
+    return p
+
+
+@pytest.mark.parametrize('name', ['gloss', 'Gloss', 'forms', 'FORMS'])
+def test_a_field_named_as_a_column_is_never_taken_for_it(monkeypatch, name):
+    """The review's probe: a target field named "gloss" was taken for the
+    default glossing job, and its values written on the gloss field, which
+    the job does not fill. Such a piece is not offered analyze_sentence (it
+    segments with set_analysis, as before columns) and is told no columns."""
+    _client, model, finished, written = _job(monkeypatch, ('segmentation', 'sl-x'),
+                                             [{'ref': 's1', 'words': ['ka-ta A-B', 'mo C']}],
+                                             project=_named(('sl-x', name)), instructions='Segment and fill it.')
+    assert not [v for _w, ms in _values(written) for _f, vs in ms for v in vs if v != 'sl-x'], written
+    assert not _values(written)
+    names = {t['function']['name'] for t in model.calls[0]['kwargs']['tools']}
+    assert 'analyze_sentence' not in names and 'set_analysis' in names
+    system = model.calls[0]['kwargs']['messages'][0]['content']
+    assert 'columns' not in system and 'Segment each word with set_analysis' in system, system
+    assert 'analyze_sentence' not in system
+
+
+def test_two_target_fields_of_one_name_are_two_columns_by_the_names_the_project_gives_them(monkeypatch):
+    """The project tells two fields of one name apart ("Morph POS
+    (Morpheme)", "morph pos (Morpheme 2)"): two columns, each value written
+    on its own field."""
+    _client, model, finished, written = _job(monkeypatch, ('segmentation', MPOS, 'sl-x'),
+                                             [{'ref': 's1', 'words': ['ka-ta A-B C-D', 'mo E F']}],
+                                             project=_named(('sl-x', 'morph pos')))
+    said = _tool(model, 'analyze_sentence')['function']['description']
+    assert json.dumps(['forms', 'Morph POS (Morpheme)', 'morph pos (Morpheme 2)']) in said, said
+    assert _values(written) == [('d1-s1w1', [('ka', {MPOS: 'A', 'sl-x': 'C'}), ('ta', {MPOS: 'B', 'sl-x': 'D'})]),
+                                ('d1-s1w2', [('mo', {MPOS: 'E', 'sl-x': 'F'})])]
+
+
+def test_a_column_named_by_its_fields_own_name_means_that_field(monkeypatch):
+    """Resolved against the piece's own columns: "Morph Gloss" is the gloss
+    column, "morph pos" the Morph POS one."""
+    _client, model, finished, written = _job(monkeypatch, ('segmentation', MGLOSS, MPOS), [
+        {'ref': 's1', 'words': ['ka-ta go-PST V-SFX', 'mo x N'], 'columns': ['forms', 'morph pos', 'Morph Gloss']}])
+    assert _values(written) == [('d1-s1w1', [('ka', {MPOS: 'go', MGLOSS: 'V'}), ('ta', {MPOS: 'PST', MGLOSS: 'SFX'})]),
+                                ('d1-s1w2', [('mo', {MPOS: 'x', MGLOSS: 'N'})])], written
+
+
+def test_a_value_holding_a_delimiter_is_said_to_take_set_analysis(monkeypatch):
+    _client, model, finished, _written = _job(monkeypatch, ('segmentation', MPOS),
+                                              [{'ref': 's1', 'words': ['ka-ta V-SFX', 'mo N']}])
+    said = _tool(model, 'analyze_sentence')['function']['description']
+    assert 'A form or value holding a space, "-", "=" or "_" cannot be written here' in said, said
 
 
 # --- the report shows every morpheme field value a change writes ------------------------------------------
@@ -171,7 +270,10 @@ def _op(project, **values):
 def test_a_proposed_analysis_shows_every_morpheme_field_it_writes():
     run, project, doc = _story('N')
     c = run.describe(_op(project, gloss='go', pos='V'), doc, project)
-    assert (c['from'], c['to']) == ('ka ‘go’ ‘N’', 'ka ‘go’ ‘V’')
+    assert (c['from'], c['to']) == ('ka ‘go’ [Morph POS: N]', 'ka ‘go’ [Morph POS: V]')
+    # A value of no gloss is named all the same.
+    c = run.describe(_op(project, pos='V'), doc, project)
+    assert (c['from'], c['to']) == ('ka ‘go’ [Morph POS: N]', 'ka [Morph POS: V]')
     # The gloss alone, as before.
     run, project, doc = _story(None)
     c = run.describe(_op(project, gloss='went'), doc, project)
@@ -199,4 +301,4 @@ def test_harmonizes_report_shows_every_morpheme_field_of_an_analysis():
               'from': {'k': {'analysis': analysis('V'), 'words': [('d1', 'd1-s1w1')]}}}]
     report = IgtRunner.harmonize_report(moves, [], {('d1', 'd1-s1w1')}, {}, project)
     (changed,) = report['changed']
-    assert changed['to'] == 'ka ‘go’ ‘N’' and changed['from'][0]['analysis'] == 'ka ‘go’ ‘V’'
+    assert changed['to'] == 'ka ‘go’ [Morph POS: N]' and changed['from'][0]['analysis'] == 'ka ‘go’ [Morph POS: V]'
