@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom';
 import { DataTable } from '@ui/components/shared/data-table';
 import { notifyError, humanizeError } from '@/utils/feedback';
 import { textIncludes } from '@ui/domain/collation.js';
-import { ProjectLink } from './projectLinks';
+import { ProjectLink } from './ProjectLink';
 
 // Every vocabulary belongs to one project and other projects may link it, so
 // which projects use one is invisible from inside any of them. This is the

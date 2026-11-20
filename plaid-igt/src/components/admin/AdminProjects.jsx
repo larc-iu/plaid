@@ -7,7 +7,7 @@ import { ownerOf } from '@ui/domain/appOwners.js';
 import { notifySuccess, notifyError, humanizeError } from '@/utils/feedback';
 import { findBaselineTextLayer, readInitialized } from '../../domain/igtConfig';
 import { compareNames, textIncludes } from '@ui/domain/collation.js';
-import { ProjectLink } from './projectLinks';
+import { ProjectLink } from './ProjectLink';
 import { projectRole } from '@larc-iu/plaid-client';
 
 // Every project on the server, including the ones this admin has no role in.

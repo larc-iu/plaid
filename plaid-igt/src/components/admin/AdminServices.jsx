@@ -8,7 +8,7 @@ import { notifySuccess, notifyError, humanizeError } from '@/utils/feedback';
 import { useConfirm } from '@ui/components/shared/ConfirmProvider';
 import { compareNames, textIncludes } from '@ui/domain/collation.js';
 import { countOf } from '@ui/lib/plural.js';
-import { ProjectLink } from './projectLinks';
+import { ProjectLink } from './ProjectLink';
 
 // Services register per project, so "is the analyze service up" can only be
 // answered one project at a time. This asks every project at once.

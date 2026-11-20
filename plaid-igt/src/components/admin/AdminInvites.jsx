@@ -25,7 +25,7 @@ import { notifySuccess, notifyError, humanizeError } from '@/utils/feedback';
 import { useConfirm } from '@ui/components/shared/ConfirmProvider';
 import { InviteStatusBadge } from '@ui/components/shared/InviteStatusBadge.jsx';
 import { inviteLinkFor, GRANT_ROLES, cap, inviteRevocable } from '@ui/domain/invites.js';
-import { ProjectLink } from './projectLinks';
+import { ProjectLink } from './ProjectLink';
 import { ROLE_HINTS } from '@/domain/roleGrants.js';
 import { textIncludes } from '@ui/domain/collation.js';
 import { countOf } from '@ui/lib/plural.js';

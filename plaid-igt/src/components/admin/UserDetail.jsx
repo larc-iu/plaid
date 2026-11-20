@@ -15,7 +15,8 @@ import { projectRole } from '@larc-iu/plaid-client';
 import { useLatestCall } from '@ui/hooks/useLatestCall.js';
 import { TYPE } from '@ui/lib/typeScale.js';
 import { cn } from '@ui/lib/utils';
-import { ProjectLink, documentTarget, projectTarget } from './projectLinks';
+import { ProjectLink } from './ProjectLink';
+import { documentTarget, projectTarget } from './projectTarget';
 
 // One account: what they can reach, what they have been doing, and what is
 // holding a session open in their name.

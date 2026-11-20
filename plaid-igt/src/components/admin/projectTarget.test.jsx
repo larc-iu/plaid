@@ -6,7 +6,7 @@ vi.mock('@ui/components/shared/ConfirmProvider', () => ({
   useConfirm: () => async () => true,
 }));
 
-const { projectTarget, documentTarget } = await import('./projectLinks');
+const { projectTarget, documentTarget } = await import('./projectTarget');
 const { AdminVocabularies } = await import('./AdminVocabularies');
 const { AdminInvites } = await import('./AdminInvites');
 const { AdminServices } = await import('./AdminServices');
