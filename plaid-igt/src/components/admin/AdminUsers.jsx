@@ -39,8 +39,12 @@ export const AdminUsers = ({ client, currentUser }) => {
       // keeps the roster sortable and countable without a round trip per
       // keystroke, and list() follows every cursor so nothing is dropped
       // silently at some page boundary. Each account's private data size
-      // comes from one read that sums them all.
-      const [list, sizes] = await Promise.all([client.users.list(), client.admin.userDataSizes()]);
+      // comes from one read that sums them all, and the directory does not
+      // wait on its failure: the column is then blank.
+      const [list, sizes] = await Promise.all([
+        client.users.list(),
+        client.admin.userDataSizes().catch(() => []),
+      ]);
       const bytes = new Map((sizes || []).map((s) => [s.userId, s.bytes]));
       setUsers((list || []).map((u) => ({ ...u, privateBytes: bytes.get(u.id) ?? null })));
     } catch (err) {

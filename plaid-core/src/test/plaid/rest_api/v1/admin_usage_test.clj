@@ -89,7 +89,7 @@
 (deftest private-data-is-summed-by-user
   (let [put! (fn [who user k v]
                (api-call who {:method :put :path (str "/api/v1/users/" user "/data/" k) :body v}))
-        stored (fn [user] (:n (psc/q1 fix/db {:select [[[:sum [:length [:cast :value :blob]]] :n]]
+        stored (fn [user] (:n (psc/q1 fix/db {:select [[[:sum [:octet_length :value]] :n]]
                                               :from [:user_data] :where [:= :user_id user]})))]
     (is (= 200 (:status (put! user1-request "user1@example.com" "igt:a" {:title "ə ŋ"}))))
     (is (= 200 (:status (put! user1-request "user1@example.com" "igt:b" [1 2 3]))))

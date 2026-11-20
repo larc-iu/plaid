@@ -121,4 +121,17 @@ describe('the private data column', () => {
     expect(cell('bob@example.com')).toBe('');
     await unmount();
   });
+
+  it('lists the accounts when the sizes cannot be read, the column blank', async () => {
+    const client = fakeClient();
+    client.admin.userDataSizes = vi.fn(async () => {
+      throw Object.assign(new Error('Server error'), { status: 500 });
+    });
+    const { container, step, unmount } = await at('/admin?tab=users', client);
+    await step(async () => {});
+    const rows = [...container.querySelectorAll('tbody tr')];
+    expect(rows.map((tr) => tr.textContent).some((t) => t.includes('Ada Lovelace'))).toBe(true);
+    expect(rows.map((tr) => tr.textContent).join('')).not.toContain('KB');
+    await unmount();
+  });
 });
