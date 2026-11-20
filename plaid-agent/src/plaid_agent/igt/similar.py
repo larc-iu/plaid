@@ -41,14 +41,24 @@ def word_item(analysis: Dict[str, Any], fields: Sequence[str] = ()) -> str:
     joined by "-", or "=" at a clitic boundary, then for each of ``fields``
     (morpheme field names) one space and that field's values joined the
     same way, "_" for a morpheme with none. A value is shown as it is
-    written, a space or a delimiter in it too."""
+    written, a space or a delimiter in it too. A word with no morphemes (a
+    project with no morpheme layer) is its ``surface``."""
     ms = analysis.get('morphemes') or []
+    if not ms:
+        return analysis.get('surface') or '_'
 
     def joined(parts):
         return ''.join(('' if i == 0 else '=' if m.get('equals') else '-') + p
                        for i, (m, p) in enumerate(zip(ms, parts)))
     return ' '.join([joined([m.get('form') or '_' for m in ms])]
                     + [joined([(m.get('fields') or {}).get(f) or '_' for m in ms]) for f in fields])
+
+
+def holds(example: Dict[str, Any], word_fields: frozenset) -> bool:
+    """Whether a word of ``example`` holds a person's value of one of
+    ``word_fields`` (word field names), as its ``people_fields`` names
+    them."""
+    return not example['people_fields'].isdisjoint(word_fields)
 
 
 def lines_of(example: Dict[str, Any], fields: Sequence[str] = (), word_fields: Sequence[str] = ()) -> str:

@@ -9,7 +9,7 @@ import time
 
 import pytest
 
-from fixtures import GLOSS, MGLOSS, TRANS
+from fixtures import GLOSS, MGLOSS, MORPH_LAYER, TRANS
 from job_fixtures import (MPOS, ROLE, JobClient, Model, document, fields_project, reply, runner, start, use,
                           with_values)
 
@@ -232,16 +232,14 @@ def _animacy_client(piece):
 
 def test_a_job_that_fills_a_word_field_on_segmented_words_gets_the_block_exactly(monkeypatch):
     """Nothing is empty for segmentation, Animacy is: the words show their
-    forms alone, the field a line under them, "_" for a word with none."""
+    forms alone, the field a line under them, "_" for a word with none.
+    "lili mumu." holds no Animacy: a job that fills only word fields is not
+    handed it."""
     client = _animacy_client([{'words': [('gamda', [('gam', 'fish'), ('da', 'x')], 'human'),
                                          ('zo', [('zo', 'y')], 'human')]}])
     (asked, system), = _run(monkeypatch, client, fills=(ROLE,))
     assert _block(asked) == '\n'.join([
         similar.HEAD,
-        '',
-        'lili mumu.',
-        'Words: ["lili", "mu-mu"]',
-        'Animacy: ["_", "_"]',
         '',
         'gamdi ka.',
         'Translation: The fish ate.',
@@ -361,6 +359,115 @@ def test_the_cut_counts_the_word_field_lines():
     assert len(cut) == budget
 
 
+def test_a_word_with_no_morphemes_shows_its_surface():
+    """A word of a project with no morpheme layer has no morphemes: its
+    surface stands for its forms."""
+    example = {'text': 'gamdi ka.', 'words': [{'morphemes': [], 'word': {'Animacy': 'animate'}, 'surface': 'gamdi'},
+                                              {'morphemes': [], 'word': {}, 'surface': 'ka'}]}
+    assert similar.lines_of(example, word_fields=['Animacy']) == '\n'.join([
+        'gamdi ka.', 'Words: ["gamdi", "ka"]', 'Animacy: ["animate", "_"]'])
+
+
+# --- word fields where nothing is segmented ------------------------------------------
+
+def _unsegmented_people():
+    """Another document nobody segmented: "gamdi ka." with a person's
+    Animacy on "gamdi", "lili mumu." with none, "gamdo zo." whose only
+    Animacy the job wrote, "gamdu zu." whose only Animacy another producer
+    proposed and nobody confirmed."""
+    raw = document('P', 'Other', [{'words': ['gamdi', 'ka'], 'translation': ('The fish ate.', 'human')},
+                                  {'words': ['lili', 'mumu']}, {'words': ['gamdo', 'zo']},
+                                  {'words': ['gamdu', 'zu']}])
+    return with_values(raw, [(ROLE, 'P-s1w1', 'animate', 'human'), (ROLE, 'P-s3w1', 'animate', J),
+                             (ROLE, 'P-s4w1', 'animate', 'machine')])
+
+
+def _animacy_project():
+    return _renamed(fields_project(), {ROLE: 'Animacy'})
+
+
+def test_a_word_field_job_where_nothing_is_segmented_gets_the_block_exactly(monkeypatch):
+    """Only "gamdi ka." holds a person's Animacy: the sentence with none,
+    the one whose only value the job wrote and the one whose only value is
+    another producer's are not in it. Each unsegmented word shows its
+    surface."""
+    client = JobClient({'A': document('A', 'Doc A', [{'words': ['gamda', 'zo']}]), 'P': _unsegmented_people()},
+                       project=_animacy_project())
+    (asked, system), = _run(monkeypatch, client, fills=(ROLE,))
+    assert _block(asked) == '\n'.join([
+        similar.HEAD,
+        '',
+        'gamdi ka.',
+        'Translation: The fish ate.',
+        'Words: ["gamdi", "ka"]',
+        'Animacy: ["animate", "_"]',
+    ]), asked
+    assert JOB_STAGE_SIMILAR in system
+
+
+def test_a_word_field_job_never_sees_its_pieces_own_sentences(monkeypatch):
+    """s2 holds a person's Animacy and is in the piece: never in its list.
+    s7, in another piece, is."""
+    sentences = [{'words': ['gamda']}, {'words': ['gamdo']}] + [{'words': [f'ta{i}']} for i in range(3, 7)]
+    sentences += [{'words': ['gamdu']}]
+    doc = with_values(document('A', 'Doc A', sentences),
+                      [(ROLE, 'A-s2w1', 'animate', 'human'), (ROLE, 'A-s7w1', 'animate', 'human')])
+    pieces = _run(monkeypatch, JobClient({'A': doc}, project=_animacy_project()), fills=(ROLE,))
+    first = _block(pieces[0][0])
+    assert 'Your piece: s1, s2, s3, s4, s5.' in pieces[0][0]
+    assert 'gamdo' not in first and 'gamdu.' in first, first
+
+
+def test_a_job_filling_two_word_fields_counts_a_sentence_holding_either(monkeypatch):
+    people = with_values(document('P', 'Other', [
+        {'words': ['gamdi', 'ka']},
+        {'words': [{'form': 'gamdo', 'who': 'human', 'gloss': ('fish.LOC', 'human')}, 'zo']},
+        {'words': ['gamdu', 'zu']}]), [(ROLE, 'P-s1w2', 'act', 'human')])
+    client = JobClient({'A': document('A', 'Doc A', [{'words': ['gamda', 'zo']}]), 'P': people},
+                       project=fields_project())
+    (asked, _), = _run(monkeypatch, client, fills=(GLOSS, ROLE))
+    block = _block(asked)
+    assert 'gamdi ka.' in block and 'gamdo zo.' in block and 'gamdu' not in block, block
+    assert 'Gloss: ["fish.LOC", "_"]' in block and 'Role: ["_", "act"]' in block, block
+
+
+def test_a_job_that_segments_and_fills_a_word_field_keeps_the_analysed_pool(monkeypatch):
+    """"gamdo zo." holds a person's Animacy, its words unsegmented: not in
+    the block of a job that segments, which is today's."""
+    people = document('P', 'Other', [
+        {'words': [('gamdi', [('gam', 'fish'), ('di', 'ERG')], 'human'), ('ka', [('ka', 'eat')], 'human')],
+         'translation': ('The fish ate.', 'human')},
+        {'words': ['gamdo', 'zo']}])
+    client = JobClient({'A': document('A', 'Doc A', [{'words': ['gamda', 'zo']}]),
+                        'P': with_values(people, [(ROLE, 'P-s1w1', 'animate', 'human'),
+                                                  (ROLE, 'P-s2w1', 'animate', 'human')])},
+                       project=_animacy_project())
+    (asked, _), = _run(monkeypatch, client, fills=('segmentation', ROLE))
+    assert _block(asked) == '\n'.join([
+        similar.HEAD,
+        '',
+        'gamdi ka.',
+        'Translation: The fish ate.',
+        'Words: ["gam-di", "ka"]',
+        'Animacy: ["animate", "_"]',
+    ]), asked
+
+
+def test_a_word_field_job_gives_the_same_list_twice(monkeypatch):
+    def make():
+        docs = {'A': document('A', 'Doc A', [{'words': ['gamda', 'zo']}, {'words': ['kada']}])}
+        for d in range(3):
+            docs[f'P{d}'] = with_values(
+                document(f'P{d}', f'Other {d}', [{'words': [f'{w}{d}{i}' for w in ('gam', 'ka', 'zo')]}
+                                                 for i in range(12)]),
+                [(ROLE, f'P{d}-s{i}w2', 'animate', 'human') for i in range(1, 13)])
+        return JobClient(docs, project=_animacy_project())
+    first = _block(_run(monkeypatch, make(), fills=(ROLE,))[0][0])
+    second = _block(_run(monkeypatch, make(), fills=(ROLE,))[0][0])
+    assert first and first == second
+    assert first.count('Words: ') == JOB_SIMILAR_SENTENCES
+
+
 def test_no_pool_no_block_and_the_prompt_says_nothing_of_it(monkeypatch):
     client = JobClient({'A': document('A', 'Doc A', [{'words': ['gamda', 'zo']}])})
     (asked, system), = _run(monkeypatch, client)
@@ -404,4 +511,47 @@ def test_the_rule_costs_little_on_a_large_pool(n, capsys):
     assert len(similar.block(examples, ['Morph Gloss'])) <= JOB_SIMILAR_CHARS and len(taken) == JOB_SIMILAR_SENTENCES
     with capsys.disabled():
         print(f'\nSS timing, {n} pool sentences: features {1000 * (t1 - t0):.0f} ms (once per read document), '
+              f'weights {1000 * (t2 - t1):.0f} ms (once per change), a piece of 5 sentences {1000 * (t3 - t2):.0f} ms')
+
+
+def _without_morphemes(raw):
+    """``raw`` (a project or a document) with no morpheme layer."""
+    raw['text_layers'][0]['token_layers'] = [tk for tk in raw['text_layers'][0]['token_layers']
+                                             if tk['id'] != MORPH_LAYER]
+    return raw
+
+
+def test_a_word_field_job_in_a_project_with_no_morpheme_layer_shows_each_words_surface(monkeypatch):
+    client = JobClient({'A': _without_morphemes(document('A', 'Doc A', [{'words': ['gamda', 'zo']}])),
+                        'P': _without_morphemes(_unsegmented_people())},
+                       project=_without_morphemes(_animacy_project()))
+    (asked, _), = _run(monkeypatch, client, fills=(ROLE,))
+    assert _block(asked).split('\n')[-2:] == ['Words: ["gamdi", "ka"]', 'Animacy: ["animate", "_"]'], asked
+
+
+@pytest.mark.parametrize('n', [2000, 20000])
+def test_a_word_field_pool_costs_little_on_many_candidates(n, capsys):
+    """``n`` candidate sentences, about half holding a person's Animacy: the
+    filter and the pool of a stretch that fills only word fields."""
+    import random
+    rnd = random.Random(7)
+    letters = 'aeioukgtmnslrdbpz'
+
+    def word():
+        return ''.join(rnd.choice(letters) for _ in range(rnd.randint(2, 9)))
+    vocab = [word() for _ in range(3000)]
+    sentences = [[rnd.choice(vocab) for _ in range(rnd.randint(4, 14))] for _ in range(n)]
+    candidates = [{'feats': similar.features(s),
+                   'people_fields': frozenset({'Animacy'}) if rnd.random() < 0.5 else frozenset()}
+                  for s in sentences]
+    t0 = time.perf_counter()
+    held = [x for x in candidates if similar.holds(x, frozenset({'Animacy', 'Role'}))]
+    t1 = time.perf_counter()
+    pool = similar.Pool([x['feats'] for x in held])
+    t2 = time.perf_counter()
+    taken = similar.pick(pool, [similar.features(s) for s in sentences[:5]])
+    t3 = time.perf_counter()
+    assert 0 < len(held) < n and len(taken) == JOB_SIMILAR_SENTENCES
+    with capsys.disabled():
+        print(f'\nWord field pool timing, {n} candidates ({len(held)} held): filter {1000 * (t1 - t0):.1f} ms, '
               f'weights {1000 * (t2 - t1):.0f} ms (once per change), a piece of 5 sentences {1000 * (t3 - t2):.0f} ms')
