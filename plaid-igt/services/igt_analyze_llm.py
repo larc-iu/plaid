@@ -43,7 +43,6 @@ Requirements (on top of plaid-client): litellm.
 """
 
 import argparse
-import difflib
 from typing import List, Optional
 
 from plaid_client import BaseService, TASKS, Param
@@ -52,6 +51,7 @@ from plaid_client.workflows.llm import (BUSY_WAITING, ChatModel, UnansweredRun,
                                         add_model_arguments, setup_service)
 from plaid_client.workflows.igt.config import read_lexicon_field, role_field
 from plaid_client.workflows.igt.senses import build_sense_tree, morph_type_of
+from plaid_client.workflows.igt.similar import Pool, features, pick
 from plaid_client.workflows.igt import (
     derive, word_state, parse_interleaved, align_words, analysis_for,
     ANALYZE_REQUEST_FIELDS, tagset_for, mode_rule, value_lines, entry_types_of, morph_type, gloss_of,
@@ -299,7 +299,7 @@ def load_examples(client, project_id, layers, gloss_field, translation_field,
                   exclude_doc_id, max_docs=MAX_EXAMPLE_DOCS, on_progress=None,
                   entry_types=None) -> List[dict]:
     """Fully person-analyzed (or verified) sentences from other documents of
-    the project: [{text, translation, line, words}]. `entry_types` is as
+    the project: [{text, translation, line, feats}]. `entry_types` is as
     render_sentence takes it."""
     pool = []
     docs = [d for d in (client.projects.list_documents(project_id) or []) if d['id'] != exclude_doc_id]
@@ -320,26 +320,29 @@ def load_examples(client, project_id, layers, gloss_field, translation_field,
             if not line:
                 continue
             pool.append({'text': ' '.join(w['surface'] for w in s['words']),
-                         'words': [w['surface'].casefold() for w in s['words']],
+                         'feats': example_features(w['surface'] for w in s['words']),
                          'translation': (s['translation'] or '').strip(), 'line': line})
     return pool
 
 
-def rank_examples(pool, words, k=DEFAULT_EXAMPLES) -> List[dict]:
-    """Most similar examples first: shared word forms (Jaccard) plus character
-    similarity of the whole sentence, so inflected variants still count."""
-    target = [w.casefold() for w in words]
-    tset = set(target)
-    tjoined = ' '.join(target)
+def example_features(words) -> frozenset:
+    """A sentence's features for the shared rule
+    (plaid_client.workflows.igt.similar), its words keyed casefolded."""
+    return features(w.casefold() for w in words)
 
-    def score(ex):
-        eset = set(ex['words'])
-        jac = len(tset & eset) / len(tset | eset) if (tset | eset) else 0.0
-        chars = difflib.SequenceMatcher(None, tjoined, ' '.join(ex['words'])).ratio()
-        return 0.7 * jac + 0.3 * chars
 
-    ranked = sorted(pool, key=score, reverse=True)
-    return ranked[:k]
+def example_index(pool) -> Pool:
+    """The pool's weights, computed once a run."""
+    return Pool([ex['feats'] for ex in pool])
+
+
+def rank_examples(pool, index, words, k=DEFAULT_EXAMPLES) -> List[dict]:
+    """The ``k`` examples most like the sentence ``words``, the most alike
+    first, by the rule an assistant job picks its examples by: shared words
+    and character 3-grams and 4-grams, weighted by how rare they are in the
+    pool, so inflected variants still count. ``index`` is
+    :func:`example_index` of ``pool``."""
+    return [pool[i] for i in pick(index, [example_features(words)], k)]
 
 
 # --- prompt --------------------------------------------------------------------------
@@ -351,13 +354,13 @@ def build_user_prompt(language, metalanguage, words, translation, entries, examp
                      '\n'.join('  ' + format_entry(e) for e in entries))
     if examples:
         blocks = []
-        for ex in examples:
+        for ex in reversed(examples):
             b = f'Text: {ex["text"]}'
             if ex['translation']:
                 b += f'\nTranslation: {ex["translation"]}'
             b += f'\nGlosses: {ex["line"]}'
             blocks.append(b)
-        parts.append('Examples analyzed in this project:\n\n' + '\n\n'.join(blocks))
+        parts.append('Examples analyzed in this project, the most alike last:\n\n' + '\n\n'.join(blocks))
     tail = f'Now gloss this sentence.\nText: {" ".join(words)}'
     if translation:
         tail += f'\nTranslation: {translation}'
@@ -443,6 +446,7 @@ class LLMAnalyzeService(BaseService):
                 on_progress=lambda n, total: progress.count(
                     AnalyzeProgress.EXAMPLES, n, total, f'Collecting analyzed sentences ({n}/{total} documents)…'),
             ) if n_examples else []
+            index = example_index(pool)
 
             # One model call per sentence.
             stamp_detail = self.stamp_detail(request.requester, **self.model.describe(),
@@ -461,7 +465,7 @@ class LLMAnalyzeService(BaseService):
                 progress.count(AnalyzeProgress.GLOSS, n, total, said)
                 words = [w['surface'] for w in s['words']]
                 entries = matching_entries(lexicon, words)
-                examples = rank_examples(pool, words, n_examples) if n_examples else []
+                examples = rank_examples(pool, index, words, n_examples) if n_examples else []
                 prompt = build_user_prompt(language, metalanguage, words, (s['translation'] or '').strip(),
                                            entries, examples)
                 try:

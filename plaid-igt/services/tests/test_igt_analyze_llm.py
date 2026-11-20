@@ -96,12 +96,60 @@ def test_entries_read_the_sense_tree_as_the_app_does():
     assert [e['id'] for e in llm.vocab_entries(below, 'L', gloss_key='gloss', pos_key='pos')] == ['b', 'c']
 
 
-def test_rank_examples_prefers_shared_forms_then_character_overlap():
-    pool = [{'words': ['kedi', 'uyuyor'], 'line': 'b'}, {'words': ['ev', 'geliyor'], 'line': 'a'},
-            {'words': ['evler', 'geliyorum'], 'line': 'c'}]
-    ranked = llm.rank_examples(pool, ['evler', 'geliyor'], k=2)
-    assert [e['line'] for e in ranked] == ['a', 'c'] or [e['line'] for e in ranked] == ['c', 'a']
-    assert llm.rank_examples(pool, ['evler'], k=0) == []
+def example(text, line=None):
+    """A pool entry as load_examples makes one."""
+    words = text.split()
+    return {'text': text, 'translation': '', 'line': line or text, 'feats': llm.example_features(words)}
+
+
+def ranked(pool, words, k):
+    return [e['line'] for e in llm.rank_examples(pool, llm.example_index(pool), words, k)]
+
+
+def test_a_shared_stem_outranks_more_shared_function_words():
+    """The rule an assistant job picks by (plaid_client.workflows.igt.similar):
+    "gamdi" shares the stem of the unseen "gamda", and the others share two
+    exact words every pool sentence has."""
+    pool = [example('lili na ma'), example('gamdi na'), example('zozo na ma'), example('tete na ma')]
+    assert ranked(pool, ['Gamda', 'na', 'ma'], 1) == ['gamdi na']
+    assert ranked(pool, ['gamda'], 0) == []
+
+
+def test_the_same_pool_gives_the_same_list_twice():
+    def pool():
+        return [example(f'ka{i} zo{i % 3} ta') for i in range(30)]
+    first = ranked(pool(), ['ka1', 'zo2'], 8)
+    assert len(first) == 8 and first == ranked(pool(), ['ka1', 'zo2'], 8)
+
+
+def test_the_sentence_in_hand_is_never_its_own_example(monkeypatch):
+    """load_examples reads every other document and none of the one in hand,
+    so an analysed sentence of it, the very sentence being glossed, is never
+    shown."""
+    texts = {'d1': ['gamda na'], 'd2': ['lili mumu', 'gamdi ka'], 'd3': ['zozo tete']}
+
+    class Client:
+        class projects:
+            @staticmethod
+            def list_documents(project_id):
+                return [{'id': d} for d in texts]
+
+        class documents:
+            read = []
+
+            @classmethod
+            def get(cls, doc_id, include_body=False):
+                cls.read.append(doc_id)
+                return {'id': doc_id}
+
+    def derive(doc, *layers, gloss_field=None, translation_field=None):
+        return [{'words': [{'surface': w} for w in t.split()], 'translation': ''} for t in texts[doc['id']]], 'G'
+    monkeypatch.setattr(llm, 'derive', derive)
+    monkeypatch.setattr(llm, 'word_state', lambda w: 'protected')
+    monkeypatch.setattr(llm, 'render_sentence', lambda s, g, e=None: ' '.join(w['surface'] for w in s['words']))
+    pool = llm.load_examples(Client, 'p', (), 'Gloss', None, exclude_doc_id='d1')
+    assert Client.documents.read == ['d2', 'd3']
+    assert ranked(pool, ['gamda', 'na'], 3) == ['gamdi ka', 'lili mumu', 'zozo tete']
 
 
 def sentence(words):
@@ -140,7 +188,13 @@ def test_build_user_prompt_layout():
                               [{'text': 'evler', 'translation': 'houses', 'line': 'house(ev)-PL(ler)'}])
     assert p.startswith('Language: Turkish. Glosses and translations in English.')
     assert 'Lexicon entries found in this sentence' in p and '  ler: PL [suffix]' in p
-    assert 'Examples analyzed in this project:\n\nText: evler\nTranslation: houses\nGlosses: house(ev)-PL(ler)' in p
+    assert 'Examples analyzed in this project, the most alike last:\n\nText: evler\nTranslation: houses\nGlosses: house(ev)-PL(ler)' in p
+    # The examples come most alike first and are shown most alike last, as the head says.
+    two = llm.build_user_prompt('Turkish', 'English', ['evlerden'], '', [],
+                                [{'text': 'evler', 'translation': '', 'line': 'a'},
+                                 {'text': 'ev', 'translation': '', 'line': 'b'}])
+    assert ('Examples analyzed in this project, the most alike last:\n\nText: ev\nGlosses: b\n\n'
+            'Text: evler\nGlosses: a\n\nNow gloss') in two
     assert p.endswith('Now gloss this sentence.\nText: evlerden\nTranslation: from the houses\nGlosses:')
     bare = llm.build_user_prompt('Turkish', 'English', ['evlerden'], '', [], [])
     assert 'Lexicon' not in bare and 'Examples' not in bare and bare.endswith('Text: evlerden\nGlosses:')
