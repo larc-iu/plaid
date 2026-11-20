@@ -211,7 +211,9 @@ def turn_end(item: Dict[str, Any]) -> str:
     """How a turn ended: an answer, or which of the ways it can stop."""
     text = item.get('text') or ''
     if item.get('kind') == 'error':
-        if CUT_AT_CAP.search(text):
+        # The reason the service records (conversation.ERROR_REASONS), and
+        # the line for a record written before it.
+        if item.get('reason') == 'output-limit' or CUT_AT_CAP.search(text):
             return 'cut_at_length'
         if REPEATING.search(text):
             return 'repeating'

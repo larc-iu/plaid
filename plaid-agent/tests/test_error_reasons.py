@@ -19,6 +19,7 @@ from plaid_agent.core.agent import (EMPTY_REPLY, REPEATING_LINE, TurnCancelled, 
                                     failure_reason)
 from plaid_agent.core.conversation import (ERROR_REASONS, ConversationStore, build_meta, error_item, kept_meta,
                                            rewind_for_retry, user_item)
+from plaid_agent.research.records import turn_end
 
 
 def test_the_reasons_are_a_closed_set_and_an_item_carries_its_own():
@@ -146,3 +147,9 @@ def test_the_entry_counts_every_error_item_and_names_the_newest():
     # A hold or a rename leaves the counts, and a changed transcript recounts.
     assert kept_meta(meta, holder={'tab': 't'})['errors'] == 2
     assert kept_meta(meta, {'messages': [], 'display': [user_item('a')]})['errors'] == 0
+
+
+def test_the_research_records_read_the_reason_where_it_is_present():
+    assert turn_end({'kind': 'error', 'text': 'Anything at all.', 'reason': 'output-limit'}) == 'cut_at_length'
+    # A record written before reasons is still read by its line.
+    assert turn_end({'kind': 'error', 'text': cut_line(9)}) == 'cut_at_length'
