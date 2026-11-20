@@ -2370,16 +2370,16 @@ Restore the backup instead.
 === Vocabularies without a project
 
 The version that gives every vocabulary a project refuses to start while a vocabulary exists that no project links.
-The script that gives each one a project is `plaid-core/scripts/vocab_home_orphans.py` in the Plaid repository.
-It runs from a checkout of the repository at the new version's tag, with Python 3.11 or later and its `requests` package.
+The script that gives each one a project is `vocab_home_orphans.py`, a file attached to the release 0.2.0-alpha.35 on GitHub.
+It runs with Python 3.11 or later and the Plaid Python client (`pip install larc-plaid-client`).
 It acts as an admin through a named API token kept in a file: an admin mints one on the profile page of any app (see <<Tokens and sign-out>>) and pastes it into the file.
 Before upgrading, with the old version still running:
 
-. From the top of the checkout, run the script with the server's address and the token's file. It lists every vocabulary no project links and writes nothing.
+. Run the script with the server's address and the token's file. It lists every vocabulary no project links and writes nothing.
 +
 [source,console]
 ----
-$ PYTHONPATH=plaid-client-py/src python3 plaid-core/scripts/vocab_home_orphans.py https://plaid.example.edu token.txt
+$ python3 vocab_home_orphans.py https://plaid.example.edu token.txt
 ----
 . If it lists any, run the same line with `--apply` at the end. Each such vocabulary gets a project of its own, named after it, whose maintainers are the vocabulary's maintainers. Then run it once more without `--apply`: it must list none.
 . Take the backup and copy it off the machine.

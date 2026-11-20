@@ -16,7 +16,8 @@
      (the old version ran in between and unlinked or deleted it) is cleared,
      with its marker, so the rule plans that vocabulary again. Then refuse
      while a vocabulary no live project links exists, naming each and the
-     script that gives it a project (`vocab_home_orphans.py`, run against the
+     script that gives it a project (`vocab_home_orphans.py`, attached to the
+     release v0.2.0-alpha.35, run against the
      server before upgrading). Nothing else is written.
   1. Add the column if it is missing, then, in one transaction, set the home
      of every vocabulary that has none by `home-rule`, from the data as it is.
@@ -89,9 +90,9 @@
 (def orphan-script
   "Where an operator finds the script that gives an unlinked vocabulary a
   project, and how it runs."
-  (str "PYTHONPATH=plaid-client-py/src python3 plaid-core/scripts/vocab_home_orphans.py BASE_URL TOKEN_FILE "
-       "from the top of a checkout of the Plaid repository, against the server on the version before this one, "
-       "with an admin's named API token in the file"))
+  (str "python3 vocab_home_orphans.py BASE_URL TOKEN_FILE (the script is attached to the release "
+       "v0.2.0-alpha.35 on GitHub and needs the larc-plaid-client package), against the server on the version "
+       "before this one, with an admin's named API token in the file"))
 
 (defn- orphans
   "Every vocabulary no live project links and with no home yet, as maps of `:id`,
