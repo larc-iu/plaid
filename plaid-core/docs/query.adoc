@@ -238,10 +238,18 @@ To name a category or a script, use `\p{L}` for any letter or `\p{IsArabic}` for
 Text is compared as a reader would see it.
 A pattern or an equality matches text that differs only in how its characters are composed, so `pʰá` typed with a precomposed `á` finds it stored as `a` plus an accent.
 Two marks typed in either order count as the same text too.
-A pattern that names a combining mark also finds it inside a precomposed letter, so a pattern of only the acute accent (U+0301) finds the accent in `á`.
-A pattern names a mark when it holds one, writes one as an escape (`\x{301}`, `\u0301`, `\N{COMBINING ACUTE ACCENT}`) or a class range between two, or asks for the mark category (`\p{M}`, `\p{Mn}`, `\p{Mc}`, `\p{Me}`) on its own, in a class of nothing but marks, or as `[^\P{M}]`.
+
+A pattern that names a combining mark also finds it inside a precomposed letter.
+A pattern of only the acute accent (U+0301), for example, finds the accent in `á`.
 A pattern that names none never looks inside a letter, so `a` does not find `á`, and neither does `a.`, `a\w` or `a[\p{L}\p{M}]`.
-A precomposed letter in a class stays that letter when the pattern looks inside letters: `[á\x{301}]` finds `á` and the accent in `ấ`, never a plain `a`, and `[^á\x{301}]` finds the `a` of `ma` but not the one in `á`.
+
+A pattern names a mark in any of these ways:
+
+* It holds one, or writes one as an escape (`\x{301}`, `\u0301`, `\N{COMBINING ACUTE ACCENT}`) or a class range between two.
+* It asks for the mark category (`\p{M}`, `\p{Mn}`, `\p{Mc}`, `\p{Me}`) on its own, in a class of nothing but marks, or as `[^\P{M}]`.
+
+A precomposed letter in a class stays that letter when the pattern looks inside letters.
+So `[á\x{301}]` finds `á` and the accent in `ấ`, never a plain `a`, and `[^á\x{301}]` finds the `a` of `ma` but not the one in `á`.
 
 === Value variables
 
@@ -604,11 +612,15 @@ The query matches if any group matches.
 
 An `or` needs at least two groups, and every `find` variable must be bound in each of them.
 The clauses outside the `or` apply to every group, and a row that matches two groups appears once.
-Under an <<Aggregates,aggregate>>, a group key may name a variable that only some groups bind, and it is null in the matches of a group that does not bind it.
-So `"group": ["?w.value", "?m.metadata.form"]` over an `or` whose first group binds `?w` and second binds `?m` groups each by its own field, and a `count` counts each group's own matches: the words of each value and the morphemes of each form.
-A key that is null of its own reads the same as one that is padded: under `"group": ["?w.metadata.x", "?m.metadata.form"]`, the words without `x` and the morphemes without a form are counted in one group.
-An aggregate's source must still be bound in every group.
 For one field taking one of several values, a list such as `{"value": ["NOUN", "PROPN"]}` is simpler and faster.
+
+Under an <<Aggregates,aggregate>>, a group key may name a variable that only some groups bind.
+It is null in the matches of a group that does not bind it.
+So `"group": ["?w.value", "?m.metadata.form"]` over an `or` whose first group binds `?w` and second binds `?m` counts the words of each value and the morphemes of each form.
+
+A key that is null of its own reads the same as one that is padded.
+Under `"group": ["?w.metadata.x", "?m.metadata.form"]`, the words without `x` and the morphemes without a form are counted in one group.
+An aggregate's source must still be bound in every group.
 
 == Negation (`not`)
 
