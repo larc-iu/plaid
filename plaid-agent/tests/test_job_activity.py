@@ -96,13 +96,15 @@ def test_a_piece_that_answered_nothing_is_summed_up_with_its_skipped_sentences(m
     client, _, finished = _run(monkeypatch, lambda asked, n, kwargs: reply(''))
     assert finished['state'] == 'done'
     rows = _pieces(client)
-    assert len(rows) == 2
+    # Each stretch of two that answered nothing is halved, so the summaries
+    # are of its sentences, each asked on its own.
+    assert len(rows) == 4
     for r in rows:
         p = r['piece']
         assert p['counts'] == {}, 'it wrote nothing'
         assert p['note'] == ''
         assert {s['reason'] for s in p['skipped']} == {'no-answer'}
-        assert [s['sentence'] for s in p['skipped']] == [p['first'], p['last']]
+        assert [s['sentence'] for s in p['skipped']] == [p['first']] and p['last'] == p['first']
         assert all(s['document_id'] == 'd1' for s in p['skipped'])
 
 

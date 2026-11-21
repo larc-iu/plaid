@@ -1,7 +1,8 @@
 """A piece whose model answers nothing (REV-DAY-S-16): an answer that staged
 nothing and wrote no text (reasoning only, or empty) is asked again once with
 a fixed line, under the same budgets. When the second answer is the same,
-the piece's sentences are skipped with a reason of their own (``no-answer``),
+a stretch of several sentences is halved as any failed stretch is, and a
+piece of one sentence is skipped with a reason of its own (``no-answer``),
 never counted as worked. Decided by what the answer holds, never its words."""
 
 import pytest
@@ -80,7 +81,7 @@ def test_a_piece_that_answers_nothing_twice_has_its_sentences_skipped_as_no_answ
     document answers nothing first and goes to stretches (REV-RW-6), whose
     s1-s2 piece then does the same."""
     def answer(asked, n, kwargs):
-        if 'Your piece: the whole document' in asked or 1 in targets_named(asked):
+        if 'Your piece: the whole document' in asked or set(targets_named(asked)) & {1, 2}:
             return reply(None)
         return _stage(asked) if n == 1 else reply('Done.')
     finished, model = _run(monkeypatch, plan, answer)
@@ -94,9 +95,28 @@ def test_a_piece_that_answers_nothing_twice_has_its_sentences_skipped_as_no_answ
     assert doc['counts']['words'] == 2 * (N - len(skipped))
     assert doc['counts'].get('analyzed', 0) == N - len(skipped)
     nothing = [c for c in model.calls if 'Your piece: the whole document' in c['asked']
-               or 1 in targets_named(c['asked'])]
+               or set(targets_named(c['asked'])) & {1, 2}]
     # Two calls a piece: the answer, and the one asked again. Never a third.
-    assert [c['n'] for c in nothing] == ([1, 2] if plan == 'sentences' else [1, 2, 1, 2])
+    # The stretch s1-s2 that answered nothing is halved, and each sentence
+    # asked on its own the same way before it is skipped.
+    assert [c['n'] for c in nothing] == [1, 2] * (3 if plan == 'sentences' else 4)
+
+
+def test_a_stretch_that_answers_nothing_twice_is_halved(monkeypatch):
+    """s1-s2's piece answers nothing twice. It is worked again as s1 and
+    then s2, as a stretch that failed any other way is: s1 alone is written,
+    s2 alone answers nothing twice and only it is skipped."""
+    def answer(asked, n, kwargs):
+        if 2 in targets_named(asked):
+            return reply(None)
+        return _stage(asked) if n == 1 else reply('Done.')
+    finished, model = _run(monkeypatch, 'sentences', answer)
+    (doc,) = finished['report']['documents']
+    assert [(s['sentence'], s['reason'], s['kind']) for s in doc['skipped']] == [('s2', igt_job.NO_ANSWER, None)]
+    assert finished['report']['totals']['skipped_no_answer'] == 1
+    assert doc['counts']['words'] == 2 * (N - 1)
+    pieces = [targets_named(c['asked']) for c in model.calls if c['n'] == 1]
+    assert pieces[:3] == [[1, 2], [1], [2]], pieces
 
 
 @pytest.mark.parametrize('plan', ['sentences', 'document'])
@@ -109,7 +129,7 @@ def test_the_blanks_of_skipped_sentences_are_counted_apart(monkeypatch, plan):
     from plaid_agent.igt import jobread
 
     def answer(asked, n, kwargs):
-        if 'Your piece: the whole document' in asked or 1 in targets_named(asked):
+        if 'Your piece: the whole document' in asked or set(targets_named(asked)) & {1, 2}:
             return reply(None)
         return _stage(asked) if n == 1 else reply('Done.')
     finished, _ = _run(monkeypatch, plan, answer)

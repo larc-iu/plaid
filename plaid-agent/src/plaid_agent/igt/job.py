@@ -4438,17 +4438,19 @@ class IgtRunner:
         prints = {s.id: ws.sentence_print(doc, s) for s in doc.sentences}
         message = self.message(ws, project, doc, part, st, whole)
         note = self.run_piece(ws, project, message, document_id, sentences=self.in_sentences() and not whole)
-        if whole and ws.answered_nothing:
+        if ws.answered_nothing and (whole or len(part) > 1):
             # A whole document asked twice that staged and said nothing fails
             # as any whole piece does: its document goes to stretches (REV-RW-6).
+            # A stretch of several sentences fails as any stretch does: it is
+            # halved, and fewer sentences are asked of one call.
             raise StretchFailed(NO_ANSWER, 'no answer')
         piece = {'document': document_id, 'first': part[0].id if part else None, 'whole': whole}
         key = analysis_key(canonical(piece))
         self.begin_summary(key, document_id, doc.name, part, whole, note, self.refused_of(ws, document_id),
                            ended=ws.ended)
         if ws.answered_nothing:
-            # Asked twice, it staged nothing and said nothing: its sentences
-            # are skipped with a reason of their own, never counted worked.
+            # One sentence asked twice that staged nothing and said nothing:
+            # skipped with a reason of its own, never counted worked.
             for s in part:
                 self.skip(document_id, doc, s.id, NO_ANSWER, None)
             self.end_summary(key)
@@ -4490,8 +4492,8 @@ class IgtRunner:
         by what it holds, never by its words: reasoning only, or empty) is
         asked again once with :data:`JOB_ANSWER_AGAIN`, under the same
         budgets. When the second answer is the same, ``ws.answered_nothing``
-        is set, and the caller lists the piece's sentences as skipped
-        (``no-answer``, REV-DAY-S-16)."""
+        is set, and the caller halves a stretch of several sentences and
+        lists a piece of one as skipped (``no-answer``, REV-DAY-S-16)."""
         job = self.job
         # A piece after a text edit is offered no text tool (``text``, RPF3-B).
         ws.edits_text = self.edits_text() and text
