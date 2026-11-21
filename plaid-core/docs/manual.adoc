@@ -371,12 +371,10 @@ A project has many **documents**, and each has a name and a unique ID:
 { id: "01d01a27", name: "Document 1", project: "1cce50df" }
 ----
 
-Document names are unique in a project, ignoring case: "Story", "story" and "STORY" are one name (full Unicode case folding, as Python's `str.casefold` does it, so "Straße" and "STRASSE" are one too, while dotless "kır" and "kir" are two).
-A create, rename or copy to a name another document of the project holds is refused with 422, and the error and the answer's `name-taken` give the name as that document spells it.
+Document names are unique in a project, ignoring case: "Story", "story" and "STORY" are one name.
+A create, rename or copy to a name another document of the project holds is refused with 422.
 A create or copy with `free-name` (`freeName` in the JavaScript client, `free_name` in Python) takes the first free name instead: the name itself, else "Name (2)", "Name (3)" and on.
 Both answer with the `name` the document was given.
-A restore keeps the document's current name when the name it had then belongs to another document now, and its summary says so under `name-kept`: the name kept and the other document's name.
-A vocabulary link that a merge moved to another entry also stays as it is now, and the summary counts it under `kept`.
 
 === Reading part of a document
 
@@ -546,12 +544,13 @@ An editor therefore sends `edits`.
 === New words for typed text
 
 A save, in any of its forms, and a new text may name a word layer of the text as `tokenize-layer`.
-The text the save types then gets words on that layer, made after the old tokens are placed by the rules above, so a new word never lands where an old one now stands.
-A stretch no token of the layer covers is cut into words at whitespace and at punctuation, inside each sentence (each token of a `partitioning` layer).
-Punctuation here is the built-in tokenizer's break class, read from the same Unicode 16 table, under the layer's `ignoredTokens` rule in the `plaid` namespace: a character the rule calls letter-like is part of a word, and under an explicit list only the listed characters part words.
-A word holding no typed character is not made, and neither is one the rule ignores or one holding a letter of a script written without spaces between words, such as Han, kana or Thai.
+The text the save types then gets words on that layer.
+They are made after the old tokens are placed by the rules above, so a new word never lands where an old one now stands.
+
+A stretch no token of the layer covers is cut into words at whitespace and at punctuation, inside each sentence.
+What counts as punctuation follows the layer's `ignoredTokens` rule, as above.
+No word is made for a script written without spaces between words, such as Han, kana or Thai.
 The new words come in the answer's `reshape.tokens` with their `layer` and `text`.
-A new text's words are judged as a save's are, at the end of the request: under a `partitioning` layer that holds no token they get one token of it over the whole body, unless the request makes the partition itself, and a word left in no token of its parent layer is refused (409) with nothing stored.
 
 [,js]
 ----
@@ -1270,14 +1269,19 @@ Both clients offer `isReviewed` / `is_reviewed` for reading it.
 === Prediction details
 
 A machine writer may also record how confident it was.
-`provProb` is a single number between 0 and 1, the probability of the value it chose, and since it is flat a query can sort by it to put the least confident output first.
-It should be calibrated on held-out data, so that values given 70% are right about 70% of the time.
-A writer that cannot calibrate leaves `provProb` out.
-Everything else, such as the top few alternatives, goes in the open map `provDetail`.
-The alternatives a producer weighed for a value go in `provDetail.valueProbs`, a map from each value to its probability, and on a gloss `provDetail.valueLinks` can name the lexicon entry each alternative stands for, as a list of `{value, item, prob}` (a list, since two senses may share a gloss).
-A morpheme's alternative forms go in `provDetail.formProbs` the same way.
-Plaid IGT lists these alternatives under **Alt+↓** on the cell and in the lexicon popover, and offers each alternative together with its entry as one choice.
-Plaid UD lists a tag's or a relation's alternatives first in its selector, with their percentages.
+`provProb` is a single number between 0 and 1, the probability of the value it chose.
+Since it is flat, a query can sort by it to put the least confident output first.
+It should be calibrated on held-out data, so that values given 70% are right about 70% of the time, and a writer that cannot calibrate leaves it out.
+
+Everything else goes in the open map `provDetail`:
+
+`valueProbs`:: The alternatives the producer weighed for a value, as a map from each value to its probability.
+`valueLinks`:: On a gloss, the lexicon entry each alternative stands for, as a list of `{value, item, prob}`.
+`formProbs`:: A morpheme's alternative forms, as `valueProbs`.
+`model`:: What made the prediction, such as `stanza==1.11.0`.
+`version`:: The version of the writer's own code.
+
+Plaid IGT lists the alternatives under **Alt+↓** on the cell and in the lexicon popover, and Plaid UD lists them first in its selector, with their percentages.
 
 The apps draw a heavier, darker underline under a machine value whose `provProb` is below the project's confidence threshold, and its tooltip gives the percentage.
 A maintainer sets the threshold on Plaid IGT's Services settings page, and it is stored as a number between 0 and 1:
@@ -1290,10 +1294,9 @@ A maintainer sets the threshold on Plaid IGT's Services settings page, and it is
 Without it the threshold is 0.5.
 Both clients read it with `readConfidenceThreshold` / `read_confidence_threshold` and test a value with `isDoubtful` / `is_doubtful`.
 
-A machine writer records what made a prediction in `provDetail.model`, such as `stanza==1.11.0`, and every one records the version of its own code in `provDetail.version`.
 `provDetail` describes the original prediction and is kept after a person edits the value.
-`provProb` is the producer's probability for the value the entity holds, however a person entered it.
-When a person picks or types another value that the producer weighed, the app writes that value's probability from `provDetail.valueProbs` (`provDetail.formProbs` for a morpheme's form), and when the producer never weighed the new value the app removes `provProb`.
+`provProb` always belongs to the value the entity holds now.
+When a person picks another value the producer weighed, the app writes that value's probability, and when the producer never weighed the new value the app removes `provProb`.
 So once `provConfirmed` is set, do not present `provProb` as the machine's confidence in the value.
 
 === The write contract
@@ -1816,24 +1819,9 @@ for row in c.audit.changes(entry_id, document_id=document_id):
 
 == Undo of one entry
 
-`audit.undo` puts back every row one entry wrote as it was just before the entry, in its documents and its vocabularies together, as one new entry of its own.
+`audit.undo` puts back every row one entry wrote as it was just before the entry, as one new entry of its own.
 A row the entry made is deleted, one it deleted comes back under its old id, and one it changed is set back.
-A merge comes undone whole: the merged entries come back, their links point to them again, and every reference the merge rewrote names them again.
-
-What people did since is left alone.
-A row is left as it is, and listed under `skipped` with its reason, when someone wrote it since (`changed-since`), or between the entry's own writes (`changed-between`), when the entry made it and something that stays is built on it, such as an annotation on a token or a link to an entry (`built-on`), or when it needs something that will not be there (`needs`).
-A text goes back only when nothing in its document wrote a text or a token since the entry began (`text-changed-since`).
-A token goes back onto its offsets only when nothing outside the entry wrote its text since the entry began (`text-changed-since`), and a text goes back only into a layer that holds no other text of the document now (`place-taken`).
-The entry's own later writes are never "since": a text it edited several times goes back to its body before the first.
-A text and the tokens the entry wrote on it go back together or not at all: when the text stays, the tokens the entry made or reshaped on it stay too, and so do the annotations and links the entry wrote on the tokens it made, each listed as `text-changed-since`.
-Two token rows of the entry on one text, in one layer, or in a parent and child layer with the child not inside the parent, that traded characters (a split's halves, a merge's source and survivor, a word and the morphemes deleted to split it) go back together or stay together (`text-changed-since`).
-When the entry made or deleted a token in a layer with a parent token layer, the entry's token rows there with the same extent (the morphemes of one word it analysed again, the syntactic words of one token) go back together or stay together, with the annotations and links the entry wrote on them: when anyone wrote one of them or a value on one since, all are left (`needs`, naming the row that stays), so no word keeps some morphemes of each analysis.
-A row is never set back to name, in its metadata, a row that will not be there afterwards (`needs`).
-When a document's layers would no longer hold with the entry's rows put back, that document's rows are all left (`does-not-fit`).
-An undo is held to each layer's closed list as it is now, unlike a restore, since it puts single values back into today's document: a value the list no longer allows is left (`value-not-allowed`).
-Changes to a project, its layers, a vocabulary's name or settings, users and memberships are not undone, and `not_undone` / `notUndone` names the operations that made them.
-A project's deletion cannot be undone.
-After a vocabulary is deleted, only an administrator can read its entries' history, so only an administrator can undo what an entry did to them.
+It covers the entry's documents and its vocabularies together, and a merge of vocabulary entries comes undone whole.
 
 [,python]
 ----
@@ -1843,22 +1831,62 @@ done = c.audit.undo(entry_id)
 c.audit.undo(done["operation"])  # and back again
 ----
 
-`document_id` / `documentId` takes one document's rows only, its links included, and `vocab_layer_id` / `vocabLayerId` takes one vocabulary's entries and the links that name one of them.
-An undo needs a maintainer: of a document's project for its rows, of a vocabulary's home project for its entries.
-Rows the caller may not maintain are listed as `not-permitted` and the rest undone, and rows in a document or vocabulary the caller cannot read are neither counted nor listed: `skipped-unreadable` says only how many of them are left.
-A delegated token undoes only the rows of documents in the projects it reaches.
-Undoing the same entry again finds nothing left and writes nothing.
-An undo may be sent with an `Idempotency-Key` or inside a batch: a dry run there writes nothing either.
-A dry run and a real undo are different requests, so one key answers only the one it was first sent with.
-A row the entry made is also kept when anything that stays names its id in its metadata, such as an entry that took a word of it as an example (`built-on`).
-An entry of more than 20,000 rows is refused, and the refusal says how many rows it has.
+What people did since is left alone.
+A row that cannot safely go back stays as it is, and is listed under `skipped` with a reason:
 
-Several entries can be undone together as one, with `audit.undo_entries` / `audit.undoEntries`, and a whole job with `jobs.undo`, which finds the job's entries itself: the gloss pass and the harmonize pass of every document.
-Each row goes back to how it was before the first of those entries wrote it, so a word one entry linked to a lexicon entry another one made comes undone with it.
-The answer is the same summary, with `entries` naming what was undone, and the limit of 20,000 rows counts them all.
-The entries must all be of one project the caller can read: entries of two projects are refused, and so is an entry the caller cannot read.
-A job that is still waiting, running or stopping is refused until it has ended.
-While a job stands undone, its read carries `undone`, the undo's operation, time and user, and only a whole undo of that undo takes it away again: undoing one document's part of it leaves the job undone.
+[cols="1,3"]
+|===
+|Reason |The row is left because
+
+|`changed-since`
+|someone wrote it after the entry.
+
+|`changed-between`
+|someone wrote it between the entry's own writes.
+
+|`built-on`
+|the entry made it, and something that stays depends on it, such as an annotation on a token or a link to a vocabulary entry.
+
+|`needs`
+|it depends on a row that will not be there afterwards.
+
+|`text-changed-since`
+|its text was edited after the entry, so its offsets no longer mean what they did.
+
+|`place-taken`
+|it is a text, and its layer now holds another text of the document.
+
+|`does-not-fit`
+|the document's layer rules would no longer hold with it put back. All of that document's rows are then left.
+
+|`value-not-allowed`
+|its value is no longer in the layer's closed list.
+
+|`not-permitted`
+|the caller does not maintain its project.
+|===
+
+Rows that belong together go back together or not at all.
+The morphemes of one word, for example, are never left half in the old analysis and half in the new.
+
+Suppose a service glossed fifty words and a person has since corrected three of them.
+Undoing the service's entry takes back the other forty-seven and leaves the three corrected words as they are, each listed with its reason.
+
+Some changes are never undone: those to a project, its layers, a vocabulary's name or settings, users and memberships.
+`not_undone` / `notUndone` names the operations that made them.
+A project's deletion cannot be undone.
+
+An undo takes a few options and has a few limits:
+
+* `dry_run` / `dryRun` writes nothing, and the answer says what would change.
+* `document_id` / `documentId` takes one document's rows only, and `vocab_layer_id` / `vocabLayerId` one vocabulary's entries.
+* An undo needs a maintainer of the project the rows belong to. Rows the caller may not maintain are skipped, and the rest undone.
+* Undoing the same entry again finds nothing left and writes nothing.
+* An entry of more than 20,000 rows is refused.
+
+Several entries can be undone together as one with `audit.undo_entries` / `audit.undoEntries`, and a whole job with `jobs.undo`, which finds the job's entries itself.
+Each row goes back to how it was before the first of those entries wrote it.
+The entries must all be of one project, and a job must have ended.
 
 [,python]
 ----
@@ -1901,10 +1929,13 @@ With `dry-run=true` nothing is written, and the answer says what would change.
 == Vocabulary Time Travel
 
 A vocabulary may be linked by several projects, so its history is its own.
-`vocabLayers.get(id, includeItems, asOf)` reads a vocabulary as it was, `vocabLayers.getItemAt(id, itemId, asOf)` reads one entry, deleted or not, and `vocabLayers.audit` reads the vocabulary's log.
-A maintainer of the vocabulary's project can put one entry back as it was with `vocabLayers.restoreItem(id, itemId, asOf)`, though its links come back only by restoring the documents that held them.
-Changes to a vocabulary also appear in its project's log, from the version that gave every vocabulary a project on.
-A vocabulary read as of a time before that version has no `project`.
+
+* `vocabLayers.get(id, includeItems, asOf)` reads a vocabulary as it was.
+* `vocabLayers.getItemAt(id, itemId, asOf)` reads one entry, deleted or not.
+* `vocabLayers.audit` reads the vocabulary's log.
+* `vocabLayers.restoreItem(id, itemId, asOf)` puts one entry back as it was, for a maintainer of the vocabulary's project. Its links come back only by restoring the documents that held them.
+
+Changes to a vocabulary also appear in its project's log.
 A log names a project only to someone who can read it, and says "another project" to anyone else.
 
 = Service Reference
@@ -2036,27 +2067,24 @@ client.messages.serve(project_id, service_info, handle_request, extras)
 `summary`:: A longer description in Markdown, for what the one-line `description` cannot say.
 `parameters`:: The arguments a user may set for each request. Each has a `key`, a `label` and a `type` (`string`, `number`, `boolean`, `enum`, `multiselect`, or `field`, one of the project's annotation fields), with an optional `default`.
 
-A Python `BaseService` also registers its `version`, the one it stamps on what it writes (see <<Provenance>>), and a service run with `--model-pool` registers that name as `model_pool`.
-The assistants register `model`, `max_output_tokens` and, when each is known or given, `context_window`, `reasoning_effort` and `web_search` (the provider's name).
-The igt Administration page lists these per service.
 Every member of a project can read a service's `extras`, so a key or a provider's address never goes in them.
+A Python `BaseService` also registers its `version` there, the one it stamps on what it writes (see <<Provenance>>).
 
 A parameter's value reaches the service under exactly the `key` it declared.
-A Python `BaseService` receives every declared parameter coerced against the schema, as the apps' request forms coerce it.
-A parameter left out takes its default, a number is held to its `min` and `max`, an `enum` value not offered is the default, and a `string` left blank takes its default when it has one.
-Most services write to the project and the client reloads, but `detect-speech` writes nothing: it returns time regions as `segments`, which the app offers as proposals.
+A Python `BaseService` receives every declared parameter coerced against the schema: one left out takes its default, and a number is held to its `min` and `max`.
 In JavaScript, `filterServicesByTask` picks the services for a slot, and `getParamSchema` and `buildDefaultValues` help build the form.
 
 == Holding the document
 
-A service that reads a document and then writes it holds the document's lock (see <<Locking>>) from that read through its last write, for the whole run.
-No one else can edit the document meanwhile, so the run never writes over an edit made while its model worked, and it needs no check that the document is as it read it.
+A service that reads a document and then writes it holds the document's lock (see <<Locking>>) from that read through its last write.
+No one else can edit the document meanwhile, so the run never writes over an edit made while its model worked.
 The lock is renewed for as long as the run takes, and the requester's own app keeps the document read-only until the run ends.
-A change made to the project rather than to the document still reaches it: renaming, deleting or merging the entries of a vocabulary the document links to, renaming that vocabulary, changing its configuration or deleting it, unlinking it from the project, or deleting a layer.
-Each moves the document to a new version, and the run's next write is then refused with a conflict (409).
+
+A change to the project can still reach the document, such as deleting a layer or merging entries of a vocabulary it links to.
+Such a change moves the document to a new version, and the run's next write is then refused with a conflict (409).
 
 Load a model before taking the lock, so no one waits on the document while it loads or downloads.
-Once the requester stops the run and it is not inside its writes (`critical()`, see <<Stopping a request>>), the lock is no longer renewed: a run stuck in a call that never reaches a checkpoint lets the document go within the lock window, and a write it makes afterwards is refused.
+When the requester stops the run, the lock is no longer renewed, so a run that is stuck lets the document go within the lock window.
 
 In Python, `held_run` from `plaid_client.service` takes the lock, puts the client in strict mode for that document (see <<Strict Mode>>), and sends the run's result once the lock is released.
 The handler sets `run.result`, or `run.refusal` to the words of a refusal, and may return straight after.
@@ -2081,28 +2109,60 @@ class Glosser(BaseService):
 
 `locked_for_writes` is the same lock without the result.
 Pass it the `response_helper` so that a stop lets the lock lapse as `held_run` does.
-It takes an optional version, for a request that carries the version the app asked a question at, such as a re-tokenize that deletes work only with the requester's leave, and refuses a document no longer at it.
+It also takes an optional document version, and refuses a document that is no longer at it.
 
 == Service results
 
 A service reports what it did as counts in its result, and sends no message of its own.
-The app that asked words what the person is told, in its own terms, and the same counts serve again when the page reloads mid-run and the run is picked up later (see <<Presence and persistence>>).
-A run that fails on some items still finishes with `status: "success"`, and its counts say which items failed.
-A run with nothing to work on is a result too, with zero counts and a `reason` code the app words: `no-text` (a document with no text), `no-words` (a tokenizer found none) or `no-speech` (a recording with none).
-An error is for a run that could not be done.
-Every result has the `document_id` and a `status`, and a stopped run comes back as `stopped: true` instead.
-These are the results of each task, in the snake_case a Python service writes, which a JavaScript client reads in camelCase.
+The app that asked words what the person is told, in its own terms.
+A tokenizer's result, for example:
 
-`tokenize`:: `tokens_created`, `tokens_deleted` and `sentences_created`, with `reason` `no-text` or `no-words` when there was nothing to tokenize.
-`parse`:: `mode` (`full` for a document parsed whole, `preserve` for one whose sentences a person worked on were kept), `parsed_sentences`, `unchanged_sentences` (those of the parsed that came out as they are stored, so nothing was written for them) and `skipped_sentences`, with `reason` `no-text` for a document with no text.
-`transcribe`:: `segments_transcribed`, the segments the model heard, `segments_added`, the ones put in the transcript, and `segments_skipped`, the ones whose time a segment already held. `tokens_created` equals `segments_added`. `reason` is `no-speech` for a recording with no speech in it.
-`detect-speech`:: `segments`, the time regions found, each `{time_begin, time_end}` in seconds with an optional `speaker`. Nothing is written.
-`analyze`:: `sentences` in the document, `sentences_sent`, the ones holding a word the run could write, `words_written` and `words_replaced`. `skipped` counts the words left alone: `protected` (a person's analysis, with overwriting off), `precedent` (named in the request's `skip_word_ids`) and `unaligned` (given no analysis by the model). `sentences_failed` lists `{sentence_id, reason}` for each sentence the run could not analyze, `sentences_not_asked` the ids of the sentences never sent because the model stopped answering, and `translation_field_missing` names a translation field the request asked for that the document lacks.
-`translate`:: `sentences`, `sentences_written` and `sentences_replaced`. `skipped` counts `protected` sentences (a person's translation, with overwriting off) and `empty` ones (no words). `sentences_failed` lists `{sentence_id, reason}`, `sentences_not_asked` the ids of the sentences never sent because the model stopped answering, and `gloss_field_missing` names a gloss field the request asked for that the document lacks.
-`draft-graph`:: `sentences` in the document and `drafted`, the sentences given a new graph. `unchanged` counts the sentences whose new draft is the graph they already have, which writes nothing. `skipped` counts the sentences with a machine-made graph left alone with overwriting off, `kept` the ones a person made, contributed to or accepted something in, and `linked` the ones another sentence's graph links into. `failed` and `sentences_failed`, a list of `{sentence, reason}` by sentence number, name the sentences the run could not draft (`{sentence, code}` for a cause the app words: `no-link-or-gloss`, no word has a vocabulary link or a gloss, and `no-link-no-gloss-line`, no word has a vocabulary link and the project's UMR settings name no word or morpheme gloss line), and `sentences_not_drafted` lists, by number, the ones never asked about because the model stopped answering.
-`compare`:: `against`, the `{id, name}` of the document scored against, `scope`, `scores` (`sentence`, and `comprehensive` or null), `sentences`, `sentences_scored` and `sentences_skipped`, the ones the metric could not read.
+[,python]
+----
+{"document_id": "35424d64…", "status": "success",
+ "tokens_created": 212, "tokens_deleted": 0, "sentences_created": 14}
+----
 
-A reason in a failure list is the service's own account of one item, and the app shows it as it stands.
+Three conventions hold for every task:
+
+* A run that fails on some items still finishes with `status: "success"`, and its counts say which items failed. An error is for a run that could not be done at all.
+* A run with nothing to work on is a result too, with zero counts and a `reason` code: `no-text`, `no-words` or `no-speech`.
+* A stopped run comes back as `stopped: true`.
+
+These are the main counts of each task, in the snake_case a Python service writes, which a JavaScript client reads in camelCase:
+
+[cols="1,3"]
+|===
+|Task |Counts
+
+|`tokenize`
+|`tokens_created`, `tokens_deleted`, `sentences_created`
+
+|`parse`
+|`parsed_sentences`, `unchanged_sentences`, `skipped_sentences`, and `mode`: `full`, or `preserve` when the sentences a person worked on were kept
+
+|`transcribe`
+|`segments_transcribed`, `segments_added`, `segments_skipped`
+
+|`detect-speech`
+|`segments`, the time regions found, each `{time_begin, time_end}` in seconds. Nothing is written.
+
+|`analyze`
+|`sentences`, `sentences_sent`, `words_written`, `words_replaced`, `skipped`, `sentences_failed`
+
+|`translate`
+|`sentences`, `sentences_written`, `sentences_replaced`, `skipped`, `sentences_failed`
+
+|`draft-graph`
+|`sentences`, `drafted`, `unchanged`, `skipped`, `kept`, `linked`, `failed`
+
+|`compare`
+|`against`, `scope`, `scores`, `sentences_scored`, `sentences_skipped`
+|===
+
+`skipped` counts what a run left alone, such as a person's work when overwriting is off.
+A failure list such as `sentences_failed` holds one `{sentence_id, reason}` per item.
+The reason is the service's own account of that item, and the app shows it as it stands.
 Other keys may be added beside these.
 
 == Stopping a request
@@ -2158,19 +2218,14 @@ A client that wants to be able to come back mints the request id itself (the `re
 Sending the same id again rejoins the request rather than starting another, so retrying is safe.
 
 Each service id allows one connection per project, and a second one is refused with 409.
-A service id on a project belongs to the account that first connected it.
-Another account connecting it is refused with 403, and the refusal names the account it belongs to.
-An administrator releases the id with `DELETE /api/v1/projects/{id}/services/{service-id}/owner` (`releaseService` / `release_service`), and the next account to connect it then holds it.
-Forgetting an offline service does not release its id.
+A service id on a project belongs to the account that first connected it, and another account connecting it is refused with 403.
+An administrator can release the id with `releaseService` / `release_service`, and the next account to connect it then holds it.
 Deactivating the account releases every id it holds.
-The project's services listing (`GET /api/v1/projects/{id}/services`) gives the display name of whoever holds each id in `claimed-by-name`, absent when no account holds it.
-An administrator also gets the account in `claimed-by`, and an entry with `seen` false for each held id whose registration was forgotten, so it can still be released.
+
 Both clients reconnect a service whenever its connection drops, so restarting the Plaid server does not mean restarting its services.
-A request in flight when a service's connection drops is held for 20 seconds, and the service's reports on it are taken meanwhile.
-Each client names its process when it connects (`instance-id` on the request channel, minted once per process).
-If the same process connects the service again within that time, the requests it had reported progress on go on, and a stop asked for in between reaches it on the new connection.
-The others end with the error `Service disconnected`: at once when another process of the service connects, or when the account that runs it loses its right to, and after the 20 seconds when nothing connects.
-A client that names no process has its requests ended when its connection drops.
+A request in flight when the connection drops is held for 20 seconds.
+If the same process connects again within that time, the request goes on.
+Otherwise it ends with the error `Service disconnected`.
 `registration.is_connected()` / `isConnected()` tells whether the server sees the service as online right now.
 
 NOTE: Service requests are not recorded in the audit log, but the writes a service makes are, under the token it runs with. Giving a service its own named API token makes its edits easy to pick out.
@@ -2204,7 +2259,7 @@ A job is started with `jobs.create` (`POST /api/v1/projects/{id}/jobs`) and this
 * `app`: the app whose worker runs it, `igt`.
 * `instructions`: what the job is to do, required, at most 2,000 characters.
 * `documents`: the document ids, in the order to work them, at most 500. Left out, every document of the project, by name with a run of digits read as its number (Text 2 before Text 10), then by id.
-* `setup`: optional, a JSON object of at most 4,000 characters, which the app sends when the job starts. The server keeps it as sent, returns it on every read of the job as `setup`, never changes it, and reads none of its keys. Each app decides what goes in it, such as what the job may fill. Both clients re-case the keys inside it as they re-case every key, so a key of one lowercase word is the only kind that reads the same in every language.
+* `setup`: optional, a JSON object of at most 4,000 characters, which the app sends when the job starts. The server keeps it as sent and reads none of its keys, so each app decides what goes in it, such as what the job may fill.
 * `id`: optional, an id the client minted (see <<Ids you mint>>).
 
 The answer is the job, 201.
@@ -2222,22 +2277,29 @@ c.jobs.cancel(job["id"])
 A job is `waiting` until the worker takes it, then `running`, and ends `done`, `cancelled` or `failed`.
 Stopping a waiting job (`jobs.cancel`) cancels it at once.
 Stopping a running one makes it `stopping`, and the worker ends it after the work in hand.
+
 A job that ended `cancelled` or `failed` has a `reason`.
-The server sets `cancelled`, `starter-access` (the person who started it can no longer write in the project) and `worker-lost` (its worker stopped during it ten times, below).
-The igt worker sets `no-plan`, `planning-failed`, `setup-gone`, `setup-unreadable`, `guidelines-too-long`, `no-documents`, `model-refused` (the model's provider refused its key or its model) and `worker-error`, and may say why in `message`.
+The server sets three of them:
 
-A job read carries its `instructions`, `app`, `started-by` and `started-by-name`, `state`, `reason`, `model`, `cancelled-by`, and `created-at`, `started-at`, `heartbeat-at` and `finished-at`.
-While it runs, `phase` is `checking`, `planning`, `working`, `harmonizing` or `reporting`, `message` is the worker's line on what it is doing, `current-document` the document in hand, and `waiting-for` is `people` or `model` while it waits on the model.
-A waiting job's `ahead` counts the jobs that have not ended and were started before it, across the server.
-`lapsed` is true while a running or stopping job's worker has sent nothing for two minutes.
-`undone` names the operation, time and user of an undo that stands (see <<Undo of one entry>>).
-`GET /api/v1/jobs/{id}` also carries `wrote`, true when History holds a change the job wrote, whatever its report counts.
+* `cancelled`: a person stopped it.
+* `starter-access`: the person who started it can no longer write in the project.
+* `worker-lost`: its worker stopped during it ten times.
 
-`documents` lists a row per document of the job, in its order, with the document's `name` (null once it is deleted) and the worker's `state` for it: `waiting`, `working`, `deferred`, `done`, `in-use`, `gone` or `not-reached`.
-`sentences`, `targets` and `done` count its sentences, those the job takes, and those finished, and `counts`, `skipped` (at most 500), `gloss-group` and `harmonize-group` are the worker's.
-When a job ends, every row not finished is `not-reached`.
-The `report` is the worker's JSON, at most 1,000,000 bytes.
-When a job ends without its worker (stopped while no worker reports, failed for `starter-access` or `worker-lost`), the server writes the report from the rows, with `stopped` set to `without-worker` when it was stopped.
+The worker sets the rest, such as `no-documents` or `model-refused` (the model's provider refused its key or its model), and may say why in `message`.
+
+While a job runs, its read says where it is:
+
+* `phase` is `checking`, `planning`, `working`, `harmonizing` or `reporting`.
+* `message` is the worker's line on what it is doing, and `current-document` the document in hand.
+* `waiting-for` is `people` or `model` while it waits for the model.
+* `lapsed` is true while its worker has sent nothing for two minutes.
+
+A waiting job's `ahead` counts the jobs started before it that have not ended, across the server.
+
+`documents` lists a row per document of the job, in its order, with the worker's `state` for it: `waiting`, `working`, `deferred`, `done`, `in-use`, `gone` or `not-reached`.
+Each row counts the document's `sentences`, the `targets` the job takes among them, and those `done`.
+When a job ends, every row not finished is `not-reached`, and `report` holds the worker's account of the whole job.
+While a job stands undone, `undone` names the undo's operation, time and user (see <<Undo of one entry>>).
 
 [cols="2,3"]
 |===
@@ -2277,19 +2339,18 @@ When a job ends without its worker (stopped while no worker reports, failed for 
 A delegated token can neither start nor stop a job.
 
 `GET /api/v1/jobs/{id}/pieces` lists what a job has done so far, newest first, in pages.
-The worker keeps one decision of the form `" piece"` for its plan and for each piece of its work once that piece's writes are known, keyed by a six-digit sequence number, and each entry is `{seq, piece}`, `piece` that decision's JSON as the worker wrote it.
+Each entry is `{seq, piece}`, where `piece` is the worker's own account of one piece of its work.
 
 == The job worker
 
 The worker runs under an administrator's named API token.
 It asks for work with `jobs.claim`, which answers the next job, a token for the person who started it and the heartbeat interval, or 204.
-A claim may carry `settings`, an object of at most 2,000 characters as JSON saying what the worker runs, which the server keeps until the next claim and `jobs.worker` answers. `plaid-job-worker` sends its `version`, `model-pool`, `context-window`, `max-output-tokens`, `piece-output-tokens`, `reasoning-effort` and `apps`, each only when set, and never a key or an address.
-While any job is running the server gives out no other: a worker that asks first gets a running or stopping job whose worker has lapsed, oldest first, then the oldest waiting job of an app it runs.
-A job whose starter can no longer write the project is failed with `starter-access` instead of being given out.
+While any job is running the server gives out no other.
+
 While it works the worker sends `jobs.heartbeat` every 30 seconds, which answers the job's state and a fresh token.
-A job whose worker has sent nothing for two minutes is taken by the next worker that asks, which goes on from where the job was, and the old worker's next call is refused with `job-taken`.
-A job is taken up again this way at most ten times: the next claim that finds it lapsed ends it `failed` with `worker-lost`, or `cancelled` when it was stopping, and gives out the next job.
-Once a job has ended, its document rows and decisions are refused with 409 and `job-finished`, except for a job the server failed whose report the worker has not yet sent.
+A job whose worker has sent nothing for two minutes is taken by the next worker that asks, which goes on from where the job was.
+The old worker's next call is then refused with `job-taken`.
+A job is taken up again this way at most ten times, after which it ends `failed` with `worker-lost`.
 
 The worker writes into documents only with the token of the person who started the job.
 That token reaches only the job's project and does only what that person may there.
@@ -2299,10 +2360,9 @@ Once they can no longer write in the project, the job fails, and no further toke
 
 An administrator reads every project's jobs in one list, newest first, with `admin.jobs` (`GET /admin/jobs`): each entry is as a project's job list gives it, with the name of its project.
 
-The worker sends each write of a job under Idempotency-Keys of a seed of its own (`<seed>.<n>`).
-When an answer is lost, or the worker stopped while a write was on its way, `POST /api/v1/jobs/{id}/landed` with `refs`, the seeds, answers `keys`, the keys of every write the job's starter made in its project under them.
-The server keeps each operation's key in the audit log, so for a write it records in History the answer holds at any time.
-A write it does not record there, such as a comment, is answered for the 24 hours it keeps the answer for replay, in whatever project it was made.
+The worker sends each write of a job under an Idempotency-Key of its own.
+When an answer is lost, or the worker stopped while a write was on its way, `POST /api/v1/jobs/{id}/landed` tells it which of those writes reached the server.
+So no write of a job is made twice.
 
 A job's writes in each document are grouped under one History entry for its work there and one for making its analyses consistent, with the refs `job:<job>/doc:<document>/pass:gloss` and `job:<job>/doc:<document>/pass:harmonize`.
 The document's row gives their ids as `gloss-group` and `harmonize-group`.
@@ -2457,11 +2517,21 @@ To go back to that version, restore the backup taken before the upgrade, then st
 
 The server starts only once every migration has run.
 A start stopped while it migrates the database, by a crash, a power cut or a restart, leaves the migration unfinished.
-The next start runs it again when the migration is written to be resumed, as the one that gives every vocabulary a project is, and says so in its log.
-For any other migration the server refuses to start, and its log names the migration and the two ways on: restore the backup taken before upgrading and start again, or remove the mark the stopped start left, with `+python3 -c "import sqlite3; c = sqlite3.connect('data/plaid.db'); c.execute('DELETE FROM schema_migrations WHERE id = -1'); c.commit()"+`, and start again.
-The server also refuses to start on a database file it cannot write.
+The next start runs it again when the migration is written to be resumed, and says so in its log.
+
+For any other migration the server refuses to start, and its log names the migration and the two ways on:
+
+* Restore the backup taken before upgrading and start again.
+* Remove the mark the stopped start left, and start again:
++
+[source,console]
+----
+$ python3 -c "import sqlite3; c = sqlite3.connect('data/plaid.db'); c.execute('DELETE FROM schema_migrations WHERE id = -1'); c.commit()"
+----
+
 Do not run the older version on a database whose upgrade stopped partway.
 Restore the backup instead.
+The server also refuses to start on a database file it cannot write.
 
 === Vocabularies without a project
 
@@ -2486,11 +2556,18 @@ A deactivated account is not made a maintainer.
 A vocabulary whose maintainers are all deactivated gets a project maintained only by the admin who ran the script, and the script says so.
 
 The upgrade gives each vocabulary its project and logs every choice.
-A vocabulary that several projects link goes to the one whose maintainers include the most of its maintainers, then the one with the most links into it, then the one with the smallest id.
+A vocabulary that several projects link goes to the one whose maintainers include the most of its maintainers.
 A maintainer of the vocabulary who does not maintain that project is made a maintainer of it.
 If the choice is wrong, move the vocabulary afterwards.
+
 A migration that rebuilds the audit log keeps the server from answering for a few minutes and cannot be undone, which is why the copy goes off the machine first.
-The database file does not shrink after such a rebuild: to return the space, stop the service, run `+python3 -c "import sqlite3; sqlite3.connect('data/plaid.db').execute('VACUUM')"+`, and start it again.
+The database file does not shrink after such a rebuild.
+To return the space, stop the service, run this, and start it again:
+
+[source,console]
+----
+$ python3 -c "import sqlite3; sqlite3.connect('data/plaid.db').execute('VACUUM')"
+----
 
 === Trying an upgrade on a copy
 
