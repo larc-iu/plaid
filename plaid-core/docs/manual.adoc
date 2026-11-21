@@ -456,9 +456,8 @@ An editor that knows where the cursor was sends `edits` instead, which say exact
 ----
 
 Indices count code points, and each edit applies to the body as the edits before it left it.
-An edit of another shape, a `null` among them, or one that reaches past the body is refused with 400, and nothing is written, whether the edits come as `edits` or as a list under `body`.
-An empty `edits` list writes nothing: the answer is the text as stored, and the document's version stays as it was.
-The message names the edit in JSON, as both clients name it when they refuse it first: the keys `type`, `index`, `length`, `value` and `side` in that order, then any others sorted, with every number as JavaScript prints it (`1.0` as `1`).
+A malformed edit, or one that reaches past the body, is refused with 400, and nothing is written.
+
 Send `base`, the `digest` of the body the edits were made on, and the edits apply only if the stored body is still that body.
 Otherwise the answer is 409 with `text-changed: true`, and nothing is written.
 
@@ -468,69 +467,81 @@ PATCH /texts/9cfafcc6
 { edits: [ { type: "insert", index: 10, value: "!" } ], base: "4d7e1a…" }
 ----
 
-Tokens follow the text by fixed rules, the same for every save.
-Letters typed inside a word or at its end become part of the word, and a word is deleted when all of its letters are.
-A word made only of punctuation and symbols, such as a token over `(` or `.`, takes no text typed against it, so the letters typed there are the same words as where the punctuation has no token: in `ab (cd)` with a token over `(`, `x` typed after `(` makes `xcd`, and `x` typed after a closing `.` is in no word.
-This holds for words only: a row made only of punctuation, such as a pause `...` in a text with no words, takes text as any row does.
-An emoji, the zero morph `∅`, the tone letters (`˥` to `˩` and the other modifier tone letters) and the emoji skin-tone modifiers count as letters here.
-So does a character a word layer's ignored-tokens rule (`ignoredTokens` in the `plaid` namespace) calls a letter: under the punctuation rule a character it lists as letter-like, such as an apostrophe a project spells words with, and under an explicit list every punctuation character but the listed ones.
-The rule is an object `{type, whitelist, blacklist}`.
-Under the type `unicodePunctuation` a word made only of punctuation is ignored, and each entry of `whitelist` one character long is a letter.
-Under the type `blacklist` the entries of `blacklist` are the words ignored, and those one character long are the only characters that part words.
-The list of the other type is kept and not read.
-Punctuation and symbols are read from the Unicode 16 table the apps read.
+The answer carries the new `digest` and a `reshape`, which lists the tokens whose extent changed and the ids of everything the change deleted.
+An editor can update its own copy of the document from it instead of reading the document again.
 
-A character the word layer's rule leaves out of a word stays out of a word it is typed against.
-Under the punctuation rule that is a punctuation mark the built-in tokenizer parts words at (see <<New words for typed text>>), and under an explicit list a listed character.
-Typed at a word's start or end, the characters next to the word join it up to the first such character or whitespace, and the rest belongs to no word: after `kilu ama`, `, sipa` leaves the word `ama`, and `s,` makes it `amas`.
-Typed inside a word, it is part of the word, and a sentence or a row takes it as it takes any text.
-A word layer with no rule leaves nothing out.
+==== Words
 
-A replacement, or any change that deletes text and types new text in the same place, counts as a deletion followed by an insertion there.
-The text it shares with the old text at its start and at its end is no change.
-Where it replaces text over two or more words, that shared text is no change only back to a word edge, never inside a word, so no word keeps letters of another's: `ab a` replaced whole by `a` deletes both words, and the new `a` belongs to no word. One word typed over keeps what it shares: `cat` replaced by `cats` keeps the word, now `cats`.
-A word all of whose letters it replaces, once that shared text is taken off, is deleted with its annotations: `cat` replaced by `dog` deletes the word, `cat` replaced by `cut` keeps it, now `cut`, and `cat` replaced by `cat` changes nothing.
-A word it replaces only part of keeps its other letters and takes the letters typed against them, and the rest of the new text belongs to no word.
-In `the cat sat`, `cat` replaced by `dog` deletes the word `cat`, and `dog` belongs to no word, while `at s` replaced by `ow r` leaves the words `cow` and `rat`.
-Tokens under a word, such as morphemes, and tokens beside the words on a layer that allows overlap, such as UMR nodes, are deleted the same way when none of their letters is left.
-A word left starting or ending on whitespace it did not start or end on moves onto its letters, and the tokens under it are cut to it, so a morpheme that began on that whitespace moves with the word. A token under a word that is deleted is deleted with it, a morpheme of only whitespace too.
-A sentence or a row (see below) holds the text typed over part of it.
-One whose exact text is replaced, with nothing more, keeps its place and its annotations on the new text, and a row its times.
-One that a replacement covers along with more text is deleted with its annotations, as a deletion of it would be.
-In `one two. three four.` pasted over as `uno dos. tres cuatro.`, the two share only the final `.`, so the first sentence lies inside the replacement and is deleted, and the second, which the replacement only cuts, takes the new text, where the `.` is in no word.
-A save that leaves text in the body and no token on a `partitioning` layer makes one new token of that layer over the whole body, with no metadata, when the layer held a token before the save. A layer that never held one gets that token at the end of the request when a token stands on a layer under it then, such as the words "Tokenize new text" makes in a text whose sentences were never made. A batch that makes the partition itself after the save gets none. The partition then covers the text and the words are inside it. An app can then split it.
-A save that would leave a token outside every token of its parent layer is refused with a 409 naming the two layers, and nothing is stored. A token that was already outside every parent before the save does not count, and a parent layer that holds no token is judged at the end of the request.
+Tokens follow the text by fixed rules, the same for every save:
 
-A next-line character (U+0085) is whitespace to all of these rules, as a line feed is: it parts two words, ends a line, and counts as whitespace at a sentence's or a row's edge.
+* Letters typed inside a word or at its end become part of the word.
+* A word is deleted, with its annotations, when all of its letters are.
+* Punctuation typed against a word stays out of it, and a word made only of punctuation takes no text typed against it.
+* A space typed inside a word does not split it, unless the word layer's config sets `splitOnSpace` to `true` in the `plaid` namespace.
 
-A space typed inside a word does not split it, unless the word layer's config sets `splitOnSpace` to `true` in the `plaid` namespace.
-Only a word splits: in a text whose word layer holds no token yet, a space typed inside a row splits nothing.
+Tokens under a word, such as morphemes, follow the same rules, and are deleted when none of their letters is left.
+
+What counts as punctuation follows the word layer's `ignoredTokens` rule in the `plaid` namespace.
+A project that spells words with an apostrophe, for example, can list it there as a letter.
+A word layer with no rule leaves nothing out of a word.
+
 Where two words meet with no space between them, an insert at the boundary may say which word its text joins with `side: "before"` or `side: "after"`.
+
+==== Replacements
+
+A replacement counts as a deletion followed by an insertion in the same place.
+The text the new value shares with the old at its start and at its end is no change.
+A word that loses all of its letters is deleted, and the new text then belongs to no word.
+A word that keeps some of its letters takes the letters typed against them.
+
+In `the cat sat`:
+
+[cols="1,2"]
+|===
+|Replacement |Result
+
+|`cat` by `cats`
+|The word is kept, now `cats`.
+
+|`cat` by `cut`
+|The word is kept, now `cut`.
+
+|`cat` by `dog`
+|The word `cat` is deleted with its annotations, and `dog` belongs to no word.
+
+|`at s` by `ow r`
+|Both words are kept, now `cow` and `rat`.
+|===
+
+==== Sentences
 
 Text typed between two tokens of a `partitioning` layer, such as two sentences, belongs to one of them by where it was typed:
 
 * Right after the first sentence's last character, before any whitespace, it joins the first sentence.
-* After whitespace, anywhere in the whitespace between the two, it joins the first sentence that begins at or after the place it was typed, which then begins at the typed text. In `The dog ran. The cat sat.`, `Then ` typed just before the second `The` gives the sentence `Then The cat sat.`. Where a sentence holding only whitespace begins at or after that place, before the second sentence, the text joins it and it keeps its place before the second. Each insert goes there whether it is typed alone or with others in one save.
-* A deletion or a replacement in that whitespace counts as a change between the two: an insert before it in the same save stays with the first sentence.
-* Where no whitespace parts the two and the first ends on punctuation, as in `你好。我很好。`, it joins the second sentence. Between two letters it joins the first, as text typed between two words does. Punctuation here is as for the words above, so after a character the project calls a letter the text joins the first sentence.
-* Text holding a line break, or with a line break between it and the second sentence's first letter, leaves the boundary where it was. A line typed there can then be split off as a sentence of its own without moving the second sentence or what is on it.
-* At the start of the text it joins the first sentence, and a line typed there becomes a sentence of its own. A line of only whitespace does not, such as Enter typed after a paragraph indent of ideographic or no-break spaces, which counts as whitespace as an indent of ASCII spaces does. At the end it joins the last.
+* After whitespace it joins the second sentence, which then begins at the typed text. In `The dog ran. The cat sat.`, `Then ` typed just before the second `The` gives the sentence `Then The cat sat.`.
+* Where no whitespace parts the two and the first ends on punctuation, as in `你好。我很好。`, it joins the second sentence.
+* Text holding a line break leaves the boundary where it was, so the new line can be split off as a sentence of its own.
 
-An insert's `side` decides over these where it applies.
+A sentence whose exact text is replaced keeps its place and its annotations on the new text.
+One that a replacement covers along with more text is deleted with its annotations.
 
-A row, a token of a layer that forbids overlap other than the words and the layers under them, such as a time-alignment segment, keeps to the sentences this way:
+Two rules keep the layers consistent.
+A save that leaves text in the body and no sentence over it makes one new sentence over the whole body, which an app can then split.
+A save that would leave a token outside every token of its parent layer is refused with a 409 naming the two layers, and nothing is stored.
 
-* Text typed inside a row stays in it, wherever the sentence boundary near it goes, except in the whitespace at a row's edge, as the next point says.
-* A row over whole sentences, with or without the whitespace at its edges, follows them. An edge at a sentence's start or end, or at its first or last letter, goes where that sentence's start or end goes, and keeps the whitespace it held there and no other. Text typed at that edge, or in the whitespace between the edge and the row's letters, counts as typed at the sentence boundary: it is in the row when that sentence takes it. In `Hi.  The end.` with a row over each sentence and its whitespace, `So` typed between the two spaces begins the second sentence and is in the second row.
-* A row over part of a sentence takes the text typed right at an edge it shares with that sentence when the sentence takes it, and no other text of the sentence. This includes text the sentence takes at the start or end of the text and a line typed after it.
-* Any other edge of a row stays where it was.
-* A row keeps every letter it held that the save leaves. A space typed inside a word that splits it (`splitOnSpace`) moves no row.
-* Rows that did not overlap before a save do not overlap after it.
+==== Rows
 
-A whole `body` save takes its change as the character difference between the two bodies, read by the same rules. Where the difference can stand at more than one place for the same new body, the server does not choose the place that spares the tokens: deleting `cat` from `the cat cow` reads as `at c` deleted, which cuts both words. The reading can differ from what was typed, so an editor sends `edits`. Edits sent as the body (a list of ops) are applied as sent: text inserted where two tokens meet is in neither, and a partition's gap is closed by the token before it.
+A **row** is a token of a layer that forbids overlap and is neither the words nor a layer under them, such as a time-alignment segment.
+Text typed inside a row stays in it.
+A row over whole sentences follows them as their boundaries move, and any other edge of a row stays where it was.
+Rows that did not overlap before a save do not overlap after it.
 
-The answer carries the new `digest` and a `reshape`, which lists the tokens whose extent changed and the ids of everything the change deleted.
-An editor can update its own copy of the document from it instead of reading the document again.
+==== Whole-body saves
+
+A whole `body` save takes its change as the character difference between the two bodies, read by the same rules.
+That difference can stand at more than one place, and the server does not pick the place that spares the tokens.
+Deleting `cat` from `the cat cow`, for example, reads as `at c` deleted, which cuts both words.
+An editor therefore sends `edits`.
 
 === New words for typed text
 
