@@ -51,8 +51,7 @@ We will discuss layers more shortly.
 
 == Users and Permissions
 Plaid offers a built-in **user** system which allows individuals to log in with a password.
-A user's id is their email address, compared without regard to case, Unicode composition, or invisible characters at either end.
-So `Ana@Example.org` and `ana@example.org` name one account.
+A user's id is their email address.
 By default, each project is private, and one of three permissions levels is needed in order to interact with one:
 
 * **Maintainers** have full privileges for working with projects: they may edit documents and also modify the project's configuration.
@@ -61,68 +60,10 @@ By default, each project is private, and one of three permissions levels is need
 
 Additionally, a global **admin** role exists, which allows the user to see and edit all data in the Plaid instance.
 
-A project's roles also say what each person may do with the project's vocabularies (see <<Vocabs>>).
-
-Admins and the maintainers of any project may list and search every account on the server (`GET /api/v1/users`), so that they can add members.
-Anyone may create a project and so become a maintainer, which means every user can search the accounts.
-
-A request for a project, document or vocabulary that does not exist answers 404 to an admin.
-Anyone else gets the same 403 they would get for one that exists but is not theirs.
-When the 403 is for an unknown id of something inside a project or vocabulary, such as a document, a token or a vocabulary entry, its body also carries `"unresolved": true`, which a client can read as "changed or removed by someone else".
-An unknown project or vocabulary id gets the 403 without it.
-
 Permissions say what a person may do, not how far their work is trusted.
 A project may also mark members whose work needs review, whatever their role, as described under <<Provenance>>.
 
-Each user may upload a **profile picture**, which appears wherever they are named in the apps.
-The server crops it to a square, scales it to `[media] avatar_size_px`, and strips its camera metadata.
-You may set or remove your own picture, and an admin may set or remove anyone's.
-
-=== Tokens and sign-out
-
-A sign-in or API token is read from the `Authorization` header only, never from a URL.
-An image or audio element cannot send that header, so the URL of a picture or a recording carries a short-lived **link token** instead.
-The clients build these URLs for you:
-
-* `users.avatarUrl(id, avatarHash)` (`users.avatar_url(id, avatar_hash)` in Python) gives a URL for any user's picture, using a token from `POST /api/v1/avatar-link`.
-* `POST /api/v1/documents/:id/media/link` answers `{url, expires-at}`, a URL that opens one document's recording.
-
-A link token opens nothing else, lasts at most `[media] avatar_link_ttl_seconds` or `[media] link_ttl_seconds`, and stops working when the credential that made it does.
-
-Signing out of an app forgets the sign-in in that browser only.
-To end every sign-in of your account on every device, call `client.auth.logout_everywhere()` (`client.auth.logoutEverywhere()` in JavaScript).
-Named API tokens are not affected, and are revoked one at a time with `api_tokens.revoke` (`apiTokens.revoke`).
-Each user mints their own named API tokens on the profile page of any app, which shows a new token once, to be copied.
-`api_tokens.list` (`apiTokens.list`) gives each token's `last-write-at`, the time of the newest change made with it, or null for a token that never wrote.
-
-A named API token acts as its owner, but since it never expires, it cannot do the few things that would outlive revoking it.
-It cannot change a password, mint or revoke API tokens, or mint an invite.
-An admin's named token also cannot create, promote, deactivate or reactivate accounts, clear login rate limits, or write another user's private data.
-These answer 403 "This needs a signed-in session, not an API token."
-
-=== Private user data
-
-Each user also has a small private **key/value store** (`/users/{id}/data/{key}`) for application state that should follow a person across devices, such as assistant conversations, drafts and interface preferences.
-Only the owner and admins can read or write it, and nothing in it is audited.
-It is not a place for annotation data, which belongs in layers where it is shared and queryable.
-
-A key is any string but `.` and `..`, which no URL can carry, and apps namespace theirs (`igt:assistant:<project>:...`).
-A value is any JSON document up to `[user_data] max_value_mb` (5 MB by default), counted in UTF-8 bytes.
-The store can be listed by key prefix or by a glob over the whole key (`igt:assistant:*:meta:*`), with or without values.
-An administrator reads how much each account holds with `admin.user_data_sizes` (`admin.userDataSizes`, `GET /admin/user-data/sizes`): per account with any, the number of entries and their total size in bytes.
-
-Every entry has a `version` that each write raises by one.
-A write that passes the version it was made from (`?version=`, or the `version` option of `user_data.put` / `userData.put`) is refused with 409 when another write landed in between.
-`version=0` writes only an entry that does not exist yet.
-
-=== Guidelines
-
-A project may carry a list of **guidelines** (`/projects/{id}/guidelines`): short Markdown documents recording the conventions its annotators have agreed on.
-Each has a `title`, a `body`, and a `pinned` flag, which tells an assistant to read that guideline on every turn.
-Readers may read them and writers may edit them.
-
-A PATCH that passes `updated-at`, the value the caller last read, is refused with 409 if someone else saved in between.
-Writes appear in the project's audit log, but guidelines have no time travel.
+<<Accounts and Access>> covers API tokens, profile pictures, each user's private data and a project's guidelines.
 
 == Clients
 Plaid's functionality is exposed for development as a REST API.
@@ -172,38 +113,12 @@ const firstDocument = await client.documents.get(firstDocumentId, true)
 console.log("First document:", firstDocument)
 ----
 
-=== Static pages
-Plaid can serve a folder of your own web pages, for example a small frontend for one project.
-Set `static_resources_path` under `[server]` in `data/config.toml` to the folder and restart.
-Every file in it is served at its path from the root, without authentication, so put nothing private there.
-
-Plaid also serves the JavaScript client at `/client/plaid-client.js`, the same version as the server, whether or not this folder is set.
-A page imports it as a module, so it needs no copy of its own:
-
-[,html]
-----
-<script type="module">
-  import { PlaidClient } from "/client/plaid-client.js";
-  const client = await PlaidClient.login(location.origin, "user@example.com", "password");
-  console.log(await client.projects.list());
-</script>
-----
-
-Its type declarations are at `/client/plaid-client.d.ts`.
-
-=== Pagination
-
-Collection endpoints (documents, users, API tokens, audit, and similar lists) are paginated.
-Over raw HTTP they return an envelope of the form `{"entries": [...], "next-cursor": "..."}`, where each page holds at most 100 entries by default (1000 maximum, set via `?limit=`).
-To fetch the next page, pass the opaque `next-cursor` value back verbatim as `?cursor=` (it is `null` on the final page).
-
-The official Python and JavaScript clients handle this for you: their `.list()`-style methods (e.g. `projects.list()`, `projects.list_documents(...)` / `listDocuments(...)`) transparently follow the cursors and return the full flat list.
-Per-page variants (e.g. `list_documents_page` / `listDocumentsPage`) are available when you want to drive pagination yourself.
+<<The HTTP API>> covers pagination, the event stream and serving pages of your own.
 
 == Audit Log
 
-Every write to the database, apart from comments, each user's private data, research telemetry and the record of which services have connected, is recorded in an append-only **audit log** which provides an account of who performed every change.
-The log is kept indefinitely, and it is what document time travel reads from (see <<Document Time Travel>>).
+Every change to a project's data is recorded in an append-only **audit log**, which gives an account of who made each change.
+The log is kept indefinitely.
 It can be queried like so:
 
 [,python]
@@ -219,18 +134,8 @@ for entry in c.documents.audit("35424d64-a077-4a29-8006-5a0c3b76aedb"):
 # Luke G, 2025-07-09T20:27:59.611Z: Merge morphemes (4 writes)
 ----
 
-Each entry names the user who made it, and the named API token if one signed the write.
-It also records what kind of credential signed it, as `credential`: `login` for a password sign-in, `named-token` for a named API token, and `delegated` for a token a service was handed to act for someone (see <<Acting on the requester's behalf>>).
-This tells a script run on a person's token apart from that person's own edits.
-
-The activity tally (`audit.tally`, `GET /audit/tally`, or a project's `GET /projects/{id}/audit/tally`) counts each person's `changes`, and among them `delegated-changes`, the ones made on a delegated token: by a service for its requester, or by an assistant job for its starter.
-`user-id` (`userId`, `user_id`) keeps one person's row.
-
-=== Logical operations
-
 Many actions are made of several writes: "merge two morphemes" deletes tokens, creates one, and moves spans.
-To keep the log readable, a client can group such a run into one **operation** with a label.
-The audit log then shows the run as one entry whose `message` is the label and whose `ops` are the individual writes:
+A client can group such a run into one **operation** with a label, and the log then shows it as a single entry:
 
 [,python]
 ----
@@ -240,188 +145,7 @@ with c.operation("Merge morphemes"):
     c.tokens.create(...)
 ----
 
-[,javascript]
-----
-await c.withOperation("Merge morphemes", async () => {
-  await c.tokens.delete(leftId);
-  await c.tokens.delete(rightId);
-  await c.tokens.create(...);
-});
-----
-
-An operation is not a transaction: if the third of five writes fails, the first two stay.
-Use a batch inside the operation for anything that must be all-or-nothing (see <<Atomic Batches>>).
-An operation opened inside another joins the outer one, so actions can call each other freely.
-
-A request to a service made inside an operation carries the operation along, and the service's writes are filed under your entry.
-Pass `no_operation=True` (`noOperation: true` in JavaScript) when the service's work should be an entry of its own.
-
-Each entry carries `time`, its first write, and `end_time`.
-To see a document as it was after the whole operation, read it as of `end_time`.
-Each op in `ops` has an `end_time` too, for viewing the state after that one write.
-
-=== Kinds of operation
-
-An operation may also say what **kind** of operation it is, so that a program can count operations without reading their labels.
-The kind is one of a fixed list, and any other value is refused with a 400.
-An optional `ref` (at most 1024 characters) says what the operation refers to.
-
-[,python]
-----
-with c.operation("Import ELAN corpus", kind="import", ref="format:elan"):
-    ...
-----
-
-[cols="1,3,2"]
-|===
-|Kind |What it is |`ref`
-
-|`assistant-plan`
-|An assistant plan the user approved, being applied.
-|`conv:<conversation>/plan:<plan>/service:<service>`
-
-|`service-run`
-|One run of a service, with every write it made.
-|`service:<id>`, or `builtin:<name>` for a rule an app runs in the browser
-
-|`import`
-|A file or archive read into a project.
-|`format:<format>`, such as `format:elan`
-
-|`bulk-edit`
-|One change made across many places at once.
-|`action:<name>`, such as `action:respell`
-
-|`guess-adoption`
-|A person taking a suggested value as their own.
-|none
-
-|`repair`
-|Layer rules an app sets up by itself, with any repair of the stored data they need first (see <<layer-constraints>>), and the UMR app's repair when a document opens (see <<Reconciliation Across Apps>>). It is never counted as anyone's edit.
-|none
-
-|`review`
-|A person accepting machine or contributed work as it stands.
-|none
-
-|`job`
-|An assistant job's work in one document, or its pass that makes its analyses there consistent (see <<Assistant jobs>>).
-|`job:<job>/doc:<document>/pass:gloss` or `job:<job>/doc:<document>/pass:harmonize`
-|===
-
-=== Custom messages for single writes
-
-A single write can carry its own message in place of the generated `description`, as the `audit_message` / `auditMessage` argument:
-
-[,python]
-----
-c.spans.set_metadata(span_id, {"approved": True}, audit_message="Approve span {span_id}")
-# logged as: Approve span 35424d64-a077-4a29-8006-5a0c3b76aedb
-----
-
-A `{...}` placeholder is filled in with any parameter of the request, spelled the way your client spells it.
-The message is stored as written, so do not put a secret in it.
-
-=== Filtering the log
-
-The audit endpoints take filters, so a client can ask a narrow question without paging a project's whole history.
-`op_types` / `opTypes` keeps only the operation types you name, written as in an entry's `ops[i].type` (`span-layer/create`, `document/update`).
-`kinds` keeps only operations of the kinds you name.
-
-[,python]
-----
-# Has anything about the project's span layers changed since I last looked?
-changes = c.projects.audit(
-    project_id,
-    start_time=last_checked,
-    op_types=["span-layer/create", "span-layer/delete", "span-layer/update"],
-)
-----
-
-An entry of a machine run can hold tens of thousands of writes.
-A page read with `ops_limit` / `opsLimit` keeps only each entry's oldest operations, and `op-count` says how many there are in all.
-To read the rest of one entry, pass its id as `entry_id` / `entryId` with a `start_time` at the last operation you have.
-
-=== Changes in one entry
-
-`audit.changes` answers, for one entry, every row of a document or a vocabulary it wrote, as it was just before the entry and just after.
-A row the entry made has no `before`, and one it deleted has no `after`.
-`changed_since` / `changedSince` says the row has been changed since.
-The id of one operation inside an entry answers for that operation alone, and an audit read's `entry_id` / `entryId` takes it too, as an entry of that one operation, whose `part_of` / `partOf` names the entry it is part of.
-
-[,python]
-----
-for row in c.audit.changes(entry_id, document_id=document_id):
-    print(row["kind"], row.get("before"), row.get("after"))
-----
-
-=== Undo of one entry
-
-`audit.undo` puts back every row one entry wrote as it was just before the entry, in its documents and its vocabularies together, as one new entry of its own.
-A row the entry made is deleted, one it deleted comes back under its old id, and one it changed is set back.
-A merge comes undone whole: the merged entries come back, their links point to them again, and every reference the merge rewrote names them again.
-
-What people did since is left alone.
-A row is left as it is, and listed under `skipped` with its reason, when someone wrote it since (`changed-since`), or between the entry's own writes (`changed-between`), when the entry made it and something that stays is built on it, such as an annotation on a token or a link to an entry (`built-on`), or when it needs something that will not be there (`needs`).
-A text goes back only when nothing in its document wrote a text or a token since the entry began (`text-changed-since`).
-A token goes back onto its offsets only when nothing outside the entry wrote its text since the entry began (`text-changed-since`), and a text goes back only into a layer that holds no other text of the document now (`place-taken`).
-The entry's own later writes are never "since": a text it edited several times goes back to its body before the first.
-A text and the tokens the entry wrote on it go back together or not at all: when the text stays, the tokens the entry made or reshaped on it stay too, and so do the annotations and links the entry wrote on the tokens it made, each listed as `text-changed-since`.
-Two token rows of the entry on one text, in one layer, or in a parent and child layer with the child not inside the parent, that traded characters (a split's halves, a merge's source and survivor, a word and the morphemes deleted to split it) go back together or stay together (`text-changed-since`).
-When the entry made or deleted a token in a layer with a parent token layer, the entry's token rows there with the same extent (the morphemes of one word it analysed again, the syntactic words of one token) go back together or stay together, with the annotations and links the entry wrote on them: when anyone wrote one of them or a value on one since, all are left (`needs`, naming the row that stays), so no word keeps some morphemes of each analysis.
-A row is never set back to name, in its metadata, a row that will not be there afterwards (`needs`).
-When a document's layers would no longer hold with the entry's rows put back, that document's rows are all left (`does-not-fit`).
-An undo is held to each layer's closed list as it is now, unlike a restore, since it puts single values back into today's document: a value the list no longer allows is left (`value-not-allowed`).
-Changes to a project, its layers, a vocabulary's name or settings, users and memberships are not undone, and `not_undone` / `notUndone` names the operations that made them.
-A project's deletion cannot be undone.
-After a vocabulary is deleted, only an administrator can read its entries' history, so only an administrator can undo what an entry did to them.
-
-[,python]
-----
-plan = c.audit.undo(entry_id, dry_run=True)
-print(plan["total"], plan["skipped_count"])
-done = c.audit.undo(entry_id)
-c.audit.undo(done["operation"])  # and back again
-----
-
-`document_id` / `documentId` takes one document's rows only, its links included, and `vocab_layer_id` / `vocabLayerId` takes one vocabulary's entries and the links that name one of them.
-An undo needs a maintainer: of a document's project for its rows, of a vocabulary's home project for its entries.
-Rows the caller may not maintain are listed as `not-permitted` and the rest undone, and rows in a document or vocabulary the caller cannot read are neither counted nor listed: `skipped-unreadable` says only how many of them are left.
-A delegated token undoes only the rows of documents in the projects it reaches.
-Undoing the same entry again finds nothing left and writes nothing.
-An undo may be sent with an `Idempotency-Key` or inside a batch: a dry run there writes nothing either.
-A dry run and a real undo are different requests, so one key answers only the one it was first sent with.
-A row the entry made is also kept when anything that stays names its id in its metadata, such as an entry that took a word of it as an example (`built-on`).
-An entry of more than 20,000 rows is refused, and the refusal says how many rows it has.
-
-Several entries can be undone together as one, with `audit.undo_entries` / `audit.undoEntries`, and a whole job with `jobs.undo`, which finds the job's entries itself: the gloss pass and the harmonize pass of every document.
-Each row goes back to how it was before the first of those entries wrote it, so a word one entry linked to a lexicon entry another one made comes undone with it.
-The answer is the same summary, with `entries` naming what was undone, and the limit of 20,000 rows counts them all.
-The entries must all be of one project the caller can read: entries of two projects are refused, and so is an entry the caller cannot read.
-A job that is still waiting, running or stopping is refused until it has ended.
-While a job stands undone, its read carries `undone`, the undo's operation, time and user, and only a whole undo of that undo takes it away again: undoing one document's part of it leaves the job undone.
-
-[,python]
-----
-plan = c.jobs.undo(job_id, dry_run=True)
-c.jobs.undo(job_id)
-----
-
-=== Last edit per document
-
-`my_last_edits` / `myLastEdits` answers, in one request, when the calling user last wrote to each document in a project:
-
-[,python]
-----
-mine = c.projects.my_last_edits(project_id)
-# {document id: timestamp}
-----
-
-A document the caller never wrote to is absent.
-Writes of kind `repair` are not counted.
-
-=== Document Time Travel
-
+Because the log keeps every change, Plaid also offers **time travel**.
 A document read accepts an `as-of` time and returns the document exactly as it stood at that moment:
 
 [,python]
@@ -431,22 +155,8 @@ client.documents.get(document_id, as_of="2025-07-08T09:00:00Z")["name"]
 #=> "Old Name"
 ----
 
-A time in the middle of an atomic batch reads as just before the batch, so you never see a half-applied change.
-Deleted documents can still be read at times when they existed.
-Access always follows the user's current membership, not their membership at that time.
-
-A maintainer can also bring a document back to an earlier state with `POST /api/v1/documents/{id}/restore?as-of=...`.
-Everything deleted since comes back under its original id, everything added since is removed, and the restore is itself an ordinary entry in the log.
-With `dry-run=true` nothing is written, and the answer says what would change.
-
-=== Vocabulary Time Travel
-
-A vocabulary may be linked by several projects, so its history is its own.
-`vocabLayers.get(id, includeItems, asOf)` reads a vocabulary as it was, `vocabLayers.getItemAt(id, itemId, asOf)` reads one entry, deleted or not, and `vocabLayers.audit` reads the vocabulary's log.
-A maintainer of the vocabulary's project can put one entry back as it was with `vocabLayers.restoreItem(id, itemId, asOf)`, though its links come back only by restoring the documents that held them.
-Changes to a vocabulary also appear in its project's log, from the version that gave every vocabulary a project on.
-A vocabulary read as of a time before that version has no `project`.
-A log names a project only to someone who can read it, and says "another project" to anyone else.
+A maintainer can bring a whole document back to an earlier state, or undo a single entry of the log.
+<<Audit Log Reference>> describes these, along with filtering the log and the history of vocabularies.
 
 == Real-time Messaging
 Plaid offers a simple system for real-time communication on a per-project basis.
@@ -514,335 +224,38 @@ The listener's code above would print this:
 User user1@example.com performed operation `document:update` on document 35424d64-a077-4a29-8006-5a0c3b76aedb at 2025-07-09T20:27:59.616Z: 'Update document 35424d64-a077-4a29-8006-5a0c3b76aedb name to "New Document Name"'
 ----
 
-=== Event Reference
-
-`GET /api/v1/projects/{id}/listen` is an ordinary server-sent event stream, so you can consume it without the official clients.
-It needs reader access, and each event's `data:` line holds one JSON object.
-
-[cols="1,4"]
-|===
-| `connected` | Sent once on connect, with the `client-id` that heartbeat answers quote.
-| `heartbeat` | Sent every 30 seconds. Answer each with `POST /api/v1/projects/{id}/heartbeat` and the body `{"client-id": "..."}`, or the server closes the stream after two missed pings.
-| `message` | A payload broadcast by another client. Its `data` is the value that was sent, unchanged.
-| `audit-log` | One database write, sent automatically by Plaid.
-|===
-
-The official clients handle `connected` and `heartbeat` themselves, so a `listen` callback sees only the last two.
-An `audit-log` event looks like this:
-
-[,json]
-----
-{
-  "type": "audit-log",
-  "id": "01a04604-ff64-70ae-9362-8036acdca9bf",
-  "projects": ["b1f2c4d6-0000-4000-8000-000000000001"],
-  "documents": ["35424d64-a077-4a29-8006-5a0c3b76aedb"],
-  "user": "user1@example.com",
-  "time": "2025-07-09T20:27:59.616Z",
-  "ops": [
-    {
-      "id": "01a04604-ff64-70ae-9362-8036acdca9bf",
-      "type": "document:update",
-      "project": "b1f2c4d6-0000-4000-8000-000000000001",
-      "document": "35424d64-a077-4a29-8006-5a0c3b76aedb",
-      "description": "Update document 35424d64-a077-4a29-8006-5a0c3b76aedb name to \"New Document Name\""
-    }
-  ]
-}
-----
-
-Every write sends its own event, so `ops` always holds one operation, and a batch sends one event per write once it commits.
-`documents` lists every document the write changed in the project you listen on, and `projects` names that project.
-A write to a vocabulary reaches the listeners of its project, and those of every other project that links it and whose documents it changed, each with an event of its own holding only that project's documents.
-The event is a lightweight notice: it spells operation types as `span_layer:create` where the audit endpoint has `span-layer/create`, and it carries bare ids.
-For the full entry, read the audit endpoint and match on `id`.
+The events of the stream are specified under <<Event Reference>>.
 
 == Services
 
 A **service** is an external program that registers itself on a project and performs work on request.
 The motivating case is NLP: you might have a Python program that runs a parser, a tokenizer, or a large language model, and you want annotators to be able to invoke it from the editor with the click of a button.
-A service is just another client of the API, so it can be written in any language and run anywhere that can reach the server, with a token that has **writer** access to the project.
+A service is just another client of the API, so it can be written in any language and run anywhere that can reach the server.
 
-The server sits between a service and the clients that use it.
-It keeps track of which services are connected, sends each request to the one service it names, and passes that service's replies back to the client that asked.
-
-=== Offering a service
-
-A service calls `serve` with a handler, which Plaid runs once per request.
-The handler receives the request's data and a **response helper**, with which it reports `progress(percent, message)` and finishes with `complete(result)` or `error(message)`.
-Each request runs on its own (in Python, on a thread of its own), so two requests can run at once, and a handler that must take one at a time keeps a lock of its own.
+A service offers itself with `serve`, and a client sends it work with `request_service` / `requestService`:
 
 [,python]
 ----
+# The service
 def handle_request(data, response):
     response.progress(10, "Starting…")
-    # whatever work the service does
     result = run_my_model(data["document_id"])
     response.complete({"status": "ok", "spans_created": result})
 
-# `service_id` is the stable identifier clients use to address this service;
-# `service_name` and `description` are human-readable. `serve` returns
-# immediately with a registration handle; the work happens on incoming requests.
-registration = client.messages.serve(
+client.messages.serve(
     project_id,
     {"service_id": "my-parser", "service_name": "My Parser",
      "description": "Parses a document with my model"},
     handle_request,
 )
 
-# The service stays available as long as the program is running and the
-# registration is live. Typically you now block until interrupted:
-try:
-    while registration.is_running():
-        time.sleep(1)
-except KeyboardInterrupt:
-    registration.stop()   # deregister cleanly
+# A client
+result = client.messages.request_service(project_id, "my-parser", {"document_id": document_id})
 ----
 
-The same in JavaScript:
-
-[,javascript]
-----
-const registration = client.messages.serve(
-  projectId,
-  { serviceId: "my-parser", serviceName: "My Parser",
-    description: "Parses a document with my model" },
-  (data, response) => {
-    response.progress(10, "Starting…");
-    const result = runMyModel(data.documentId);
-    response.complete({ status: "ok", spansCreated: result });
-  },
-);
-// later: registration.stop();
-----
-
-=== Discovering and requesting
-
-A client asks which services a project has with `discover_services` / `discoverServices`.
-Services seen before but not connected now come back with `online: false`, and only an online service can take work.
-
-[,python]
-----
-services = client.messages.discover_services(project_id)
-# [{"service_id": "my-parser", "service_name": "My Parser",
-#   "description": "Parses a document with my model", "extras": {},
-#   "online": True, "last_seen_at": "2026-06-12T02:43:17Z"}]
-----
-
-`request_service` / `requestService` sends work to a service by its id and waits for the value the service passes to `complete`.
-An optional callback receives each progress report:
-
-[,python]
-----
-result = client.messages.request_service(
-    project_id,
-    "my-parser",
-    {"document_id": document_id},
-    timeout=60.0,
-    on_progress=lambda p: print(f'{p["percent"]}%: {p["message"]}'),
-)
-print("Service returned:", result)
-----
-
-[,javascript]
-----
-const result = await client.messages.requestService(
-  projectId,
-  "my-parser",
-  { documentId },
-  60000,                                  // timeout in ms (Python uses seconds)
-  (p) => console.log(`${p.percent}%: ${p.message}`),
-);
-console.log("Service returned:", result);
-----
-
-The timeout counts silence, not the length of the run, so a service that keeps reporting progress can work as long as it needs.
-Giving up on the wait does not end the request, and the result can be picked up later (see <<Presence and persistence>>).
-Such an error is marked `pending`, unlike one where the service itself failed.
-
-=== Describing a service
-
-A client that offers a service in a fixed slot, such as "tokenize this document", needs to know which services fit the slot and what arguments each one takes.
-A service says so in its **`extras`**, which come back unchanged from discovery.
-From these, an app can build a picker, an arguments form and a description without knowing anything about a particular service.
-
-[,python]
-----
-from plaid_client import TASKS, Param, build_extras
-
-extras = build_extras(
-    tasks=[TASKS.TOKENIZE],                          # which slots this service fills
-    summary="## My Tokenizer\nSplits text into words and sentences…",  # markdown
-    parameters=[                                       # user-controllable arguments
-        Param.enum("language", "Language",
-                   [("english", "English"), ("german", "German")],
-                   default="english",
-                   description="Model language."),
-    ],
-)
-client.messages.serve(project_id, service_info, handle_request, extras)
-----
-
-`tasks`:: The slots the service fills: `tokenize`, `parse`, `transcribe`, `link-vocab`, `analyze` (segment and gloss words), `draft-graph` (draft a meaning representation graph), `translate`, `detect-speech`, `assist` (a chat assistant), or `compare` (score one document's annotation against another's).
-`summary`:: A longer description in Markdown, for what the one-line `description` cannot say.
-`parameters`:: The arguments a user may set for each request. Each has a `key`, a `label` and a `type` (`string`, `number`, `boolean`, `enum`, `multiselect`, or `field`, one of the project's annotation fields), with an optional `default`.
-
-A Python `BaseService` also registers its `version`, the one it stamps on what it writes (see <<Provenance>>), and a service run with `--model-pool` registers that name as `model_pool`.
-The assistants register `model`, `max_output_tokens` and, when each is known or given, `context_window`, `reasoning_effort` and `web_search` (the provider's name).
-The igt Administration page lists these per service.
-Every member of a project can read a service's `extras`, so a key or a provider's address never goes in them.
-
-A parameter's value reaches the service under exactly the `key` it declared.
-A Python `BaseService` receives every declared parameter coerced against the schema, as the apps' request forms coerce it.
-A parameter left out takes its default, a number is held to its `min` and `max`, an `enum` value not offered is the default, and a `string` left blank takes its default when it has one.
-Most services write to the project and the client reloads, but `detect-speech` writes nothing: it returns time regions as `segments`, which the app offers as proposals.
-In JavaScript, `filterServicesByTask` picks the services for a slot, and `getParamSchema` and `buildDefaultValues` help build the form.
-
-=== Holding the document
-
-A service that reads a document and then writes it holds the document's lock (see <<Locking>>) from that read through its last write, for the whole run.
-No one else can edit the document meanwhile, so the run never writes over an edit made while its model worked, and it needs no check that the document is as it read it.
-The lock is renewed for as long as the run takes, and the requester's own app keeps the document read-only until the run ends.
-A change made to the project rather than to the document still reaches it: renaming, deleting or merging the entries of a vocabulary the document links to, renaming that vocabulary, changing its configuration or deleting it, unlinking it from the project, or deleting a layer.
-Each moves the document to a new version, and the run's next write is then refused with a conflict (409).
-
-Load a model before taking the lock, so no one waits on the document while it loads or downloads.
-Once the requester stops the run and it is not inside its writes (`critical()`, see <<Stopping a request>>), the lock is no longer renewed: a run stuck in a call that never reaches a checkpoint lets the document go within the lock window, and a write it makes afterwards is refused.
-
-In Python, `held_run` from `plaid_client.service` takes the lock, puts the client in strict mode for that document (see <<Strict Mode>>), and sends the run's result once the lock is released.
-The handler sets `run.result`, or `run.refusal` to the words of a refusal, and may return straight after.
-Either is sent after the lock is released.
-
-[,python]
-----
-from plaid_client.service import BaseService, held_run
-
-class Glosser(BaseService):
-    def process_request(self, request_data, response_helper):
-        document_id = request_data["document_id"]
-        with held_run(self.client, response_helper, document_id) as run:
-            document = self.client.documents.get(document_id, include_body=True)
-            glosses = self.gloss(document)        # the model, however long it takes
-            with response_helper.critical():
-                with self.client.operation("Glossing"):
-                    self.write(glosses)
-            run.result = {"document_id": document_id, "status": "success",
-                          "words_written": len(glosses)}
-----
-
-`locked_for_writes` is the same lock without the result.
-Pass it the `response_helper` so that a stop lets the lock lapse as `held_run` does.
-It takes an optional version, for a request that carries the version the app asked a question at, such as a re-tokenize that deletes work only with the requester's leave, and refuses a document no longer at it.
-
-=== Service results
-
-A service reports what it did as counts in its result, and sends no message of its own.
-The app that asked words what the person is told, in its own terms, and the same counts serve again when the page reloads mid-run and the run is picked up later (see <<Presence and persistence>>).
-A run that fails on some items still finishes with `status: "success"`, and its counts say which items failed.
-A run with nothing to work on is a result too, with zero counts and a `reason` code the app words: `no-text` (a document with no text), `no-words` (a tokenizer found none) or `no-speech` (a recording with none).
-An error is for a run that could not be done.
-Every result has the `document_id` and a `status`, and a stopped run comes back as `stopped: true` instead.
-These are the results of each task, in the snake_case a Python service writes, which a JavaScript client reads in camelCase.
-
-`tokenize`:: `tokens_created`, `tokens_deleted` and `sentences_created`, with `reason` `no-text` or `no-words` when there was nothing to tokenize.
-`parse`:: `mode` (`full` for a document parsed whole, `preserve` for one whose sentences a person worked on were kept), `parsed_sentences`, `unchanged_sentences` (those of the parsed that came out as they are stored, so nothing was written for them) and `skipped_sentences`, with `reason` `no-text` for a document with no text.
-`transcribe`:: `segments_transcribed`, the segments the model heard, `segments_added`, the ones put in the transcript, and `segments_skipped`, the ones whose time a segment already held. `tokens_created` equals `segments_added`. `reason` is `no-speech` for a recording with no speech in it.
-`detect-speech`:: `segments`, the time regions found, each `{time_begin, time_end}` in seconds with an optional `speaker`. Nothing is written.
-`analyze`:: `sentences` in the document, `sentences_sent`, the ones holding a word the run could write, `words_written` and `words_replaced`. `skipped` counts the words left alone: `protected` (a person's analysis, with overwriting off), `precedent` (named in the request's `skip_word_ids`) and `unaligned` (given no analysis by the model). `sentences_failed` lists `{sentence_id, reason}` for each sentence the run could not analyze, `sentences_not_asked` the ids of the sentences never sent because the model stopped answering, and `translation_field_missing` names a translation field the request asked for that the document lacks.
-`translate`:: `sentences`, `sentences_written` and `sentences_replaced`. `skipped` counts `protected` sentences (a person's translation, with overwriting off) and `empty` ones (no words). `sentences_failed` lists `{sentence_id, reason}`, `sentences_not_asked` the ids of the sentences never sent because the model stopped answering, and `gloss_field_missing` names a gloss field the request asked for that the document lacks.
-`draft-graph`:: `sentences` in the document and `drafted`, the sentences given a new graph. `unchanged` counts the sentences whose new draft is the graph they already have, which writes nothing. `skipped` counts the sentences with a machine-made graph left alone with overwriting off, `kept` the ones a person made, contributed to or accepted something in, and `linked` the ones another sentence's graph links into. `failed` and `sentences_failed`, a list of `{sentence, reason}` by sentence number, name the sentences the run could not draft (`{sentence, code}` for a cause the app words: `no-link-or-gloss`, no word has a vocabulary link or a gloss, and `no-link-no-gloss-line`, no word has a vocabulary link and the project's UMR settings name no word or morpheme gloss line), and `sentences_not_drafted` lists, by number, the ones never asked about because the model stopped answering.
-`compare`:: `against`, the `{id, name}` of the document scored against, `scope`, `scores` (`sentence`, and `comprehensive` or null), `sentences`, `sentences_scored` and `sentences_skipped`, the ones the metric could not read.
-
-A reason in a failure list is the service's own account of one item, and the app shows it as it stands.
-Other keys may be added beside these.
-
-=== Stopping a request
-
-A client can ask a service to stop with `cancelServiceRequest` / `cancel_service_request`.
-Nothing is interrupted, though: the service stops at the next point where it checks.
-Every call to `progress()` is such a point, so a service that reports its progress can be stopped with no further work, and the request ends with `stopped: true` rather than as a failure.
-
-Writes should not be cut off halfway, so wrap them in the helper's `critical()`, inside which a stop waits.
-Report the result inside the same block, or a stop that arrives after the writes would throw away a finished result.
-The helper's `raise_if_cancelled()` adds a checkpoint to a long loop that reports no progress.
-In this `BaseService`, `load_sentences`, `gloss` and `write` stand for the service's own work.
-
-[,python]
-----
-from plaid_client.service import BaseService
-
-class Glosser(BaseService):
-    def process_request(self, request_data, response_helper):
-        sentences = self.load_sentences(request_data["document_id"])
-        results = []
-        for i, sentence in enumerate(sentences):
-            # Already a checkpoint: a stop here ends the request cleanly.
-            response_helper.progress(10 + int(70 * i / len(sentences)),
-                                     f"Glossing {i + 1}/{len(sentences)}")
-            results.append(self.gloss(sentence))
-
-        with response_helper.critical():    # too late to stop: finish, and say so
-            with self.client.operation("Glossing"):
-                self.write(results)
-            response_helper.complete({"glossed": len(results)})
-----
-
-In Python the stop is a `ServiceCancelled` exception derived from `BaseException`, so `except Exception` does not swallow it.
-In JavaScript, a handler that catches every error must re-throw a `ServiceCancelled`.
-
-A request the server no longer knows ends the same way at the next checkpoint, as a `ServiceRequestGone`, a kind of `ServiceCancelled`.
-The server answers 404 to the service's progress report when the request was ended for it: its connection dropped and did not come back in time, or the server restarted.
-Nobody asked for that stop and nobody waits for an answer, so the helper's `gone` is true and nothing more is reported for the request.
-A service that records how its work ended catches `ServiceRequestGone` before `ServiceCancelled`.
-
-=== Presence and persistence
-
-A service can take work only while it is connected.
-There is no queue: a request to a service that is down fails at once.
-If you need a request to survive a service being briefly unavailable, you would build that yourself, for instance by recording pending work in your own layer and retrying.
-
-The requester's connection is a different matter, because a request outlives it.
-If a browser tab is reloaded during a long run, the service carries on, and its result is kept on the server for fifteen minutes.
-The requester picks it up by request id with `attachServiceRequest` / `attach_service_request`, which replays the latest progress and then the result.
-
-A client that wants to be able to come back mints the request id itself (the `requestId` / `request_id` option), so it can save the id before the request starts.
-Sending the same id again rejoins the request rather than starting another, so retrying is safe.
-
-Each service id allows one connection per project, and a second one is refused with 409.
-A service id on a project belongs to the account that first connected it.
-Another account connecting it is refused with 403, and the refusal names the account it belongs to.
-An administrator releases the id with `DELETE /api/v1/projects/{id}/services/{service-id}/owner` (`releaseService` / `release_service`), and the next account to connect it then holds it.
-Forgetting an offline service does not release its id.
-Deactivating the account releases every id it holds.
-The project's services listing (`GET /api/v1/projects/{id}/services`) gives the display name of whoever holds each id in `claimed-by-name`, absent when no account holds it.
-An administrator also gets the account in `claimed-by`, and an entry with `seen` false for each held id whose registration was forgotten, so it can still be released.
-Both clients reconnect a service whenever its connection drops, so restarting the Plaid server does not mean restarting its services.
-A request in flight when a service's connection drops is held for 20 seconds, and the service's reports on it are taken meanwhile.
-Each client names its process when it connects (`instance-id` on the request channel, minted once per process).
-If the same process connects the service again within that time, the requests it had reported progress on go on, and a stop asked for in between reaches it on the new connection.
-The others end with the error `Service disconnected`: at once when another process of the service connects, or when the account that runs it loses its right to, and after the 20 seconds when nothing connects.
-A client that names no process has its requests ended when its connection drops.
-`registration.is_connected()` / `isConnected()` tells whether the server sees the service as online right now.
-
-NOTE: Service requests are not recorded in the audit log, but the writes a service makes are, under the token it runs with. Giving a service its own named API token makes its edits easy to pick out.
-
-=== Acting on the requester's behalf
-
-A service normally works with its own credentials, so every edit it makes is its own.
-That suits a tokenizer or a parser, whose output does not depend on who asked.
-It does not suit an assistant that edits whatever a user tells it to, which should be able to do only what that user could do.
-
-A service that declares `delegation` in its `extras` (`BaseService(..., delegation=True)`) acts on the requester's behalf instead.
-For each request the server hands it a short-lived token for the person who asked, which `BaseService` offers as `request_data["requester_client"]`.
-Everything done with that client is checked against the requester's permissions and recorded as theirs, so readers may use such a service too.
-
-The token reaches only the projects the request is about: the one it was made on, and any others it names with `project_ids` / `projectIds`.
-Even there, it cannot do what only maintainers may, such as changing members, layers or configuration.
-A delegating service acts for people other than the one running it only in projects that person maintains, or anywhere if they are an admin.
-
-The assistants (`plaid-agent` in the source tree) are delegating services.
-Their edits are proposed as plans, which the user approves before they are applied under the user's own account.
-Whoever runs an assistant can state where its model runs and where users' messages go with `--disclosure "..."`, and the Assistant panel shows that text.
+A service normally writes with its own credentials.
+One that edits whatever a user tells it to, such as an assistant, can instead act on behalf of the person who asked, with only that person's permissions.
+<<Service Reference>> covers all of this in detail.
 
 == Assistant jobs
 
@@ -851,120 +264,7 @@ A writer of the project starts one, and a separate program, the **job worker**, 
 Its edits are recorded under the name of the person who started the job, with the operation kind `job`.
 Jobs themselves are not recorded in the audit log.
 
-A job is started with `jobs.create` (`POST /api/v1/projects/{id}/jobs`) and this body:
-
-* `app`: the app whose worker runs it, `igt`.
-* `instructions`: what the job is to do, required, at most 2,000 characters.
-* `documents`: the document ids, in the order to work them, at most 500. Left out, every document of the project, by name with a run of digits read as its number (Text 2 before Text 10), then by id.
-* `setup`: optional, a JSON object of at most 4,000 characters, which the app sends when the job starts. The server keeps it as sent, returns it on every read of the job as `setup`, never changes it, and reads none of its keys. Each app decides what goes in it, such as what the job may fill. Both clients re-case the keys inside it as they re-case every key, so a key of one lowercase word is the only kind that reads the same in every language.
-* `id`: optional, an id the client minted (see <<Ids you mint>>).
-
-The answer is the job, 201.
-A body that breaks a rule is refused with 400 and a sentence that says which.
-A project has at most one job that has not ended, and starting a second is refused with 409, `job-active`, and the other job's id in `job`.
-
-[,python]
-----
-job = c.jobs.create(project_id, "igt", "Fill Word class on every word that has none.", [doc_id])
-c.jobs.cancel(job["id"])
-----
-
-=== The job and its states
-
-A job is `waiting` until the worker takes it, then `running`, and ends `done`, `cancelled` or `failed`.
-Stopping a waiting job (`jobs.cancel`) cancels it at once.
-Stopping a running one makes it `stopping`, and the worker ends it after the work in hand.
-A job that ended `cancelled` or `failed` has a `reason`.
-The server sets `cancelled`, `starter-access` (the person who started it can no longer write in the project) and `worker-lost` (its worker stopped during it ten times, below).
-The igt worker sets `no-plan`, `planning-failed`, `setup-gone`, `setup-unreadable`, `guidelines-too-long`, `no-documents`, `model-refused` (the model's provider refused its key or its model) and `worker-error`, and may say why in `message`.
-
-A job read carries its `instructions`, `app`, `started-by` and `started-by-name`, `state`, `reason`, `model`, `cancelled-by`, and `created-at`, `started-at`, `heartbeat-at` and `finished-at`.
-While it runs, `phase` is `checking`, `planning`, `working`, `harmonizing` or `reporting`, `message` is the worker's line on what it is doing, `current-document` the document in hand, and `waiting-for` is `people` or `model` while it waits on the model.
-A waiting job's `ahead` counts the jobs that have not ended and were started before it, across the server.
-`lapsed` is true while a running or stopping job's worker has sent nothing for two minutes.
-`undone` names the operation, time and user of an undo that stands (see <<Undo of one entry>>).
-`GET /api/v1/jobs/{id}` also carries `wrote`, true when History holds a change the job wrote, whatever its report counts.
-
-`documents` lists a row per document of the job, in its order, with the document's `name` (null once it is deleted) and the worker's `state` for it: `waiting`, `working`, `deferred`, `done`, `in-use`, `gone` or `not-reached`.
-`sentences`, `targets` and `done` count its sentences, those the job takes, and those finished, and `counts`, `skipped` (at most 500), `gloss-group` and `harmonize-group` are the worker's.
-When a job ends, every row not finished is `not-reached`.
-The `report` is the worker's JSON, at most 1,000,000 bytes.
-When a job ends without its worker (stopped while no worker reports, failed for `starter-access` or `worker-lost`), the server writes the report from the rows, with `stopped` set to `without-worker` when it was stopped.
-
-[cols="2,3"]
-|===
-|Route |Who may, and what it answers
-
-|`POST /api/v1/projects/{id}/jobs` (start)
-|a writer or maintainer of the project: the job, 201
-
-|`GET /api/v1/projects/{id}/jobs`
-|a reader of the project: the project's jobs, newest first, in pages of `{entries, next-cursor}`, each with `document-count` and without its documents and report
-
-|`GET /api/v1/projects/{id}/jobs/active`
-|a reader of the project: the job that has not ended, with its documents, or 204
-
-|`GET /api/v1/jobs/{id}`
-|a reader of the job's project: the job, with its documents and report
-
-|`GET /api/v1/jobs/{id}/pieces`
-|a reader of the job's project: what the job has done so far, in pages (below)
-
-|`POST /api/v1/jobs/{id}/cancel` (stop)
-|the person who started the job while they write the project, a maintainer, an admin: the job. 409 with `job-finished` once it has ended
-
-|`POST /api/v1/jobs/{id}/undo`
-|as an undo of one entry (see <<Undo of one entry>>). 409 until the job has ended
-
-|`GET /api/v1/jobs/worker`
-|anyone signed in: `seen-at`, when a worker last asked for work or reported since the server started, its `model`, the `settings` its last claim sent (null when it sent none), and the limits `instructions-max-chars` and `documents-max`
-
-|`POST /api/v1/jobs/claim`, `GET /api/v1/jobs/model-busy`, and a job's `heartbeat`, `documents/{id}`, `decisions`, `decisions/lookup` and `finish`
-|an admin
-
-|a job's `landed`
-|an admin, or the job's own token
-|===
-
-A delegated token can neither start nor stop a job.
-
-`GET /api/v1/jobs/{id}/pieces` lists what a job has done so far, newest first, in pages.
-The worker keeps one decision of the form `" piece"` for its plan and for each piece of its work once that piece's writes are known, keyed by a six-digit sequence number, and each entry is `{seq, piece}`, `piece` that decision's JSON as the worker wrote it.
-
-=== The job worker
-
-The worker runs under an administrator's named API token.
-It asks for work with `jobs.claim`, which answers the next job, a token for the person who started it and the heartbeat interval, or 204.
-A claim may carry `settings`, an object of at most 2,000 characters as JSON saying what the worker runs, which the server keeps until the next claim and `jobs.worker` answers. `plaid-job-worker` sends its `version`, `model-pool`, `context-window`, `max-output-tokens`, `piece-output-tokens`, `reasoning-effort` and `apps`, each only when set, and never a key or an address.
-While any job is running the server gives out no other: a worker that asks first gets a running or stopping job whose worker has lapsed, oldest first, then the oldest waiting job of an app it runs.
-A job whose starter can no longer write the project is failed with `starter-access` instead of being given out.
-While it works the worker sends `jobs.heartbeat` every 30 seconds, which answers the job's state and a fresh token.
-A job whose worker has sent nothing for two minutes is taken by the next worker that asks, which goes on from where the job was, and the old worker's next call is refused with `job-taken`.
-A job is taken up again this way at most ten times: the next claim that finds it lapsed ends it `failed` with `worker-lost`, or `cancelled` when it was stopping, and gives out the next job.
-Once a job has ended, its document rows and decisions are refused with 409 and `job-finished`, except for a job the server failed whose report the worker has not yet sent.
-
-The worker writes into documents only with the token of the person who started the job.
-That token reaches only the job's project and does only what that person may there.
-It works only while the job is running or stopping on the worker it was issued to.
-Once the job ends, or another worker takes it, the token is refused with 401 and `job-ended`.
-Once they can no longer write in the project, the job fails, and no further token is issued.
-
-An administrator reads every project's jobs in one list, newest first, with `admin.jobs` (`GET /admin/jobs`): each entry is as a project's job list gives it, with the name of its project.
-
-The worker sends each write of a job under Idempotency-Keys of a seed of its own (`<seed>.<n>`).
-When an answer is lost, or the worker stopped while a write was on its way, `POST /api/v1/jobs/{id}/landed` with `refs`, the seeds, answers `keys`, the keys of every write the job's starter made in its project under them.
-The server keeps each operation's key in the audit log, so for a write it records in History the answer holds at any time.
-A write it does not record there, such as a comment, is answered for the 24 hours it keeps the answer for replay, in whatever project it was made.
-
-A job's writes in each document are grouped under one History entry for its work there and one for making its analyses consistent, with the refs `job:<job>/doc:<document>/pass:gloss` and `job:<job>/doc:<document>/pass:harmonize`.
-The document's row gives their ids as `gloss-group` and `harmonize-group`.
-`jobs.undo` undoes them all together.
-
-=== Model pools
-
-A job waits while people use the model it draws on.
-Every service and assistant that uses the same model key is started with the same `--model-pool NAME`, and so is the worker.
-Before each call to the model the worker asks `GET /api/v1/jobs/model-busy?pool=NAME` how many requests to those services are running, and waits until none has run for a minute.
+<<Assistant Job Reference>> describes how a job is started, what states it passes through and how the worker runs.
 
 = Layer Types
 
@@ -2217,6 +1517,791 @@ For a document's history, see the <<Audit Log>>.
 == Further Reading
 
 See link:query.html[the query language reference] for comprehensive information about how queries work.
+
+= Accounts and Access
+
+This chapter gives the details of accounts, tokens and the small stores that belong to a user or a project.
+The roles themselves are introduced under <<Users and Permissions>>.
+
+== Accounts
+
+A user's id is their email address, compared without regard to case, Unicode composition, or invisible characters at either end.
+So `Ana@Example.org` and `ana@example.org` name one account.
+
+A project's roles also say what each person may do with the project's vocabularies (see <<Vocabs>>).
+
+Admins and the maintainers of any project may list and search every account on the server (`GET /api/v1/users`), so that they can add members.
+Anyone may create a project and so become a maintainer, which means every user can search the accounts.
+
+A request for a project, document or vocabulary that does not exist answers 404 to an admin.
+Anyone else gets the same 403 they would get for one that exists but is not theirs.
+When the 403 is for an unknown id of something inside a project or vocabulary, such as a document, a token or a vocabulary entry, its body also carries `"unresolved": true`, which a client can read as "changed or removed by someone else".
+An unknown project or vocabulary id gets the 403 without it.
+
+Each user may upload a **profile picture**, which appears wherever they are named in the apps.
+The server crops it to a square, scales it to `[media] avatar_size_px`, and strips its camera metadata.
+You may set or remove your own picture, and an admin may set or remove anyone's.
+
+== Tokens and sign-out
+
+A sign-in or API token is read from the `Authorization` header only, never from a URL.
+An image or audio element cannot send that header, so the URL of a picture or a recording carries a short-lived **link token** instead.
+The clients build these URLs for you:
+
+* `users.avatarUrl(id, avatarHash)` (`users.avatar_url(id, avatar_hash)` in Python) gives a URL for any user's picture, using a token from `POST /api/v1/avatar-link`.
+* `POST /api/v1/documents/:id/media/link` answers `{url, expires-at}`, a URL that opens one document's recording.
+
+A link token opens nothing else, lasts at most `[media] avatar_link_ttl_seconds` or `[media] link_ttl_seconds`, and stops working when the credential that made it does.
+
+Signing out of an app forgets the sign-in in that browser only.
+To end every sign-in of your account on every device, call `client.auth.logout_everywhere()` (`client.auth.logoutEverywhere()` in JavaScript).
+Named API tokens are not affected, and are revoked one at a time with `api_tokens.revoke` (`apiTokens.revoke`).
+Each user mints their own named API tokens on the profile page of any app, which shows a new token once, to be copied.
+`api_tokens.list` (`apiTokens.list`) gives each token's `last-write-at`, the time of the newest change made with it, or null for a token that never wrote.
+
+A named API token acts as its owner, but since it never expires, it cannot do the few things that would outlive revoking it.
+It cannot change a password, mint or revoke API tokens, or mint an invite.
+An admin's named token also cannot create, promote, deactivate or reactivate accounts, clear login rate limits, or write another user's private data.
+These answer 403 "This needs a signed-in session, not an API token."
+
+== Private user data
+
+Each user also has a small private **key/value store** (`/users/{id}/data/{key}`) for application state that should follow a person across devices, such as assistant conversations, drafts and interface preferences.
+Only the owner and admins can read or write it, and nothing in it is audited.
+It is not a place for annotation data, which belongs in layers where it is shared and queryable.
+
+A key is any string but `.` and `..`, which no URL can carry, and apps namespace theirs (`igt:assistant:<project>:...`).
+A value is any JSON document up to `[user_data] max_value_mb` (5 MB by default), counted in UTF-8 bytes.
+The store can be listed by key prefix or by a glob over the whole key (`igt:assistant:*:meta:*`), with or without values.
+An administrator reads how much each account holds with `admin.user_data_sizes` (`admin.userDataSizes`, `GET /admin/user-data/sizes`): per account with any, the number of entries and their total size in bytes.
+
+Every entry has a `version` that each write raises by one.
+A write that passes the version it was made from (`?version=`, or the `version` option of `user_data.put` / `userData.put`) is refused with 409 when another write landed in between.
+`version=0` writes only an entry that does not exist yet.
+
+== Guidelines
+
+A project may carry a list of **guidelines** (`/projects/{id}/guidelines`): short Markdown documents recording the conventions its annotators have agreed on.
+Each has a `title`, a `body`, and a `pinned` flag, which tells an assistant to read that guideline on every turn.
+Readers may read them and writers may edit them.
+
+A PATCH that passes `updated-at`, the value the caller last read, is refused with 409 if someone else saved in between.
+Writes appear in the project's audit log, but guidelines have no time travel.
+
+= The HTTP API
+
+== Pagination
+
+Collection endpoints (documents, users, API tokens, audit, and similar lists) are paginated.
+Over raw HTTP they return an envelope of the form `{"entries": [...], "next-cursor": "..."}`, where each page holds at most 100 entries by default (1000 maximum, set via `?limit=`).
+To fetch the next page, pass the opaque `next-cursor` value back verbatim as `?cursor=` (it is `null` on the final page).
+
+The official Python and JavaScript clients handle this for you: their `.list()`-style methods (e.g. `projects.list()`, `projects.list_documents(...)` / `listDocuments(...)`) transparently follow the cursors and return the full flat list.
+Per-page variants (e.g. `list_documents_page` / `listDocumentsPage`) are available when you want to drive pagination yourself.
+
+== Event Reference
+
+`GET /api/v1/projects/{id}/listen` is an ordinary server-sent event stream, so you can consume it without the official clients.
+It needs reader access, and each event's `data:` line holds one JSON object.
+
+[cols="1,4"]
+|===
+| `connected` | Sent once on connect, with the `client-id` that heartbeat answers quote.
+| `heartbeat` | Sent every 30 seconds. Answer each with `POST /api/v1/projects/{id}/heartbeat` and the body `{"client-id": "..."}`, or the server closes the stream after two missed pings.
+| `message` | A payload broadcast by another client. Its `data` is the value that was sent, unchanged.
+| `audit-log` | One database write, sent automatically by Plaid.
+|===
+
+The official clients handle `connected` and `heartbeat` themselves, so a `listen` callback sees only the last two.
+An `audit-log` event looks like this:
+
+[,json]
+----
+{
+  "type": "audit-log",
+  "id": "01a04604-ff64-70ae-9362-8036acdca9bf",
+  "projects": ["b1f2c4d6-0000-4000-8000-000000000001"],
+  "documents": ["35424d64-a077-4a29-8006-5a0c3b76aedb"],
+  "user": "user1@example.com",
+  "time": "2025-07-09T20:27:59.616Z",
+  "ops": [
+    {
+      "id": "01a04604-ff64-70ae-9362-8036acdca9bf",
+      "type": "document:update",
+      "project": "b1f2c4d6-0000-4000-8000-000000000001",
+      "document": "35424d64-a077-4a29-8006-5a0c3b76aedb",
+      "description": "Update document 35424d64-a077-4a29-8006-5a0c3b76aedb name to \"New Document Name\""
+    }
+  ]
+}
+----
+
+Every write sends its own event, so `ops` always holds one operation, and a batch sends one event per write once it commits.
+`documents` lists every document the write changed in the project you listen on, and `projects` names that project.
+A write to a vocabulary reaches the listeners of its project, and those of every other project that links it and whose documents it changed, each with an event of its own holding only that project's documents.
+The event is a lightweight notice: it spells operation types as `span_layer:create` where the audit endpoint has `span-layer/create`, and it carries bare ids.
+For the full entry, read the audit endpoint and match on `id`.
+
+== Static pages
+Plaid can serve a folder of your own web pages, for example a small frontend for one project.
+Set `static_resources_path` under `[server]` in `data/config.toml` to the folder and restart.
+Every file in it is served at its path from the root, without authentication, so put nothing private there.
+
+Plaid also serves the JavaScript client at `/client/plaid-client.js`, the same version as the server, whether or not this folder is set.
+A page imports it as a module, so it needs no copy of its own:
+
+[,html]
+----
+<script type="module">
+  import { PlaidClient } from "/client/plaid-client.js";
+  const client = await PlaidClient.login(location.origin, "user@example.com", "password");
+  console.log(await client.projects.list());
+</script>
+----
+
+Its type declarations are at `/client/plaid-client.d.ts`.
+
+= Audit Log Reference
+
+The audit log is introduced under <<Audit Log>>.
+Every write to the database is recorded in it, apart from comments, each user's private data, research telemetry and the record of which services have connected.
+It is what document time travel reads from (see <<Document Time Travel>>).
+
+Each entry names the user who made it, and the named API token if one signed the write.
+It also records what kind of credential signed it, as `credential`: `login` for a password sign-in, `named-token` for a named API token, and `delegated` for a token a service was handed to act for someone (see <<Acting on the requester's behalf>>).
+This tells a script run on a person's token apart from that person's own edits.
+
+The activity tally (`audit.tally`, `GET /audit/tally`, or a project's `GET /projects/{id}/audit/tally`) counts each person's `changes`, and among them `delegated-changes`, the ones made on a delegated token: by a service for its requester, or by an assistant job for its starter.
+`user-id` (`userId`, `user_id`) keeps one person's row.
+
+== Logical operations
+
+Many actions are made of several writes: "merge two morphemes" deletes tokens, creates one, and moves spans.
+To keep the log readable, a client can group such a run into one **operation** with a label.
+The audit log then shows the run as one entry whose `message` is the label and whose `ops` are the individual writes:
+
+[,python]
+----
+with c.operation("Merge morphemes"):
+    c.tokens.delete(left_id)
+    c.tokens.delete(right_id)
+    c.tokens.create(...)
+----
+
+[,javascript]
+----
+await c.withOperation("Merge morphemes", async () => {
+  await c.tokens.delete(leftId);
+  await c.tokens.delete(rightId);
+  await c.tokens.create(...);
+});
+----
+
+An operation is not a transaction: if the third of five writes fails, the first two stay.
+Use a batch inside the operation for anything that must be all-or-nothing (see <<Atomic Batches>>).
+An operation opened inside another joins the outer one, so actions can call each other freely.
+
+A request to a service made inside an operation carries the operation along, and the service's writes are filed under your entry.
+Pass `no_operation=True` (`noOperation: true` in JavaScript) when the service's work should be an entry of its own.
+
+Each entry carries `time`, its first write, and `end_time`.
+To see a document as it was after the whole operation, read it as of `end_time`.
+Each op in `ops` has an `end_time` too, for viewing the state after that one write.
+
+== Kinds of operation
+
+An operation may also say what **kind** of operation it is, so that a program can count operations without reading their labels.
+The kind is one of a fixed list, and any other value is refused with a 400.
+An optional `ref` (at most 1024 characters) says what the operation refers to.
+
+[,python]
+----
+with c.operation("Import ELAN corpus", kind="import", ref="format:elan"):
+    ...
+----
+
+[cols="1,3,2"]
+|===
+|Kind |What it is |`ref`
+
+|`assistant-plan`
+|An assistant plan the user approved, being applied.
+|`conv:<conversation>/plan:<plan>/service:<service>`
+
+|`service-run`
+|One run of a service, with every write it made.
+|`service:<id>`, or `builtin:<name>` for a rule an app runs in the browser
+
+|`import`
+|A file or archive read into a project.
+|`format:<format>`, such as `format:elan`
+
+|`bulk-edit`
+|One change made across many places at once.
+|`action:<name>`, such as `action:respell`
+
+|`guess-adoption`
+|A person taking a suggested value as their own.
+|none
+
+|`repair`
+|Layer rules an app sets up by itself, with any repair of the stored data they need first (see <<layer-constraints>>), and the UMR app's repair when a document opens (see <<Reconciliation Across Apps>>). It is never counted as anyone's edit.
+|none
+
+|`review`
+|A person accepting machine or contributed work as it stands.
+|none
+
+|`job`
+|An assistant job's work in one document, or its pass that makes its analyses there consistent (see <<Assistant jobs>>).
+|`job:<job>/doc:<document>/pass:gloss` or `job:<job>/doc:<document>/pass:harmonize`
+|===
+
+== Custom messages for single writes
+
+A single write can carry its own message in place of the generated `description`, as the `audit_message` / `auditMessage` argument:
+
+[,python]
+----
+c.spans.set_metadata(span_id, {"approved": True}, audit_message="Approve span {span_id}")
+# logged as: Approve span 35424d64-a077-4a29-8006-5a0c3b76aedb
+----
+
+A `{...}` placeholder is filled in with any parameter of the request, spelled the way your client spells it.
+The message is stored as written, so do not put a secret in it.
+
+== Filtering the log
+
+The audit endpoints take filters, so a client can ask a narrow question without paging a project's whole history.
+`op_types` / `opTypes` keeps only the operation types you name, written as in an entry's `ops[i].type` (`span-layer/create`, `document/update`).
+`kinds` keeps only operations of the kinds you name.
+
+[,python]
+----
+# Has anything about the project's span layers changed since I last looked?
+changes = c.projects.audit(
+    project_id,
+    start_time=last_checked,
+    op_types=["span-layer/create", "span-layer/delete", "span-layer/update"],
+)
+----
+
+An entry of a machine run can hold tens of thousands of writes.
+A page read with `ops_limit` / `opsLimit` keeps only each entry's oldest operations, and `op-count` says how many there are in all.
+To read the rest of one entry, pass its id as `entry_id` / `entryId` with a `start_time` at the last operation you have.
+
+== Changes in one entry
+
+`audit.changes` answers, for one entry, every row of a document or a vocabulary it wrote, as it was just before the entry and just after.
+A row the entry made has no `before`, and one it deleted has no `after`.
+`changed_since` / `changedSince` says the row has been changed since.
+The id of one operation inside an entry answers for that operation alone, and an audit read's `entry_id` / `entryId` takes it too, as an entry of that one operation, whose `part_of` / `partOf` names the entry it is part of.
+
+[,python]
+----
+for row in c.audit.changes(entry_id, document_id=document_id):
+    print(row["kind"], row.get("before"), row.get("after"))
+----
+
+== Undo of one entry
+
+`audit.undo` puts back every row one entry wrote as it was just before the entry, in its documents and its vocabularies together, as one new entry of its own.
+A row the entry made is deleted, one it deleted comes back under its old id, and one it changed is set back.
+A merge comes undone whole: the merged entries come back, their links point to them again, and every reference the merge rewrote names them again.
+
+What people did since is left alone.
+A row is left as it is, and listed under `skipped` with its reason, when someone wrote it since (`changed-since`), or between the entry's own writes (`changed-between`), when the entry made it and something that stays is built on it, such as an annotation on a token or a link to an entry (`built-on`), or when it needs something that will not be there (`needs`).
+A text goes back only when nothing in its document wrote a text or a token since the entry began (`text-changed-since`).
+A token goes back onto its offsets only when nothing outside the entry wrote its text since the entry began (`text-changed-since`), and a text goes back only into a layer that holds no other text of the document now (`place-taken`).
+The entry's own later writes are never "since": a text it edited several times goes back to its body before the first.
+A text and the tokens the entry wrote on it go back together or not at all: when the text stays, the tokens the entry made or reshaped on it stay too, and so do the annotations and links the entry wrote on the tokens it made, each listed as `text-changed-since`.
+Two token rows of the entry on one text, in one layer, or in a parent and child layer with the child not inside the parent, that traded characters (a split's halves, a merge's source and survivor, a word and the morphemes deleted to split it) go back together or stay together (`text-changed-since`).
+When the entry made or deleted a token in a layer with a parent token layer, the entry's token rows there with the same extent (the morphemes of one word it analysed again, the syntactic words of one token) go back together or stay together, with the annotations and links the entry wrote on them: when anyone wrote one of them or a value on one since, all are left (`needs`, naming the row that stays), so no word keeps some morphemes of each analysis.
+A row is never set back to name, in its metadata, a row that will not be there afterwards (`needs`).
+When a document's layers would no longer hold with the entry's rows put back, that document's rows are all left (`does-not-fit`).
+An undo is held to each layer's closed list as it is now, unlike a restore, since it puts single values back into today's document: a value the list no longer allows is left (`value-not-allowed`).
+Changes to a project, its layers, a vocabulary's name or settings, users and memberships are not undone, and `not_undone` / `notUndone` names the operations that made them.
+A project's deletion cannot be undone.
+After a vocabulary is deleted, only an administrator can read its entries' history, so only an administrator can undo what an entry did to them.
+
+[,python]
+----
+plan = c.audit.undo(entry_id, dry_run=True)
+print(plan["total"], plan["skipped_count"])
+done = c.audit.undo(entry_id)
+c.audit.undo(done["operation"])  # and back again
+----
+
+`document_id` / `documentId` takes one document's rows only, its links included, and `vocab_layer_id` / `vocabLayerId` takes one vocabulary's entries and the links that name one of them.
+An undo needs a maintainer: of a document's project for its rows, of a vocabulary's home project for its entries.
+Rows the caller may not maintain are listed as `not-permitted` and the rest undone, and rows in a document or vocabulary the caller cannot read are neither counted nor listed: `skipped-unreadable` says only how many of them are left.
+A delegated token undoes only the rows of documents in the projects it reaches.
+Undoing the same entry again finds nothing left and writes nothing.
+An undo may be sent with an `Idempotency-Key` or inside a batch: a dry run there writes nothing either.
+A dry run and a real undo are different requests, so one key answers only the one it was first sent with.
+A row the entry made is also kept when anything that stays names its id in its metadata, such as an entry that took a word of it as an example (`built-on`).
+An entry of more than 20,000 rows is refused, and the refusal says how many rows it has.
+
+Several entries can be undone together as one, with `audit.undo_entries` / `audit.undoEntries`, and a whole job with `jobs.undo`, which finds the job's entries itself: the gloss pass and the harmonize pass of every document.
+Each row goes back to how it was before the first of those entries wrote it, so a word one entry linked to a lexicon entry another one made comes undone with it.
+The answer is the same summary, with `entries` naming what was undone, and the limit of 20,000 rows counts them all.
+The entries must all be of one project the caller can read: entries of two projects are refused, and so is an entry the caller cannot read.
+A job that is still waiting, running or stopping is refused until it has ended.
+While a job stands undone, its read carries `undone`, the undo's operation, time and user, and only a whole undo of that undo takes it away again: undoing one document's part of it leaves the job undone.
+
+[,python]
+----
+plan = c.jobs.undo(job_id, dry_run=True)
+c.jobs.undo(job_id)
+----
+
+== Last edit per document
+
+`my_last_edits` / `myLastEdits` answers, in one request, when the calling user last wrote to each document in a project:
+
+[,python]
+----
+mine = c.projects.my_last_edits(project_id)
+# {document id: timestamp}
+----
+
+A document the caller never wrote to is absent.
+Writes of kind `repair` are not counted.
+
+== Document Time Travel
+
+A document read accepts an `as-of` time and returns the document exactly as it stood at that moment:
+
+[,python]
+----
+# Read old name by providing time in the past
+client.documents.get(document_id, as_of="2025-07-08T09:00:00Z")["name"]
+#=> "Old Name"
+----
+
+A time in the middle of an atomic batch reads as just before the batch, so you never see a half-applied change.
+Deleted documents can still be read at times when they existed.
+Access always follows the user's current membership, not their membership at that time.
+
+A maintainer can also bring a document back to an earlier state with `POST /api/v1/documents/{id}/restore?as-of=...`.
+Everything deleted since comes back under its original id, everything added since is removed, and the restore is itself an ordinary entry in the log.
+With `dry-run=true` nothing is written, and the answer says what would change.
+
+== Vocabulary Time Travel
+
+A vocabulary may be linked by several projects, so its history is its own.
+`vocabLayers.get(id, includeItems, asOf)` reads a vocabulary as it was, `vocabLayers.getItemAt(id, itemId, asOf)` reads one entry, deleted or not, and `vocabLayers.audit` reads the vocabulary's log.
+A maintainer of the vocabulary's project can put one entry back as it was with `vocabLayers.restoreItem(id, itemId, asOf)`, though its links come back only by restoring the documents that held them.
+Changes to a vocabulary also appear in its project's log, from the version that gave every vocabulary a project on.
+A vocabulary read as of a time before that version has no `project`.
+A log names a project only to someone who can read it, and says "another project" to anyone else.
+
+= Service Reference
+
+Services are introduced under <<Services>>.
+A service runs with a token that has **writer** access to the project.
+
+The server sits between a service and the clients that use it.
+It keeps track of which services are connected, sends each request to the one service it names, and passes that service's replies back to the client that asked.
+
+== Offering a service
+
+A service calls `serve` with a handler, which Plaid runs once per request.
+The handler receives the request's data and a **response helper**, with which it reports `progress(percent, message)` and finishes with `complete(result)` or `error(message)`.
+Each request runs on its own (in Python, on a thread of its own), so two requests can run at once, and a handler that must take one at a time keeps a lock of its own.
+
+[,python]
+----
+def handle_request(data, response):
+    response.progress(10, "Starting…")
+    # whatever work the service does
+    result = run_my_model(data["document_id"])
+    response.complete({"status": "ok", "spans_created": result})
+
+# `service_id` is the stable identifier clients use to address this service;
+# `service_name` and `description` are human-readable. `serve` returns
+# immediately with a registration handle; the work happens on incoming requests.
+registration = client.messages.serve(
+    project_id,
+    {"service_id": "my-parser", "service_name": "My Parser",
+     "description": "Parses a document with my model"},
+    handle_request,
+)
+
+# The service stays available as long as the program is running and the
+# registration is live. Typically you now block until interrupted:
+try:
+    while registration.is_running():
+        time.sleep(1)
+except KeyboardInterrupt:
+    registration.stop()   # deregister cleanly
+----
+
+The same in JavaScript:
+
+[,javascript]
+----
+const registration = client.messages.serve(
+  projectId,
+  { serviceId: "my-parser", serviceName: "My Parser",
+    description: "Parses a document with my model" },
+  (data, response) => {
+    response.progress(10, "Starting…");
+    const result = runMyModel(data.documentId);
+    response.complete({ status: "ok", spansCreated: result });
+  },
+);
+// later: registration.stop();
+----
+
+== Discovering and requesting
+
+A client asks which services a project has with `discover_services` / `discoverServices`.
+Services seen before but not connected now come back with `online: false`, and only an online service can take work.
+
+[,python]
+----
+services = client.messages.discover_services(project_id)
+# [{"service_id": "my-parser", "service_name": "My Parser",
+#   "description": "Parses a document with my model", "extras": {},
+#   "online": True, "last_seen_at": "2026-06-12T02:43:17Z"}]
+----
+
+`request_service` / `requestService` sends work to a service by its id and waits for the value the service passes to `complete`.
+An optional callback receives each progress report:
+
+[,python]
+----
+result = client.messages.request_service(
+    project_id,
+    "my-parser",
+    {"document_id": document_id},
+    timeout=60.0,
+    on_progress=lambda p: print(f'{p["percent"]}%: {p["message"]}'),
+)
+print("Service returned:", result)
+----
+
+[,javascript]
+----
+const result = await client.messages.requestService(
+  projectId,
+  "my-parser",
+  { documentId },
+  60000,                                  // timeout in ms (Python uses seconds)
+  (p) => console.log(`${p.percent}%: ${p.message}`),
+);
+console.log("Service returned:", result);
+----
+
+The timeout counts silence, not the length of the run, so a service that keeps reporting progress can work as long as it needs.
+Giving up on the wait does not end the request, and the result can be picked up later (see <<Presence and persistence>>).
+Such an error is marked `pending`, unlike one where the service itself failed.
+
+== Describing a service
+
+A client that offers a service in a fixed slot, such as "tokenize this document", needs to know which services fit the slot and what arguments each one takes.
+A service says so in its **`extras`**, which come back unchanged from discovery.
+From these, an app can build a picker, an arguments form and a description without knowing anything about a particular service.
+
+[,python]
+----
+from plaid_client import TASKS, Param, build_extras
+
+extras = build_extras(
+    tasks=[TASKS.TOKENIZE],                          # which slots this service fills
+    summary="## My Tokenizer\nSplits text into words and sentences…",  # markdown
+    parameters=[                                       # user-controllable arguments
+        Param.enum("language", "Language",
+                   [("english", "English"), ("german", "German")],
+                   default="english",
+                   description="Model language."),
+    ],
+)
+client.messages.serve(project_id, service_info, handle_request, extras)
+----
+
+`tasks`:: The slots the service fills: `tokenize`, `parse`, `transcribe`, `link-vocab`, `analyze` (segment and gloss words), `draft-graph` (draft a meaning representation graph), `translate`, `detect-speech`, `assist` (a chat assistant), or `compare` (score one document's annotation against another's).
+`summary`:: A longer description in Markdown, for what the one-line `description` cannot say.
+`parameters`:: The arguments a user may set for each request. Each has a `key`, a `label` and a `type` (`string`, `number`, `boolean`, `enum`, `multiselect`, or `field`, one of the project's annotation fields), with an optional `default`.
+
+A Python `BaseService` also registers its `version`, the one it stamps on what it writes (see <<Provenance>>), and a service run with `--model-pool` registers that name as `model_pool`.
+The assistants register `model`, `max_output_tokens` and, when each is known or given, `context_window`, `reasoning_effort` and `web_search` (the provider's name).
+The igt Administration page lists these per service.
+Every member of a project can read a service's `extras`, so a key or a provider's address never goes in them.
+
+A parameter's value reaches the service under exactly the `key` it declared.
+A Python `BaseService` receives every declared parameter coerced against the schema, as the apps' request forms coerce it.
+A parameter left out takes its default, a number is held to its `min` and `max`, an `enum` value not offered is the default, and a `string` left blank takes its default when it has one.
+Most services write to the project and the client reloads, but `detect-speech` writes nothing: it returns time regions as `segments`, which the app offers as proposals.
+In JavaScript, `filterServicesByTask` picks the services for a slot, and `getParamSchema` and `buildDefaultValues` help build the form.
+
+== Holding the document
+
+A service that reads a document and then writes it holds the document's lock (see <<Locking>>) from that read through its last write, for the whole run.
+No one else can edit the document meanwhile, so the run never writes over an edit made while its model worked, and it needs no check that the document is as it read it.
+The lock is renewed for as long as the run takes, and the requester's own app keeps the document read-only until the run ends.
+A change made to the project rather than to the document still reaches it: renaming, deleting or merging the entries of a vocabulary the document links to, renaming that vocabulary, changing its configuration or deleting it, unlinking it from the project, or deleting a layer.
+Each moves the document to a new version, and the run's next write is then refused with a conflict (409).
+
+Load a model before taking the lock, so no one waits on the document while it loads or downloads.
+Once the requester stops the run and it is not inside its writes (`critical()`, see <<Stopping a request>>), the lock is no longer renewed: a run stuck in a call that never reaches a checkpoint lets the document go within the lock window, and a write it makes afterwards is refused.
+
+In Python, `held_run` from `plaid_client.service` takes the lock, puts the client in strict mode for that document (see <<Strict Mode>>), and sends the run's result once the lock is released.
+The handler sets `run.result`, or `run.refusal` to the words of a refusal, and may return straight after.
+Either is sent after the lock is released.
+
+[,python]
+----
+from plaid_client.service import BaseService, held_run
+
+class Glosser(BaseService):
+    def process_request(self, request_data, response_helper):
+        document_id = request_data["document_id"]
+        with held_run(self.client, response_helper, document_id) as run:
+            document = self.client.documents.get(document_id, include_body=True)
+            glosses = self.gloss(document)        # the model, however long it takes
+            with response_helper.critical():
+                with self.client.operation("Glossing"):
+                    self.write(glosses)
+            run.result = {"document_id": document_id, "status": "success",
+                          "words_written": len(glosses)}
+----
+
+`locked_for_writes` is the same lock without the result.
+Pass it the `response_helper` so that a stop lets the lock lapse as `held_run` does.
+It takes an optional version, for a request that carries the version the app asked a question at, such as a re-tokenize that deletes work only with the requester's leave, and refuses a document no longer at it.
+
+== Service results
+
+A service reports what it did as counts in its result, and sends no message of its own.
+The app that asked words what the person is told, in its own terms, and the same counts serve again when the page reloads mid-run and the run is picked up later (see <<Presence and persistence>>).
+A run that fails on some items still finishes with `status: "success"`, and its counts say which items failed.
+A run with nothing to work on is a result too, with zero counts and a `reason` code the app words: `no-text` (a document with no text), `no-words` (a tokenizer found none) or `no-speech` (a recording with none).
+An error is for a run that could not be done.
+Every result has the `document_id` and a `status`, and a stopped run comes back as `stopped: true` instead.
+These are the results of each task, in the snake_case a Python service writes, which a JavaScript client reads in camelCase.
+
+`tokenize`:: `tokens_created`, `tokens_deleted` and `sentences_created`, with `reason` `no-text` or `no-words` when there was nothing to tokenize.
+`parse`:: `mode` (`full` for a document parsed whole, `preserve` for one whose sentences a person worked on were kept), `parsed_sentences`, `unchanged_sentences` (those of the parsed that came out as they are stored, so nothing was written for them) and `skipped_sentences`, with `reason` `no-text` for a document with no text.
+`transcribe`:: `segments_transcribed`, the segments the model heard, `segments_added`, the ones put in the transcript, and `segments_skipped`, the ones whose time a segment already held. `tokens_created` equals `segments_added`. `reason` is `no-speech` for a recording with no speech in it.
+`detect-speech`:: `segments`, the time regions found, each `{time_begin, time_end}` in seconds with an optional `speaker`. Nothing is written.
+`analyze`:: `sentences` in the document, `sentences_sent`, the ones holding a word the run could write, `words_written` and `words_replaced`. `skipped` counts the words left alone: `protected` (a person's analysis, with overwriting off), `precedent` (named in the request's `skip_word_ids`) and `unaligned` (given no analysis by the model). `sentences_failed` lists `{sentence_id, reason}` for each sentence the run could not analyze, `sentences_not_asked` the ids of the sentences never sent because the model stopped answering, and `translation_field_missing` names a translation field the request asked for that the document lacks.
+`translate`:: `sentences`, `sentences_written` and `sentences_replaced`. `skipped` counts `protected` sentences (a person's translation, with overwriting off) and `empty` ones (no words). `sentences_failed` lists `{sentence_id, reason}`, `sentences_not_asked` the ids of the sentences never sent because the model stopped answering, and `gloss_field_missing` names a gloss field the request asked for that the document lacks.
+`draft-graph`:: `sentences` in the document and `drafted`, the sentences given a new graph. `unchanged` counts the sentences whose new draft is the graph they already have, which writes nothing. `skipped` counts the sentences with a machine-made graph left alone with overwriting off, `kept` the ones a person made, contributed to or accepted something in, and `linked` the ones another sentence's graph links into. `failed` and `sentences_failed`, a list of `{sentence, reason}` by sentence number, name the sentences the run could not draft (`{sentence, code}` for a cause the app words: `no-link-or-gloss`, no word has a vocabulary link or a gloss, and `no-link-no-gloss-line`, no word has a vocabulary link and the project's UMR settings name no word or morpheme gloss line), and `sentences_not_drafted` lists, by number, the ones never asked about because the model stopped answering.
+`compare`:: `against`, the `{id, name}` of the document scored against, `scope`, `scores` (`sentence`, and `comprehensive` or null), `sentences`, `sentences_scored` and `sentences_skipped`, the ones the metric could not read.
+
+A reason in a failure list is the service's own account of one item, and the app shows it as it stands.
+Other keys may be added beside these.
+
+== Stopping a request
+
+A client can ask a service to stop with `cancelServiceRequest` / `cancel_service_request`.
+Nothing is interrupted, though: the service stops at the next point where it checks.
+Every call to `progress()` is such a point, so a service that reports its progress can be stopped with no further work, and the request ends with `stopped: true` rather than as a failure.
+
+Writes should not be cut off halfway, so wrap them in the helper's `critical()`, inside which a stop waits.
+Report the result inside the same block, or a stop that arrives after the writes would throw away a finished result.
+The helper's `raise_if_cancelled()` adds a checkpoint to a long loop that reports no progress.
+In this `BaseService`, `load_sentences`, `gloss` and `write` stand for the service's own work.
+
+[,python]
+----
+from plaid_client.service import BaseService
+
+class Glosser(BaseService):
+    def process_request(self, request_data, response_helper):
+        sentences = self.load_sentences(request_data["document_id"])
+        results = []
+        for i, sentence in enumerate(sentences):
+            # Already a checkpoint: a stop here ends the request cleanly.
+            response_helper.progress(10 + int(70 * i / len(sentences)),
+                                     f"Glossing {i + 1}/{len(sentences)}")
+            results.append(self.gloss(sentence))
+
+        with response_helper.critical():    # too late to stop: finish, and say so
+            with self.client.operation("Glossing"):
+                self.write(results)
+            response_helper.complete({"glossed": len(results)})
+----
+
+In Python the stop is a `ServiceCancelled` exception derived from `BaseException`, so `except Exception` does not swallow it.
+In JavaScript, a handler that catches every error must re-throw a `ServiceCancelled`.
+
+A request the server no longer knows ends the same way at the next checkpoint, as a `ServiceRequestGone`, a kind of `ServiceCancelled`.
+The server answers 404 to the service's progress report when the request was ended for it: its connection dropped and did not come back in time, or the server restarted.
+Nobody asked for that stop and nobody waits for an answer, so the helper's `gone` is true and nothing more is reported for the request.
+A service that records how its work ended catches `ServiceRequestGone` before `ServiceCancelled`.
+
+== Presence and persistence
+
+A service can take work only while it is connected.
+There is no queue: a request to a service that is down fails at once.
+If you need a request to survive a service being briefly unavailable, you would build that yourself, for instance by recording pending work in your own layer and retrying.
+
+The requester's connection is a different matter, because a request outlives it.
+If a browser tab is reloaded during a long run, the service carries on, and its result is kept on the server for fifteen minutes.
+The requester picks it up by request id with `attachServiceRequest` / `attach_service_request`, which replays the latest progress and then the result.
+
+A client that wants to be able to come back mints the request id itself (the `requestId` / `request_id` option), so it can save the id before the request starts.
+Sending the same id again rejoins the request rather than starting another, so retrying is safe.
+
+Each service id allows one connection per project, and a second one is refused with 409.
+A service id on a project belongs to the account that first connected it.
+Another account connecting it is refused with 403, and the refusal names the account it belongs to.
+An administrator releases the id with `DELETE /api/v1/projects/{id}/services/{service-id}/owner` (`releaseService` / `release_service`), and the next account to connect it then holds it.
+Forgetting an offline service does not release its id.
+Deactivating the account releases every id it holds.
+The project's services listing (`GET /api/v1/projects/{id}/services`) gives the display name of whoever holds each id in `claimed-by-name`, absent when no account holds it.
+An administrator also gets the account in `claimed-by`, and an entry with `seen` false for each held id whose registration was forgotten, so it can still be released.
+Both clients reconnect a service whenever its connection drops, so restarting the Plaid server does not mean restarting its services.
+A request in flight when a service's connection drops is held for 20 seconds, and the service's reports on it are taken meanwhile.
+Each client names its process when it connects (`instance-id` on the request channel, minted once per process).
+If the same process connects the service again within that time, the requests it had reported progress on go on, and a stop asked for in between reaches it on the new connection.
+The others end with the error `Service disconnected`: at once when another process of the service connects, or when the account that runs it loses its right to, and after the 20 seconds when nothing connects.
+A client that names no process has its requests ended when its connection drops.
+`registration.is_connected()` / `isConnected()` tells whether the server sees the service as online right now.
+
+NOTE: Service requests are not recorded in the audit log, but the writes a service makes are, under the token it runs with. Giving a service its own named API token makes its edits easy to pick out.
+
+== Acting on the requester's behalf
+
+A service normally works with its own credentials, so every edit it makes is its own.
+That suits a tokenizer or a parser, whose output does not depend on who asked.
+It does not suit an assistant that edits whatever a user tells it to, which should be able to do only what that user could do.
+
+A service that declares `delegation` in its `extras` (`BaseService(..., delegation=True)`) acts on the requester's behalf instead.
+For each request the server hands it a short-lived token for the person who asked, which `BaseService` offers as `request_data["requester_client"]`.
+Everything done with that client is checked against the requester's permissions and recorded as theirs, so readers may use such a service too.
+
+The token reaches only the projects the request is about: the one it was made on, and any others it names with `project_ids` / `projectIds`.
+Even there, it cannot do what only maintainers may, such as changing members, layers or configuration.
+A delegating service acts for people other than the one running it only in projects that person maintains, or anywhere if they are an admin.
+
+The assistants (`plaid-agent` in the source tree) are delegating services.
+Their edits are proposed as plans, which the user approves before they are applied under the user's own account.
+Whoever runs an assistant can state where its model runs and where users' messages go with `--disclosure "..."`, and the Assistant panel shows that text.
+
+= Assistant Job Reference
+
+Assistant jobs are introduced under <<Assistant jobs>>.
+
+== Starting a job
+
+A job is started with `jobs.create` (`POST /api/v1/projects/{id}/jobs`) and this body:
+
+* `app`: the app whose worker runs it, `igt`.
+* `instructions`: what the job is to do, required, at most 2,000 characters.
+* `documents`: the document ids, in the order to work them, at most 500. Left out, every document of the project, by name with a run of digits read as its number (Text 2 before Text 10), then by id.
+* `setup`: optional, a JSON object of at most 4,000 characters, which the app sends when the job starts. The server keeps it as sent, returns it on every read of the job as `setup`, never changes it, and reads none of its keys. Each app decides what goes in it, such as what the job may fill. Both clients re-case the keys inside it as they re-case every key, so a key of one lowercase word is the only kind that reads the same in every language.
+* `id`: optional, an id the client minted (see <<Ids you mint>>).
+
+The answer is the job, 201.
+A body that breaks a rule is refused with 400 and a sentence that says which.
+A project has at most one job that has not ended, and starting a second is refused with 409, `job-active`, and the other job's id in `job`.
+
+[,python]
+----
+job = c.jobs.create(project_id, "igt", "Fill Word class on every word that has none.", [doc_id])
+c.jobs.cancel(job["id"])
+----
+
+== The job and its states
+
+A job is `waiting` until the worker takes it, then `running`, and ends `done`, `cancelled` or `failed`.
+Stopping a waiting job (`jobs.cancel`) cancels it at once.
+Stopping a running one makes it `stopping`, and the worker ends it after the work in hand.
+A job that ended `cancelled` or `failed` has a `reason`.
+The server sets `cancelled`, `starter-access` (the person who started it can no longer write in the project) and `worker-lost` (its worker stopped during it ten times, below).
+The igt worker sets `no-plan`, `planning-failed`, `setup-gone`, `setup-unreadable`, `guidelines-too-long`, `no-documents`, `model-refused` (the model's provider refused its key or its model) and `worker-error`, and may say why in `message`.
+
+A job read carries its `instructions`, `app`, `started-by` and `started-by-name`, `state`, `reason`, `model`, `cancelled-by`, and `created-at`, `started-at`, `heartbeat-at` and `finished-at`.
+While it runs, `phase` is `checking`, `planning`, `working`, `harmonizing` or `reporting`, `message` is the worker's line on what it is doing, `current-document` the document in hand, and `waiting-for` is `people` or `model` while it waits on the model.
+A waiting job's `ahead` counts the jobs that have not ended and were started before it, across the server.
+`lapsed` is true while a running or stopping job's worker has sent nothing for two minutes.
+`undone` names the operation, time and user of an undo that stands (see <<Undo of one entry>>).
+`GET /api/v1/jobs/{id}` also carries `wrote`, true when History holds a change the job wrote, whatever its report counts.
+
+`documents` lists a row per document of the job, in its order, with the document's `name` (null once it is deleted) and the worker's `state` for it: `waiting`, `working`, `deferred`, `done`, `in-use`, `gone` or `not-reached`.
+`sentences`, `targets` and `done` count its sentences, those the job takes, and those finished, and `counts`, `skipped` (at most 500), `gloss-group` and `harmonize-group` are the worker's.
+When a job ends, every row not finished is `not-reached`.
+The `report` is the worker's JSON, at most 1,000,000 bytes.
+When a job ends without its worker (stopped while no worker reports, failed for `starter-access` or `worker-lost`), the server writes the report from the rows, with `stopped` set to `without-worker` when it was stopped.
+
+[cols="2,3"]
+|===
+|Route |Who may, and what it answers
+
+|`POST /api/v1/projects/{id}/jobs` (start)
+|a writer or maintainer of the project: the job, 201
+
+|`GET /api/v1/projects/{id}/jobs`
+|a reader of the project: the project's jobs, newest first, in pages of `{entries, next-cursor}`, each with `document-count` and without its documents and report
+
+|`GET /api/v1/projects/{id}/jobs/active`
+|a reader of the project: the job that has not ended, with its documents, or 204
+
+|`GET /api/v1/jobs/{id}`
+|a reader of the job's project: the job, with its documents and report
+
+|`GET /api/v1/jobs/{id}/pieces`
+|a reader of the job's project: what the job has done so far, in pages (below)
+
+|`POST /api/v1/jobs/{id}/cancel` (stop)
+|the person who started the job while they write the project, a maintainer, an admin: the job. 409 with `job-finished` once it has ended
+
+|`POST /api/v1/jobs/{id}/undo`
+|as an undo of one entry (see <<Undo of one entry>>). 409 until the job has ended
+
+|`GET /api/v1/jobs/worker`
+|anyone signed in: `seen-at`, when a worker last asked for work or reported since the server started, its `model`, the `settings` its last claim sent (null when it sent none), and the limits `instructions-max-chars` and `documents-max`
+
+|`POST /api/v1/jobs/claim`, `GET /api/v1/jobs/model-busy`, and a job's `heartbeat`, `documents/{id}`, `decisions`, `decisions/lookup` and `finish`
+|an admin
+
+|a job's `landed`
+|an admin, or the job's own token
+|===
+
+A delegated token can neither start nor stop a job.
+
+`GET /api/v1/jobs/{id}/pieces` lists what a job has done so far, newest first, in pages.
+The worker keeps one decision of the form `" piece"` for its plan and for each piece of its work once that piece's writes are known, keyed by a six-digit sequence number, and each entry is `{seq, piece}`, `piece` that decision's JSON as the worker wrote it.
+
+== The job worker
+
+The worker runs under an administrator's named API token.
+It asks for work with `jobs.claim`, which answers the next job, a token for the person who started it and the heartbeat interval, or 204.
+A claim may carry `settings`, an object of at most 2,000 characters as JSON saying what the worker runs, which the server keeps until the next claim and `jobs.worker` answers. `plaid-job-worker` sends its `version`, `model-pool`, `context-window`, `max-output-tokens`, `piece-output-tokens`, `reasoning-effort` and `apps`, each only when set, and never a key or an address.
+While any job is running the server gives out no other: a worker that asks first gets a running or stopping job whose worker has lapsed, oldest first, then the oldest waiting job of an app it runs.
+A job whose starter can no longer write the project is failed with `starter-access` instead of being given out.
+While it works the worker sends `jobs.heartbeat` every 30 seconds, which answers the job's state and a fresh token.
+A job whose worker has sent nothing for two minutes is taken by the next worker that asks, which goes on from where the job was, and the old worker's next call is refused with `job-taken`.
+A job is taken up again this way at most ten times: the next claim that finds it lapsed ends it `failed` with `worker-lost`, or `cancelled` when it was stopping, and gives out the next job.
+Once a job has ended, its document rows and decisions are refused with 409 and `job-finished`, except for a job the server failed whose report the worker has not yet sent.
+
+The worker writes into documents only with the token of the person who started the job.
+That token reaches only the job's project and does only what that person may there.
+It works only while the job is running or stopping on the worker it was issued to.
+Once the job ends, or another worker takes it, the token is refused with 401 and `job-ended`.
+Once they can no longer write in the project, the job fails, and no further token is issued.
+
+An administrator reads every project's jobs in one list, newest first, with `admin.jobs` (`GET /admin/jobs`): each entry is as a project's job list gives it, with the name of its project.
+
+The worker sends each write of a job under Idempotency-Keys of a seed of its own (`<seed>.<n>`).
+When an answer is lost, or the worker stopped while a write was on its way, `POST /api/v1/jobs/{id}/landed` with `refs`, the seeds, answers `keys`, the keys of every write the job's starter made in its project under them.
+The server keeps each operation's key in the audit log, so for a write it records in History the answer holds at any time.
+A write it does not record there, such as a comment, is answered for the 24 hours it keeps the answer for replay, in whatever project it was made.
+
+A job's writes in each document are grouped under one History entry for its work there and one for making its analyses consistent, with the refs `job:<job>/doc:<document>/pass:gloss` and `job:<job>/doc:<document>/pass:harmonize`.
+The document's row gives their ids as `gloss-group` and `harmonize-group`.
+`jobs.undo` undoes them all together.
+
+== Model pools
+
+A job waits while people use the model it draws on.
+Every service and assistant that uses the same model key is started with the same `--model-pool NAME`, and so is the worker.
+Before each call to the model the worker asks `GET /api/v1/jobs/model-busy?pool=NAME` how many requests to those services are running, and waits until none has run for a minute.
 
 = Configuration
 
