@@ -17,24 +17,24 @@ def _call(args):
 def test_no_topic_lists_the_parts_of_the_guide():
     out = _call({})
     assert out.startswith('The Plaid IGT user guide. Ask for a part with topic')
-    assert '  Projects: Sentences, words, and morphemes, Documents' in out and '  Media' not in out
-    assert 'Media, Tokenize' in out
+    assert '  Documents: Document list, Details, Baseline, Tokenize' in out and '  Baseline' not in out
+    assert '  Media: Recordings, Recordings with one file per speaker, Transcript, Timeline' in out
 
 
 def test_a_topic_gives_that_part_as_the_guide_has_it():
     out = _call({'topic': 'transcript'})
-    assert out.startswith('From the Plaid IGT user guide, "Projects > Media > Transcript":\n### Transcript')
+    assert out.startswith('From the Plaid IGT user guide, "Media > Transcript":\n## Transcript')
     assert 'New segment' in out and '++++' not in out and ':toc:' not in out
     # A whole chapter carries its sections, and one too long for an answer lists them.
     assert '## Timeline' in _call({'topic': 'Media'})
-    out = _call({'topic': 'Projects'})
-    assert len(out) <= guide.MAX_CHARS + 600 and 'Its parts, each asked for by name: "Sentences, words' in out
+    out = _call({'topic': 'Assistant jobs'})
+    assert len(out) <= guide.MAX_CHARS + 600 and 'Its parts, each asked for by name: "Setting up a job"' in out
 
 
 def test_a_topic_no_part_is_called_names_the_parts_that_mention_it():
     out = _call({'topic': 'split a segment'})
-    assert out.startswith('No part of the guide is called "split a segment". Parts that mention it: "Projects')
-    assert '"Projects > Media > Transcript";' in out
+    assert out.startswith('No part of the guide is called "split a segment". Parts that mention it: "Documents')
+    assert '"Media > Transcript";' in out
     out = _call({'topic': 'zzzqqq'})
     assert out.startswith('No part of the guide is called "zzzqqq" or mentions it. Its parts:')
 
