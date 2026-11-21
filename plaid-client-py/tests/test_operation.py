@@ -645,7 +645,7 @@ def _kind_lists(texts):
     js_array = re.search(r'const OPERATION_KINDS = \[([^\]]*)\]', texts['js']).group(1)
     js_type = re.search(r'@typedef \{([^}]*)\} OperationKind', texts['js_types']).group(1)
     py = re.search(r'_OPERATION_KINDS = \(([^)]*)\)', texts['python']).group(1)
-    section = texts['manual'].split('=== Kinds of operation', 1)[1]
+    section = texts['manual'].split('\n== Kinds of operation', 1)[1]
     table = section.split('|===', 2)[1]
     # One row per blank-line-separated block, after the header; its first
     # cell is the kind.
