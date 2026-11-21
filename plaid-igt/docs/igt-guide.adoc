@@ -1374,6 +1374,7 @@ Besides **Waiting**, **Working** and **Done**, a document can read:
 
 | **Not reached**
 | The job ended before it.
+Once the job has ended, **To check** says why: **Not reached: the job was stopped** or **Not reached: the job failed**.
 
 | **Skipped**
 | Every sentence the job took was skipped.

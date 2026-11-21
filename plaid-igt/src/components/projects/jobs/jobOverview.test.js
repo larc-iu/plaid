@@ -477,7 +477,7 @@ describe('what to check', () => {
     };
     expect(toCheckRows(job).map((r) => [r.text, r.view, r.filter])).toEqual([
       ['1 document in use, not worked', 'documents', 'in-use'],
-      ['1 document not reached', 'documents', 'not-reached'],
+      ['1 document not reached: the job failed', 'documents', 'not-reached'],
       ['1 document stopped partway', 'documents', 'partway'],
     ]);
     expect(toCheckRows({ state: 'failed', report: null, documents: [job.documents[3]] })).toEqual(
@@ -490,6 +490,11 @@ describe('a document’s reasons to check it', () => {
   it('says each reason in a few words', () => {
     const report = reportOf();
     const said = (d, r) => documentChecks(d, r).map((c) => c.text);
+    const never = { documentId: 'd9', state: 'not-reached', done: 0, counts: {} };
+    const why = (state) => documentChecks(never, null, new Set(), { state }).map((c) => c.text);
+    expect(why('cancelled')).toEqual(['Not reached: the job was stopped']);
+    expect(why('failed')).toEqual(['Not reached: the job failed']);
+    expect(why('done')).toEqual(['Not reached']);
     const kinds = (d, r) => documentChecks(d, r).map((c) => c.kind);
     expect(said(report.documents[0])).toEqual([
       '6 morphemes left blank',

@@ -105,6 +105,14 @@ const SKIPPED_KINDS = [
   ['no-answer', 'skippedNoAnswer', 'skipped, no answer from the assistant'],
 ];
 
+// A document the job never began, with why by the job's state: a person
+// stopped the job, or it failed. Its reason stands at the top of the page.
+const NOT_REACHED_WHY = {
+  cancelled: 'Not reached: the job was stopped',
+  failed: 'Not reached: the job failed',
+};
+export const notReachedText = (job) => NOT_REACHED_WHY[job?.state] ?? 'Not reached';
+
 const VALUES_PEOPLE_WROTE = ['value, morpheme or link', 'values, morphemes or links'];
 
 // A count of blanks of one kind, the sentence said once where the blank is a
@@ -143,7 +151,11 @@ export const toCheckRows = (job) => {
   // Those left out past the plan's cut list have no id here: taken off as
   // documentCounts takes them (REV-JOIN18-2).
   const notReached = Math.max(0, unfinished.length - partway - (report?.plan?.leftOutMore ?? 0));
-  check('not-reached', notReached, `${countOf(notReached, 'document')} not reached`);
+  check(
+    'not-reached',
+    notReached,
+    `${countOf(notReached, 'document')} ${notReachedText(job).toLowerCase()}`,
+  );
   check('partway', partway, `${countOf(partway, 'document')} stopped partway`);
   check(
     'unanswered',
@@ -295,8 +307,9 @@ export const CHECK_KINDS = {
 
 // Why one document of an ended job needs a person, each `{kind, text}` in a
 // few words, or none: the Documents table's To check column and filters. `d`
-// is the job's row, `reported` the report's row of it where there is one.
-export const documentChecks = (d, reported = null, leftOut = new Set()) => {
+// is the job's row, `reported` the report's row of it where there is one,
+// `job` the job, whose state says why a document was not reached.
+export const documentChecks = (d, reported = null, leftOut = new Set(), job = null) => {
   const r = reported ?? d;
   const out = [];
   const add = (kind, text) => out.push({ kind, text });
@@ -305,7 +318,7 @@ export const documentChecks = (d, reported = null, leftOut = new Set()) => {
   if (d.state === 'not-reached' && !leftOut.has(d.documentId)) {
     if (d.counts?.unanswered === true) add('unanswered', 'Not worked: the server did not answer');
     else if (stoppedPartway(d)) add('partway', 'Stopped partway');
-    else add('not-reached', 'Not reached');
+    else add('not-reached', notReachedText(job));
   }
   const skipped =
     (r.skipped?.length ?? 0) + (r.counts?.skippedMore ?? 0) + (r.counts?.tooLongMore ?? 0);
