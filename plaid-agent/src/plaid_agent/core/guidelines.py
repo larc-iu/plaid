@@ -303,7 +303,10 @@ the data: a guideline is what the PEOPLE on the project have decided. title is a
 "Abbreviations": it is how the guideline is asked for later, so name the subject rather than the rule. body \
 is the convention itself, in Markdown, stated plainly and briefly, in the user's own terms where they gave \
 them. Open with the rule itself: the first line stands in for the guideline wherever there is no room for \
-all of it.
+all of it. The text must stand without this conversation, in revise and rewrite too: it is read later by \
+people and assistants who never saw it. Where a rule rests on something said or pasted here (a definition, a \
+list of labels, an excerpt), write that content into the guideline, never a pointer to it such as "the \
+excerpt" or "as above".
 - revise (title, find, replace): PLAN a change to ONE PASSAGE of a guideline, leaving the rest exactly as it \
 is. This is how to correct or extend a convention that is already written down: prefer it over rewrite, \
 always, unless most of the guideline is changing. Read the guideline first and quote find exactly, character \
