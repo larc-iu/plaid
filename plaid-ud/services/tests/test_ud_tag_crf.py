@@ -1,5 +1,6 @@
 """Offline tests for ud_tag_crf.py: features, specs, CoNLL-U reading, reading a
 UD document, and the write plan's contract. No server needed."""
+
 import importlib.util
 import sys
 from pathlib import Path

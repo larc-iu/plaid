@@ -96,6 +96,7 @@ jobs:
           # plaid-umr's comparison service scores with the ancast package, and
           # its tests run the real metric.
           pip install ancast
+          pip install python-crfsuite regex
       # `bb test` is every suite: the Clojure core, all three SPAs, and the
       # Python assistant and services. Shared with ci.yml and local dev
       # (bb/pipeline.clj), so the gate can't drift. The assistant's suite boots
