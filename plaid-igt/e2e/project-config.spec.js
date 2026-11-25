@@ -235,7 +235,7 @@ test('a reader who opens setup or Add ELAN documents by address lands on the pro
     await expect(page.getByText("Only a project's maintainers can open this page.")).toBeVisible();
     await expect(page.getByText('Config doc')).toBeVisible();
     await expect(
-      page.getByRole('heading', { name: /Project setup|Add ELAN documents/ }),
+      page.getByRole('heading', { name: /Project setup|Add ELAN or Praat documents/ }),
     ).toHaveCount(0);
   }
 });

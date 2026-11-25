@@ -41,7 +41,7 @@ describe('ElanFiles', () => {
     );
     expect(rowOf('story.eaf')).toBe('story.eaf→ Story · 2 sentences');
     expect(rowOf('song.eaf')).toBe('song.eaf→ Song · 1 sentencerecording not chosen');
-    expect(rowOf('other.wav')).toContain('no .eaf names this file');
+    expect(rowOf('other.wav')).toContain('no annotation file names this file');
     // With no project to compare against, nothing claims to be new.
     expect(view.container.textContent).not.toContain('new');
     expect(view.container.querySelector('[role="radiogroup"]')).toBeNull();
@@ -174,7 +174,7 @@ describe('ElanFiles with several recordings on one file', () => {
     expect(rowOf('ana.wav')).toContain('Ana');
     expect(rowOf('ben.wav')).toContain('first 1.5 s skipped');
     expect(rowOf('cam.mp4')).toContain('recording not chosen');
-    expect(view.container.textContent).not.toContain('no .eaf names this file');
+    expect(view.container.textContent).not.toContain('no annotation file names this file');
     const radios = [...view.container.querySelectorAll('input[name="mix-quality"]')];
     expect(radios.map((r) => r.value)).toEqual(['full', 'small']);
     expect(radios[0].checked).toBe(true);

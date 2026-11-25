@@ -46,7 +46,7 @@ const settle = (view) => view.step(() => new Promise((r) => setTimeout(r, 0)));
 
 describe.each([
   ['setup', () => <ProjectSetup />, 'Project setup'],
-  ['import-elan', () => <ImportElanDocuments />, 'Add ELAN documents'],
+  ['import-elan', () => <ImportElanDocuments />, 'Add ELAN or Praat documents'],
 ])('/projects/:id/%s', (screen, element, heading) => {
   beforeEach(() => {
     notified.length = 0;

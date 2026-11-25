@@ -142,9 +142,10 @@ export const NewDocument = ({ projectId, client, canManage }) => {
                   <AudioLines className="h-4 w-4 text-muted-foreground" />
                 </span>
                 <span className="flex-1">
-                  <span className="block text-sm font-medium">Import from ELAN</span>
+                  <span className="block text-sm font-medium">Import from ELAN or Praat</span>
                   <span className="block text-xs text-muted-foreground">
-                    One document per .eaf file, with its tiers, speakers and time alignment.
+                    One document per .eaf or .TextGrid file, with its tiers, speakers and time
+                    alignment.
                   </span>
                 </span>
                 <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" />

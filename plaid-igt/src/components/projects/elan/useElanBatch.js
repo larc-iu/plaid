@@ -8,6 +8,7 @@
 
 import { useMemo, useState } from 'react';
 import { readEaf } from '@/import/elan/readEaf';
+import { readTextGrid } from '@/import/elan/readTextGrid';
 import { readTextFile } from '@ui/lib/textFile.js';
 import {
   canonicalOf,
@@ -21,9 +22,12 @@ import { buildElanBatch, defaultFieldName, matchMediaFiles } from '@/import/elan
 import { fieldWorksFieldNames } from '@/import/elan/tierNaming';
 import { readyRecordings } from '@/utils/readyRecordings';
 
-const EAF = /\.eaf$/i;
+// An annotation file: an .eaf, or a Praat TextGrid, which readTextGrid reads
+// into the same shape.
+const EAF = /\.(eaf|textgrid)$/i;
+const TEXTGRID = /\.textgrid$/i;
 
-/** Split a picked file list into the .eaf files and everything else. */
+/** Split a picked file list into the annotation files and everything else. */
 export const partitionPicked = (fileList) => {
   const all = [...(fileList || [])];
   return { eafs: all.filter((f) => EAF.test(f.name)), media: all.filter((f) => !EAF.test(f.name)) };
@@ -173,10 +177,13 @@ export function useElanBatch({
     }
     if (!eafs.length) {
       if (chosen.length) return false; // media added to an existing batch
-      throw new Error('Choose one or more .eaf files.');
+      throw new Error('Choose one or more .eaf or .TextGrid files.');
     }
     const parsed = [];
-    for (const file of eafs) parsed.push(readEaf(await readTextFile(file, file.name), file.name));
+    for (const file of eafs) {
+      const read = TEXTGRID.test(file.name) ? readTextGrid : readEaf;
+      parsed.push(read(await readTextFile(file, file.name), file.name));
+    }
     adoptBatch(parsed);
     return true;
   };

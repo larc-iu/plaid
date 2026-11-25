@@ -37,7 +37,7 @@ Key features include:
 * **Transcription.** Attach audio or video to a document and transcribe it one time-aligned segment at a time, with playback speed control and a speaker label on each segment. The transcript is the text that is then analyzed.
 * **Interlinear analysis.** Divide the text into sentences, words, and morphemes, and annotate them with the fields your project defines: glosses, parts of speech, free translations, and others.
 * **Vocabulary linking.** Words and morphemes may be linked to entries in a vocabulary. A linked entry supplies its gloss wherever the form occurs, so a word is analyzed consistently across the corpus. Homonyms, affixes and clitics, and multi-word expressions are supported.
-* **Import and export.** Import a FieldWorks (FLEx) backup or interlinear texts, ELAN files, or a CLDF dataset. Export to FLEx (`.flextext` with a LIFT lexicon), ELAN (`.eaf`), Praat (`.TextGrid`), CLDF, plain text, or a LaTeX book, or copy a sentence as LaTeX.
+* **Import and export.** Import a FieldWorks (FLEx) backup or interlinear texts, ELAN files, Praat TextGrids, or a CLDF dataset. Export to FLEx (`.flextext` with a LIFT lexicon), ELAN (`.eaf`), Praat (`.TextGrid`), CLDF, plain text, or a LaTeX book, or copy a sentence as LaTeX.
 * **Collaboration.** A project is shared with its members, each of which may have reader, writer, or maintainer privileges. A central database lets all users see the latest state of the data, with no import/export required.
 * **Audited edits.** Every change is recorded in an audit log with its author, and any document can be viewed as it was at an earlier time.
 * **Pluggable AI assistance.** A connected AI model can transcribe a recording, draft translations, or propose segmentations and glosses. Machine output is marked until a person confirms it, and a service never overwrites human work.
@@ -119,7 +119,7 @@ Sorting by **Your last edit** is the quickest way back to what you were working 
 **New document** offers two ways to start:
 
 * **Blank document** asks for a name and opens the new, empty document on its Baseline tab.
-* **Import from ELAN** brings `.eaf` files into the project (see <<_importing>>).
+* **Import from ELAN or Praat** brings `.eaf` and `.TextGrid` files into the project (see <<_importing>>).
 
 A member who is not a maintainer is asked for the name straight away.
 
@@ -1586,6 +1586,9 @@ Five formats are supported:
 | **ELAN** (`.eaf`)
 | A set of annotation files in which each tier means the same thing in every file. Each file becomes a document, with its tiers, speakers, time alignment, and its recording when you choose that alongside.
 
+| **Praat** (`.TextGrid`)
+| Text files saved from Praat, imported the way ELAN files are (see <<_importing_from_praat>>).
+
 | **Plaid IGT archive** (`.zip`)
 | A project recreated exactly, with its vocabularies, media, comments, and guidelines.
 |===
@@ -1636,8 +1639,24 @@ The roles a tier can take:
 | One value per sentence, word, or morpheme, in an annotation field.
 |===
 
-ELAN files can also be imported into a project you already have, with **New document → Import from ELAN** on its Documents tab.
+ELAN files can also be imported into a project you already have, with **New document → Import from ELAN or Praat** on its Documents tab.
 Each tier is written into a field the project already has, or into a new field of its own.
+
+[[_importing_from_praat]]
+=== Importing from Praat
+
+A TextGrid goes through the same review screen as an ELAN file, and can be chosen together with ELAN files and with its recording.
+A recording is matched to the TextGrid of the same name, such as `Story.wav` to `Story.TextGrid`.
+
+A TextGrid's tiers are flat, so the import reads which tier belongs under which from their times, comparing each tier with the tiers before it in the file:
+
+* A tier whose intervals have the same start and end as those of an earlier tier holds one value for each of them, as a translation tier does for a transcription tier.
+* A tier whose intervals lie inside those of an earlier tier divides it, as a forced aligner's word tier divides the utterances.
+* Any other tier stands on its own.
+
+Only intervals with text are read. A point tier has nothing to import and is listed with no role.
+A tier named `name@Speaker` belongs to that speaker, as in ELAN.
+A binary TextGrid is refused: save it from Praat as a text file.
 
 A file imported before says so on its row, and you choose whether to keep that document, replace it, or add a copy beside it.
 Replacing deletes the document before its replacement is written, so a run that fails partway may leave a file with neither, and says so.

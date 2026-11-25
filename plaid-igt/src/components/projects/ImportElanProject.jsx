@@ -49,7 +49,7 @@ import { FORM_PAGE_WIDTH } from '@ui/lib/pageWidth.js';
 import { countOf } from '@ui/lib/plural.js';
 
 export const ImportElanProject = () => {
-  useDocumentTitle('Import ELAN');
+  useDocumentTitle('Import from ELAN or Praat');
   const { client: session } = useAuth();
   // The run's own client, so a write made elsewhere in the tab meanwhile is
   // neither stamped with its document version nor filed under its operation.
@@ -137,7 +137,7 @@ export const ImportElanProject = () => {
       <input
         ref={fileInputRef}
         type="file"
-        accept=".eaf,audio/*,video/*"
+        accept=".eaf,.TextGrid,audio/*,video/*"
         multiple
         className="hidden"
         onChange={(e) => {
@@ -146,7 +146,7 @@ export const ImportElanProject = () => {
         }}
       />
       <div className="flex flex-col gap-6">
-        <ImportHeader title="Import an ELAN corpus">
+        <ImportHeader title="Import from ELAN or Praat">
           Create a project from a set of{' '}
           <a
             href="https://archive.mpi.nl/tla/elan"
@@ -156,16 +156,16 @@ export const ImportElanProject = () => {
           >
             ELAN
           </a>{' '}
-          annotation files. Every file becomes one document. A tier must mean the same thing in
-          every file.
+          annotation files or Praat TextGrids. Every file becomes one document. A tier must mean the
+          same thing in every file.
         </ImportHeader>
 
         {stage === 'pick' && (
           <FileDropZone
             onFiles={handleFiles}
-            hint="Drop your .eaf files and their recordings here, or choose them below."
+            hint="Drop your .eaf or Praat .TextGrid files and their recordings here, or choose them below."
             onChoose={() => fileInputRef.current?.click()}
-            chooseLabel="Choose .eaf files and recordings"
+            chooseLabel="Choose .eaf or .TextGrid files and recordings"
           />
         )}
 

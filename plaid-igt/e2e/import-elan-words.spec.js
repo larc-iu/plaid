@@ -103,7 +103,7 @@ test('an .eaf with no word tier gets words without punctuation', async ({ page }
     blacklist: [],
   });
   await page.goto(`/#/projects/${projectId}/import-elan`);
-  await expect(page.getByRole('heading', { name: 'Add ELAN documents' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Add ELAN or Praat documents' })).toBeVisible();
   await page
     .locator('input[type="file"]')
     .setInputFiles([

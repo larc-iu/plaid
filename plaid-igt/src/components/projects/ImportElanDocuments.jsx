@@ -72,7 +72,7 @@ import { countOf } from '@ui/lib/plural.js';
 const NEW_FIELD = '__new__';
 
 export const ImportElanDocuments = () => {
-  useDocumentTitle('Add ELAN documents');
+  useDocumentTitle('Add ELAN or Praat documents');
   const { client: session } = useAuth();
   // The run's own client, so a write made elsewhere in the tab meanwhile is
   // neither stamped with its document version nor filed under its operation.
@@ -394,7 +394,7 @@ export const ImportElanDocuments = () => {
       <input
         ref={fileInputRef}
         type="file"
-        accept=".eaf,audio/*,video/*"
+        accept=".eaf,.TextGrid,audio/*,video/*"
         multiple
         className="hidden"
         onChange={(e) => {
@@ -404,7 +404,7 @@ export const ImportElanDocuments = () => {
       />
       <div className="flex flex-col gap-6">
         <ImportHeader
-          title="Add ELAN documents"
+          title="Add ELAN or Praat documents"
           crumbs={[
             { label: 'Projects', to: '/projects', fixed: true },
             {
@@ -429,9 +429,9 @@ export const ImportElanDocuments = () => {
         {stage === 'pick' && (
           <FileDropZone
             onFiles={handleFiles}
-            hint="Drop your .eaf files and their recordings here, or choose them below."
+            hint="Drop your .eaf or Praat .TextGrid files and their recordings here, or choose them below."
             onChoose={() => fileInputRef.current?.click()}
-            chooseLabel="Choose .eaf files and recordings"
+            chooseLabel="Choose .eaf or .TextGrid files and recordings"
           />
         )}
 

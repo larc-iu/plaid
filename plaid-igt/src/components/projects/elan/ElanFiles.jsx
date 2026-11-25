@@ -225,9 +225,9 @@ export const ElanFiles = ({
     <ElanSection
       step={step}
       title="Files"
-      note={`${countOf(eafs.length, '.eaf file')}${
+      note={`${countOf(eafs.length, 'annotation file')}${
         mediaFiles?.length ? `, ${countOf(mediaFiles.length, 'recording')}` : ''
-      }. Every .eaf becomes one document.`}
+      }. Every annotation file becomes one document.`}
       aside={
         editable &&
         onAddFiles && (
@@ -315,7 +315,7 @@ export const ElanFiles = ({
                 onRemove={editable && onRemoveMedia ? () => onRemoveMedia(file) : null}
               >
                 <span className={TONES.muted}>{formatBytes(file.size)}</span>
-                <span className={TONES.warn}>no .eaf names this file</span>
+                <span className={TONES.warn}>no annotation file names this file</span>
               </Row>
             </ul>
           </li>

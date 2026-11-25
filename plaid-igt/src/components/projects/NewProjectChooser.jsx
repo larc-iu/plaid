@@ -40,9 +40,9 @@ const OPTIONS = [
   {
     to: '/projects/import-elan',
     icon: AudioLines,
-    title: 'Import from ELAN',
+    title: 'Import from ELAN or Praat',
     description:
-      'Create a project from a set of ELAN annotation files (.eaf): each file becomes a document, with its tiers, speakers, and time alignment. A tier must mean the same thing in every file.',
+      'Create a project from a set of ELAN annotation files (.eaf) or Praat TextGrids: each file becomes a document, with its tiers, speakers, and time alignment. A tier must mean the same thing in every file.',
   },
   {
     to: '/projects/import-archive',
