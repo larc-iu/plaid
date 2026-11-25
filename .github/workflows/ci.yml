@@ -137,6 +137,7 @@ jobs:
           pip install -e ./plaid-client-py
           pip install -e './plaid-agent[dev]'
           pip install ancast
+          pip install python-crfsuite regex
       - name: Run the Python suites
         env:
           PLAID_PYTHON: python
