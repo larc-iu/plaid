@@ -123,7 +123,7 @@ const attr = (name, value) =>
 // field: the second field of a name (Gloss on words and on morphemes) is named
 // for its scope, "Gloss (morpheme)" (Luke, 2026-10-16), and only a name taken
 // that way too gets a number.
-const nameAllocator = () => {
+export const nameAllocator = () => {
   const used = new Set();
   return (candidate, fallback, scope = null) => {
     const base = String(candidate ?? '').trim() || fallback;

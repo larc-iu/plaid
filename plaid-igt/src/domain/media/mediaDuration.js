@@ -144,8 +144,11 @@ function elementDuration(file) {
   });
 }
 
-/** Duration in seconds, or null when neither way can say. */
-export async function readDuration(file) {
+/**
+ * Duration in seconds from the file's own header (an MP4 family file or a
+ * WAV), or null. No media element, so it runs anywhere, an export included.
+ */
+export async function readHeaderDuration(file) {
   for (const read of [mp4Duration, wavDuration]) {
     try {
       const seconds = await read(file);
@@ -154,7 +157,12 @@ export async function readDuration(file) {
       // A truncated or unusual file: try the next way of asking.
     }
   }
-  return elementDuration(file);
+  return null;
+}
+
+/** Duration in seconds, or null when neither way can say. */
+export async function readDuration(file) {
+  return (await readHeaderDuration(file)) ?? elementDuration(file);
 }
 
 export const __test = { mp4Duration, wavDuration };

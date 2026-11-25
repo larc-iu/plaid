@@ -11,6 +11,7 @@ import { ENTRY_ROLES } from '../domain/vocabFields.js';
 import { defaultCldfOptions } from './cldf.js';
 import { defaultElanOptions } from './elan.js';
 import { defaultLatexOptions } from './latexBook.js';
+import { defaultTextGridOptions } from './textgrid.js';
 import { isLangTag, parseFieldName } from '../domain/fieldNames.js';
 
 // Each export format and what the export does with it. Policy lives here, so
@@ -122,6 +123,18 @@ export const EXPORT_FORMATS = [
     bareType: 'text/xml;charset=utf-8',
     // Media rides along in the zip so the .eaf's MEDIA_URL resolves next to it.
     options: (layers) => ({ ...defaultElanOptions(layers), includeMedia: true }),
+  },
+  {
+    ...FORMAT_DEFAULTS,
+    id: 'textgrid',
+    label: 'Praat TextGrid (.TextGrid)',
+    ext: 'TextGrid',
+    defaultName: 'Praat',
+    media: true,
+    vocabularyTsvs: true,
+    keepsMediaName: true,
+    // The recording rides in the zip, so Praat can open the two together.
+    options: (layers) => defaultTextGridOptions(layers),
   },
   {
     ...FORMAT_DEFAULTS,

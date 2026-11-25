@@ -143,7 +143,8 @@ describe('an ignored word in exports', () => {
     it(`${id} carries none of its values, and the other word keeps its own`, async () => {
       const text = await exportAs(id);
       expect(text).not.toMatch(/FILLER/i);
-      expect(text).toMatch(/DOGWORD|DOGMORPH/i);
+      // A TextGrid holds only sentences with a time, and this one has none.
+      if (id !== 'textgrid') expect(text).toMatch(/DOGWORD|DOGMORPH/i);
     });
   }
 

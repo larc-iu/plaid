@@ -37,7 +37,7 @@ Key features include:
 * **Transcription.** Attach audio or video to a document and transcribe it one time-aligned segment at a time, with playback speed control and a speaker label on each segment. The transcript is the text that is then analyzed.
 * **Interlinear analysis.** Divide the text into sentences, words, and morphemes, and annotate them with the fields your project defines: glosses, parts of speech, free translations, and others.
 * **Vocabulary linking.** Words and morphemes may be linked to entries in a vocabulary. A linked entry supplies its gloss wherever the form occurs, so a word is analyzed consistently across the corpus. Homonyms, affixes and clitics, and multi-word expressions are supported.
-* **Import and export.** Import a FieldWorks (FLEx) backup or interlinear texts, ELAN files, or a CLDF dataset. Export to FLEx (`.flextext` with a LIFT lexicon), ELAN (`.eaf`), CLDF, plain text, or a LaTeX book, or copy a sentence as LaTeX.
+* **Import and export.** Import a FieldWorks (FLEx) backup or interlinear texts, ELAN files, or a CLDF dataset. Export to FLEx (`.flextext` with a LIFT lexicon), ELAN (`.eaf`), Praat (`.TextGrid`), CLDF, plain text, or a LaTeX book, or copy a sentence as LaTeX.
 * **Collaboration.** A project is shared with its members, each of which may have reader, writer, or maintainer privileges. A central database lets all users see the latest state of the data, with no import/export required.
 * **Audited edits.** Every change is recorded in an audit log with its author, and any document can be viewed as it was at an earlier time.
 * **Pluggable AI assistance.** A connected AI model can transcribe a recording, draft translations, or propose segmentations and glosses. Machine output is marked until a person confirms it, and a service never overwrites human work.
@@ -1657,7 +1657,7 @@ Maintainers create presets on the project's **Export** tab.
 Anyone can run one from there or from a document's Export tab, on this document, selected documents, or the whole project.
 An export holds everything its preset names, or it fails, and the export panel says what could not be read.
 
-Six formats are supported:
+Seven formats are supported:
 
 [cols="1,3"]
 |===
@@ -1674,6 +1674,9 @@ Six formats are supported:
 
 | **ELAN** (`.eaf`)
 | One annotation file per document, bundled into a `.zip` with its recording when it has one.
+
+| **Praat** (`.TextGrid`)
+| One TextGrid per document, bundled into a `.zip` with its recording when it has one. Only time-aligned sentences go out (see <<_exporting_to_praat>>).
 
 | **LaTeX book** (`.zip`)
 | LaTeX source for a book of the texts, to compile with LuaLaTeX (see <<_latex_book>>).
@@ -1696,6 +1699,29 @@ A README in the `.zip` repeats these steps.
 
 A FLEx preset also carries the writing-system tags FieldWorks will see, for the baseline text, each alternate orthography, and glosses and translations.
 Use the codes your FieldWorks project already uses, or FLEx will offer to add a new writing system when you import.
+
+[[_exporting_to_praat]]
+=== Exporting to Praat
+
+A TextGrid holds only what has a time, and in Plaid only segments have times.
+So each tier holds one interval per sentence, timed by the segments inside it, and a sentence with no segment is left out.
+Words and morphemes have no times of their own, so each word line is written whole in its sentence's interval:
+
+[cols="1,3"]
+|===
+| Tier | Text of one interval
+
+| **Sentence** | `nzone yəf rä`
+| **Words** | `nzone yəf rä`
+| **Morphemes** | `nzone yf rä`
+| **Gloss** | `1SG.POSS name 3SG.FEM:SBJ:NPST:IPFV/be[stem]`
+| **Translation** | `My name is`
+|===
+
+Each word line has one item per word, so the third item of **Gloss** belongs to the third item of **Words**.
+A word with no value is written `_` to keep the count.
+A **Segment** tier holds the segments when some sentence has more than one, and is empty otherwise.
+Put the recording beside the TextGrid and open both in Praat, then select them together and click **View & Edit**.
 
 === Exporting to CLDF
 
@@ -2824,6 +2850,9 @@ The documents a failed run finished stay.
 
 | **ELAN**
 | **Segment words into morphemes** decides whether the tiers reach below the word. **One tier set per speaker** gives each speaker their own tiers. A segment that crosses a sentence break is left out, and the export says how many.
+
+| **Praat**
+| **Word tiers** writes the words as written, segmented into morphemes, or both. **One tier set per speaker** gives each speaker their own tiers, and without it a sentence that overlaps the one before is left out. With **Include media files** on, the TextGrid lasts as long as a WAV or MP4 recording. Otherwise it ends at the last segment. The export says how many sentences it left out.
 
 | **Plaid IGT JSON**
 | A project with two vocabularies of one name is refused: rename one first.

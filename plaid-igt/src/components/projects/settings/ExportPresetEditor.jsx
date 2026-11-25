@@ -22,6 +22,7 @@ import { PlainTextOptions } from '@/components/export/PlainTextOptions.jsx';
 import { CldfOptions } from '@/components/export/CldfOptions.jsx';
 import { FlextextOptions } from '@/components/export/FlextextOptions.jsx';
 import { ElanOptions } from '@/components/export/ElanOptions.jsx';
+import { TextGridOptions } from '@/components/export/TextGridOptions.jsx';
 import { NativeOptions } from '@/components/export/NativeOptions.jsx';
 import { LatexOptions } from '@/components/export/LatexOptions.jsx';
 
@@ -43,6 +44,9 @@ const OPTIONS_EDITORS = {
   ),
   elan: ({ options, layers, onChange }) => (
     <ElanOptions options={options} layers={layers} onChange={onChange} />
+  ),
+  textgrid: ({ options, layers, onChange }) => (
+    <TextGridOptions options={options} layers={layers} onChange={onChange} />
   ),
   latex: ({ options, layers, project, onChange }) => (
     <LatexOptions

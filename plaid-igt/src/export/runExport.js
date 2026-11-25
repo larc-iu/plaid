@@ -40,6 +40,8 @@ import { buildLiftLexicon, collectExampleRefs } from './lift.js';
 import { buildItemNumbers, exampleKey } from '../domain/vocabDictionary.js';
 import { buildContextRows } from '../components/projects/search/searchRunner.js';
 import { buildEafDocument } from './elan.js';
+import { buildTextGrid } from './textgrid.js';
+import { readHeaderDuration } from '../domain/media/mediaDuration.js';
 import { serializeVocabTsv } from './vocabTsv.js';
 import { buildCldfDataset } from './cldf.js';
 import {
@@ -133,6 +135,8 @@ const DOCUMENT_WRITERS = {
   elan: countedXml((igtDoc, { preset, layers, context }) =>
     buildEafDocument(igtDoc, intersectSelection(preset.options || {}, layers), context),
   ),
+  textgrid: (igtDoc, { preset, layers, context }) =>
+    buildTextGrid(igtDoc, intersectSelection(preset.options || {}, layers), context),
   // Drop tier names that no longer exist in the project configuration.
   plaintext: (igtDoc, { preset, layers }) =>
     serializeDocumentPlain(igtDoc, intersectSelection(preset.options || {}, layers)),
@@ -537,6 +541,7 @@ export async function runExport({
     let mediaFile = null;
     let mediaEntry = null;
     let mediaType = '';
+    let mediaSeconds = null;
     if (includeMedia && igtDoc.raw?.mediaUrl) {
       try {
         const { bytes, ext: mediaExt, mime } = await reading(() => fetchMedia(client, docIds[i]));
@@ -554,6 +559,12 @@ export async function runExport({
         mediaType = mime || '';
         // Already-compressed audio/video — store, don't deflate.
         mediaEntry = { path: mediaFile, data: bytes, opts: { level: 0 } };
+        // A TextGrid covers the recording from start to end, so Praat shows
+        // all of it beside the tiers. A WAV or an MP4 says how long it is in
+        // its header. Any other recording, the grid ends at the last segment.
+        if (format.id === 'textgrid') {
+          mediaSeconds = await readHeaderDuration(new Blob([bytes])).catch(() => null);
+        }
       } catch (err) {
         throw new Error(`The recording of "${name}" could not be read: ${humanizeError(err)}`, {
           cause: err,
@@ -588,6 +599,7 @@ export async function runExport({
             // media/, so the href that resolves climbs one level.
             mediaHref: mediaFile ? `../${mediaFile}` : null,
             mediaType,
+            mediaSeconds,
           },
           onControlDropped: () => warnings.push(`"${name}": invisible control characters left out`),
         }),
@@ -767,7 +779,7 @@ export async function runExport({
     data: docFiles[i].data,
   }));
 
-  if (format.id === 'elan') entries.push(...mediaEntries);
+  if (format.id === 'elan' || format.id === 'textgrid') entries.push(...mediaEntries);
 
   if (format.archive) {
     const vocabNames = dedupeFilenames(

@@ -336,6 +336,50 @@ const ROWS = {
       reads: ['media'],
     },
   },
+  textgrid: {
+    screens: {
+      vocabularyTsvs: true,
+      zipNote: null,
+    },
+    document: {
+      filename: 'Alpha-export.zip',
+      type: null,
+      files: {
+        'documents/Alpha.TextGrid': 'c27194444241',
+        'media/Alpha.wav': '4bf5122f3445',
+      },
+      reads: ['media'],
+    },
+    noMedia: {
+      filename: 'Alpha.TextGrid',
+      type: 'text/plain;charset=utf-8',
+      files: 'c27194444241',
+      reads: [],
+    },
+    project: {
+      filename: 'Proj-export.zip',
+      type: null,
+      files: {
+        'documents/Alpha.TextGrid': 'c27194444241',
+        'documents/Beta.TextGrid': 'c27194444241',
+        'media/Alpha.wav': '4bf5122f3445',
+        'media/Beta.wav': '4bf5122f3445',
+        'vocabularies/Lexicon.tsv': '2e3edee2facd',
+      },
+      reads: ['media'],
+    },
+    noVocabularies: {
+      filename: 'Proj-export.zip',
+      type: null,
+      files: {
+        'documents/Alpha.TextGrid': 'c27194444241',
+        'documents/Beta.TextGrid': 'c27194444241',
+        'media/Alpha.wav': '4bf5122f3445',
+        'media/Beta.wav': '4bf5122f3445',
+      },
+      reads: ['media'],
+    },
+  },
   latex: {
     screens: {
       vocabularyTsvs: false,
