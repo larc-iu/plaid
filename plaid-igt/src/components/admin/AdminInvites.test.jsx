@@ -19,7 +19,7 @@ const fakeClient = () => ({
   projects: { list: vi.fn(async () => [{ id: 'p1', name: 'Pear Stories' }]) },
 });
 
-describe('Create links', () => {
+describe('Create link', () => {
   it('ties every label to its field', async () => {
     const { container, step, unmount } = await renderComponent(
       <MemoryRouter initialEntries={['/admin?tab=invites']}>
@@ -28,11 +28,11 @@ describe('Create links', () => {
         </ConfirmProvider>
       </MemoryRouter>,
     );
-    await step(async () => byText(container, 'button', 'Create links').click());
+    await step(async () => byText(container, 'button', 'Create link').click());
     const dialog = document.querySelector('[role="dialog"]');
     const labels = all(dialog, 'label');
     expect(labels.map((l) => l.textContent)).toEqual([
-      'How many',
+      'Uses',
       'Project',
       'Role',
       'Expires in (days)',
@@ -72,7 +72,7 @@ describe('the invite list', () => {
   });
 });
 
-describe('Create links expiry', () => {
+describe('Create link expiry', () => {
   // H12-5: 0 or a blank expiry quietly made links that last the server's
   // default of 14 days.
   it.each(['0', '', '366'])('refuses an expiry of "%s" days', async (ttl) => {
@@ -86,12 +86,48 @@ describe('Create links expiry', () => {
         </ConfirmProvider>
       </MemoryRouter>,
     );
-    await step(async () => byText(container, 'button', 'Create links').click());
+    await step(async () => byText(container, 'button', 'Create link').click());
     await step(async () => typeInto(document.getElementById('invite-ttl'), ttl));
     const dialog = document.querySelector('[role="dialog"]');
     await step(async () => byText(dialog, 'button', 'Create').click());
     expect(client.invites.create).not.toHaveBeenCalled();
     expect(notifyError).toHaveBeenCalledWith('Between 1 and 365.', 'Check the expiry');
+    await unmount();
+  });
+});
+
+describe('Create link uses', () => {
+  // One link with as many uses as asked for, never one link per use.
+  it('mints a single link carrying the number of uses', async () => {
+    const client = fakeClient();
+    client.invites.create = vi.fn(async () => ({ code: 'c' }));
+    const { container, step, unmount } = await renderComponent(
+      <MemoryRouter initialEntries={['/admin?tab=invites']}>
+        <ConfirmProvider>
+          <AdminInvites client={client} />
+        </ConfirmProvider>
+      </MemoryRouter>,
+    );
+    await step(async () => byText(container, 'button', 'Create link').click());
+    await step(async () => typeInto(document.getElementById('invite-uses'), '12'));
+    await step(async () => typeInto(document.getElementById('invite-label'), 'Workshop'));
+    const key = (el, k) =>
+      el.dispatchEvent(new KeyboardEvent('keydown', { key: k, bubbles: true }));
+    await step(async () => key(document.getElementById('invite-project'), 'Enter'));
+    const option = all(document.body, '[role="option"]').find(
+      (o) => o.textContent === 'No project',
+    );
+    await step(async () => key(option, 'Enter'));
+    const dialog = document.querySelector('[role="dialog"]');
+    await step(async () => byText(dialog, 'button', 'Create').click());
+    expect(client.invites.create).toHaveBeenCalledTimes(1);
+    expect(client.invites.create).toHaveBeenCalledWith({
+      ttlDays: 30,
+      maxUses: 12,
+      note: 'Workshop',
+    });
+    expect(document.body.textContent).toContain('Link created');
+    expect(document.body.textContent).toContain('up to 12 accounts');
     await unmount();
   });
 });

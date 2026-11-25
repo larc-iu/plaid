@@ -1862,7 +1862,7 @@ An administrator sees an **Admin** link in the top bar, covering the whole serve
 | The account directory: create, edit, deactivate and reactivate accounts, and mint a password-reset link.
 
 | **Invites**
-| Every invitation link on the server. It can also mint a numbered set of single-use links in one step.
+| Every invitation link on the server. It can also create one link that many people use, each creating an account of their own.
 
 | **Activity**
 | The same view described under <<_activity>>, across every project.

@@ -33,43 +33,47 @@ import { copyText } from '@ui/lib/download.js';
 
 // Every invite on the server, whoever minted it. A project's own tab shows
 // that project's links; this is the one place an admin can see an admin grant
-// somebody else handed out, and the one place to mint a set of links at once.
+// somebody else handed out, and the one place to mint a link that grants no
+// project.
 
-const EMPTY_BATCH = { count: '20', role: 'writer', ttlDays: '30', note: '', projectId: '' };
+const EMPTY_BATCH = { uses: '20', role: 'writer', ttlDays: '30', note: '', projectId: '' };
 
 // The project choice for links that create an account and grant nothing else.
 const NO_PROJECT = 'none';
 
-// Minted links, shown once. Nothing stores a code, so this list is the only
-// chance to capture them.
-const BatchResult = ({ links, onClose }) => {
+// The minted link, shown once. Nothing stores a code, so this is the only
+// chance to capture it.
+const LinkResult = ({ link, onClose }) => {
   const [copied, setCopied] = useState(false);
-  const text = links.map((l) => `${l.note}\t${inviteLinkFor(l.code)}`).join('\n');
+  const text = link ? inviteLinkFor(link.code) : '';
 
-  const copyAll = async () => {
-    if (!(await copyText(text, 'Select the links and copy them by hand.'))) return;
+  const copy = async () => {
+    if (!(await copyText(text, 'Select the link and copy it by hand.'))) return;
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };
 
   return (
-    <Dialog open={links.length > 0} onOpenChange={(o) => !o && onClose()}>
-      <DialogContent className="max-w-3xl">
+    <Dialog open={Boolean(link)} onOpenChange={(o) => !o && onClose()}>
+      <DialogContent className="max-w-2xl">
         <DialogHeader>
-          <DialogTitle>{countOf(links.length, 'link')} created</DialogTitle>
-          <DialogDescription>Copy these now. They cannot be shown again.</DialogDescription>
+          <DialogTitle>Link created</DialogTitle>
+          <DialogDescription>
+            Copy it now. It cannot be shown again. It creates up to{' '}
+            {countOf(link?.maxUses ?? 0, 'account')}.
+          </DialogDescription>
         </DialogHeader>
-        <textarea
+        <Input
           readOnly
           value={text}
-          rows={Math.min(14, links.length + 1)}
-          className="w-full rounded-md border bg-muted p-2 font-mono text-xs"
+          aria-label="Invite link"
+          className="font-mono text-xs"
           onFocus={(e) => e.target.select()}
         />
         <DialogFooter className="sm:justify-between">
-          <Button variant="outline" onClick={copyAll}>
+          <Button variant="outline" onClick={copy}>
             {copied ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
-            Copy all
+            Copy
           </Button>
           <Button onClick={onClose}>Done</Button>
         </DialogFooter>
@@ -89,7 +93,7 @@ export const AdminInvites = ({ client }) => {
   const [batchOpen, setBatchOpen] = useState(false);
   const [batch, setBatch] = useState(EMPTY_BATCH);
   const [minting, setMinting] = useState(false);
-  const [minted, setMinted] = useState([]);
+  const [minted, setMinted] = useState(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -127,9 +131,9 @@ export const AdminInvites = ({ client }) => {
   );
 
   const mintBatch = async () => {
-    const count = Number(batch.count);
-    if (!Number.isInteger(count) || count < 1 || count > 200) {
-      notifyError('Between 1 and 200.', 'Check the number of links');
+    const maxUses = Number(batch.uses);
+    if (batch.uses === '' || !Number.isInteger(maxUses) || maxUses < 1 || maxUses > 200) {
+      notifyError('Between 1 and 200.', 'Check the number of uses');
       return;
     }
     // Blank or 0 must not fall through to the server's default.
@@ -145,30 +149,20 @@ export const AdminInvites = ({ client }) => {
     const grant =
       batch.projectId === NO_PROJECT ? {} : { projectId: batch.projectId, projectRole: batch.role };
     setMinting(true);
-    const links = [];
     try {
-      for (let i = 0; i < count; i += 1) {
-        const note = batch.note ? `${batch.note} ${i + 1}` : `Link ${i + 1}`;
-        // One single-use link each rather than one link with many uses: the
-        // notes let a person be matched to the link they were handed.
-        const inv = await client.invites.create({
-          ...grant,
-          ttlDays,
-          note,
-        });
-        links.push({ note, code: inv.code });
-      }
-      setMinted(links);
+      const inv = await client.invites.create({
+        ...grant,
+        ttlDays,
+        maxUses,
+        note: batch.note || undefined,
+      });
+      setMinted({ code: inv.code, maxUses });
       setBatchOpen(false);
       setBatch(EMPTY_BATCH);
       await load();
     } catch (err) {
-      console.error('Error minting invites:', err);
-      notifyError(
-        `${links.length} of ${count} created before it failed. ${humanizeError(err, '')}`.trim(),
-        'Failed to create the links',
-      );
-      if (links.length) setMinted(links);
+      console.error('Error minting invite:', err);
+      notifyError(humanizeError(err), 'Failed to create the link');
     } finally {
       setMinting(false);
     }
@@ -300,7 +294,7 @@ export const AdminInvites = ({ client }) => {
               </SelectContent>
             </Select>
             <Button size="sm" onClick={() => setBatchOpen(true)}>
-              <Link2 className="h-4 w-4" /> Create links
+              <Link2 className="h-4 w-4" /> Create link
             </Button>
           </>
         }
@@ -309,21 +303,21 @@ export const AdminInvites = ({ client }) => {
       <Dialog open={batchOpen} onOpenChange={setBatchOpen}>
         <DialogContent className="max-w-md">
           <DialogHeader>
-            <DialogTitle>Create links</DialogTitle>
+            <DialogTitle>Create link</DialogTitle>
             <DialogDescription>
-              One single-use link each, numbered, so a link can be matched to whoever was handed it.
+              One link that creates as many accounts as it has uses.
             </DialogDescription>
           </DialogHeader>
           <div className="flex flex-col gap-4">
             <div className="flex flex-col gap-1.5">
-              <Label htmlFor="invite-count">How many</Label>
+              <Label htmlFor="invite-uses">Uses</Label>
               <Input
-                id="invite-count"
+                id="invite-uses"
                 type="number"
                 min="1"
                 max="200"
-                value={batch.count}
-                onChange={(e) => setBatch({ ...batch, count: e.target.value })}
+                value={batch.uses}
+                onChange={(e) => setBatch({ ...batch, uses: e.target.value })}
                 autoFocus
               />
             </div>
@@ -395,7 +389,7 @@ export const AdminInvites = ({ client }) => {
         </DialogContent>
       </Dialog>
 
-      <BatchResult links={minted} onClose={() => setMinted([])} />
+      <LinkResult link={minted} onClose={() => setMinted(null)} />
     </div>
   );
 };
