@@ -87,6 +87,16 @@ export const tx = (message, values) => {
 /** The language in use, as a BCP 47 code, for Intl formatters. */
 export const language = () => i18next.language;
 
+/**
+ * Names in a running list, joined as the language joins them: "A", "A and
+ * B", "A, B and C" in English, "A, B et C" in French.
+ */
+export const listOf = (names) => {
+  // British English: American English would put a comma before "and".
+  const lng = i18next.language === 'en' ? 'en-GB' : i18next.language;
+  return new Intl.ListFormat(lng, { type: 'conjunction' }).format(names.map(String));
+};
+
 const stored = () => {
   try {
     return globalThis.localStorage?.getItem(STORE_KEY) ?? null;

@@ -90,8 +90,11 @@ describe.each(TRANSLATED)('the %s catalogs', (lng) => {
     const bad = [...clashes.map((c) => `translated two ways: ${c}`)];
     for (const [key, { value, file }] of entries) {
       const at = `${file}: ${key}`;
-      if (!used.has(key)) bad.push(`no such message in ${pkg}/src: ${at}`);
-      else if (typeof value !== 'string' || value.trim() === '') bad.push(`empty: ${at}`);
+      // common.json is the words every package shares, wherever they are used.
+      if (!used.has(key) && !file.endsWith('/common.json')) {
+        bad.push(`no such message in ${pkg}/src: ${at}`);
+      }
+      if (typeof value !== 'string' || value.trim() === '') bad.push(`empty: ${at}`);
       else if (!parses(value, lng)) bad.push(`does not parse: ${at}`);
       else if (String(valueNames(value, lng)) !== String(valueNames(key, 'en'))) {
         bad.push(`takes other values than its message: ${at}`);

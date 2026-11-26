@@ -4,7 +4,7 @@ import { humanizeError } from '../lib/errors.js';
 import { showRunNotice } from '../lib/runNotice.js';
 import { clearRunRecord, readRunRecord } from '../domain/runRecord.js';
 import { reloadAfterRun } from '../lib/runReload.js';
-import { andList } from '../lib/plural.js';
+import { listOf, t } from '../lib/i18n.js';
 import { useServiceRequest } from './useServiceRequest.js';
 
 // Picks a service run back up after the page that started it went away.
@@ -38,7 +38,7 @@ export function useResumedRun(client, doc, acquireWriteLock, notices = {}) {
     // away took the steps after this one with it: whatever this step came to,
     // they did not run.
     const notRun = Array.isArray(record.stepsAfter) ? record.stepsAfter : [];
-    const after = notRun.length ? `${andList(notRun)} did not run.` : '';
+    const after = notRun.length ? t('{steps} did not run.', { steps: listOf(notRun) }) : '';
     // Nothing to rejoin: the run stopped in this browser, and only what did
     // not run is left to say.
     if (!record.requestId) {

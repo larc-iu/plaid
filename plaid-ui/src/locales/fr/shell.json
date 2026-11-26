@@ -2,5 +2,6 @@
   "Account": "Compte",
   "Profile": "Profil",
   "Sign out": "Se déconnecter",
-  "Language": "Langue"
+  "Language": "Langue",
+  "{steps} did not run.": "{steps} n’a pas été exécuté."
 }
