@@ -108,6 +108,15 @@
     "dompurify": {
       "optional": true
     },
+    "i18next": {
+      "optional": true
+    },
+    "i18next-icu": {
+      "optional": true
+    },
+    "intl-messageformat": {
+      "optional": true
+    },
     "jszip": {
       "optional": true
     },
