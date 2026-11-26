@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { readTextGrid } from './readTextGrid.js';
+import { readTextGrid, readTextGridFile } from './readTextGrid.js';
 import { EafError } from './readEaf.js';
 import { compareSchemas, suggestRoles, validateRoles, ROLES } from './schema.js';
 import { buildElanDocuments } from './buildDocuments.js';
@@ -266,8 +266,45 @@ describe('readTextGrid', () => {
     expect(d.alignments.map((a) => [a.timeBegin, a.timeEnd])).toEqual([[1.25, 3.5]]);
   });
 
-  it('refuses a binary TextGrid and a file that is not one', () => {
-    expect(() => readTextGrid('File type = "ooBinaryFile"\n...', 'b.TextGrid')).toThrow(EafError);
+  it('gives two tiers of one name, and a tier with none, names of their own', () => {
+    const grid = readTextGrid(
+      longGrid(2, [
+        ['words@Ana', [[0, 1, 'a']]],
+        ['words@Ana', [[0, 1, 'b']]],
+        ['', [[1, 2, 'x']]],
+      ]),
+      't.TextGrid',
+    );
+    expect(grid.tiers.map((t) => [t.id, t.participant, t.parentRef])).toEqual([
+      ['words@Ana', 'Ana', null],
+      ['words (2)@Ana', 'Ana', 'words@Ana'],
+      ['Tier 3', '', null],
+    ]);
+    expect(compareSchemas([grid]).nodes.map((n) => n.tierIds)).toEqual([
+      ['words@Ana'],
+      ['words (2)@Ana'],
+      ['Tier 3'],
+    ]);
+  });
+
+  it('refuses a binary TextGrid and a file that is not one', async () => {
+    // Praat's binary format: the bytes "ooBinaryFile", a length, the class.
+    const bytes = new Uint8Array([...'ooBinaryFile\bTextGrid'].map((c) => c.charCodeAt(0)));
+    const binary = new File([bytes, new Uint8Array([0, 0, 0xff, 0x40])], 'b.TextGrid');
+    await expect(readTextGridFile(binary)).rejects.toThrow(
+      'b.TextGrid is a binary TextGrid. Save it from Praat as a text file.',
+    );
+    expect(() => readTextGrid('ooBinaryFile\bTextGrid', 'b.TextGrid')).toThrow(EafError);
+    // A text file Praat saved as UTF-16 is read as what it is.
+    const text = longGrid(1, [['tx', [[0, 1, 'né']]]]);
+    const utf16 = new Uint8Array(2 + text.length * 2);
+    utf16.set([0xfe, 0xff]);
+    [...text].forEach((c, i) => {
+      utf16[2 + i * 2] = c.charCodeAt(0) >> 8;
+      utf16[3 + i * 2] = c.charCodeAt(0) & 0xff;
+    });
+    const read = await readTextGridFile(new File([utf16], 'u.TextGrid'));
+    expect(read.tiers[0].annotations[0].value).toBe('né');
     expect(() =>
       readTextGrid('File type = "ooTextFile"\nObject class = "Sound"\n', 's.TextGrid'),
     ).toThrow('s.TextGrid is not a Praat TextGrid.');

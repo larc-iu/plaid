@@ -1657,6 +1657,7 @@ A TextGrid's tiers are flat, so the import reads which tier belongs under which 
 Only intervals with text are read. A point tier has nothing to import and is listed with no role.
 A tier named `name@Speaker` belongs to that speaker, as in ELAN.
 A binary TextGrid is refused: save it from Praat as a text file.
+Two tiers of one name come in as `words` and `words (2)`.
 
 A file imported before says so on its row, and you choose whether to keep that document, replace it, or add a copy beside it.
 Replacing deletes the document before its replacement is written, so a run that fails partway may leave a file with neither, and says so.

@@ -8,7 +8,7 @@
 
 import { useMemo, useState } from 'react';
 import { readEaf } from '@/import/elan/readEaf';
-import { readTextGrid } from '@/import/elan/readTextGrid';
+import { readTextGridFile } from '@/import/elan/readTextGrid';
 import { readTextFile } from '@ui/lib/textFile.js';
 import {
   canonicalOf,
@@ -181,8 +181,11 @@ export function useElanBatch({
     }
     const parsed = [];
     for (const file of eafs) {
-      const read = TEXTGRID.test(file.name) ? readTextGrid : readEaf;
-      parsed.push(read(await readTextFile(file, file.name), file.name));
+      parsed.push(
+        TEXTGRID.test(file.name)
+          ? await readTextGridFile(file)
+          : readEaf(await readTextFile(file, file.name), file.name),
+      );
     }
     adoptBatch(parsed);
     return true;

@@ -31,6 +31,7 @@
 // TextGrid export names a speaker's tiers) has that speaker as participant.
 
 import { EafError, baseTierName } from './readEaf.js';
+import { decodeText } from '@ui/lib/textFile.js';
 
 const TYPE_TOP = 'TextGrid';
 const TYPE_SAME = 'TextGrid (same times)';
@@ -92,14 +93,28 @@ function values(text, fileName) {
   return out;
 }
 
+const binaryError = (fileName) =>
+  new EafError(`${fileName} is a binary TextGrid. Save it from Praat as a text file.`);
+
+/**
+ * A picked TextGrid file read and parsed. Praat's binary format starts with
+ * the bytes "ooBinaryFile" and is not text in any encoding, so it is told
+ * apart here, before the bytes are decoded.
+ */
+export async function readTextGridFile(file) {
+  const bytes = new Uint8Array(await file.arrayBuffer());
+  if (new TextDecoder('latin1').decode(bytes.subarray(0, 12)) === 'ooBinaryFile') {
+    throw binaryError(file.name);
+  }
+  return readTextGrid(decodeText(bytes, file.name), file.name);
+}
+
 /**
  * Parse a TextGrid. The result has readEaf's shape, so the rest of the ELAN
  * import reads it unchanged.
  */
 export function readTextGrid(text, fileName = 'file.TextGrid') {
-  if (/^\s*File type = "ooBinaryFile"/.test(text)) {
-    throw new EafError(`${fileName} is a binary TextGrid. Save it from Praat as a text file.`);
-  }
+  if (/^\uFEFF?ooBinaryFile/.test(text)) throw binaryError(fileName);
   const vals = values(text, fileName);
   let at = 0;
   const next = (kind, what) => {
@@ -116,11 +131,21 @@ export function readTextGrid(text, fileName = 'file.TextGrid') {
   next('n', 'the start time');
   next('n', 'the end time');
   const tiers = [];
+  const names = new Set();
   if (next('f', 'whether it has tiers') === 'exists') {
     const size = next('n', 'the number of tiers');
     for (let t = 0; t < size; t += 1) {
       const kind = next('s', 'a tier class');
-      const id = next('s', 'a tier name');
+      const name = next('s', 'a tier name');
+      const at2 = name.lastIndexOf('@');
+      const participant = at2 > 0 ? name.slice(at2 + 1).trim() : '';
+      // Praat allows two tiers of one name and a tier with none. A tier is
+      // known by its name from here on, so each gets one of its own.
+      const base = (participant ? name.slice(0, at2) : name).trim() || `Tier ${t + 1}`;
+      const full = (b) => (participant ? `${b}@${participant}` : b);
+      let id = full(base);
+      for (let k = 2; names.has(id); k += 1) id = full(`${base} (${k})`);
+      names.add(id);
       next('n', 'a tier start');
       next('n', 'a tier end');
       const count = next('n', 'a tier size');
@@ -135,8 +160,6 @@ export function readTextGrid(text, fileName = 'file.TextGrid') {
           next('s', 'a point text');
         }
       }
-      const at2 = id.lastIndexOf('@');
-      const participant = at2 > 0 ? id.slice(at2 + 1).trim() : '';
       tiers.push({
         id,
         participant,
@@ -162,26 +185,35 @@ export function readTextGrid(text, fileName = 'file.TextGrid') {
       iv.endMs = ms(iv.end);
     }
   }
+  // Each tier's intervals by their times, and in time order, so a tier of
+  // twenty thousand phones is matched against its words in one pass.
+  const keyOf = (iv) => `${iv.beginMs}:${iv.endMs}`;
+  for (const tier of tiers) {
+    tier.byTimes = new Map(tier.intervals.map((iv) => [keyOf(iv), iv]));
+    tier.sorted = [...tier.intervals].sort((x, y) => x.beginMs - y.beginMs || x.endMs - y.endMs);
+  }
+  // The interval of `sorted` that starts last at or before iv, if it also
+  // ends at or after it.
+  const holds = (sorted, iv) => {
+    let lo = 0;
+    let hi = sorted.length;
+    while (lo < hi) {
+      const mid = (lo + hi) >> 1;
+      if (sorted[mid].beginMs <= iv.beginMs) lo = mid + 1;
+      else hi = mid;
+    }
+    return lo > 0 && sorted[lo - 1].endMs >= iv.endMs;
+  };
   tiers.forEach((tier, i) => {
     const earlier = tiers
       .slice(0, i)
       .filter((p) => p.participant === tier.participant && p.typeRef !== TYPE_SAME);
     const own = tier.intervals;
     const same = own.length
-      ? earlier.find((p) =>
-          own.every((iv) =>
-            p.intervals.some((q) => q.beginMs === iv.beginMs && q.endMs === iv.endMs),
-          ),
-        )
+      ? earlier.find((p) => own.every((iv) => p.byTimes.has(keyOf(iv))))
       : null;
     const inside =
-      !same && own.length
-        ? earlier.findLast((p) =>
-            own.every((iv) =>
-              p.intervals.some((q) => q.beginMs <= iv.beginMs && q.endMs >= iv.endMs),
-            ),
-          )
-        : null;
+      !same && own.length ? earlier.findLast((p) => own.every((iv) => holds(p.sorted, iv))) : null;
     if (same) {
       tier.typeRef = TYPE_SAME;
       tier.parentRef = same.id;
@@ -189,7 +221,7 @@ export function readTextGrid(text, fileName = 'file.TextGrid') {
         id: iv.id,
         kind: 'ref',
         value: iv.value.normalize('NFC'),
-        ref: same.intervals.find((q) => q.beginMs === iv.beginMs && q.endMs === iv.endMs).id,
+        ref: same.byTimes.get(keyOf(iv)).id,
         previous: null,
         slotIndex: null,
         beginMs: null,
@@ -212,7 +244,11 @@ export function readTextGrid(text, fileName = 'file.TextGrid') {
       }));
     }
   });
-  for (const tier of tiers) delete tier.intervals;
+  for (const tier of tiers) {
+    delete tier.intervals;
+    delete tier.byTimes;
+    delete tier.sorted;
+  }
 
   return {
     fileName,

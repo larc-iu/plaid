@@ -74,9 +74,6 @@ const praatString = (s) =>
     .replace(/[\t\n\v\f\r\u0085\u2028\u2029]+/g, ' ')
     .replace(/"/g, '""')}"`;
 
-// Seconds to the microsecond. Rounding is monotonic, so the order of two
-// times and their equality survive it, and a time never comes out in
-// exponent notation.
 // Which columns of tiers() are words rather than the text between them
 // (punctuation), read the way igtExport's columnCells makes them.
 const wordColumns = (sentence) =>
@@ -91,6 +88,9 @@ const lineText = (cells, isWord) => {
   return items.some((c) => c !== '') ? items.map((c) => (c === '' ? '_' : c)).join(' ') : '';
 };
 
+// Seconds to the microsecond. Rounding is monotonic, so the order of two
+// times and their equality survive it, and a time never comes out in
+// exponent notation.
 const seconds = (s) => String(Math.round(s * 1e6) / 1e6);
 const micro = (s) => Math.round(s * 1e6);
 
@@ -171,20 +171,26 @@ export function buildTextGrid(igtDoc, options = {}, context = {}) {
   const split = speakers.some((sp) => sp !== null);
   const groupOf = (p) => (split ? p.speaker : null);
 
-  // An interval tier cannot hold two intervals at once. A sentence that
-  // overlaps the one before it on its tier, which is two people talking at
-  // once with the tiers not split by speaker, or one that has no length, is
-  // left out and counted, as is one with no time at all.
+  // An interval tier cannot hold two intervals at once, and holds them in
+  // the order of their times, which need not be the order of the text. A
+  // sentence that overlaps the one before it in time on its tier, which is
+  // two people talking at once with the tiers not split by speaker, or one
+  // that has no length, is left out and counted, as is one with no time at
+  // all.
+  const byBegin = (a, b) => a.span.begin - b.span.begin;
   let untimed = 0;
   let overlapped = 0;
   for (const speaker of speakers) {
     let lastEnd = -Infinity;
-    for (const p of prelim) {
-      if (groupOf(p) !== speaker) continue;
+    const group = prelim.filter((p) => groupOf(p) === speaker);
+    for (const p of group) {
       if (!p.span || micro(p.span.end) <= micro(p.span.begin)) {
         p.span = null;
         untimed += 1;
-      } else if (micro(p.span.begin) < micro(lastEnd)) {
+      }
+    }
+    for (const p of group.filter((q) => q.span).sort(byBegin)) {
+      if (micro(p.span.begin) < micro(lastEnd)) {
         p.span = null;
         overlapped += 1;
       } else {
@@ -233,9 +239,33 @@ export function buildTextGrid(igtDoc, options = {}, context = {}) {
   const xmax = Math.max(lastTime, Number.isFinite(mediaSeconds) ? mediaSeconds : 0) || 1;
 
   const out = [];
+  let overlappedSegments = 0;
   for (const speaker of speakers) {
     const suffix = speaker ? `@${speaker}` : '';
-    const mine = placed.filter((p) => groupOf(p) === speaker);
+    const mine = placed.filter((p) => groupOf(p) === speaker).sort(byBegin);
+    // The segments, under the same two rules as the sentences: in the order
+    // of their times, and one that overlaps the one before it left out (two
+    // speakers at once inside one sentence).
+    const segments = [];
+    if (wantSegments) {
+      const all = mine
+        .flatMap((p) => p.inside)
+        .filter((t) => micro(t.metadata.timeEnd) > micro(t.metadata.timeBegin))
+        .sort((a, b) => a.metadata.timeBegin - b.metadata.timeBegin);
+      let lastEnd = -Infinity;
+      for (const t of all) {
+        if (micro(t.metadata.timeBegin) < micro(lastEnd)) {
+          overlappedSegments += 1;
+          continue;
+        }
+        lastEnd = t.metadata.timeEnd;
+        segments.push({
+          begin: t.metadata.timeBegin,
+          end: t.metadata.timeEnd,
+          text: slice(t.begin, t.end).trim(),
+        });
+      }
+    }
     const rows = mine.map((p) => ({
       p,
       lines: igtLines(p.sentence, selection),
@@ -260,23 +290,7 @@ export function buildTextGrid(igtDoc, options = {}, context = {}) {
         xmax,
       ),
     );
-    out.push(
-      intervalTier(
-        `${segmentName}${suffix}`,
-        wantSegments
-          ? mine.flatMap((p) =>
-              p.inside
-                .filter((t) => micro(t.metadata.timeEnd) > micro(t.metadata.timeBegin))
-                .map((t) => ({
-                  begin: t.metadata.timeBegin,
-                  end: t.metadata.timeEnd,
-                  text: slice(t.begin, t.end).trim(),
-                })),
-            )
-          : [],
-        xmax,
-      ),
-    );
+    out.push(intervalTier(`${segmentName}${suffix}`, segments, xmax));
     let line = 0;
     if (surfaceName) out.push(lineTier(surfaceName, line++));
     if (segmentedName) out.push(lineTier(segmentedName, line++));
@@ -296,6 +310,12 @@ export function buildTextGrid(igtDoc, options = {}, context = {}) {
         ),
       );
     });
+  }
+
+  if (overlappedSegments && onWarning) {
+    onWarning(
+      `${countOf(overlappedSegments, 'segment')} overlapping another inside one sentence ${overlappedSegments === 1 ? 'was' : 'were'} left out of the Segment tier.`,
+    );
   }
 
   return [

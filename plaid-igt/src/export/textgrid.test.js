@@ -169,6 +169,45 @@ describe('buildTextGrid', () => {
     expect(warnings[0]).toMatch(/^1 sentence overlapping another on the same tier was left out/);
   });
 
+  it('orders a tier by time, and leaves out a segment overlapping another', () => {
+    // Text order against time order: the second segment is the earlier one.
+    const backwards = readTextGrid(
+      buildTextGrid(
+        makeFixtureDoc({
+          alignmentTokens: [
+            makeAlignmentToken('a1', 0, 6, 5, 6),
+            makeAlignmentToken('a2', 7, 14, 1, 2),
+          ],
+        }),
+        { wordLine: 'surface' },
+      ),
+    );
+    expect(backwards.byName.Segment.texts.map((iv) => [iv.begin, iv.end, iv.text])).toEqual([
+      [1, 2, 'corren.'],
+      [5, 6, 'perros'],
+    ]);
+
+    // Two speakers at once inside one sentence.
+    const warnings = [];
+    const crossTalk = readTextGrid(
+      buildTextGrid(
+        makeFixtureDoc({
+          alignmentTokens: [
+            makeAlignmentToken('a1', 0, 6, 1, 3, 'Ana'),
+            makeAlignmentToken('a2', 7, 14, 2, 4, 'Bo'),
+          ],
+        }),
+        { wordLine: 'surface' },
+        { onWarning: (w) => warnings.push(w) },
+      ),
+    );
+    expect(crossTalk.byName.Segment.texts.map((iv) => iv.text)).toEqual(['perros']);
+    expect(crossTalk.byName.Sentence.texts.map((iv) => [iv.begin, iv.end])).toEqual([[1, 4]]);
+    expect(warnings).toEqual([
+      '1 segment overlapping another inside one sentence was left out of the Segment tier.',
+    ]);
+  });
+
   it('keeps a field named like a structural tier, and doubles a quote', () => {
     const doc = aligned();
     doc.sortedSentences[0].annotations.Sentence = { value: 'say "hi"' };
