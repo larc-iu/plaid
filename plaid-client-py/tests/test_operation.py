@@ -688,7 +688,7 @@ def test_a_kind_in_one_list_alone_is_named():
     texts['js'] = texts['js'].replace('const OPERATION_KINDS = [', 'const OPERATION_KINDS = [\n  "export",', 1)
     texts['python'] = texts['python'].replace("'review',", "'reviews',", 1)
     texts['manual'] = texts['manual'].replace('|`guess-adoption`', '|`guess`', 1)
-    texts['ui'] = texts['ui'].replace("  repair: 'Repair',\n", '', 1)
+    texts['ui'] = texts['ui'].replace("  repair: () => t('Repair'),\n", '', 1)
     named = [p.split(' has ')[0] for p in _kind_disagreements(_kind_lists(texts))]
     assert named == ['plaid-client-js OPERATION_KINDS', 'plaid-client-py _OPERATION_KINDS',
                      'the manual\'s Kinds of operation table', 'plaid-ui KIND_LABELS']
