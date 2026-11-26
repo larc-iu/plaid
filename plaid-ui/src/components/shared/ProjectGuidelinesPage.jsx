@@ -3,6 +3,7 @@ import { canEditProject } from '../../domain/permissions.js';
 import { GuidelinesTab } from '../guidelines/GuidelinesTab.jsx';
 import { ProjectTabPage } from './ProjectTabPage.jsx';
 import { SectionHeader } from './SectionHeader.jsx';
+import { t } from '../../lib/i18n.js';
 
 // The Guidelines tab: the project's own annotation manual. Open to everyone who
 // can open the project; writing is gated on canWrite inside the tab, and by the
@@ -10,10 +11,10 @@ import { SectionHeader } from './SectionHeader.jsx';
 export const ProjectGuidelinesPage = ({ tabs }) => {
   const { user } = useAuth();
   return (
-    <ProjectTabPage title="Guidelines" tabs={tabs}>
+    <ProjectTabPage title={t('Guidelines')} tabs={tabs}>
       {({ project, projectId, client }) => (
         <>
-          <SectionHeader title="Guidelines" />
+          <SectionHeader title={t('Guidelines')} />
           <GuidelinesTab
             client={client}
             projectId={projectId}

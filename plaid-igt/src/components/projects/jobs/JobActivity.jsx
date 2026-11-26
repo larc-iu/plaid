@@ -7,7 +7,7 @@ import { TYPE } from '@ui/lib/typeScale.js';
 import { fullTimestamp, timeAgo } from '@ui/lib/formatTime.js';
 import { TALL_LIST_PAGE_SIZE, usePagedList } from '@ui/hooks/usePagedList.js';
 import { isJobActive } from '@ui/domain/jobs.js';
-import { countOf } from '@ui/lib/plural.js';
+import { msg, t } from '@ui/lib/i18n.js';
 import { APP_ROUTES } from '@/appRoutes.js';
 import { JobWritten } from './JobReport.jsx';
 import { PIECES_MAX } from './jobPieces.js';
@@ -37,8 +37,8 @@ import {
  * the rows read do not reach it, it is read once, at the route's cap.
  */
 const ORDERS = [
-  { value: 'time', label: 'By time' },
-  { value: 'document', label: 'By document' },
+  { value: 'time', label: msg('By time') },
+  { value: 'document', label: msg('By document') },
 ];
 
 // The rows by document, in the job's order (a piece of all the documents
@@ -61,7 +61,7 @@ export const JobActivity = ({ job, projectId, pieces }) => {
   const paged = usePagedList(ordered, { pageSize: TALL_LIST_PAGE_SIZE, urlParam: 'page' });
   if (!rows.length && !active) return null;
   // Not "Activity": the project's tab of that name is on the same screen.
-  const heading = active ? 'Work so far' : 'Notes';
+  const heading = active ? t('Work so far') : t('Notes');
   const names = new Map((job.documents || []).map((d) => [d.documentId, d.name]));
   const states = new Map((job.documents || []).map((d) => [d.documentId, d.state]));
   // While the job runs, the next page past the rows read reads more, up to
@@ -81,20 +81,25 @@ export const JobActivity = ({ job, projectId, pieces }) => {
     <section aria-label={heading}>
       {active && <h3 className={`${TYPE.card} mb-2 mt-8`}>{heading}</h3>}
       {page && !rows.length && (
-        <p className="text-sm text-muted-foreground">Nothing finished yet.</p>
+        <p className="text-sm text-muted-foreground">{t('Nothing finished yet.')}</p>
       )}
       {/* Each piece's note is the model's own text, as the summary is
           (RP4-4 finding 3): said once above the list. */}
       {rows.some((r) => r.piece.note) && (
         <p className="mb-2 text-sm text-muted-foreground">
-          Notes written by the assistant, not checked against the counts.
+          {t('Notes written by the assistant, not checked against the counts.')}
         </p>
       )}
       {rows.length > 0 && (
         <div className="max-w-3xl rounded-md border bg-card">
           {!active && (
             <div className="flex flex-wrap items-center gap-2 border-b px-3 py-2">
-              <SegmentedControl label="Order" value={order} onChange={setOrder} options={ORDERS} />
+              <SegmentedControl
+                label={t('Order')}
+                value={order}
+                onChange={setOrder}
+                options={ORDERS.map((o) => ({ ...o, label: t(o.label) }))}
+              />
             </div>
           )}
           <ListPager {...paged} onPage={paged.setPage} more={more} position="top" />
@@ -125,12 +130,12 @@ export const JobActivity = ({ job, projectId, pieces }) => {
           job.documents,
         ) && (
           <p className="mt-2 text-sm" data-testid="job-activity-short">
-            Some finished work is not listed here. The totals count all of it.
+            {t('Some finished work is not listed here. The totals count all of it.')}
           </p>
         )}
       {capped && (
         <ListHint className="mt-2">
-          Only the newest {PIECES_MAX.toLocaleString()} are listed.
+          {t('Only the newest {n, number} are listed.', { n: PIECES_MAX })}
         </ListHint>
       )}
     </section>
@@ -142,14 +147,15 @@ export const JobActivity = ({ job, projectId, pieces }) => {
 const Ended = ({ piece }) => (
   <span className="whitespace-nowrap text-muted-foreground">
     {piece.endedAt && <span title={fullTimestamp(piece.endedAt)}>{timeAgo(piece.endedAt)}</span>}
-    {piece.steps > 0 && ` · ${piece.steps} ${piece.steps === 1 ? 'step' : 'steps'}`}
+    {piece.steps > 0 &&
+      ` · ${t('{n, plural, one {{n} step} other {{n} steps}}', { n: piece.steps })}`}
   </span>
 );
 
 // A piece after a text edit, which takes the sentences the edit changed once
 // more (the worker's `after_text`, CONTRACT, added by RPF3): the words the job
 // added, for a job that fills only those, else the sentences after the edit.
-const AFTER_TEXT_WORDS = { added: 'the words added', edited: 'after the text edit' };
+const AFTER_TEXT_WORDS = { added: msg('the words added'), edited: msg('after the text edit') };
 
 // Where a piece worked: its document and sentences, a link into the grid at
 // its first sentence, or the document for a piece of the whole document. The
@@ -160,25 +166,33 @@ const Where = ({ piece, projectId, names, plan }) => {
     const named = plan?.pieces === 'selection' ? plan.documentsNamed : undefined;
     return (
       <span className="font-medium">
-        {named > 0 ? `${countOf(named, 'document')} of the plan` : 'All documents'}
+        {named > 0
+          ? t('{n, plural, one {# document} other {# documents}} of the plan', { n: named })
+          : t('All documents')}
       </span>
     );
   }
   const name = names.has(piece.document) ? names.get(piece.document) : piece.name;
   if (name === null || name === undefined) {
-    return <span className="font-medium text-muted-foreground">Deleted document</span>;
+    return <span className="font-medium text-muted-foreground">{t('Deleted document')}</span>;
   }
   // A piece of a plan limited by a search names its sentences, which are no
   // run (the worker's `matching`, CONTRACT, added by SF).
   // Scattered sentences are named one by one (`sentences`, the rest past
   // the list `sentencesMore`, D12, REV-JR2-2).
   const range = piece.matching?.length
-    ? `${piece.matching.join(', ')}, matching the plan’s search`
+    ? t('{sentences}, matching the plan’s search', { sentences: piece.matching.join(', ') })
     : piece.sentences?.length
-      ? piece.sentences.join(', ') +
-        (piece.sentencesMore > 0 ? ` and ${piece.sentencesMore.toLocaleString()} more` : '')
+      ? piece.sentencesMore > 0
+        ? t('{sentences} and {n, number} more', {
+            sentences: piece.sentences.join(', '),
+            n: piece.sentencesMore,
+          })
+        : piece.sentences.join(', ')
       : piece.first &&
-        (piece.first === piece.last ? piece.first : `${piece.first} to ${piece.last}`);
+        (piece.first === piece.last
+          ? piece.first
+          : t('{first} to {last}', { first: piece.first, last: piece.last }));
   const to = piece.firstId
     ? APP_ROUTES.sentence(projectId, piece.document, piece.firstId)
     : APP_ROUTES.document(projectId, piece.document);
@@ -186,7 +200,7 @@ const Where = ({ piece, projectId, names, plan }) => {
     <Link className="font-medium underline" to={to}>
       <bdi>{name}</bdi>
       {range && ` ${range}`}
-      {AFTER_TEXT_WORDS[piece.afterText] && `, ${AFTER_TEXT_WORDS[piece.afterText]}`}
+      {AFTER_TEXT_WORDS[piece.afterText] && `, ${t(AFTER_TEXT_WORDS[piece.afterText])}`}
     </Link>
   );
 };
@@ -213,7 +227,7 @@ const PieceFindings = ({ findings }) => {
   return (
     <div className="mt-1">
       <Button variant="outline" size="sm" onClick={() => setOpen((o) => !o)}>
-        {open ? 'Hide findings' : 'Show findings'}
+        {open ? t('Hide findings') : t('Show findings')}
       </Button>
       {open && (
         <div className="mt-2" data-testid="piece-findings">
@@ -257,7 +271,7 @@ const PieceRow = ({
       ))}
       {(skipped.length > 0 || piece.skippedMore > 0) && (
         <>
-          <p className="mt-1">Skipped:</p>
+          <p className="mt-1">{t('Skipped:')}</p>
           <ul className="ml-4 list-disc">
             {skipped.map((s, i) => (
               <li key={`${s.sentenceId ?? s.sentence} ${i}`}>
@@ -268,14 +282,14 @@ const PieceRow = ({
           </ul>
           {piece.skippedMore > 0 && (
             <p className="ml-4 text-muted-foreground">
-              And {piece.skippedMore.toLocaleString()} more skipped.
+              {t('And {n, number} more skipped.', { n: piece.skippedMore })}
             </p>
           )}
         </>
       )}
       {(refused.length > 0 || piece.refusedMore > 0) && (
         <>
-          <p className="mt-1">Not done, refused:</p>
+          <p className="mt-1">{t('Not done, refused:')}</p>
           <ul className="ml-4 list-disc">
             {refused.map((r, i) => (
               <li key={`${r.sentenceId ?? r.sentence} ${i}`}>
@@ -286,7 +300,7 @@ const PieceRow = ({
           </ul>
           {piece.refusedMore > 0 && (
             <p className="ml-4 text-muted-foreground">
-              And {piece.refusedMore.toLocaleString()} more refused.
+              {t('And {n, number} more refused.', { n: piece.refusedMore })}
             </p>
           )}
         </>

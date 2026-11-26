@@ -39,6 +39,7 @@ import { UsageMeter } from './UsageMeter.jsx';
 import { useNarrower } from './useNarrower.js';
 import { RetryLine } from './RetryLine.jsx';
 import { authService } from '../../services/auth.js';
+import { t } from '../../lib/i18n.js';
 import { turnContext } from './transcript.js';
 import { useReadable, useRounds } from './rounds.js';
 import { TraceSteps } from './WorkTrace.jsx';
@@ -427,7 +428,7 @@ export const AssistantChat = ({
         }
       } catch (e) {
         if (seq === openSeq.current) {
-          notifyError(humanizeError(e, 'Failed to open that conversation.'));
+          notifyError(humanizeError(e, t('Failed to open that conversation.')));
           // A link to a conversation that is gone: back to a new one.
           if (convIdRef.current === id) setConvIdRef.current(null, { replace: true });
         }
@@ -623,7 +624,7 @@ export const AssistantChat = ({
       const id = activeRef.current?.id;
       if (!id) return;
       forgetRow(id);
-      setNotice({ convId: id, text: DELETED, gone: true });
+      setNotice({ convId: id, text: t(DELETED), gone: true });
     },
     docked: !toastOnApply,
   });
@@ -714,7 +715,7 @@ export const AssistantChat = ({
           }
         }
       } catch (e) {
-        notifyError(humanizeError(e, 'Failed to attach the file. Nothing was sent.'));
+        notifyError(humanizeError(e, t('Failed to attach the file. Nothing was sent.')));
         return;
       } finally {
         setAttaching(false);
@@ -782,7 +783,12 @@ export const AssistantChat = ({
       const read = [];
       for (const file of chosen) {
         if (attachments.length + read.length >= MAX_FILES) {
-          notifyWarning(`A message carries at most ${MAX_FILES} files. ${file.name} was left out.`);
+          notifyWarning(
+            t(
+              'A message carries at most {max, plural, one {# file} other {# files}}. {name} was left out.',
+              { max: MAX_FILES, name: file.name },
+            ),
+          );
           break;
         }
         const no = refuse(file);
@@ -796,12 +802,12 @@ export const AssistantChat = ({
         try {
           read.push(await readAttachment(file, budget));
         } catch (e) {
-          notifyError(humanizeError(e, `Failed to read ${file.name}.`));
+          notifyError(humanizeError(e, t('Failed to read {name}.', { name: file.name })));
         }
       }
       if (read.length) setAttachments((prev) => [...prev, ...read]);
     } catch (e) {
-      notifyError(humanizeError(e, 'Failed to read that file.'));
+      notifyError(humanizeError(e, t('Failed to read that file.')));
     } finally {
       setAttaching(false);
     }
@@ -853,7 +859,7 @@ export const AssistantChat = ({
       try {
         saveBlob(blobOf(file.name, await readStoredFile(store, convId, file)), file.name);
       } catch (e) {
-        notifyError(humanizeError(e, `Failed to download ${file.name}.`));
+        notifyError(humanizeError(e, t('Failed to download {name}.', { name: file.name })));
       }
     },
     [store, active?.id],
@@ -948,7 +954,7 @@ export const AssistantChat = ({
           forgetRow(conv.id);
           activeRef.current = conv;
           setActive(conv);
-          setNotice({ convId: conv.id, text: DELETED, gone: true });
+          setNotice({ convId: conv.id, text: t(DELETED), gone: true });
         }
       }
     };
@@ -956,7 +962,7 @@ export const AssistantChat = ({
     try {
       result = await ask(store, service, conv.id, 'discard', { planId }, { tab: held.tab });
     } catch (e) {
-      notifyError(humanizeError(e, 'Failed to discard the plan.'), 'Not discarded');
+      notifyError(humanizeError(e, t('Failed to discard the plan.')), t('Not discarded'));
       await back();
       return;
     }
@@ -964,7 +970,7 @@ export const AssistantChat = ({
     if (m) applyMeta(m);
     if (result?.kind === 'refused') {
       if (result.why === 'decided') {
-        notifyWarning(result.message, 'Not discarded');
+        notifyWarning(result.message, t('Not discarded'));
       } else {
         setNotice({ convId: conv.id, text: result.message, gone: result.why === 'gone' });
       }
@@ -995,12 +1001,12 @@ export const AssistantChat = ({
         { tab: held.tab },
       );
     } catch (e) {
-      notifyError(humanizeError(e, 'Failed to record the job card.'), 'Not recorded');
+      notifyError(humanizeError(e, t('Failed to record the job card.')), t('Not recorded'));
       result = null;
     }
     const m = metaOf(store, result);
     if (m) applyMeta(m);
-    if (result?.kind === 'refused') notifyWarning(result.message, 'Not recorded');
+    if (result?.kind === 'refused') notifyWarning(result.message, t('Not recorded'));
     try {
       const read = await readConv(store, conv.id);
       if (activeRef.current?.id !== conv.id) return;
@@ -1027,7 +1033,8 @@ export const AssistantChat = ({
     const id = active?.id ?? null;
     const items = active?.display || [];
     if (busy) setLanded('');
-    else if (replyLanded(turnSeen.current, { busy, id, display: items })) setLanded('Reply ready');
+    else if (replyLanded(turnSeen.current, { busy, id, display: items }))
+      setLanded(t('Reply ready'));
     turnSeen.current = { busy, id, length: items.length };
   }, [busy, active?.id, active?.display]);
   // The turn that landed while this tab watched it keeps its work open here,
@@ -1067,7 +1074,7 @@ export const AssistantChat = ({
   // to the project on screen, like every other row: nothing in a list of
   // conversations is from nowhere.
   const rows = active?.draft
-    ? [{ id: active.id, projectId, title: 'New conversation', draft: true }, ...list.rows]
+    ? [{ id: active.id, projectId, title: t('New conversation'), draft: true }, ...list.rows]
     : list.rows;
   // What either surface needs to draw that list: the rail in the tab, the
   // header's popover in the panel.
@@ -1153,9 +1160,11 @@ export const AssistantChat = ({
           <AssistantMark className="h-4 w-4 shrink-0" />
           <div className="flex min-w-0 flex-1 items-center gap-2">
             {choice.discovering && !choice.services.length ? (
-              <span className="truncate text-muted-foreground">Looking for an assistant…</span>
+              <span className="truncate text-muted-foreground">
+                {t('Looking for an assistant…')}
+              </span>
             ) : !service ? (
-              <span className="truncate text-muted-foreground">No assistant online.</span>
+              <span className="truncate text-muted-foreground">{t('No assistant online.')}</span>
             ) : (
               renderIdentity?.(chrome)
             )}
@@ -1165,12 +1174,12 @@ export const AssistantChat = ({
               <Link
                 to={adapter.convHref(elsewhere[0].projectId, elsewhere[0].id)}
                 className="flex shrink-0 items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
-                title="Go to the turn still running"
+                title={t('Go to the turn still running')}
               >
                 <Loader2 className="h-3 w-3 animate-spin" />
-                {elsewhere.length === 1
-                  ? '1 running elsewhere'
-                  : `${elsewhere.length} running elsewhere`}
+                {t('{n, plural, one {# running elsewhere} other {# running elsewhere}}', {
+                  n: elsewhere.length,
+                })}
               </Link>
             )}
             <UsageMeter usage={usage} spend={spend} record={record} barOnly={narrowHeader} />
@@ -1182,7 +1191,7 @@ export const AssistantChat = ({
               size="sm"
               onClick={choice.refresh}
               disabled={choice.discovering}
-              title="Refresh assistants"
+              title={t('Refresh assistants')}
             >
               <RotateCcw className={cn('h-4 w-4', choice.discovering && 'animate-spin')} />
             </Button>
@@ -1192,7 +1201,7 @@ export const AssistantChat = ({
                 variant="ghost"
                 size="sm"
                 onClick={onHide}
-                title="Hide the assistant"
+                title={t('Hide the assistant')}
               >
                 <PanelRightClose className="h-4 w-4" />
               </Button>
@@ -1301,9 +1310,9 @@ export const AssistantChat = ({
                       to a screen reader (the counting row is no live region). */}
                   <span role="status" className="animate-pulse">
                     {roundSince ? (
-                      <span className="sr-only">Thinking</span>
+                      <span className="sr-only">{t('Thinking')}</span>
                     ) : (
-                      progress || (busy === 'apply' ? 'Applying changes…' : 'Thinking…')
+                      progress || (busy === 'apply' ? t('Applying changes…') : t('Thinking…'))
                     )}
                   </span>
                   {/* The only moving part when the service goes quiet, and the
@@ -1318,7 +1327,7 @@ export const AssistantChat = ({
                       disabled={stopping}
                       className="h-6 px-2 text-xs"
                     >
-                      <X className="h-3 w-3" /> {stopping ? 'Stopping…' : 'Stop'}
+                      <X className="h-3 w-3" /> {stopping ? t('Stopping…') : t('Stop')}
                     </Button>
                   )}
                 </div>
@@ -1378,8 +1387,8 @@ const NARROW_HEADER = 400;
 const TITLE_MAX = 60;
 
 const titleFrom = (text) => {
-  const t = text.replace(/\s+/g, ' ').trim();
-  return t.length > TITLE_MAX ? `${t.slice(0, TITLE_MAX - 1)}…` : t;
+  const s = text.replace(/\s+/g, ' ').trim();
+  return s.length > TITLE_MAX ? `${s.slice(0, TITLE_MAX - 1)}…` : s;
 };
 
 // The sidebar row for a message just sent, drawn at once as the service will

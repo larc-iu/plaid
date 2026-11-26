@@ -1,5 +1,6 @@
 import { EdgeRail } from '../shared/EdgeRail.jsx';
 import { AssistantMark } from './PlaidMarks.jsx';
+import { t } from '../../lib/i18n.js';
 
 // The way into the assistant when its panel is shut: a rail against the right
 // edge of the window, on every screen of every app that mounts the chrome.
@@ -16,8 +17,8 @@ import { AssistantMark } from './PlaidMarks.jsx';
 export const AssistantRail = ({ onOpen }) => (
   <EdgeRail
     side="right"
-    label="Open the assistant"
-    title="Open the assistant"
+    label={t('Open the assistant')}
+    title={t('Open the assistant')}
     onClick={onOpen}
     className="z-30"
   >

@@ -15,6 +15,7 @@ import { clipText } from '../lib/text.js';
 import { isIdTaken, isUnknownOutcome, statusOf } from '../lib/errors.js';
 import { isPendingId, newId, recordSettled } from './pendingIds.js';
 import { WriteQueue } from './WriteQueue.js';
+import { t } from '../lib/i18n.js';
 
 // Comments sort oldest-first by (createdAt, id), matching the server's keyset
 // order so a locally-inserted comment and a re-fetched page agree.
@@ -351,7 +352,7 @@ export class CommentStore {
       // cosmetic detail. `_resolveAuthors` emits again when the names land.
       this._authorsPromise = this._resolveAuthors();
     } catch (err) {
-      this._fail('Failed to load comments', err);
+      this._fail(t('Failed to load comments'), err);
     }
     this._emit();
   }
@@ -389,7 +390,7 @@ export class CommentStore {
 
   _fail(label, err) {
     console.error(`${label}:`, err);
-    this._error = `${label}: ${err?.message || 'Unknown error'}`;
+    this._error = t('{label}: {error}', { label, error: err?.message || t('Unknown error') });
     // The raw error rides along so the UI can humanize it (statuses, network
     // failures) while keeping the label. Same contract as IgtDocument.
     if (this.onError) this.onError(this._error, err, label);
@@ -473,7 +474,7 @@ export class CommentStore {
       (created) => this._posted(said, id, created),
       (err) => {
         this._forget(id);
-        this._fail('Failed to post comment', err);
+        this._fail(t('Failed to post comment'), err);
         this._emit();
         return null;
       },
@@ -551,7 +552,7 @@ export class CommentStore {
       (err) => {
         settle();
         Object.assign(existing, held.comment);
-        this._fail('Failed to edit comment', err);
+        this._fail(t('Failed to edit comment'), err);
         this._emit();
         return false;
       },
@@ -576,7 +577,7 @@ export class CommentStore {
         // Put it back where it was rather than dropping the user's words.
         this._insert(removed);
         this._byEntity.get(removed.entityId)?.sort(byCreated);
-        this._fail('Failed to delete comment', err);
+        this._fail(t('Failed to delete comment'), err);
         this._emit();
         return false;
       },

@@ -1,6 +1,7 @@
 import { cn } from '../../lib/utils.js';
 import { Button } from '../ui/button';
 import { SectionHeader } from './SectionHeader.jsx';
+import { t } from '../../lib/i18n.js';
 
 /**
  * The top of a project's Validation tab, the same in every app: the heading,
@@ -19,12 +20,12 @@ import { SectionHeader } from './SectionHeader.jsx';
  */
 export const ValidationHeader = ({ description, busy, disabled, onCheck, className }) => (
   <SectionHeader
-    title="Validation"
+    title={t('Validation')}
     description={description}
     className={cn('mb-4', className)}
     actions={
       <Button variant="outline" onClick={onCheck} disabled={busy || disabled}>
-        {busy ? 'Checking…' : 'Check again'}
+        {busy ? t('Checking…') : t('Check again')}
       </Button>
     }
   />

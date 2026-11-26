@@ -1,13 +1,14 @@
 import { useCallback, useRef, useState } from 'react';
 import { humanizeError, statusOf } from '../lib/errors.js';
 import { notifyError } from '../lib/notify.js';
+import { t } from '../lib/i18n.js';
 
 // A read that came back unauthenticated, whichever way the client said so. An
 // expired token is a fact about the session, not about the history, so it goes
 // to the screen rather than into the rail. One writer for the rule, since the
 // snapshot read in useHistoryView answers it the same way.
 export const isExpiredSession = (err) =>
-  err?.message === 'Not authenticated' || statusOf(err) === 401;
+  err?.message === 'Not authenticated' || statusOf(err) === 401; // i18n-ignore: the client's own error, never shown
 
 // How many of an entry's actions the rail reads at a time. One run of a
 // machine service can be a single entry of forty thousand writes, and the
@@ -87,7 +88,7 @@ export function useDocumentHistory({ documentId, client, onExpired }) {
       console.error('Error fetching audit log:', err);
       // The rail renders this verbatim, and a raw client message carries the
       // request URL and the ids it was given.
-      setError(humanizeError(err, 'Failed to read the history.'));
+      setError(humanizeError(err, t('Failed to read the history.')));
     } finally {
       if (mine === readRef.current) setLoadingAudit(false);
     }
@@ -124,7 +125,7 @@ export function useDocumentHistory({ documentId, client, onExpired }) {
           onExpiredRef.current?.();
           return;
         }
-        notifyError(err, 'Failed to load more actions');
+        notifyError(err, t('Failed to load more actions'));
       } finally {
         setLoadingMore(null);
       }

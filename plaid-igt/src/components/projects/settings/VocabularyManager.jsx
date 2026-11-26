@@ -11,7 +11,7 @@ import { cn } from '@ui/lib/utils';
 import { notifyError } from '@/utils/feedback';
 import { textIncludes } from '@ui/domain/collation.js';
 import { loadEntryCounts } from '@/domain/vocabEntryCounts.js';
-import { countOf } from '@ui/lib/plural.js';
+import { t, tx } from '@ui/lib/i18n.js';
 import { sameNameIgnoringCase } from '@/domain/nameMatch';
 import { RowControls } from '@/components/shared/RowControls';
 import { isEnter } from '@ui/lib/chords.js';
@@ -27,14 +27,13 @@ const isLocked = (vocab) => !!vocab.own || (!vocab.enabled && vocab.canLink === 
 // it belongs to (`from`, null when the user cannot read that project). A row
 // the wizard adds carries neither.
 const Origin = ({ record }) => {
-  if (record.own) return 'Belongs to this project.';
+  if (record.own) return t('Belongs to this project.');
   if (record.from === undefined) return null;
-  if (record.from === null) return 'From another project.';
-  return (
-    <>
-      From “<span dir="auto">{record.from}</span>”.
-    </>
-  );
+  if (record.from === null) return t('From another project.');
+  return tx('From “<auto>{name}</auto>”.', {
+    name: record.from,
+    auto: (c) => <span dir="auto">{c}</span>,
+  });
 };
 
 // A temporary id for a vocabulary the wizard will create.
@@ -91,14 +90,14 @@ export const VocabularyManager = ({
         setError('');
       } catch (err) {
         console.error('Failed to load vocabularies configuration:', err);
-        setError('Failed to load the vocabularies.');
+        setError(t('Failed to load the vocabularies.'));
         setVocabularies([]);
         setIsInitialized(true);
 
         if (onError) {
           onError(err);
         } else {
-          notifyError(err, 'Failed to load the vocabularies');
+          notifyError(err, t('Failed to load the vocabularies'));
         }
       } finally {
         setLoading(false);
@@ -156,7 +155,7 @@ export const VocabularyManager = ({
         if (onError) {
           onError(error);
         } else {
-          notifyError(error, 'Failed to save the vocabularies');
+          notifyError(error, t('Failed to save the vocabularies'));
         }
       });
   };
@@ -206,12 +205,12 @@ export const VocabularyManager = ({
     const trimmedName = newVocabName.trim();
 
     if (!trimmedName) {
-      notifyError('Vocabulary name cannot be empty', 'Invalid vocabulary name');
+      notifyError(t('Vocabulary name cannot be empty'), t('Invalid vocabulary name'));
       return;
     }
 
     if (vocabularies.some((vocab) => sameNameIgnoringCase(vocab.name, trimmedName))) {
-      notifyError('A vocabulary with this name already exists', 'Duplicate vocabulary');
+      notifyError(t('A vocabulary with this name already exists'), t('Duplicate vocabulary'));
       return;
     }
 
@@ -304,12 +303,12 @@ export const VocabularyManager = ({
     <div className="flex flex-col gap-8">
       {/* Vocabularies Table */}
       <div>
-        {showTitle && <p className="mb-4 text-sm font-medium">Vocabularies</p>}
+        {showTitle && <p className="mb-4 text-sm font-medium">{t('Vocabularies')}</p>}
 
         <div className="mb-2 flex flex-wrap items-center gap-3">
           <SearchInput
             className="min-w-56 flex-1"
-            placeholder="Search vocabularies…"
+            placeholder={t('Search vocabularies…')}
             value={query}
             onChange={setQuery}
           />
@@ -321,8 +320,8 @@ export const VocabularyManager = ({
           <table className="w-full text-sm">
             <thead>
               <tr className="bg-muted/50">
-                <th className="w-[10%] px-3 py-2 text-left font-medium">Link</th>
-                <th className="px-3 py-2 text-left font-medium">Vocabulary name</th>
+                <th className="w-[10%] px-3 py-2 text-left font-medium">{t('Link')}</th>
+                <th className="px-3 py-2 text-left font-medium">{t('Vocabulary name')}</th>
               </tr>
             </thead>
             <tbody>
@@ -346,7 +345,11 @@ export const VocabularyManager = ({
                       className="h-4 w-4 cursor-pointer accent-primary disabled:cursor-default"
                       checked={record.enabled}
                       disabled={isLocked(record)}
-                      aria-label={`${record.enabled ? 'Unlink' : 'Link'} ${record.name}`}
+                      aria-label={
+                        record.enabled
+                          ? t('Unlink {name}', { name: record.name })
+                          : t('Link {name}', { name: record.name })
+                      }
                       onClick={(event) => event.stopPropagation()}
                       onChange={(event) => handleVocabToggle(record.id, event.target.checked)}
                     />
@@ -357,7 +360,9 @@ export const VocabularyManager = ({
                         <span dir="auto">{record.name}</span>
                         {entryCounts[record.id] !== undefined && (
                           <span className="ml-2 text-xs not-italic text-muted-foreground">
-                            {countOf(entryCounts[record.id], 'entry', 'entries')}
+                            {t('{n, plural, one {# entry} other {# entries}}', {
+                              n: entryCounts[record.id],
+                            })}
                           </span>
                         )}
                         {(record.own || record.from !== undefined) && (
@@ -367,7 +372,7 @@ export const VocabularyManager = ({
                         )}
                         {isLocked(record) && !record.own && (
                           <span className="block text-xs not-italic text-muted-foreground">
-                            {record.lockNote ?? 'Needs access to the project it belongs to.'}
+                            {record.lockNote ?? t('Needs access to the project it belongs to.')}
                           </span>
                         )}
                       </span>
@@ -379,7 +384,7 @@ export const VocabularyManager = ({
                           <RowControls
                             name={record.name}
                             onRemove={() => handleVocabToggle(record.id, false)}
-                            removeLabel="Unlink"
+                            removeLabel={t('Unlink')}
                             removeIcon={Unlink}
                           />
                         )
@@ -408,10 +413,10 @@ export const VocabularyManager = ({
 
         {!isSettings && (
           <div className="mt-4">
-            <p className="mb-4 text-sm font-medium">New vocabulary</p>
+            <p className="mb-4 text-sm font-medium">{t('New vocabulary')}</p>
             <div className="flex items-center gap-2">
               <Input
-                placeholder="Enter vocabulary name"
+                placeholder={t('Enter vocabulary name')}
                 value={newVocabName}
                 onChange={(event) => setNewVocabName(event.target.value)}
                 onKeyDown={handleKeyPress}
@@ -421,7 +426,7 @@ export const VocabularyManager = ({
                 onClick={handleAddCustomVocab}
                 disabled={!newVocabName.trim() || wouldBeDuplicate()}
               >
-                <Plus className="h-4 w-4" /> Add vocabulary
+                <Plus className="h-4 w-4" /> {t('Add vocabulary')}
               </Button>
             </div>
           </div>
@@ -433,27 +438,27 @@ export const VocabularyManager = ({
         onOpenChange={(o) => {
           if (!o) closeUnlinkModal();
         }}
-        title={`Unlink vocabulary “${vocabToUnlink?.name ?? ''}”?`}
-        confirmLabel="Unlink"
+        title={t('Unlink vocabulary “{name}”?', { name: vocabToUnlink?.name ?? '' })}
+        confirmLabel={t('Unlink')}
         confirmDisabled={unlinkCount === undefined}
         onConfirm={handleConfirmUnlink}
       >
         <p>
-          Every link from this project to the vocabulary's entries is removed. The vocabulary
-          remains available to other projects.
+          {t(
+            "Every link from this project to the vocabulary's entries is removed. The vocabulary remains available to other projects.",
+          )}
         </p>
-        {vocabToUnlink?.canRelink === false && <p>You cannot link it again.</p>}
+        {vocabToUnlink?.canRelink === false && <p>{t('You cannot link it again.')}</p>}
         {onCountLinks && (
           <p>
-            {unlinkCount === undefined && 'Counting links…'}
-            {unlinkCount === null && 'The number of links could not be read.'}
-            {unlinkCount === 0 && 'This project has no links to its entries.'}
-            {unlinkCount > 0 && (
-              <>
-                This project has <strong>{countOf(unlinkCount, 'link', 'links')}</strong> to its
-                entries.
-              </>
-            )}
+            {unlinkCount === undefined && t('Counting links…')}
+            {unlinkCount === null && t('The number of links could not be read.')}
+            {unlinkCount === 0 && t('This project has no links to its entries.')}
+            {unlinkCount > 0 &&
+              tx(
+                'This project has <strong>{n, plural, one {# link} other {# links}}</strong> to its entries.',
+                { n: unlinkCount, strong: (c) => <strong>{c}</strong> },
+              )}
           </p>
         )}
       </ConfirmDeleteDialog>

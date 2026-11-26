@@ -1,6 +1,7 @@
 import { useEffect } from 'react';
 import { useAuth } from '../../contexts/useAuth.js';
 import { notifyError } from '../../lib/notify.js';
+import { t } from '../../lib/i18n.js';
 import { canManageProject } from '../../domain/permissions.js';
 import { useProject } from '../../hooks/useProject.js';
 import { Card, CardContent } from '../ui/card.jsx';
@@ -31,7 +32,7 @@ export const ProjectAccessSettings = ({ roleOptions, profileHref, onProjectUpdat
   const { projectId, project, loading, error, reload } = useProject();
 
   useEffect(() => {
-    if (error) notifyError('Failed to load the project');
+    if (error) notifyError(t('Failed to load the project'));
   }, [error]);
 
   const changed = async () => {
@@ -50,9 +51,9 @@ export const ProjectAccessSettings = ({ roleOptions, profileHref, onProjectUpdat
   // hand, Loading stands in. A re-read after a change keeps the screen mounted,
   // or the member table, a search being typed and an open dialog would all be
   // thrown away on every role change.
-  if (!project) return loading ? <Loading /> : denied('Project not found');
+  if (!project) return loading ? <Loading /> : denied(t('Project not found'));
   if (!canManageProject(project, user))
-    return denied('You do not have permission to manage this project.');
+    return denied(t('You do not have permission to manage this project.'));
 
   return (
     <>

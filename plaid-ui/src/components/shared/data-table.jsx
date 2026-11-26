@@ -2,6 +2,7 @@ import React, { useMemo, useRef, useState } from 'react';
 import { ChevronDown, ChevronRight } from 'lucide-react';
 import { cn } from '../../lib/utils.js';
 import { plural } from '../../lib/plural.js';
+import { t } from '../../lib/i18n.js';
 import { collationKey } from '../../domain/collation.js';
 import { Button } from '../ui/button.jsx';
 import { SearchInput, ListCount, ListPager, SortHeader } from './list-search.jsx';
@@ -38,9 +39,12 @@ import { ScrollEdgeCue } from './ScrollEdgeCue.jsx';
 // character are different strings, and which one a row carries depends on the
 // keyboard, the export or the paste it came from.
 //
-// `noun` names a row in the count and in "No ... match.": a singular, or a
+// `countLabel` names the count beside the search box as one message, the way
+// ListCount takes it, and `noMatch` the line a search that matches nothing
+// shows (a string, or a function of the query). Left out, they speak of rows.
+// `noun` is the older, English-only way to name a row in both: a singular, or a
 // [singular, plural] pair for an irregular one ('person' alone would read
-// "persons").
+// "persons"). It is kept for the callers that still pass one.
 //
 // `expand(row)` makes rows openable: it returns what to draw underneath one,
 // in a full-width cell, and a chevron column appears in front. Use it when a
@@ -49,6 +53,17 @@ import { ScrollEdgeCue } from './ScrollEdgeCue.jsx';
 //
 // `more` is for rows the server holds past the ones loaded (ListPager's `more`):
 // Next page on the last loaded page fetches them.
+
+const rowCount = (v) => t('{total} {n, plural, one {row} other {rows}}', v);
+
+// What a search that matched nothing says when the caller does not.
+const defaultNoMatch = (noun, countLabel) => {
+  if (noun) {
+    // i18n-ignore: English only, for the callers that still pass a bare noun
+    return `No ${plural(2, noun)} match.`;
+  }
+  return countLabel ? t('Nothing matches.') : t('No rows match.');
+};
 
 export const DataTable = ({
   rows,
@@ -60,11 +75,12 @@ export const DataTable = ({
   pageParam,
   defaultSort,
   search,
-  noun = 'row',
+  noun,
+  countLabel,
   showCount = true,
   title,
   actions,
-  empty = 'Nothing here.',
+  empty = t('Nothing here.'),
   noMatch,
   loading = false,
   more,
@@ -133,12 +149,18 @@ export const DataTable = ({
             <SearchInput
               value={query}
               onChange={setQuery}
-              placeholder={search.placeholder || 'Search…'}
+              placeholder={search.placeholder || t('Search…')}
               className={cn('max-w-[16rem]', title && 'ml-auto')}
             />
           )}
           {showCount && (
-            <ListCount shown={matched.length} total={rows.length} noun={noun} more={!!more} />
+            <ListCount
+              shown={matched.length}
+              total={rows.length}
+              noun={noun}
+              countLabel={countLabel ?? (noun ? undefined : rowCount)}
+              more={!!more}
+            />
           )}
           {actions && <div className="ml-auto flex items-center gap-2">{actions}</div>}
         </div>
@@ -157,7 +179,7 @@ export const DataTable = ({
             ? empty
             : typeof noMatch === 'function'
               ? noMatch(query.trim())
-              : noMatch || `No ${plural(2, noun)} match.`}
+              : noMatch || defaultNoMatch(noun, countLabel)}
         </p>
       ) : (
         // A table wider than its card scrolls inside it, never the page, and
@@ -206,7 +228,7 @@ export const DataTable = ({
                               size="icon"
                               className="h-6 w-6"
                               aria-expanded={isOpen}
-                              aria-label={isOpen ? 'Collapse' : 'Expand'}
+                              aria-label={isOpen ? t('Collapse') : t('Expand')}
                               onClick={() => toggle(key)}
                             >
                               {isOpen ? (

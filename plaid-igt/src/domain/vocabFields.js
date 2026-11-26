@@ -73,7 +73,12 @@ const CORE_BY_NAME = new Map(CORE_VOCAB_FIELDS.map((f) => [f.name, f]));
 /** Fields that must always be present, pinned first in this (core) order. */
 const IMMUTABLE_NAMES = new Set(CORE_VOCAB_FIELDS.filter((f) => f.immutable).map((f) => f.name));
 
-/** Human-friendly labels for known fields (overrides the generic humanizer). */
+/**
+ * Human-friendly labels for known fields (overrides the generic humanizer).
+ * English, as files are written: the screen shows them translated through
+ * vocabFieldLabels.js, whose table must name the same ones. This module
+ * imports no translation (plaid-agent's mirror runs it in plain node).
+ */
 const FIELD_LABELS = {
   morphType: 'Morph Type',
   status: 'Status',
@@ -140,6 +145,7 @@ const FIELD_DESCRIPTIONS = {
   status: 'How far along the entry is: draft, reviewed, or published.',
 };
 
+// English: the screen shows `fieldDisplayDescription` (vocabFieldLabels.js).
 export const fieldDescription = (name) =>
   FIELD_DESCRIPTIONS[name] ?? 'A custom field on this vocabulary. Free text.';
 
@@ -176,6 +182,8 @@ export const isBuiltInField = (name) => BUILT_IN_BASES.has(fieldBaseName(name));
  * field's name, so a label and a name say a language the same way and
  * `fieldNameLang` reads either back.
  */
+// The screen shows `fieldDisplayLabel` (vocabFieldLabels.js), in the reader's
+// language. This one is English, for the LaTeX and TSV writers.
 export const fieldLabel = (field) => {
   const name = typeof field === 'string' ? field : field?.name;
   const lang = typeof field === 'string' ? null : str(field?.lang);

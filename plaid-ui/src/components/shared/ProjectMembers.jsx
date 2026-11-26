@@ -16,6 +16,7 @@ import { ROLE_RANK, aclMemberIds, roleOf } from '../../domain/projectRoles.js';
 import { setProjectRoleNotifying } from './reportRoleChange.js';
 import { isConfigConflict, storedConfig } from '../../domain/configCells.js';
 import { TYPE } from '../../lib/typeScale.js';
+import { t } from '../../lib/i18n.js';
 
 /**
  * Everyone explicitly granted a role on a project, what they may do, and whose
@@ -173,7 +174,7 @@ export const ProjectMembers = ({
     } catch (err) {
       console.error('Error updating role:', err);
       setShownRole((m) => withEntry(m, userId, undefined));
-      notifyError(err, 'Failed to update permissions');
+      notifyError(err, t('Failed to update permissions'));
       // A role change is a remove then an add, and the add may be the half
       // that was refused.
       await refetch();
@@ -250,7 +251,7 @@ export const ProjectMembers = ({
         console.error('Error updating review:', err);
         // A later click on this row is still shown and still to be sent.
         if (reviewMarks.current.get(userId) === mark) showReview(userId, undefined);
-        notifyError(err, 'Failed to update review');
+        notifyError(err, t('Failed to update review'));
         return;
       }
       await refetch();
@@ -266,7 +267,7 @@ export const ProjectMembers = ({
   const columns = [
     {
       key: 'user',
-      label: 'User',
+      label: t('User'),
       sort: (m) => (m.displayName || '').toLowerCase(),
       render: (m) => (
         <div className="flex items-center gap-2">
@@ -284,7 +285,7 @@ export const ProjectMembers = ({
               <span className="font-medium">{m.displayName}</span>
               {m.isAdmin && (
                 <Badge variant="secondary" className="shrink-0 [overflow-wrap:normal]">
-                  Admin
+                  {t('Admin')}
                 </Badge>
               )}
             </div>
@@ -295,7 +296,7 @@ export const ProjectMembers = ({
     },
     {
       key: 'role',
-      label: 'Project role',
+      label: t('Project role'),
       sort: (m) => ROLE_RANK[m.role] ?? ROLE_RANK.none,
       render: (m) => (
         <>
@@ -304,19 +305,22 @@ export const ProjectMembers = ({
             onValueChange={(v) => setRole(m.id, v)}
             disabled={m.id === currentUser?.id || sendingRole.has(m.id)}
           >
-            <SelectTrigger className="h-8 w-36" aria-label={`${m.displayName} project role`}>
+            <SelectTrigger
+              className="h-8 w-36"
+              aria-label={t('{name} project role', { name: m.displayName })}
+            >
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
               {roleOptions.map((o) => (
-                <SelectItem key={o.value} value={o.value} hint={o.hint}>
-                  {o.label}
+                <SelectItem key={o.value} value={o.value} hint={o.hint && t(o.hint)}>
+                  {t(o.label)}
                 </SelectItem>
               ))}
             </SelectContent>
           </Select>
           {m.id === currentUser?.id && (
-            <p className="mt-0.5 text-xs text-muted-foreground">Your own access</p>
+            <p className="mt-0.5 text-xs text-muted-foreground">{t('Your own access')}</p>
           )}
         </>
       ),
@@ -324,8 +328,10 @@ export const ProjectMembers = ({
     {
       key: 'review',
       label: (
-        <span title="Their annotations are marked as contributed until a verifier confirms them">
-          Review work
+        <span
+          title={t('Their annotations are marked as contributed until a verifier confirms them')}
+        >
+          {t('Review work')}
         </span>
       ),
       // The stored mark, not the box: a toggle in flight would otherwise move
@@ -335,12 +341,14 @@ export const ProjectMembers = ({
         <input
           type="checkbox"
           className="h-4 w-4 cursor-pointer accent-primary disabled:cursor-not-allowed"
-          aria-label={`Review ${m.displayName}'s work`}
+          aria-label={t("Review {name}'s work", { name: m.displayName })}
           checked={reviewedShown(m)}
           disabled={reviewedByRole(m)}
           title={
             reviewedByRole(m)
-              ? `Every ${projectRole(project, m.id, { isAdmin: m.isAdmin })} is reviewed in this project`
+              ? t('Every {role} is reviewed in this project', {
+                  role: projectRole(project, m.id, { isAdmin: m.isAdmin }),
+                })
               : undefined
           }
           onChange={(e) => setReviewed(m.id, e.target.checked)}
@@ -355,7 +363,7 @@ export const ProjectMembers = ({
   return (
     <div>
       <div className="flex items-center justify-between gap-2 pb-3">
-        <h2 className={TYPE.card}>Members</h2>
+        <h2 className={TYPE.card}>{t('Members')}</h2>
         {headerAction}
       </div>
 
@@ -366,9 +374,10 @@ export const ProjectMembers = ({
         id="project-members"
         scope={projectId}
         defaultSort={{ key: 'user', dir: 'asc' }}
-        noun="member"
+        countLabel={(v) => t('{total} {n, plural, one {member} other {members}}', v)}
+        noMatch={t('No members match.')}
         loading={membersLoading}
-        empty="No one has been granted access yet. Use “Add a user” below."
+        empty={t('No one has been granted access yet. Use “Add a user” below.')}
       />
     </div>
   );

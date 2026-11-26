@@ -3,9 +3,10 @@
 // unreviewed machine value with a probability (machineProb). Rounded down, so
 // a value marked as below a 50% threshold never says "50%".
 import { machineProb } from '../../../plaid-client-js/src/provenance.js';
+import { t } from '../lib/i18n.js';
 
 export const confidenceNote = (metadata) => {
   const p = machineProb(metadata);
   // The nudge keeps 0.58 at 58%, which 0.58 * 100 = 57.99… would floor to 57.
-  return p == null ? null : `${Math.floor(p * 100 + 1e-9)}% confident`;
+  return p == null ? null : t('{n}% confident', { n: Math.floor(p * 100 + 1e-9) });
 };

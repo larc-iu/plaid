@@ -46,6 +46,10 @@ export const ADAPTER_MEMBERS = [
 // Optional: `projectLanguage(project)`, the project's language as this app
 // names it ('' when unset), which "Add project" shows to tell two projects of
 // one name apart.
+// Optional: `textRewrites`, the whole sentence saying how many changes rewrite
+// the text, as a message marked with msg() taking `n`:
+//   msg('{n, plural, one {# change rewrites your text.} other {# changes rewrite your text.}}')
+// Read in place of `textName`, which only fills a sentence built around it.
 // Optional: `rowText(row)`, what a plan row says beside its place, where the
 // default (`change`, else `label`) does not fit (PLAIN_ASSISTANT).
 // Optional: `writesFirst(plan)`, whether `writeFirst` writes this plan, so a
@@ -70,5 +74,8 @@ export const missingFromAdapter = (adapter) =>
 
 export const assertAdapter = (adapter) => {
   const missing = missingFromAdapter(adapter);
-  if (missing.length) throw new Error(`The assistant adapter is missing: ${missing.join(', ')}.`);
+  if (missing.length) {
+    // i18n-ignore: a development-only invariant error
+    throw new Error(`The assistant adapter is missing: ${missing.join(', ')}.`);
+  }
 };

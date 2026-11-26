@@ -36,6 +36,7 @@
 // line, which also keeps "Copy "A" as "B"" in one piece, and the rules run
 // only on what is before and after it.
 import { fullTimestamp } from './formatTime.js';
+import { msg, t } from './i18n.js';
 
 const ID = '[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\\b';
 const JOINED_ID = new RegExp(`\\s+(?:and|into)\\s+${ID}`, 'gi');
@@ -70,17 +71,17 @@ export const readableDescription = (text) => {
 // What an operation's kind (the server's closed list, `?group-kind=`) is
 // called on a History row. An operation with no kind names none.
 const KIND_LABELS = {
-  'assistant-plan': 'Assistant',
-  'service-run': 'Automatic',
-  import: 'Import',
-  'bulk-edit': 'Bulk edit',
-  'guess-adoption': 'Guess taken',
-  repair: 'Repair',
-  review: 'Review',
-  job: 'Job',
+  'assistant-plan': msg('Assistant'),
+  'service-run': msg('Automatic'),
+  import: msg('Import'),
+  'bulk-edit': msg('Bulk edit'),
+  'guess-adoption': msg('Guess taken'),
+  repair: msg('Repair'),
+  review: msg('Review'),
+  job: msg('Job'),
 };
 
-export const operationKindLabel = (kind) => KIND_LABELS[kind] ?? null;
+export const operationKindLabel = (kind) => (KIND_LABELS[kind] ? t(KIND_LABELS[kind]) : null);
 
 // The line over a History entry's changes. Where the entry's first change
 // (`from`) was earlier than its end (`time`, what is read at), it says both,
@@ -88,9 +89,14 @@ export const operationKindLabel = (kind) => KIND_LABELS[kind] ?? null;
 // first (RP-3). Two that read the same (the same second) are said once
 // (REV-RPF-P-5).
 export const changesMadeText = (entry) => {
-  const what = entry.action ? 'action' : 'entry';
   const to = fullTimestamp(entry.time);
   const from = entry.from ? fullTimestamp(entry.from) : to;
-  const when = from !== to ? `from ${from} to ${to}` : to;
-  return `Changes made in this ${what}, ${when}.`;
+  if (from !== to) {
+    return entry.action
+      ? t('Changes made in this action, from {from} to {to}.', { from, to })
+      : t('Changes made in this entry, from {from} to {to}.', { from, to });
+  }
+  return entry.action
+    ? t('Changes made in this action, {time}.', { time: to })
+    : t('Changes made in this entry, {time}.', { time: to });
 };

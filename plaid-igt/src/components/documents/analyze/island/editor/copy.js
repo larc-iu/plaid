@@ -3,6 +3,7 @@ import { SENTENCE_ACTION } from '@ui/components/shared/sentenceActions.js';
 import { notifyError } from '@/utils/feedback';
 import { APP_ROUTES } from '@/appRoutes';
 import { COPY_FORMATS, COPY_FORMAT_STORAGE_KEY, formatSentence } from '@/domain/igtExport';
+import { t } from '@ui/lib/i18n.js';
 
 // Copy as IGT: the format menu, the clipboard write, and a sentence's link.
 export const copy = {
@@ -85,7 +86,7 @@ export const copy = {
       } finally {
         ta.remove();
       }
-      if (!ok) notifyError('Clipboard access was refused.', 'Failed to copy');
+      if (!ok) notifyError(t('Clipboard access was refused.'), t('Failed to copy'));
       return ok;
     }
   },
@@ -117,7 +118,12 @@ export const copy = {
 
   _copyControl(sentence, ctx) {
     const fav = this._favoriteCopyFormat();
-    const favLabel = COPY_FORMATS.find((f) => f.id === fav)?.label ?? fav;
+    // The formats' names are their own table's (domain/igtExport.js), shown
+    // through t() as a table of labels is.
+    const label = (f) => t(f.label);
+    const favFormat = COPY_FORMATS.find((f) => f.id === fav);
+    const favLabel = favFormat ? label(favFormat) : fav;
+    const linkLabel = t('Copy a link to this sentence');
     const open = this._copyMenu === sentence.id;
     const copied = this._copiedFlash === sentence.id;
     const linked = this._linkFlash === sentence.id;
@@ -126,8 +132,8 @@ export const copy = {
         <button
           type="button"
           class="igt-copy__link ${SENTENCE_ACTION} ${linked ? 'is-copied' : ''}"
-          title="Copy a link to this sentence"
-          aria-label="Copy a link to this sentence"
+          title=${linkLabel}
+          aria-label=${linkLabel}
           @click=${() => this._copySentenceLink(sentence)}
         >
           ${linked
@@ -149,7 +155,7 @@ export const copy = {
         <button
           type="button"
           class="igt-copy__btn ${SENTENCE_ACTION}"
-          title=${`Copy as IGT: ${favLabel}`}
+          title=${t('Copy as IGT: {format}', { format: favLabel })}
           @click=${() => this._copySentence(sentence, ctx, fav)}
         >
           <svg
@@ -166,12 +172,12 @@ export const copy = {
             <rect width="14" height="14" x="8" y="8" rx="2" ry="2" />
             <path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2" />
           </svg>
-          ${copied ? 'Copied ✓' : 'Copy'}
+          ${copied ? t('Copied ✓') : t('Copy')}
         </button>
         <button
           type="button"
           class="igt-copy__caret ${SENTENCE_ACTION}"
-          aria-label="Choose copy format"
+          aria-label=${t('Choose copy format')}
           aria-expanded=${open ? 'true' : 'false'}
           @click=${() => {
             this._copyMenu = open ? null : sentence.id;
@@ -193,12 +199,12 @@ export const copy = {
                       this._copySentence(sentence, ctx, f.id);
                     }}
                   >
-                    <span>${f.label}</span>
+                    <span>${label(f)}</span>
                     ${f.id === fav ? html`<span class="igt-copy__fav">★</span>` : nothing}
                   </button>
                 `,
               )}
-              <div class="igt-copy__hint">picking a format makes it the default</div>
+              <div class="igt-copy__hint">${t('picking a format makes it the default')}</div>
             </div>`
           : nothing}
       </div>

@@ -9,7 +9,7 @@ import {
 import { finishImport } from '@/domain/importFinish';
 import { ImportCancelled } from '@/import/stamps';
 import { notifyError, notifySuccess, notifyWarning, humanizeError } from '@/utils/feedback';
-import { countOf } from '../../../plaid-ui/src/lib/plural.js';
+import { t } from '@ui/lib/i18n.js';
 
 // The run of a project import, shared by the four wizards that make a project
 // from a file (FLEx, CLDF, ELAN, the archive). A wizard reads its file, shows
@@ -126,11 +126,17 @@ export function useProjectImportRun({ client, kind }) {
       setStage('done');
       const warnings = res.warnings?.length ?? 0;
       if (!cleared) {
-        notifyError('The import finished but could not be marked done.', 'Import finished');
+        notifyError(t('The import finished but could not be marked done.'), t('Import finished'));
       } else if (warnings) {
-        notifyWarning(`Imported with ${countOf(warnings, 'warning')}.`, 'Import finished');
+        notifyWarning(
+          t('Imported with {n, plural, one {# warning} other {# warnings}}.', { n: warnings }),
+          t('Import finished'),
+        );
       } else {
-        notifySuccess(`Imported ${countOf(res.imported, 'document')}.`, 'Import complete');
+        notifySuccess(
+          t('Imported {n, plural, one {# document} other {# documents}}.', { n: res.imported }),
+          t('Import complete'),
+        );
       }
       return res;
     } catch (e) {
@@ -142,7 +148,7 @@ export function useProjectImportRun({ client, kind }) {
         setUnfinished({ id: projectIdRef.current, name });
       }
       setStage('review');
-      if (!cancelled) notifyError(humanizeError(e), 'Failed to import');
+      if (!cancelled) notifyError(humanizeError(e), t('Failed to import'));
       return null;
     }
   };
@@ -164,7 +170,7 @@ export function useProjectImportRun({ client, kind }) {
   const retryFinish = async () => {
     const cleared = await markImportFinished(client, projectIdRef.current);
     setFinishPending(!cleared);
-    if (!cleared) notifyError('The import could not be marked done.', 'Try again');
+    if (!cleared) notifyError(t('The import could not be marked done.'), t('Try again'));
     return cleared;
   };
 

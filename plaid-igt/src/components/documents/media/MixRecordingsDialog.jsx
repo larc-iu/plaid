@@ -16,6 +16,7 @@ import { readTrack, mixTracks } from '@/domain/media/mixRecordings';
 import { mixBytes, mixRate, mixSeconds, startingQuality, trackNote } from '@/domain/media/mixdown';
 import { formatTime } from './formatTime.js';
 import { QualityChoice } from './QualityChoice.jsx';
+import { t } from '@ui/lib/i18n.js';
 
 // Several files chosen at once, one per speaker, become one recording with a
 // channel each. The dialog lists the files as they are read, takes a speaker
@@ -74,7 +75,9 @@ export function MixRecordingsDialog({
         }
         if (abort.signal.aborted) return;
         // By the file, since a row above may have been removed meanwhile.
-        setTracks((prev) => prev.map((t) => (t.file === file ? { ...t, ...read } : t)));
+        setTracks((prev) =>
+          prev.map((track) => (track.file === file ? { ...track, ...read } : track)),
+        );
       }
     })();
     return () => abort.abort();
@@ -82,13 +85,13 @@ export function MixRecordingsDialog({
 
   // A mix of one file has no speakers to tell apart.
   const tooFew = tracks.length < 2;
-  const ready = !tooFew && tracks.every((t) => t.status === 'ready');
-  const failed = tracks.some((t) => t.status === 'failed');
+  const ready = !tooFew && tracks.every((track) => track.status === 'ready');
+  const failed = tracks.some((track) => track.status === 'failed');
   const plan = ready
-    ? tracks.map((t) => ({
-        seconds: t.seconds,
-        sampleRate: t.sampleRate,
-        offset: Number(t.offset) || 0,
+    ? tracks.map((track) => ({
+        seconds: track.seconds,
+        sampleRate: track.sampleRate,
+        offset: Number(track.offset) || 0,
       }))
     : null;
   const bytesOf = (q) => (plan ? mixBytes(plan, q) : null);
@@ -99,7 +102,7 @@ export function MixRecordingsDialog({
   const empty = !!plan && mixSeconds(plan) <= 0;
 
   const setTrack = (i, patch) =>
-    setTracks((prev) => prev.map((t, k) => (k === i ? { ...t, ...patch } : t)));
+    setTracks((prev) => prev.map((track, k) => (k === i ? { ...track, ...patch } : track)));
   const removeTrack = (i) => setTracks((prev) => prev.filter((_, k) => k !== i));
 
   const upload = async () => {
@@ -109,7 +112,7 @@ export function MixRecordingsDialog({
     mixAbort.current = abort;
     try {
       const file = await mixTracks(
-        tracks.map((t) => ({ ...t, offset: Number(t.offset) || 0 })),
+        tracks.map((track) => ({ ...track, offset: Number(track.offset) || 0 })),
         {
           quality,
           signal: abort.signal,
@@ -120,13 +123,13 @@ export function MixRecordingsDialog({
       // Cancel made meanwhile is still waiting: it is let in before the check.
       await new Promise((done) => setTimeout(done));
       if (abort.signal.aborted) return;
-      const channelSpeakers = tracks.map((t) => t.speaker.trim());
+      const channelSpeakers = tracks.map((track) => track.speaker.trim());
       onOpenChange(false);
       onUpload(file, { channelSpeakers });
     } catch (error) {
       if (abort.signal.aborted) return;
       console.error('Mixing the recordings failed:', error);
-      notifyError(error?.message || 'The recordings could not be mixed.', 'Failed to mix');
+      notifyError(error?.message || t('The recordings could not be mixed.'), t('Failed to mix'));
       setMixing(null);
     }
   };
@@ -140,55 +143,59 @@ export function MixRecordingsDialog({
     <Dialog open={open} onOpenChange={(next) => (mixing ? stopMix() : onOpenChange(next))}>
       <DialogContent
         className="max-w-2xl"
-        closeLabel="Close Mix recordings"
+        closeLabel={t('Close Mix recordings')}
         onInteractOutside={(e) => mixing && e.preventDefault()}
       >
         <DialogHeader>
-          <DialogTitle>Mix recordings</DialogTitle>
+          <DialogTitle>{t('Mix recordings')}</DialogTitle>
           <DialogDescription>
-            One recording with a channel per file. The speaker goes on the channel.
+            {t('One recording with a channel per file. The speaker goes on the channel.')}
           </DialogDescription>
         </DialogHeader>
 
         <div className="flex flex-col gap-4">
           <ul className="flex flex-col divide-y rounded-md border px-3">
-            {tracks.map((t, i) => (
+            {tracks.map((track, i) => (
               <li
-                key={`${t.name}:${i}`}
+                key={`${track.name}:${i}`}
                 className="grid grid-cols-[minmax(0,1fr)_10rem_6rem] items-center gap-x-3 gap-y-1 py-2"
               >
                 <div className="flex min-w-0 flex-col items-start">
-                  <span className="max-w-full truncate font-mono text-xs">{t.name}</span>
+                  <span className="max-w-full truncate font-mono text-xs">{track.name}</span>
                   <span
-                    className={`text-xs ${t.status === 'failed' ? 'text-destructive' : 'text-muted-foreground'}`}
+                    className={`text-xs ${track.status === 'failed' ? 'text-destructive' : 'text-muted-foreground'}`}
                   >
-                    {t.status === 'reading'
-                      ? 'Reading…'
-                      : t.status === 'failed'
-                        ? 'Cannot be decoded.'
-                        : `${formatTime(t.seconds)} · ${trackNote(t)}${
-                            t.file?.type?.startsWith('video/') ? ' · video, sound only' : ''
-                          }`}
+                    {track.status === 'reading'
+                      ? t('Reading…')
+                      : track.status === 'failed'
+                        ? t('Cannot be decoded.')
+                        : [
+                            formatTime(track.seconds),
+                            trackNote(track),
+                            track.file?.type?.startsWith('video/') && t('video, sound only'),
+                          ]
+                            .filter(Boolean)
+                            .join(' · ')}
                   </span>
-                  {t.status === 'failed' && (
+                  {track.status === 'failed' && (
                     <Button
                       variant="link"
                       size="sm"
                       className="h-auto p-0 text-xs"
-                      aria-label={`Remove ${t.name}`}
+                      aria-label={t('Remove {name}', { name: track.name })}
                       onClick={() => removeTrack(i)}
                     >
-                      Remove
+                      {t('Remove')}
                     </Button>
                   )}
                 </div>
                 <Input
-                  value={t.speaker}
+                  value={track.speaker}
                   list={SPEAKER_LIST_ID}
-                  placeholder="Speaker"
+                  placeholder={t('Speaker')}
                   compose
                   autoComplete="off"
-                  aria-label={`${t.name} speaker`}
+                  aria-label={t('{name} speaker', { name: track.name })}
                   disabled={!!mixing}
                   className="h-8 text-xs"
                   onChange={(e) => setTrack(i, { speaker: e.target.value })}
@@ -197,14 +204,14 @@ export function MixRecordingsDialog({
                   <Input
                     type="number"
                     step="0.1"
-                    value={t.offset}
+                    value={track.offset}
                     placeholder="0"
-                    aria-label={`${t.name} offset in seconds`}
+                    aria-label={t('{name} offset in seconds', { name: track.name })}
                     disabled={!!mixing}
                     className="h-8 text-xs tabular-nums"
                     onChange={(e) => setTrack(i, { offset: e.target.value })}
                   />
-                  <span className="text-xs text-muted-foreground">s</span>
+                  <span className="text-xs text-muted-foreground">{t('s')}</span>
                 </div>
               </li>
             ))}
@@ -215,10 +222,12 @@ export function MixRecordingsDialog({
             ))}
           </datalist>
           {tooFew && tracks.length > 0 && (
-            <p className="text-xs font-medium text-destructive">A mix takes two files or more.</p>
+            <p className="text-xs font-medium text-destructive">
+              {t('A mix takes two files or more.')}
+            </p>
           )}
           <p className="text-xs text-muted-foreground">
-            Offset: silence before the file, in seconds. Negative trims its start.
+            {t('Offset: silence before the file, in seconds. Negative trims its start.')}
           </p>
 
           <QualityChoice
@@ -232,23 +241,29 @@ export function MixRecordingsDialog({
 
           {empty && (
             <p className="text-xs font-medium text-destructive">
-              The offsets trim away every file.
+              {t('The offsets trim away every file.')}
             </p>
           )}
           {overLimit && (
             <p className="text-xs font-medium text-destructive">
-              This server accepts {formatBytes(maxBytes, { against: bytes })}. The mix is{' '}
-              {formatBytes(bytes, { against: maxBytes })}.
+              {t('This server accepts {max}. The mix is {size}.', {
+                max: formatBytes(maxBytes, { against: bytes }),
+                size: formatBytes(bytes, { against: maxBytes }),
+              })}
             </p>
           )}
 
           {mixing && (
             <div className="flex flex-col gap-1" aria-live="polite">
-              <Progress value={(mixing.index / mixing.total) * 100} label="Mix progress" />
+              <Progress value={(mixing.index / mixing.total) * 100} label={t('Mix progress')} />
               <p className="text-xs text-muted-foreground">
                 {mixing.index < mixing.total
-                  ? `Mixing ${tracks[mixing.index]?.name ?? ''} (${mixing.index + 1} of ${mixing.total}).`
-                  : 'Writing the file.'}
+                  ? t('Mixing {name} ({i} of {total}).', {
+                      name: tracks[mixing.index]?.name ?? '',
+                      i: mixing.index + 1,
+                      total: mixing.total,
+                    })
+                  : t('Writing the file.')}
               </p>
             </div>
           )}
@@ -256,10 +271,10 @@ export function MixRecordingsDialog({
 
         <DialogFooter>
           <Button variant="outline" onClick={() => (mixing ? stopMix() : onOpenChange(false))}>
-            Cancel
+            {t('Cancel')}
           </Button>
           <Button onClick={upload} disabled={!ready || failed || overLimit || empty || !!mixing}>
-            Upload
+            {t('Upload')}
           </Button>
         </DialogFooter>
       </DialogContent>

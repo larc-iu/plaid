@@ -5,7 +5,7 @@ import { commentThread } from '@/components/documents/comments/island/CommentThr
 import { buildAnchorIndex, describeAnchor, anchorCaption } from '@/domain/commentAnchors';
 import { isVirtualMorphemeId } from '@/domain/virtualMorpheme';
 import { notifyWarning } from '@/utils/feedback';
-import { countOf } from '@ui/lib/plural.js';
+import { t } from '@ui/lib/i18n.js';
 
 // How long after a refused post its anchor is watched for going (the
 // document read again after the refusal), so the typed text can follow it.
@@ -25,6 +25,8 @@ export const comments = {
    *   ancestor around the VALUE — the row itself is the containing block — so
    *   an absolute badge there flew to the far end of a full-width row, nowhere
    *   near the field it belongs to.
+   * @param label  what the badge is on, a translated name ("sentence 3"),
+   *   which its title and its popover's heading show.
    */
   _commentBadge(entityType, entityId, label, { inline = false } = {}) {
     const store = this.comments;
@@ -36,7 +38,9 @@ export const comments = {
     // counts but is never offered a control they cannot use.
     if (!n && !this.canComment) return nothing;
     const open = this._popover?.variant === 'comment' && this._popover.entityId === entityId;
-    const title = n ? `${countOf(n, 'comment')} on ${label}` : `Comment on ${label}`;
+    const title = n
+      ? t('{n, plural, one {# comment} other {# comments}} on {label}', { n, label })
+      : t('Comment on {label}', { label });
     return html`
       <button
         type="button"
@@ -224,7 +228,7 @@ export const comments = {
     const target = fallbacks.find((f) => index.has(f.entityId));
     if (!target) {
       this._cmtSyncUnsaved();
-      notifyWarning(draft, 'Comment not posted', { duration: Infinity });
+      notifyWarning(draft, t('Comment not posted'), { duration: Infinity });
       return true;
     }
     this._cmtSetDraft(
@@ -236,7 +240,7 @@ export const comments = {
     this._render(true);
     const opener = free && this._openerEl(`comment:${target.entityId}`);
     if (opener) this._openCommentPopover(target.entityType, target.entityId, opener);
-    else notifyWarning(draft, 'Comment not posted', { duration: Infinity });
+    else notifyWarning(draft, t('Comment not posted'), { duration: Infinity });
     return true;
   },
 
@@ -253,7 +257,7 @@ export const comments = {
         data-igt-pop
         style=${posStyle}
         role="dialog"
-        aria-label=${`Comments on ${label}`}
+        aria-label=${t('Comments on {label}', { label })}
         @click=${(e) => e.stopPropagation()}
         @keydown=${(e) => {
           // Escape closes the popover, not the cell edit behind it.
@@ -275,8 +279,8 @@ export const comments = {
           <button
             class="igt-cmt-pop__close"
             type="button"
-            title="Close"
-            aria-label="Close comments"
+            title=${t('Close')}
+            aria-label=${t('Close comments')}
             @click=${() => this._closePopover(true)}
           >
             ×

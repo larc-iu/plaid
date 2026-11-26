@@ -37,17 +37,24 @@ import {
 } from '../../import/cldf/buildDocuments';
 import { deriveSetupData, runCldfImport } from '../../import/cldf/importEngine';
 import { useProjectImportRun } from '@/hooks/useProjectImportRun';
-import { countOf } from '@ui/lib/plural.js';
+import { t, tx, msg } from '@ui/lib/i18n.js';
 
 import { documentFraction, documentLabel } from '../../import/progress';
 import { useDocumentTitle } from '@ui/hooks/useDocumentTitle.js';
 import { FORM_PAGE_WIDTH } from '@ui/lib/pageWidth.js';
 
 const SCOPES = ['Sentence', 'Word', 'Morpheme', 'Orthography'];
+// The scopes' names on screen.
+const SCOPE_LABELS = {
+  Sentence: msg('Sentence'),
+  Word: msg('Word'),
+  Morpheme: msg('Morpheme'),
+  Orthography: msg('Orthography'),
+};
 const OFF = '__off__';
 
 export const ImportCldfProject = () => {
-  useDocumentTitle('Import CLDF');
+  useDocumentTitle(t('Import CLDF'));
   const { client: session } = useAuth();
   // The run's own client, so a write made elsewhere in the tab meanwhile is
   // neither stamped with its document version nor filed under its operation.
@@ -93,7 +100,7 @@ export const ImportCldfProject = () => {
       setStage('review');
     } catch (e) {
       console.error('CLDF read failed:', e);
-      notifyError(humanizeError(e), 'Failed to read the dataset');
+      notifyError(humanizeError(e), t('Failed to read the dataset'));
       setStage('pick');
     }
   };
@@ -114,7 +121,7 @@ export const ImportCldfProject = () => {
           onProgress: (p) => {
             if (p.phase === 'lexicon') {
               setProgress({
-                label: `Importing lexicon (${p.done}/${p.total})`,
+                label: t('Importing lexicon ({done}/{total})', { done: p.done, total: p.total }),
                 pct: 15 + (p.total ? (p.done / p.total) * 15 : 15),
               });
             } else if (p.phase === 'document') {
@@ -134,64 +141,103 @@ export const ImportCldfProject = () => {
   return (
     <div className={FORM_PAGE_WIDTH}>
       <div className="flex flex-col gap-6">
-        <ImportHeader title="Import a CLDF dataset">
-          Create a project from a{' '}
-          <a
-            href="https://cldf.clld.org"
-            target="_blank"
-            rel="noreferrer"
-            className="underline underline-offset-2"
-          >
-            Cross-Linguistic Data Formats
-          </a>{' '}
-          dataset: its examples become interlinear texts, its lexicon becomes a vocabulary, and its
-          language becomes the project’s identity.
+        <ImportHeader title={t('Import a CLDF dataset')}>
+          {tx(
+            'Create a project from a <a>Cross-Linguistic Data Formats</a> dataset: its examples become interlinear texts, its lexicon becomes a vocabulary, and its language becomes the project’s identity.',
+            {
+              a: (c) => (
+                <a
+                  href="https://cldf.clld.org"
+                  target="_blank"
+                  rel="noreferrer"
+                  className="underline underline-offset-2"
+                >
+                  {c}
+                </a>
+              ),
+            },
+          )}
         </ImportHeader>
 
         {stage === 'pick' && (
           <FileDropZone
             onFiles={(files) => handleFile(files?.[0])}
-            title="Drop a CLDF .zip here, or click to choose"
-            hint="Any dataset with an ExampleTable: a TextCorpus, or a Dictionary with examples"
+            title={t('Drop a CLDF .zip here, or click to choose')}
+            hint={t(
+              'Any dataset with an ExampleTable: a TextCorpus, or a Dictionary with examples',
+            )}
             accept=".zip,application/zip"
           />
         )}
 
-        {stage === 'parsing' && <ReadingPanel label="Reading dataset…" />}
+        {stage === 'parsing' && <ReadingPanel label={t('Reading dataset…')} />}
 
         {stage !== 'pick' && stage !== 'parsing' && build && (
           <div className="flex flex-col gap-4">
             <div className="rounded-lg border bg-card p-4">
               <p className="mb-2 font-medium">
-                {dataset.title || 'Dataset'}
+                {dataset.title || t('Dataset')}
                 <span className="ml-2 text-xs font-normal text-muted-foreground">
                   {dataset.module}
                 </span>
               </p>
               <div className="grid grid-cols-2 gap-x-8 gap-y-1 text-sm sm:grid-cols-3">
-                <p>{countOf(build.stats.documents, 'text')}</p>
-                <p>{countOf(build.stats.sentences, 'sentence')}</p>
-                <p>{countOf(build.stats.words, 'word')}</p>
-                <p>{countOf(build.stats.morphemes, 'morpheme')}</p>
-                <p>{countOf(build.stats.lexiconEntries, 'lexicon entry', 'lexicon entries')}</p>
-                <p>{countOf(build.schema.fields.length, 'annotation field')}</p>
+                <p>
+                  {t('{n, plural, one {# text} other {# texts}}', { n: build.stats.documents })}
+                </p>
+                <p>
+                  {t('{n, plural, one {# sentence} other {# sentences}}', {
+                    n: build.stats.sentences,
+                  })}
+                </p>
+                <p>{t('{n, plural, one {# word} other {# words}}', { n: build.stats.words })}</p>
+                <p>
+                  {t('{n, plural, one {# morpheme} other {# morphemes}}', {
+                    n: build.stats.morphemes,
+                  })}
+                </p>
+                <p>
+                  {t('{n, plural, one {# lexicon entry} other {# lexicon entries}}', {
+                    n: build.stats.lexiconEntries,
+                  })}
+                </p>
+                <p>
+                  {t('{n, plural, one {# annotation field} other {# annotation fields}}', {
+                    n: build.schema.fields.length,
+                  })}
+                </p>
               </div>
               {build.schema.fields.length > 0 && (
                 <p className="mt-2 border-t pt-2 text-xs text-muted-foreground">
-                  Fields: {build.schema.fields.map((f) => `${f.name} (${f.scope})`).join(', ')}
+                  {t('Fields: {fields}', {
+                    fields: build.schema.fields
+                      .map((f) =>
+                        t(
+                          '{name} ({scope, select, Sentence {Sentence} Word {Word} Morpheme {Morpheme} Orthography {Orthography} other {{scope}}})',
+                          { name: f.name, scope: f.scope },
+                        ),
+                      )
+                      .join(', '),
+                  })}
                 </p>
               )}
               {build.lexicon.length > 0 && (
                 <p className="mt-2 border-t pt-2 text-xs text-muted-foreground">
-                  Each entry keeps its senses.
+                  {t('Each entry keeps its senses.')}
                 </p>
               )}
               {build.languages.object && (
                 <p className="mt-2 border-t pt-2 text-xs text-muted-foreground">
-                  Object language: <strong>{build.languages.object.name || 'unnamed'}</strong>
                   {build.languages.object.glottocode
-                    ? ` (${build.languages.object.glottocode})`
-                    : ''}
+                    ? tx('Object language: <strong>{name}</strong> ({glottocode})', {
+                        name: build.languages.object.name || t('unnamed'),
+                        glottocode: build.languages.object.glottocode,
+                        strong: (c) => <strong>{c}</strong>,
+                      })
+                    : tx('Object language: <strong>{name}</strong>', {
+                        name: build.languages.object.name || t('unnamed'),
+                        strong: (c) => <strong>{c}</strong>,
+                      })}
                 </p>
               )}
             </div>
@@ -205,10 +251,12 @@ export const ImportCldfProject = () => {
 
             <div className="flex flex-col gap-3 rounded-lg border bg-card p-4">
               <div>
-                <p className="text-sm font-medium">How the gloss is read</p>
+                <p className="text-sm font-medium">{t('How the gloss is read')}</p>
                 <p className="text-xs text-muted-foreground">
-                  Morpheme scope splits each analyzed word on <code>-</code> and <code>=</code> and
-                  aligns the gloss piece by piece. Word scope keeps the gloss whole.
+                  {tx(
+                    'Morpheme scope splits each analyzed word on <code>-</code> and <code>=</code> and aligns the gloss piece by piece. Word scope keeps the gloss whole.',
+                    { code: (c) => <code>{c}</code> },
+                  )}
                 </p>
               </div>
               <Select
@@ -220,8 +268,8 @@ export const ImportCldfProject = () => {
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="Morpheme">Morpheme (segmented)</SelectItem>
-                  <SelectItem value="Word">Word (whole)</SelectItem>
+                  <SelectItem value="Morpheme">{t('Morpheme (segmented)')}</SelectItem>
+                  <SelectItem value="Word">{t('Word (whole)')}</SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -229,9 +277,9 @@ export const ImportCldfProject = () => {
             {groupChoices.length > 0 && (
               <div className="flex flex-col gap-3 rounded-lg border bg-card p-4">
                 <div>
-                  <p className="text-sm font-medium">How the examples split into texts</p>
+                  <p className="text-sm font-medium">{t('How the examples split into texts')}</p>
                   <p className="text-xs text-muted-foreground">
-                    Only “One document per example” keeps each example’s own audio.
+                    {t('Only “One document per example” keeps each example’s own audio.')}
                   </p>
                 </div>
                 <Select
@@ -256,9 +304,11 @@ export const ImportCldfProject = () => {
             {columnChoices.length > 0 && (
               <div className="flex flex-col gap-2 rounded-lg border bg-card p-4">
                 <div>
-                  <p className="text-sm font-medium">Columns CLDF has no term for</p>
+                  <p className="text-sm font-medium">{t('Columns CLDF has no term for')}</p>
                   <p className="text-xs text-muted-foreground">
-                    Choose where each goes. A Word or Morpheme field needs one value per word.
+                    {t(
+                      'Choose where each goes. A Word or Morpheme field needs one value per word.',
+                    )}
                   </p>
                 </div>
                 {columnChoices
@@ -288,11 +338,11 @@ export const ImportCldfProject = () => {
                             {SCOPES.filter((s) => choice.canBePerWord || s === 'Sentence').map(
                               (s) => (
                                 <SelectItem key={s} value={s}>
-                                  {s}
+                                  {t(SCOPE_LABELS[s])}
                                 </SelectItem>
                               ),
                             )}
-                            <SelectItem value={OFF}>Don’t import</SelectItem>
+                            <SelectItem value={OFF}>{t('Don’t import')}</SelectItem>
                           </SelectContent>
                         </Select>
                         <Input
@@ -315,17 +365,19 @@ export const ImportCldfProject = () => {
                   {build.lexicon.length > 0 ? (
                     <>
                       <p className="font-medium">
-                        A dictionary without examples cannot be imported
+                        {t('A dictionary without examples cannot be imported')}
                       </p>
                       <p className="text-xs">
-                        This dataset has {countOf(build.lexicon.length, 'entry', 'entries')} but no
-                        ExampleTable, so it has no texts.
+                        {t(
+                          'This dataset has {n, plural, one {# entry} other {# entries}} but no ExampleTable, so it has no texts.',
+                          { n: build.lexicon.length },
+                        )}
                       </p>
                     </>
                   ) : (
                     <>
-                      <p className="font-medium">Nothing to import</p>
-                      <p className="text-xs">No examples were found in this dataset.</p>
+                      <p className="font-medium">{t('Nothing to import')}</p>
+                      <p className="text-xs">{t('No examples were found in this dataset.')}</p>
                     </>
                   )}
                 </div>
@@ -344,8 +396,10 @@ export const ImportCldfProject = () => {
 
             {build.stats.unalignedWords > 0 && (
               <p className="text-xs text-muted-foreground">
-                {countOf(build.stats.unalignedWords, 'analyzed word')} could not be located in the
-                primary text and will be skipped. The full list is in the import warnings.
+                {t(
+                  '{n, plural, one {# analyzed word} other {# analyzed words}} could not be located in the primary text and will be skipped. The full list is in the import warnings.',
+                  { n: build.stats.unalignedWords },
+                )}
               </p>
             )}
 
@@ -364,14 +418,16 @@ export const ImportCldfProject = () => {
 
             {stage === 'done' && results && (
               <Notice tone="success" className="p-4">
-                <p className="font-medium">Imported {countOf(results.imported, 'text')}</p>
+                <p className="font-medium">
+                  {t('Imported {n, plural, one {# text} other {# texts}}', { n: results.imported })}
+                </p>
                 {results.warnings.length > 0 && (
                   <ul className="mt-2 list-disc pl-5">
                     {results.warnings.slice(0, 8).map((w, i) => (
                       <li key={i}>{w}</li>
                     ))}
                     {results.warnings.length > 8 && (
-                      <li>…and {results.warnings.length - 8} more</li>
+                      <li>{t('…and {n} more', { n: results.warnings.length - 8 })}</li>
                     )}
                   </ul>
                 )}
@@ -384,12 +440,12 @@ export const ImportCldfProject = () => {
                   onClick={startImport}
                   disabled={!projectName.trim() || !build.documents.length}
                 >
-                  Create project and import
+                  {t('Create project and import')}
                 </Button>
               )}
               {stage === 'done' && !finishPending && (
                 <Button asChild>
-                  <Link to={`/projects/${projectIdRef.current}`}>Open project</Link>
+                  <Link to={`/projects/${projectIdRef.current}`}>{t('Open project')}</Link>
                 </Button>
               )}
             </div>

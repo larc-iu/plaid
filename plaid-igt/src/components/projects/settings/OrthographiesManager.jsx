@@ -9,13 +9,14 @@ import { Loading } from '@ui/components/shared/Loading.jsx';
 import { sameNameIgnoringCase } from '@/domain/nameMatch';
 import { RowControls } from '@/components/shared/RowControls';
 import { useListManager } from './useListManager';
-import { countOf } from '@ui/lib/plural.js';
+import { t, tx } from '@ui/lib/i18n.js';
 import { TYPE } from '@ui/lib/typeScale.js';
 import { isEnter } from '@ui/lib/chords.js';
 
 // The Baseline is first, and cannot be moved or removed. Its row is marked by
 // `isBaseline`, never by its name: an orthography may be called Baseline too.
 // It is drawn apart from the list, never as a row of it.
+// i18n-ignore: default orthography names, stored in the project
 const DEFAULT_ORTHOGRAPHIES = [
   { name: 'Baseline', isBaseline: true },
   { name: 'IPA', isBaseline: false },
@@ -41,7 +42,8 @@ export const OrthographiesManager = ({
     move,
   } = useListManager({
     listKey: 'orthographies',
-    noun: 'orthographies',
+    loadFailed: t('Failed to load the orthographies'),
+    saveFailed: t('Failed to save the orthographies'),
     defaults: () => DEFAULT_ORTHOGRAPHIES,
     initialData,
     onLoadData,
@@ -58,19 +60,19 @@ export const OrthographiesManager = ({
     const trimmedName = newOrthographyName.trim();
 
     if (!trimmedName) {
-      notifyError('Orthography name cannot be empty', 'Invalid orthography name');
+      notifyError(t('Orthography name cannot be empty'), t('Invalid orthography name'));
       return;
     }
 
     if (orthographies.some((orth) => sameNameIgnoringCase(orth.name, trimmedName))) {
-      notifyError('An orthography with this name already exists', 'Duplicate orthography');
+      notifyError(t('An orthography with this name already exists'), t('Duplicate orthography'));
       return;
     }
 
     if (!(await saveChanges([...orthographies, { name: trimmedName, isBaseline: false }]))) return;
 
     setNewOrthographyName('');
-    notifySuccess(`Orthography “${trimmedName}” added`);
+    notifySuccess(t('Orthography “{name}” added', { name: trimmedName }));
   };
 
   // Orthographies (never the Baseline row) are found by name: two cannot
@@ -81,7 +83,7 @@ export const OrthographiesManager = ({
     );
     if (!saved) return;
 
-    notifyInfo(`Orthography “${orthographyName}” removed`);
+    notifyInfo(t('Orthography “{name}” removed', { name: orthographyName }));
   };
 
   // Entry point for the trash button: in settings mode open the confirm
@@ -144,24 +146,26 @@ export const OrthographiesManager = ({
   return (
     <div className="flex flex-col gap-6">
       <div data-orth-block="baseline">
-        <h2 className={TYPE.card}>Baseline</h2>
-        <p className="mt-1 text-sm text-muted-foreground">The text as typed on the Baseline tab.</p>
+        <h2 className={TYPE.card}>{t('Baseline')}</h2>
+        <p className="mt-1 text-sm text-muted-foreground">
+          {t('The text as typed on the Baseline tab.')}
+        </p>
       </div>
 
       <div data-orth-block="additional" className="flex flex-col gap-4">
         <div>
-          <h2 className={TYPE.card}>Additional orthographies</h2>
+          <h2 className={TYPE.card}>{t('Additional orthographies')}</h2>
           <p className="mt-1 text-sm text-muted-foreground">
-            Other ways of writing the text (IPA, another script, a normalized form). Each is a
-            separate row under every word in the Analyze grid, with its own value for each word,
-            empty until filled in by hand or by a tool.
+            {t(
+              'Other ways of writing the text (IPA, another script, a normalized form). Each is a separate row under every word in the Analyze grid, with its own value for each word, empty until filled in by hand or by a tool.',
+            )}
           </p>
           {note && <p className="mt-2 text-sm text-muted-foreground">{note}</p>}
         </div>
 
         {additional.length === 0 ? (
           <p className="rounded-md border border-dashed p-4 text-sm text-muted-foreground">
-            No additional orthographies.
+            {t('No additional orthographies.')}
           </p>
         ) : (
           <div className="overflow-hidden rounded-md border">
@@ -186,7 +190,7 @@ export const OrthographiesManager = ({
         )}
 
         <div className="flex flex-col gap-2">
-          <Label htmlFor={nameId}>Name</Label>
+          <Label htmlFor={nameId}>{t('Name')}</Label>
           <div className="flex items-center gap-2">
             <Input
               id={nameId}
@@ -199,7 +203,7 @@ export const OrthographiesManager = ({
               onClick={handleAddCustomOrthography}
               disabled={!newOrthographyName.trim() || wouldBeDuplicate()}
             >
-              <Plus className="h-4 w-4" /> Add orthography
+              <Plus className="h-4 w-4" /> {t('Add orthography')}
             </Button>
           </div>
         </div>
@@ -214,28 +218,27 @@ export const OrthographiesManager = ({
         onOpenChange={(o) => {
           if (!o) setPendingDelete(null);
         }}
-        title={`Remove orthography “${pendingDelete?.name ?? ''}”?`}
-        confirmLabel="Remove"
+        title={t('Remove orthography “{name}”?', { name: pendingDelete?.name ?? '' })}
+        confirmLabel={t('Remove')}
         confirmDisabled={pendingDelete?.count === undefined}
         onConfirm={handleConfirmDelete}
       >
         <p>
-          {pendingDelete?.count === undefined && 'Counting existing transcriptions…'}
+          {pendingDelete?.count === undefined && t('Counting existing transcriptions…')}
           {pendingDelete?.count === null &&
-            'The number of existing transcriptions could not be determined.'}
+            t('The number of existing transcriptions could not be determined.')}
           {typeof pendingDelete?.count === 'number' &&
-            (pendingDelete.count === 0 ? (
-              'No words have a transcription in this orthography yet.'
-            ) : (
-              <>
-                <strong>{countOf(pendingDelete.count, 'word')}</strong> currently{' '}
-                {pendingDelete.count === 1 ? 'has' : 'have'} a transcription in this orthography.
-              </>
-            ))}
+            (pendingDelete.count === 0
+              ? t('No words have a transcription in this orthography yet.')
+              : tx(
+                  '{n, plural, one {<strong># word</strong> currently has} other {<strong># words</strong> currently have}} a transcription in this orthography.',
+                  { n: pendingDelete.count, strong: (c) => <strong>{c}</strong> },
+                ))}
         </p>
         <p>
-          Existing values are hidden, not deleted. Re-adding an orthography with the same name
-          restores them.
+          {t(
+            'Existing values are hidden, not deleted. Re-adding an orthography with the same name restores them.',
+          )}
         </p>
       </ConfirmDeleteDialog>
     </div>

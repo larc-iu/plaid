@@ -19,6 +19,8 @@ import { isValidMorphType } from '../affixMarkers.js';
 import { pendingId, settledId } from '@ui/domain/pendingIds.js';
 import { findSpanLayer, planSpan, showSpan } from './spans.js';
 import { notSetUp } from '@ui/domain/setupGuard.js';
+import { t, msg } from '@ui/lib/i18n.js';
+import { writeLabel } from '../writeLabel.js';
 import { entryMorphTypesOf, entryName } from '../vocabLookup.js';
 import { EQUALS_TYPE_KEY } from './equalsRule.js';
 
@@ -77,7 +79,7 @@ const findVocabForItem = (vocabularies, vocabItemId) => {
 // Unlink leaves, Q1), or when the stored type is not the "=" rule's (R47). A
 // type the "=" rule gave a morpheme linked to an untyped entry stays, with
 // its record (morphTypeFromEquals), since nothing else would type it.
-const isType = (t) => typeof t === 'string' && t !== '';
+const isType = (tok) => typeof tok === 'string' && tok !== '';
 
 // A new entry of `vocab` as History names it, with the number it will have
 // beside the entries spelled like it (entryName).
@@ -95,21 +97,21 @@ export const vocabMutations = {
   _typedMorphemes(tokenIds, entryType) {
     const want = new Set(tokenIds);
     return (this.layerInfo.morphemeTokenLayer?.tokens || [])
-      .filter((t) => {
-        const md = t.metadata || {};
-        if (!want.has(t.id) || md.morphType == null) return false;
+      .filter((tok) => {
+        const md = tok.metadata || {};
+        if (!want.has(tok.id) || md.morphType == null) return false;
         return isType(entryType) || md[EQUALS_TYPE_KEY] !== md.morphType;
       })
-      .map((t) => ({ id: t.id, record: t.metadata[EQUALS_TYPE_KEY] != null }));
+      .map((tok) => ({ id: tok.id, record: tok.metadata[EQUALS_TYPE_KEY] != null }));
   },
 
   _showUntyped(info, untype) {
     if (!untype?.length) return;
     const gone = new Set(untype.map((u) => u.id));
-    for (const t of info.morphemeTokenLayer?.tokens || []) {
-      if (!gone.has(t.id)) continue;
-      const { morphType: _, [EQUALS_TYPE_KEY]: __, ...rest } = t.metadata || {};
-      t.metadata = rest;
+    for (const tok of info.morphemeTokenLayer?.tokens || []) {
+      if (!gone.has(tok.id)) continue;
+      const { morphType: _, [EQUALS_TYPE_KEY]: __, ...rest } = tok.metadata || {};
+      tok.metadata = rest;
     }
   },
 
@@ -223,7 +225,7 @@ export const vocabMutations = {
       }
       await this._reloadInSend();
     };
-    const ok = await this._queueWrite('Failed to auto-link', send, undefined, { kind, ref });
+    const ok = await this._queueWrite(msg('Failed to auto-link'), send, undefined, { kind, ref });
     return ok ? creates.length + replaces.length : false;
   },
 
@@ -236,7 +238,7 @@ export const vocabMutations = {
     if (!link || !vocabId) return false;
     const confirm = this.confirmStamp(link.metadata);
     if (!confirm) return false;
-    const label = 'Failed to accept link';
+    const label = msg('Failed to accept link');
     if (!this._canWrite(label)) return false;
     this._applyRawPatch((next, info, vocabs) => {
       const l = (vocabs[vocabId]?.vocabLinks || []).find((x) => x.id === link.id);
@@ -261,10 +263,12 @@ export const vocabMutations = {
       vocabItemId,
     );
     if (!targetVocab || !vocabItem) {
-      this.refuse('Entry not found');
+      this.refuse(t('Entry not found'));
       return false;
     }
-    const label = `Failed to link the entry "${entryName(targetVocab.items, vocabItem)}"`;
+    const label = writeLabel(msg('Failed to link the entry "{entry}"'), {
+      entry: entryName(targetVocab.items, vocabItem),
+    });
     if (!this._canWrite(label)) return false;
     // Linking an unanalyzed word's morpheme makes the morpheme too: a link
     // needs a token to point at. A word id passes through.
@@ -273,7 +277,7 @@ export const vocabMutations = {
       creates,
     } = this._planMorphemes([tokenId]);
     if (!targetTokenId) {
-      this.refuse('Word or morpheme not found');
+      this.refuse(t('Word or morpheme not found'));
       return false;
     }
     const relink = this._planRelink(targetTokenId, creates, targetVocab, vocabItem, metadata);
@@ -401,7 +405,7 @@ export const vocabMutations = {
     if (itemId != null) {
       target = findVocabForItem(this._vocabularies, itemId);
       if (!target.item) {
-        this.refuse('Entry not found');
+        this.refuse(t('Entry not found'));
         return false;
       }
     }
@@ -412,17 +416,19 @@ export const vocabMutations = {
       : null;
     const label =
       field && value && (stored?.value ?? '') !== value
-        ? `Failed to update ${field}`
+        ? writeLabel(msg('Failed to update {field}'), { field })
         : target
-          ? `Failed to link the entry "${entryName(target.vocab.items, target.item)}"`
-          : 'Failed to link the entry';
+          ? writeLabel(msg('Failed to link the entry "{entry}"'), {
+              entry: entryName(target.vocab.items, target.item),
+            })
+          : msg('Failed to link the entry');
     if (!this._canWrite(label)) return false;
     const {
       ids: [id],
       creates,
     } = this._planMorphemes([morphId]);
     if (!id) {
-      this.refuse('Morpheme not found');
+      this.refuse(t('Morpheme not found'));
       return false;
     }
 
@@ -533,10 +539,12 @@ export const vocabMutations = {
       vocabItemId,
     );
     if (!targetVocab || !vocabItem) {
-      this.refuse('Entry not found');
+      this.refuse(t('Entry not found'));
       return false;
     }
-    const label = `Failed to link the entry "${entryName(targetVocab.items, vocabItem)}"`;
+    const label = writeLabel(msg('Failed to link the entry "{entry}"'), {
+      entry: entryName(targetVocab.items, vocabItem),
+    });
     if (!this._canWrite(label)) return false;
     const plan = this._planLinkMany(tokenIds, targetVocab, vocabItem);
     if (!plan.links.length) return false;
@@ -630,10 +638,10 @@ export const vocabMutations = {
   async unlinkVocab(tokenId) {
     const { link: priorLink, vocabId: priorVocabId } = findPriorLink(this._vocabularies, tokenId);
     if (!priorLink || !priorVocabId) return false;
-    const label = 'Failed to unlink the entry';
+    const label = msg('Failed to unlink the entry');
     if (!this._canWrite(label)) return false;
     const morpheme = (this.layerInfo.morphemeTokenLayer?.tokens || []).find(
-      (t) => t.id === tokenId,
+      (tok) => tok.id === tokenId,
     );
     const keep = morpheme ? this._morphemeEntryType(morpheme) : null;
     this._applyRawPatch((next, info, vocabs) => {
@@ -643,7 +651,7 @@ export const vocabMutations = {
         );
       }
       if (keep) {
-        const m = (info.morphemeTokenLayer?.tokens || []).find((t) => t.id === tokenId);
+        const m = (info.morphemeTokenLayer?.tokens || []).find((tok) => tok.id === tokenId);
         if (m) m.metadata = { ...(m.metadata || {}), morphType: keep };
       }
     });
@@ -668,15 +676,15 @@ export const vocabMutations = {
   // own, goes by (derive.js). Linked morphemes store no copy of it.
   async setVocabItemMorphType(vocabId, itemId, morphType) {
     if (!isValidMorphType(morphType)) {
-      this.refuse(`Unknown morpheme type "${morphType}"`);
+      this.refuse(t('Unknown morpheme type "{type}"', { type: morphType }));
       return false;
     }
     const vocab = this._vocabularies[vocabId];
     if (!vocab) {
-      this.refuse('Vocabulary not found');
+      this.refuse(t('Vocabulary not found'));
       return false;
     }
-    const label = 'Failed to set entry type';
+    const label = msg('Failed to set entry type');
     if (!this._canWrite(label)) return false;
     const setType = (meta) => {
       const next = { ...(meta || {}) };
@@ -719,7 +727,7 @@ export const vocabMutations = {
     const byId = new Map(words.map((w) => [w.id, w]));
     const members = ids.map((id) => byId.get(id)).filter(Boolean);
     if (members.length < 2 || members.length !== ids.length) {
-      this.refuse('A multi-word expression needs two or more words');
+      this.refuse(t('A multi-word expression needs two or more words'));
       return null;
     }
     return members.sort((a, b) => a.begin - b.begin).map((w) => w.id);
@@ -731,12 +739,14 @@ export const vocabMutations = {
   async linkMwe(tokenIds, vocabItemId, metadata = null) {
     const { vocab, item } = findVocabForItem(this._vocabularies, vocabItemId);
     if (!vocab || !item) {
-      this.refuse('Entry not found');
+      this.refuse(t('Entry not found'));
       return false;
     }
     const tokens = this._mweMembers(tokenIds);
     if (!tokens) return false;
-    const label = `Failed to link multi-word expression "${entryName(vocab.items, item)}"`;
+    const label = writeLabel(msg('Failed to link multi-word expression "{entry}"'), {
+      entry: entryName(vocab.items, item),
+    });
     if (!this._canWrite(label)) return false;
     const vocabId = vocab.id;
     const itemSnapshot = { id: item.id, form: item.form, metadata: item.metadata || {} };
@@ -774,13 +784,15 @@ export const vocabMutations = {
   async createAndLinkMwe(tokenIds, vocabId, form, metadata = {}, replaceLinkId = null) {
     ({ form, metadata } = asEntry(form, metadata));
     if (!this._vocabularies[vocabId]) {
-      this.refuse('Vocabulary not found');
+      this.refuse(t('Vocabulary not found'));
       return false;
     }
     const tokens = this._mweMembers(tokenIds);
     if (!tokens) return false;
     const newItem = { id: pendingId(), form, metadata: metadata || {} };
-    const label = `Failed to create and link multi-word expression "${newEntryName(this._vocabularies[vocabId], newItem)}"`;
+    const label = writeLabel(msg('Failed to create and link multi-word expression "{entry}"'), {
+      entry: newEntryName(this._vocabularies[vocabId], newItem),
+    });
     if (!this._canWrite(label)) return false;
     const metadataArg = Object.keys(metadata || {}).length > 0 ? metadata : undefined;
     const stamp = this.createStamp || undefined;
@@ -831,10 +843,12 @@ export const vocabMutations = {
     if (!prior) return false;
     const { vocab, item } = findVocabForItem(this._vocabularies, vocabItemId);
     if (!vocab || !item) {
-      this.refuse('Entry not found');
+      this.refuse(t('Entry not found'));
       return false;
     }
-    const label = `Failed to change multi-word expression to "${entryName(vocab.items, item)}"`;
+    const label = writeLabel(msg('Failed to change multi-word expression to "{entry}"'), {
+      entry: entryName(vocab.items, item),
+    });
     if (!this._canWrite(label)) return false;
     const tokens = [...prior.tokens];
     const vocabId = vocab.id;
@@ -880,7 +894,7 @@ export const vocabMutations = {
     if (ids.length < 2) return this.unlinkMwe(prior.id);
     const tokens = this._mweMembers(ids);
     if (!tokens) return false;
-    const label = 'Failed to change multi-word expression';
+    const label = msg('Failed to change multi-word expression');
     if (!this._canWrite(label)) return false;
     const itemId = prior.vocabItem?.id;
     const merged = this.isContributor
@@ -918,7 +932,7 @@ export const vocabMutations = {
   async unlinkMwe(linkId) {
     const { link, vocabId } = findLinkById(this._vocabularies, linkId);
     if (!link) return false;
-    const label = 'Failed to unlink multi-word expression';
+    const label = msg('Failed to unlink multi-word expression');
     if (!this._canWrite(label)) return false;
     this._applyRawPatch((next, info, vocabs) => {
       if (vocabs[vocabId]) {
@@ -936,7 +950,7 @@ export const vocabMutations = {
     const { link, vocabId } = findLinkById(this._vocabularies, linkId);
     const confirm = link ? this.confirmStamp(link.metadata) : null;
     if (!confirm) return false;
-    const label = 'Failed to accept multi-word expression';
+    const label = msg('Failed to accept multi-word expression');
     if (!this._canWrite(label)) return false;
     this._applyRawPatch((next, info, vocabs) => {
       const l = (vocabs[vocabId]?.vocabLinks || []).find((x) => x.id === link.id);
@@ -982,7 +996,7 @@ export const vocabMutations = {
       await this._reloadInSend();
     };
     const ok = await this._queueWrite(
-      'Failed to auto-link multi-word expressions',
+      msg('Failed to auto-link multi-word expressions'),
       send,
       undefined,
       { kind, ref },
@@ -993,11 +1007,13 @@ export const vocabMutations = {
   async createAndLinkVocabItem(tokenId, vocabId, form, metadata = {}, { alsoLink = [] } = {}) {
     ({ form, metadata } = asEntry(form, metadata));
     if (!this._vocabularies[vocabId]) {
-      this.refuse('Vocabulary not found');
+      this.refuse(t('Vocabulary not found'));
       return false;
     }
     const newItem = { id: pendingId(), form, metadata: metadata || {} };
-    const label = `Failed to create and link the entry "${newEntryName(this._vocabularies[vocabId], newItem)}"`;
+    const label = writeLabel(msg('Failed to create and link the entry "{entry}"'), {
+      entry: newEntryName(this._vocabularies[vocabId], newItem),
+    });
     if (!this._canWrite(label)) return false;
     // Same as linkVocab: an unanalyzed word's morpheme is made too, before
     // anything points at it.
@@ -1006,7 +1022,7 @@ export const vocabMutations = {
       creates,
     } = this._planMorphemes([tokenId]);
     if (!targetTokenId) {
-      this.refuse('Word or morpheme not found');
+      this.refuse(t('Word or morpheme not found'));
       return false;
     }
     const { link: priorLink, vocabId: priorVocabId } = findPriorLink(

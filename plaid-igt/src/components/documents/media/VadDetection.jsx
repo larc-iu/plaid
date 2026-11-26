@@ -5,6 +5,7 @@ import { ServiceMethodRow } from '@ui/components/services/ServiceMethodRow.jsx';
 import { ServiceRunButton } from '@ui/components/services/ServiceRunButton.jsx';
 import { ChannelChecklist } from './ChannelChecklist.jsx';
 import { useChosenChannels } from './useChosenChannels.js';
+import { t } from '@ui/lib/i18n.js';
 
 // Speech detection: the button in the Recording header and the dialog behind
 // it. Only the controls live here. What detection produces is shown where it
@@ -38,20 +39,27 @@ export function VadDetection({ mediaOps, readOnly = false, disabled = false }) {
 
   // Kept proposals show whatever method is chosen, so the one that made them
   // is named.
-  const by = vad.madeBy?.name ? ` from “${vad.madeBy.name}”` : '';
+  // The built-in is named as the method list names it, in the interface's
+  // language, whatever language its name was kept in.
+  const by =
+    detectSpot.options?.find((o) => o.builtin && o.value === vad.madeBy?.key)?.label ??
+    vad.madeBy?.name;
   const summary =
     count > 0
-      ? count === 1
-        ? `1 proposed segment${by}`
-        : `${count} proposed segments${by}`
+      ? by
+        ? t(
+            '{n, plural, one {# proposed segment from “{name}”} other {# proposed segments from “{name}”}}',
+            { n: count, name: by },
+          )
+        : t('{n, plural, one {# proposed segment} other {# proposed segments}}', { n: count })
       : foundCount === 0
-        ? 'No speech found'
-        : 'No proposals left';
+        ? t('No speech found')
+        : t('No proposals left');
 
   return (
     <>
       <ServiceRunButton
-        label="Detect speech"
+        label={t('Detect speech')}
         icon={AudioLines}
         iconOnly
         variant="ghost"
@@ -63,20 +71,22 @@ export function VadDetection({ mediaOps, readOnly = false, disabled = false }) {
       <ServiceRunDialog
         open={open}
         onOpenChange={setOpen}
-        title="Speech detection"
-        description="Proposals show on the timeline and in the transcript, dashed. Type into one to make it a segment."
+        title={t('Speech detection')}
+        description={t(
+          'Proposals show on the timeline and in the transcript, dashed. Type into one to make it a segment.',
+        )}
         className="sm:max-w-md"
         progress={detectRun}
         error={status === 'error' ? error : null}
         result={status === 'ready' ? summary : null}
-        runLabel="Detect"
+        runLabel={t('Detect')}
         onRun={() => handleDetectSpeech({ channels: channels.chosen })}
         runDisabled={readOnly || disabled || channels.none || channels.waiting}
         onCancel={stopDetection}
         // A run that found no speech left nothing to discard.
         secondary={
           hasAnalysis && !running && foundCount !== 0
-            ? { label: 'Discard', onClick: vad.clear }
+            ? { label: t('Discard'), onClick: vad.clear }
             : undefined
         }
       >
@@ -85,9 +95,10 @@ export function VadDetection({ mediaOps, readOnly = false, disabled = false }) {
         {/* Detect starts fresh: what was discarded is proposed again. */}
         {discardedCount > 0 && !running && (
           <p className="text-xs text-muted-foreground">
-            {discardedCount === 1
-              ? '1 discarded proposal comes back on Detect.'
-              : `${discardedCount} discarded proposals come back on Detect.`}
+            {t(
+              '{n, plural, one {# discarded proposal comes back on Detect.} other {# discarded proposals come back on Detect.}}',
+              { n: discardedCount },
+            )}
           </p>
         )}
       </ServiceRunDialog>

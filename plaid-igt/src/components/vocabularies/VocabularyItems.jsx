@@ -73,7 +73,7 @@ import { useEntryList } from './useEntryList';
 import { useVocabEntries } from './useVocabEntries';
 import { useEntryDelete } from './useEntryDelete';
 import { countLinksTo, isMachineDraft, sendDeleteDrafts, sendMarkReviewed } from './machineDrafts';
-import { countOf } from '@ui/lib/plural.js';
+import { t } from '@ui/lib/i18n.js';
 import { useSenseMoves } from './useSenseMoves';
 import { EntryList } from './EntryList';
 import { assistantProjectOf } from '@/domain/vocabProject';
@@ -483,8 +483,8 @@ export const VocabularyItems = ({
     const shown = shownDrafts();
     if (!shown.length) return;
     const confirmed = await confirm({
-      title: `Mark ${countOf(shown.length, 'entry', 'entries')} reviewed?`,
-      confirmLabel: 'Mark reviewed',
+      title: t('Mark {n, plural, one {# entry} other {# entries}} reviewed?', { n: shown.length }),
+      confirmLabel: t('Mark reviewed'),
     });
     if (!confirmed) return;
     foldPatches(
@@ -499,7 +499,7 @@ export const VocabularyItems = ({
       statusKey,
       ids: shown.map((it) => settledId(it.id)),
     });
-    if (sent.error) notifyError(sent.error, 'Not marked reviewed');
+    if (sent.error) notifyError(sent.error, t('Not marked reviewed'));
     await readAfter(sent);
   };
   const handleDeleteDrafts = async () => {
@@ -508,11 +508,15 @@ export const VocabularyItems = ({
     const ids = shown.map((it) => settledId(it.id));
     const links = (await vocabLinked()) ? await countLinksTo(client, ids) : 0;
     const confirmed = await confirm({
-      title: `Delete ${countOf(shown.length, 'entry', 'entries')}?`,
+      title: t('Delete {n, plural, one {# entry} other {# entries}}?', { n: shown.length }),
       description: links
-        ? `${countOf(links, 'link')} to ${shown.length === 1 ? 'it' : 'them'} ${links === 1 ? 'is' : 'are'} removed.`
+        ? shown.length === 1
+          ? t('{n, plural, one {# link to it is} other {# links to it are}} removed.', { n: links })
+          : t('{n, plural, one {# link to them is} other {# links to them are}} removed.', {
+              n: links,
+            })
         : undefined,
-      confirmLabel: 'Delete',
+      confirmLabel: t('Delete'),
       destructive: true,
     });
     if (!confirmed) return;
@@ -530,7 +534,7 @@ export const VocabularyItems = ({
       statusKey,
       ids,
     });
-    if (sent.error) notifyError(sent.error, 'Entries not deleted');
+    if (sent.error) notifyError(sent.error, t('Entries not deleted'));
     await readAfter(sent);
   };
 
@@ -684,7 +688,7 @@ export const VocabularyItems = ({
         label: itemLabel(item, numbers),
         hint: item.metadata?.gloss || '',
       }));
-      return entries.length ? [{ group: 'Entries', items: entries }] : [];
+      return entries.length ? [{ group: t('Entries'), items: entries }] : [];
     },
   });
 
@@ -697,7 +701,9 @@ export const VocabularyItems = ({
         if (![403, 404].includes(statusOf(err))) throw err;
         throw Object.assign(
           new Error(
-            `“${form}” was deleted elsewhere. Create again to add this as an entry of its own.`,
+            t('“{form}” was deleted elsewhere. Create again to add this as an entry of its own.', {
+              form,
+            }),
           ),
           { status: 403, method: 'POST', responseData: { unresolved: true }, parentGone: true },
         );
@@ -709,19 +715,19 @@ export const VocabularyItems = ({
 
   const handleSave = async () => {
     if (!draft.form.trim()) {
-      notifyError('The form cannot be empty', 'Invalid form');
+      notifyError(t('The form cannot be empty'), t('Invalid form'));
       return;
     }
     if (rolesetRefused) {
-      notifyError(rolesetRefused, 'Not saved');
+      notifyError(rolesetRefused, t('Not saved'));
       return;
     }
     if (argProblem) {
-      notifyError(argProblem, 'Not saved');
+      notifyError(argProblem, t('Not saved'));
       return;
     }
     if (!saveAllowed) {
-      notifyError('A field holds a value its tagset does not accept.', 'Not saved');
+      notifyError(t('A field holds a value its tagset does not accept.'), t('Not saved'));
       return;
     }
     // The structure the form does not edit (sense place, examples, import
@@ -815,7 +821,7 @@ export const VocabularyItems = ({
           );
           settleEntries(new Map([[id, createdId(created)]]));
         },
-        'Failed to save the entry',
+        t('Failed to save the entry'),
         {
           minted: [id],
           // A headword gone since says so by name (entryStillThere).
@@ -823,7 +829,7 @@ export const VocabularyItems = ({
           // The pending id names nothing now. Still open, it goes back to the
           // new-entry form.
           refused: (err) => {
-            if (err?.parentGone) notifyError(err.message, 'Failed to save the entry');
+            if (err?.parentGone) notifyError(err.message, t('Failed to save the entry'));
             const stillOpen = selectedIdRef.current === id || creatingRef.current === id;
             if (creatingRef.current === id) creatingRef.current = null;
             if (!stillOpen) {
@@ -848,7 +854,7 @@ export const VocabularyItems = ({
       metadata: { ...reservedMetadata(selectedAsRead?.metadata), ...fromBase.metadata },
     };
     const labelOf = (key) =>
-      key === 'form' ? 'Form' : fieldLabel(fields.find((f) => f.name === key) ?? key);
+      key === 'form' ? t('Form') : fieldLabel(fields.find((f) => f.name === key) ?? key);
     setItems((prev) => prev.map((i) => (i.id === item.id ? saved(item.id) : i)));
     showSaved();
     // Only the keys the save changes are sent, so one written elsewhere
@@ -880,7 +886,7 @@ export const VocabularyItems = ({
         };
         if (Object.keys(update).length > 1) await client.vocabItems.bulkUpdate([update]);
       },
-      'Failed to save the entry',
+      t('Failed to save the entry'),
       {
         // A refusal says why. The entries are read again, and the form is
         // the entry as now stored with what the person changed (the form box
@@ -888,7 +894,7 @@ export const VocabularyItems = ({
         // purpose and nothing else. An entry that is gone takes the form away.
         answered: (err) => !!err?.changedElsewhere,
         refused: (err) => {
-          if (err?.changedElsewhere) notifyError(err.message, 'Failed to save the entry');
+          if (err?.changedElsewhere) notifyError(err.message, t('Failed to save the entry'));
           if (isGone(err) || selectedIdRef.current !== item.id) return unseedUnlessTyped();
           if (err?.changedElsewhere) keptRef.current = { id: item.id, typed: asTyped, changes };
           else dispatch({ type: 'draft/reset', form: asTyped.form, fields: asTyped.fields, base });
@@ -966,7 +972,7 @@ export const VocabularyItems = ({
       selectedItem.id,
       next,
       `Add an example to "${selectedItem.form}"`,
-      'Failed to add the example',
+      t('Failed to add the example'),
     );
   };
   const handleRemoveExample = async (index) => {
@@ -975,7 +981,7 @@ export const VocabularyItems = ({
       selectedItem.id,
       withExampleRemoved(selectedItem.metadata, index),
       `Remove an example from "${selectedItem.form}"`,
-      'Failed to remove the example',
+      t('Failed to remove the example'),
     );
   };
 
@@ -1073,7 +1079,7 @@ export const VocabularyItems = ({
   );
 
   if (loading) {
-    return <Loading label="Loading entries…" className="py-6 text-center" />;
+    return <Loading label={t('Loading entries…')} className="py-6 text-center" />;
   }
 
   if (error) {
@@ -1082,7 +1088,7 @@ export const VocabularyItems = ({
         <div className="flex items-start gap-2">
           <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-destructive" />
           <div className="text-sm">
-            <p className="font-medium text-destructive">Error</p>
+            <p className="font-medium text-destructive">{t('Error')}</p>
             <p className="mt-1 text-muted-foreground">{error}</p>
           </div>
         </div>
@@ -1126,7 +1132,7 @@ export const VocabularyItems = ({
         {!selectedId ? (
           <div className="flex min-h-[24rem] items-center justify-center rounded-lg border border-dashed bg-card/50">
             <p className="text-sm text-muted-foreground">
-              {canEdit ? 'Select an entry, or click “New” to add one.' : 'Select an entry.'}
+              {canEdit ? t('Select an entry, or click “New” to add one.') : t('Select an entry.')}
             </p>
           </div>
         ) : isNew ? (
@@ -1144,10 +1150,10 @@ export const VocabularyItems = ({
             <div className="mb-3 flex flex-wrap items-start justify-between gap-x-4 gap-y-2">
               <TabsList>
                 <TabsTrigger value="entry" to={paneTo('entry')}>
-                  Entry
+                  {t('Entry')}
                 </TabsTrigger>
                 <TabsTrigger value="concordance" to={paneTo('concordance')}>
-                  Concordance
+                  {t('Concordance')}
                   {conc.concPlan && (
                     <span className="rounded-full bg-muted px-1.5 text-[10px] leading-4 tabular-nums">
                       {conc.concPlan.totalHits.toLocaleString()}
@@ -1155,7 +1161,7 @@ export const VocabularyItems = ({
                   )}
                 </TabsTrigger>
                 <TabsTrigger value="comments" to={paneTo('comments')}>
-                  Comments
+                  {t('Comments')}
                   {(comments?.countFor(selectedId) ?? 0) > 0 && (
                     <span className="rounded-full bg-muted px-1.5 text-[10px] leading-4 tabular-nums">
                       {comments.countFor(selectedId)}
@@ -1165,7 +1171,7 @@ export const VocabularyItems = ({
               </TabsList>
               <div className="flex shrink-0 items-center gap-2">
                 {past && selectedItem && !liveItem && (
-                  <span className="text-xs text-muted-foreground">Deleted since</span>
+                  <span className="text-xs text-muted-foreground">{t('Deleted since')}</span>
                 )}
                 {past && selectedItem && canRestore && (
                   <Button
@@ -1174,7 +1180,7 @@ export const VocabularyItems = ({
                     size="sm"
                     onClick={() => setRestoring(true)}
                   >
-                    Restore
+                    {t('Restore')}
                   </Button>
                 )}
                 {!past && selectedItem && onOpenHistory && (
@@ -1185,7 +1191,7 @@ export const VocabularyItems = ({
                     className="gap-1.5"
                     onClick={() => onOpenHistory(selectedItem.id)}
                   >
-                    <History className="h-3.5 w-3.5" /> History
+                    <History className="h-3.5 w-3.5" /> {t('History')}
                   </Button>
                 )}
                 {!past && assistantAvailable && selectedItem && wideEnoughForAssistant && (
@@ -1195,10 +1201,10 @@ export const VocabularyItems = ({
                     size="sm"
                     className="shrink-0 gap-1.5"
                     onClick={askAboutEntry}
-                    title="Ask the assistant about this entry"
+                    title={t('Ask the assistant about this entry')}
                   >
                     <AssistantMark className="h-3.5 w-3.5" />
-                    Ask
+                    {t('Ask')}
                   </Button>
                 )}
                 {/* No panel on a window this narrow, so no Ask: the project's
@@ -1211,7 +1217,7 @@ export const VocabularyItems = ({
                     <Button variant="ghost" size="sm" className="shrink-0 gap-1.5" asChild>
                       <Link to={assistantTabPath(assistantProject.id)}>
                         <AssistantMark className="h-3.5 w-3.5" />
-                        Assistant
+                        {t('Assistant')}
                       </Link>
                     </Button>
                   )}
@@ -1229,7 +1235,9 @@ export const VocabularyItems = ({
                 ) : (
                   <div className="flex min-h-[12rem] items-center justify-center rounded-lg border border-dashed bg-card/50">
                     <p className="text-sm text-muted-foreground">
-                      {past ? 'Not in the vocabulary at this time.' : 'This entry was deleted.'}
+                      {past
+                        ? t('Not in the vocabulary at this time.')
+                        : t('This entry was deleted.')}
                     </p>
                   </div>
                 )}
@@ -1269,7 +1277,7 @@ export const VocabularyItems = ({
               {selectedItem && comments && (
                 <div className="rounded-lg border bg-card">
                   <div className="flex items-center justify-between border-b px-4 py-2">
-                    <span className="text-sm font-medium">Comments</span>
+                    <span className="text-sm font-medium">{t('Comments')}</span>
                     {comments.countFor(selectedItem.id) > 0 && (
                       <span className="text-xs text-muted-foreground">
                         {comments.countFor(selectedItem.id)}

@@ -6,7 +6,7 @@ import { Combobox } from '../shared/combobox.jsx';
 import { Loading } from '../shared/Loading.jsx';
 import { humanizeError } from '../../lib/errors.js';
 import { notifyError } from '../../lib/notify.js';
-import { countOf } from '../../lib/plural.js';
+import { t } from '../../lib/i18n.js';
 import { atProjectCap, projectCandidates, sameNameDetails } from './projectReach.js';
 
 // The other projects a conversation reads (see projectReach.js): one chip each
@@ -15,7 +15,11 @@ import { atProjectCap, projectCandidates, sameNameDetails } from './projectReach
 // One project the conversation reads besides its own, removable. `label` is
 // its remove button's accessible name, numbered where two chips share a name
 // (`chipRemoveLabels`).
-export const ProjectChip = ({ project, onRemove, label = `Remove ${project.name}` }) => (
+export const ProjectChip = ({
+  project,
+  onRemove,
+  label = t('Remove {name}', { name: project.name }),
+}) => (
   <span className="inline-flex max-w-full items-center gap-1.5 rounded-full border bg-muted/50 py-1 pl-2.5 pr-1 text-xs">
     <FolderOpen className="h-3 w-3 shrink-0 text-muted-foreground" />
     <span dir="auto" className="truncate font-medium">
@@ -24,7 +28,7 @@ export const ProjectChip = ({ project, onRemove, label = `Remove ${project.name}
     <button
       type="button"
       onClick={() => onRemove(project.id)}
-      title="Remove"
+      title={t('Remove')}
       aria-label={label}
       className="rounded-full p-0.5 text-muted-foreground hover:bg-muted hover:text-foreground"
     >
@@ -74,7 +78,7 @@ export const AddProject = ({
       .then((all) => alive && setProjects(all || []))
       .catch((e) => {
         if (!alive) return;
-        setError(humanizeError(e, 'Failed to load your projects.'));
+        setError(humanizeError(e, t('Failed to load your projects.')));
         setProjects([]);
       });
     return () => {
@@ -85,7 +89,9 @@ export const AddProject = ({
   // Two projects with one name tell themselves apart by their language, and
   // by their document count where that is the same too (ruling 41).
   const candidates = projectCandidates(projects, homeId, joined, opens, language);
-  const details = sameNameDetails(candidates, (n) => countOf(n, 'document'));
+  const details = sameNameDetails(candidates, (n) =>
+    t('{n, plural, one {# document} other {# documents}}', { n }),
+  );
   const options = candidates.map((p, i) => ({ value: p.id, label: p.name, detail: details[i] }));
 
   const pick = async (id, option) => {
@@ -131,8 +137,12 @@ export const AddProject = ({
           onClick={(e) => {
             if (full) e.preventDefault();
           }}
-          title={full ? `At most ${max} projects` : 'Add project'}
-          aria-label="Add project"
+          title={
+            full
+              ? t('At most {max, plural, one {# project} other {# projects}}', { max })
+              : t('Add project')
+          }
+          aria-label={t('Add project')}
         >
           <FolderPlus className="h-4 w-4" />
         </Button>
@@ -145,8 +155,8 @@ export const AddProject = ({
         ) : options.length === 0 ? (
           <p className="px-1 py-1 text-xs text-muted-foreground">
             {projectCandidates(projects, homeId, joined).length
-              ? 'No other projects this assistant can read.'
-              : 'No other projects.'}
+              ? t('No other projects this assistant can read.')
+              : t('No other projects.')}
           </p>
         ) : (
           <>
@@ -168,8 +178,8 @@ export const AddProject = ({
                 onSubmit={pick}
                 autoHighlight
                 autoFocus
-                placeholder="Project"
-                aria-label="Project"
+                placeholder={t('Project')}
+                aria-label={t('Project')}
                 className="h-8 w-full rounded-md border bg-background px-2 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
                 listClassName="max-w-[18rem]"
                 optionClassName="truncate"
@@ -185,7 +195,7 @@ export const AddProject = ({
                 }
               />
               {checking && (
-                <span className="shrink-0 text-xs text-muted-foreground">Checking…</span>
+                <span className="shrink-0 text-xs text-muted-foreground">{t('Checking…')}</span>
               )}
             </div>
           </>

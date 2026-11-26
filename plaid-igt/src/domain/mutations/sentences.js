@@ -19,6 +19,7 @@ import { reparentSpans } from './reparent.js';
 import { applyMergeRules } from '../igtConstraints.js';
 import { pendingId, settledId } from '@ui/domain/pendingIds.js';
 import { notSetUp } from '@ui/domain/setupGuard.js';
+import { t, msg } from '@ui/lib/i18n.js';
 import { countSplitLoss, dropRelations } from '@ui/domain/annotationLoss.js';
 import { chunk } from '../bulk.js';
 import { collectMweLinks } from '../mwe.js';
@@ -27,7 +28,7 @@ import { collectMweLinks } from '../mwe.js';
 const sentenceSpanIds = (info, sentenceIds) =>
   (info.spanLayers?.sentence || []).flatMap((sl) =>
     (sl.spans || [])
-      .filter((sp) => (sp.tokens || []).some((t) => sentenceIds.has(t)))
+      .filter((sp) => (sp.tokens || []).some((tok) => sentenceIds.has(tok)))
       .map((sp) => sp.id),
   );
 
@@ -41,7 +42,7 @@ const sentenceSpanIds = (info, sentenceIds) =>
 export const clearSentencesFits = (info) => {
   const tokens = info?.sentenceTokenLayer?.tokens || [];
   if (tokens.length <= 1) return true;
-  const spans = sentenceSpanIds(info, new Set(tokens.map((t) => t.id)));
+  const spans = sentenceSpanIds(info, new Set(tokens.map((tok) => tok.id)));
   return chunk(spans).length + tokens.length - 1 <= MAX_BATCH_OPS;
 };
 
@@ -59,8 +60,10 @@ const mweWordsDrawn = (tokenIds, beginOf, sentences) => {
   return here >= 2 ? here : 0;
 };
 
-export const TOO_MANY_SENTENCES =
-  'This document has too many sentences to reset. Split it into shorter documents.';
+// Shown where it is used: t(TOO_MANY_SENTENCES).
+export const TOO_MANY_SENTENCES = msg(
+  'This document has too many sentences to reset. Split it into shorter documents.',
+);
 
 export const sentenceMutations = {
   async mergeSentence(sentenceId) {
@@ -68,15 +71,15 @@ export const sentenceMutations = {
     const sentenceTokens = info.sentenceTokenLayer?.tokens || [];
     const sentence = sentenceTokens.find((s) => s.id === sentenceId);
     if (!sentence) {
-      this.refuse('Sentence not found');
+      this.refuse(t('Sentence not found'));
       return false;
     }
     const prev = sentenceTokens.find((s) => s.end === sentence.begin);
     if (!prev) {
-      this.refuse('Cannot merge: no previous sentence');
+      this.refuse(t('Cannot merge: no previous sentence'));
       return false;
     }
-    const label = 'Failed to merge sentence';
+    const label = msg('Failed to merge sentence');
     if (!this._canWrite(label)) return false;
     // See domain/tokenReshape.js: the survivor takes on the provenance of
     // whichever side most needs review, so a machine-made sentence boundary
@@ -99,12 +102,12 @@ export const sentenceMutations = {
     this._applyRawPatch((next, infoNext) => {
       const tokens = infoNext.sentenceTokenLayer?.tokens;
       if (!Array.isArray(tokens)) return;
-      const p = tokens.find((t) => t.id === prev.id);
+      const p = tokens.find((tok) => tok.id === prev.id);
       if (p) {
         p.end = sentence.end;
         if (patch) p.metadata = mergeMetadata(p.metadata || {}, patch);
       }
-      infoNext.sentenceTokenLayer.tokens = tokens.filter((t) => t.id !== sentenceId);
+      infoNext.sentenceTokenLayer.tokens = tokens.filter((tok) => tok.id !== sentenceId);
       // Server reparents the merged-away sentence's spans (translation, notes,
       // …) onto prev (token.clj merge-tokens); mirrored here. Its layer rules
       // then join two values of one field into prev's own annotation in the
@@ -185,7 +188,9 @@ export const sentenceMutations = {
     const sorted = [...new Set(positions)].sort((a, b) => a - b);
     if (!sorted.length) return false;
     const label =
-      sorted.length === 1 && !quiet ? 'Failed to split sentence' : 'Failed to split sentences';
+      sorted.length === 1 && !quiet
+        ? msg('Failed to split sentence')
+        : msg('Failed to split sentences');
     if (!this._canWrite(label)) return false;
     const splits = [];
     for (const charPos of sorted) {
@@ -215,18 +220,18 @@ export const sentenceMutations = {
     const sentenceTokens = this.layerInfo.sentenceTokenLayer?.tokens || [];
     const containing = sentenceTokens.find((s) => s.begin <= charPos && charPos < s.end);
     if (!containing) {
-      if (!quiet) this.refuse('No sentence contains the split position');
+      if (!quiet) this.refuse(t('No sentence contains the split position'));
       return null;
     }
     if (charPos === containing.begin) {
-      if (!quiet) this.refuse('Cannot split at the first character of a sentence');
+      if (!quiet) this.refuse(t('Cannot split at the first character of a sentence'));
       return null;
     }
     // A word belongs to one sentence. A cut through it would split its
     // morphemes and leave both halves with no form or gloss.
     const words = this.layerInfo.primaryTokenLayer?.tokens || [];
     if (words.some((w) => w.begin < charPos && charPos < w.end)) {
-      if (!quiet) this.refuse('Cannot split a sentence inside a word');
+      if (!quiet) this.refuse(t('Cannot split a sentence inside a word'));
       return null;
     }
     return containing;
@@ -248,7 +253,7 @@ export const sentenceMutations = {
       // (REV-N5-APPS R3).
       const layers = infoNext.primaryTextLayer?.tokenLayers || [];
       dropRelations(layers, countSplitLoss(layers, containing.id, charPos).relationIds);
-      const s = tokens.find((t) => t.id === containing.id);
+      const s = tokens.find((tok) => tok.id === containing.id);
       if (s) {
         s.end = charPos;
         if (leftPatch) s.metadata = mergeMetadata(s.metadata || {}, leftPatch);
@@ -285,12 +290,12 @@ export const sentenceMutations = {
       return false;
     }
     if (sentenceTokens.length === 0) return false;
-    const label = 'Failed to clear sentences';
+    const label = msg('Failed to clear sentences');
     if (!this._canWrite(label)) return false;
     // One batch or nothing: split past the cap, a failure after the first
     // part would leave the translations deleted and the sentences half merged.
     if (!clearSentencesFits(info)) {
-      this.refuse(TOO_MANY_SENTENCES);
+      this.refuse(t(TOO_MANY_SENTENCES));
       return false;
     }
 
@@ -301,7 +306,7 @@ export const sentenceMutations = {
     const gone = new Set(spanIds);
     this._applyRawPatch((next, infoNext) => {
       const layer = infoNext.sentenceTokenLayer;
-      const keep = (layer.tokens || []).find((t) => t.id === first.id);
+      const keep = (layer.tokens || []).find((tok) => tok.id === first.id);
       if (keep) keep.end = last.end;
       layer.tokens = keep ? [keep] : [];
       (infoNext.spanLayers?.sentence || []).forEach((sl) => {

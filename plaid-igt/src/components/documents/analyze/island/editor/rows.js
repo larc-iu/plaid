@@ -1,5 +1,6 @@
 import { html } from 'lit-html';
-import { anchoredPos } from './shared.js';
+import { anchoredPos, rowTitle } from './shared.js';
+import { t } from '@ui/lib/i18n.js';
 
 // Minimized rows: which annotation rows are collapsed, remembered per
 // project, and the row menu that toggles them.
@@ -40,7 +41,7 @@ export const rows = {
       ...ctx.wordFields.map((name) => ({ key: `word:${name}`, name, scope: 'word' })),
     ];
     if (ctx.hasMorphemes) {
-      rows.push({ key: 'morphform', name: 'Morphemes', scope: 'morpheme' });
+      rows.push({ key: 'morphform', name: t('Morphemes'), scope: 'morpheme' });
       rows.push(
         ...ctx.morphFields.map((name) => ({ key: `morph:${name}`, name, scope: 'morpheme' })),
       );
@@ -144,30 +145,35 @@ export const rows = {
     return html`
       <div class="igt-rowmenu" style=${posStyle} role="menu" @click=${(e) => e.stopPropagation()}>
         <div class="igt-rowmenu__head">
-          <span>Rows</span>
+          <span>${t('Rows')}</span>
           <button
             type="button"
             class="igt-rowmenu__all"
             @click=${() => this._setAllRows(ctx, !anyCollapsed)}
           >
-            ${anyCollapsed ? 'Expand all' : 'Minimize all'}
+            ${anyCollapsed ? t('Expand all') : t('Minimize all')}
           </button>
         </div>
         ${rows.map((r) => {
           const collapsed = this._isCollapsed(r.key);
           return html`
-            <label class="igt-rowmenu__item" title=${`${r.name} (${r.scope})`}>
+            <label class="igt-rowmenu__item" title=${rowTitle(r.name, r.scope)}>
               <input
                 type="checkbox"
                 .checked=${!collapsed}
                 @change=${() => this._toggleRow(r.key)}
               />
               <span class="igt-rowmenu__name">${r.name}</span>
-              <span class="igt-rowmenu__scope">${r.scope}</span>
+              <span class="igt-rowmenu__scope"
+                >${t(
+                  '{scope, select, orthography {orthography} word {word} morpheme {morpheme} other {sentence}}',
+                  { scope: r.scope },
+                )}</span
+              >
             </label>
           `;
         })}
-        <div class="igt-rowmenu__hint">minimized rows stay as a thin stripe</div>
+        <div class="igt-rowmenu__hint">${t('minimized rows stay as a thin stripe')}</div>
       </div>
     `;
   },

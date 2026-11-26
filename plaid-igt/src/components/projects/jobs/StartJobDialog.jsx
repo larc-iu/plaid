@@ -21,6 +21,7 @@ import {
 } from '@ui/components/ui/dropdown-menu';
 import { SearchInput } from '@ui/components/shared/list-search';
 import { compareNames } from '@ui/domain/collation.js';
+import { t } from '@ui/lib/i18n.js';
 import { STARTER_TEXTS, activeJobOf, instructionsLength, jobPath, startJob } from './jobText.js';
 import { InstructionsCount, JobActiveLine, NoWorkerLine } from './jobLines.jsx';
 
@@ -38,13 +39,18 @@ export const StartWithoutAssistant = ({ projectId, client, documents = null }) =
     <>
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
-          <Button variant="outline" size="icon" aria-label="More job actions" title="More">
+          <Button
+            variant="outline"
+            size="icon"
+            aria-label={t('More job actions')}
+            title={t('More')}
+          >
             <MoreHorizontal className="h-4 w-4" />
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end">
           <DropdownMenuItem onSelect={() => setOpen(true)}>
-            Start without the assistant
+            {t('Start without the assistant')}
           </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
@@ -88,7 +94,7 @@ const StartJobDialog = ({ projectId, client, documents: given, onClose }) => {
       client.projects
         .listDocuments(projectId)
         .then((docs) => live && setListed(docs))
-        .catch((err) => live && notifyError(err, 'Failed to list the documents'));
+        .catch((err) => live && notifyError(err, t('Failed to list the documents')));
     }
     return () => {
       live = false;
@@ -140,7 +146,7 @@ const StartJobDialog = ({ projectId, client, documents: given, onClose }) => {
     } catch (err) {
       const active = activeJobOf(err);
       if (active) setActiveJob(active);
-      else notifyError(err, 'Failed to start the job');
+      else notifyError(err, t('Failed to start the job'));
     } finally {
       setStarting(false);
     }
@@ -150,15 +156,17 @@ const StartJobDialog = ({ projectId, client, documents: given, onClose }) => {
     <Dialog open onOpenChange={(o) => !o && onClose()}>
       <DialogContent className="max-w-lg">
         <DialogHeader>
-          <DialogTitle>Start job</DialogTitle>
+          <DialogTitle>{t('Start job')}</DialogTitle>
           <DialogDescription>
-            The assistant works through the chosen documents and writes its changes as it goes.
+            {t(
+              'The assistant works through the chosen documents and writes its changes as it goes.',
+            )}
           </DialogDescription>
         </DialogHeader>
 
         <div className="flex flex-col gap-4">
           <fieldset className="flex flex-col gap-2">
-            <legend className="mb-2 text-sm font-medium">Documents</legend>
+            <legend className="mb-2 text-sm font-medium">{t('Documents')}</legend>
             <label
               className={`flex items-center gap-2 text-sm ${tooMany ? 'text-muted-foreground' : 'cursor-pointer'}`}
             >
@@ -169,11 +177,11 @@ const StartJobDialog = ({ projectId, client, documents: given, onClose }) => {
                 disabled={tooMany}
                 onChange={() => setAll(true)}
               />
-              <span>All documents ({documents.length.toLocaleString()})</span>
+              <span>{t('All documents ({n, number})', { n: documents.length })}</span>
             </label>
             {tooMany && (
               <p className="ml-6 text-xs text-muted-foreground">
-                A job takes at most {documentsMax.toLocaleString()} documents.
+                {t('A job takes at most {n, number} documents.', { n: documentsMax })}
               </p>
             )}
             <label className="flex cursor-pointer items-center gap-2 text-sm">
@@ -183,14 +191,14 @@ const StartJobDialog = ({ projectId, client, documents: given, onClose }) => {
                 checked={!allChosen}
                 onChange={() => setAll(false)}
               />
-              <span>Selected documents</span>
+              <span>{t('Selected documents')}</span>
             </label>
             {!allChosen && (
               <>
                 <div className="flex flex-wrap items-center gap-2">
                   <SearchInput
                     className="min-w-40 flex-1"
-                    placeholder="Search documents…"
+                    placeholder={t('Search documents…')}
                     value={query}
                     onChange={setQuery}
                   />
@@ -200,7 +208,7 @@ const StartJobDialog = ({ projectId, client, documents: given, onClose }) => {
                     onClick={selectShown}
                     disabled={!shown.length}
                   >
-                    Select shown
+                    {t('Select shown')}
                   </Button>
                   <Button
                     variant="outline"
@@ -208,17 +216,17 @@ const StartJobDialog = ({ projectId, client, documents: given, onClose }) => {
                     onClick={() => setChosen(new Set())}
                     disabled={!picked}
                   >
-                    Clear
+                    {t('Clear')}
                   </Button>
                   <span
                     className={`whitespace-nowrap text-xs ${pickedOver ? 'text-destructive' : 'text-muted-foreground'}`}
                   >
-                    {picked.toLocaleString()} selected
+                    {t('{n, number} selected', { n: picked })}
                   </span>
                 </div>
                 <div
                   className="flex max-h-48 flex-col gap-1 overflow-y-auto rounded-md border p-2"
-                  aria-label="Documents"
+                  aria-label={t('Documents')}
                   role="group"
                 >
                   {shown.map((d) => (
@@ -236,7 +244,7 @@ const StartJobDialog = ({ projectId, client, documents: given, onClose }) => {
                   ))}
                   {listed !== null && !shown.length && (
                     <p className="px-1 py-2 text-sm text-muted-foreground">
-                      {documents.length ? 'No documents match.' : 'No documents.'}
+                      {documents.length ? t('No documents match.') : t('No documents.')}
                     </p>
                   )}
                 </div>
@@ -245,8 +253,8 @@ const StartJobDialog = ({ projectId, client, documents: given, onClose }) => {
           </fieldset>
 
           <div className="flex flex-col gap-1.5">
-            <Label htmlFor="job-instructions">Instructions</Label>
-            <div className="flex flex-wrap gap-2" role="group" aria-label="Start from">
+            <Label htmlFor="job-instructions">{t('Instructions')}</Label>
+            <div className="flex flex-wrap gap-2" role="group" aria-label={t('Start from')}>
               {STARTER_TEXTS.map((s) => (
                 <Button
                   key={s.label}
@@ -255,7 +263,7 @@ const StartJobDialog = ({ projectId, client, documents: given, onClose }) => {
                   size="sm"
                   onClick={() => setInstructions(s.text)}
                 >
-                  {s.label}
+                  {t(s.label)}
                 </Button>
               ))}
             </div>
@@ -269,7 +277,9 @@ const StartJobDialog = ({ projectId, client, documents: given, onClose }) => {
             />
             <InstructionsCount text={instructions} max={instructionsMax} />
             <p className="text-sm text-muted-foreground">
-              The job decides from the instructions what to fill. Its plan shows on the job’s page.
+              {t(
+                'The job decides from the instructions what to fill. Its plan shows on the job’s page.',
+              )}
             </p>
           </div>
 
@@ -287,10 +297,10 @@ const StartJobDialog = ({ projectId, client, documents: given, onClose }) => {
 
         <DialogFooter>
           <Button variant="outline" onClick={onClose} disabled={starting}>
-            Cancel
+            {t('Cancel')}
           </Button>
           <Button onClick={start} disabled={!canStart}>
-            {starting ? 'Starting…' : 'Start'}
+            {starting ? t('Starting…') : t('Start')}
           </Button>
         </DialogFooter>
       </DialogContent>

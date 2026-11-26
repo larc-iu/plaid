@@ -23,7 +23,7 @@ import {
   SelectValue,
 } from '@ui/components/ui/select';
 import { cn } from '@ui/lib/utils';
-import { countOf } from '@ui/lib/plural.js';
+import { msg, t, tx } from '@ui/lib/i18n.js';
 import { notifySuccess, notifyError, notifyWarning, humanizeError } from '@/utils/feedback';
 import { humanizeFieldName, FIELD_TYPES } from '@/domain/vocabFields';
 import { buildReplacer, MATCH_EMPTY } from '@/domain/replacer';
@@ -42,7 +42,9 @@ import { replaceLabel } from '@/domain/editLabels.js';
 // alone: the search tab queries the server, which has no way to ask for the
 // entries where a field is missing, and Bulk Edit rewrites document text,
 // where there is no blank to fill.
-const REPLACE_MATCH_TYPES = [...MATCH_TYPES, { id: MATCH_EMPTY, label: 'is empty' }];
+const REPLACE_MATCH_TYPES = [...MATCH_TYPES, { id: MATCH_EMPTY, label: msg('is empty') }];
+
+const strong = (c) => <strong>{c}</strong>;
 
 const Checkbox = ({ checked, onChange, indeterminate = false, ...rest }) => (
   <input
@@ -96,6 +98,7 @@ export const ReplaceDialog = ({
   // text, and is edited there too.
   const targets = useMemo(
     () => [
+      // i18n-ignore: the label also names the operation in the History
       ...(canRename ? [{ name: 'form', label: 'Form' }] : []),
       ...fields
         // name-ok: A15 built-in entry key
@@ -116,7 +119,9 @@ export const ReplaceDialog = ({
   // instruction, and it is what says whether there is anything to preview.
   const filling = matchType === MATCH_EMPTY;
   const asked = filling ? repl !== '' : find !== '';
-  const target = targets.find((t) => t.name === field) ?? targets[0];
+  const target = targets.find((x) => x.name === field) ?? targets[0];
+  // name-ok: A15 built-in entry key
+  const targetShown = (x) => (x.name === 'form' ? t('Form') : x.label);
   const tagset = tagsetFor(target.name);
   // The Status field's reserved values cannot be renamed here either: each
   // may become another Status value, or nothing, but no new spelling of itself.
@@ -221,7 +226,12 @@ export const ReplaceDialog = ({
               reused = true;
             }
             done += body.length;
-            setProgress(`${done.toLocaleString()} of ${total.toLocaleString()}`);
+            setProgress(
+              t('{done} of {total}', {
+                done: done.toLocaleString(),
+                total: total.toLocaleString(),
+              }),
+            );
           }
         },
         {
@@ -262,11 +272,21 @@ export const ReplaceDialog = ({
         await onApplied();
         const note = skippedNote([[skipped, 'value']]);
         if (!total && note)
-          notifyWarning(note.trim(), filling ? 'Nothing set' : 'Nothing replaced');
+          notifyWarning(note.trim(), filling ? t('Nothing set') : t('Nothing replaced'));
         else
           notifySuccess(
-            `${countOf(total, 'value')} ${filling ? 'set' : 'replaced'} in ${target.label}.${note}`,
-            filling ? 'Set' : 'Replaced',
+            `${
+              filling
+                ? t('{n, plural, one {# value} other {# values}} set in {field}.', {
+                    n: total,
+                    field: targetShown(target),
+                  })
+                : t('{n, plural, one {# value} other {# values}} replaced in {field}.', {
+                    n: total,
+                    field: targetShown(target),
+                  })
+            }${note}`,
+            filling ? t('Set') : t('Replaced'),
           );
         setFind('');
         setRepl('');
@@ -274,8 +294,14 @@ export const ReplaceDialog = ({
       } else {
         console.error('Replace failed:', error);
         notifyError(
-          humanizeError(error, `Replaced ${done.toLocaleString()} of ${total.toLocaleString()}.`),
-          'Failed to replace',
+          humanizeError(
+            error,
+            t('Replaced {done} of {total}.', {
+              done: done.toLocaleString(),
+              total: total.toLocaleString(),
+            }),
+          ),
+          t('Failed to replace'),
         );
       }
     } finally {
@@ -288,36 +314,36 @@ export const ReplaceDialog = ({
     <Dialog open={open} onOpenChange={(o) => (o ? onOpenChange(true) : close())}>
       <DialogContent className="max-w-2xl">
         <DialogHeader>
-          <DialogTitle>Find and replace</DialogTitle>
+          <DialogTitle>{t('Find and replace')}</DialogTitle>
         </DialogHeader>
 
         <div className="flex flex-col gap-3">
           <div className="flex flex-wrap items-end gap-2">
             <div className="flex flex-col gap-1">
-              <Label>In</Label>
+              <Label>{t('In')}</Label>
               <Select value={target.name} onValueChange={setField}>
-                <SelectTrigger className="w-40" aria-label="Field">
+                <SelectTrigger className="w-40" aria-label={t('Field')}>
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  {targets.map((t) => (
-                    <SelectItem key={t.name} value={t.name}>
-                      {t.label}
+                  {targets.map((x) => (
+                    <SelectItem key={x.name} value={x.name}>
+                      {targetShown(x)}
                     </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
             </div>
             <div className="flex flex-col gap-1">
-              <Label>Match</Label>
+              <Label>{t('Match')}</Label>
               <Select value={matchType} onValueChange={setMatchType}>
-                <SelectTrigger className="w-40" aria-label="Match">
+                <SelectTrigger className="w-40" aria-label={t('Match')}>
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
                   {REPLACE_MATCH_TYPES.map((m) => (
                     <SelectItem key={m.id} value={m.id}>
-                      {m.label}
+                      {t(m.label)}
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -327,21 +353,23 @@ export const ReplaceDialog = ({
           <div className="flex flex-wrap items-end gap-2">
             {!filling && (
               <div className="flex min-w-48 flex-1 flex-col gap-1">
-                <Label htmlFor="vocab-replace-find">Find</Label>
+                <Label htmlFor="vocab-replace-find">{t('Find')}</Label>
                 <Input
                   id="vocab-replace-find"
                   compose={matchType !== 'regex'}
                   dir={matchType === 'regex' ? 'ltr' : 'auto'}
                   value={find}
                   onChange={(e) => setFind(e.target.value)}
-                  placeholder={matchType === 'regex' ? 'pattern, e.g. ([aeiou])h' : 'text'}
+                  placeholder={matchType === 'regex' ? t('pattern, e.g. ([aeiou])h') : t('text')}
                   spellCheck={false}
                   autoFocus
                 />
               </div>
             )}
             <div className="flex min-w-48 flex-1 flex-col gap-1">
-              <Label htmlFor="vocab-replace-with">{filling ? 'Set to' : 'Replace with'}</Label>
+              <Label htmlFor="vocab-replace-with">
+                {filling ? t('Set to') : t('Replace with')}
+              </Label>
               <Input
                 id="vocab-replace-with"
                 compose={matchType !== 'regex'}
@@ -350,23 +378,27 @@ export const ReplaceDialog = ({
                 onChange={(e) => setRepl(e.target.value)}
                 placeholder={
                   matchType === 'regex'
-                    ? 'replacement, $1 for groups'
+                    ? t('replacement, $1 for groups')
                     : filling
-                      ? 'value'
-                      : 'replacement'
+                      ? t('value')
+                      : t('replacement')
                 }
                 spellCheck={false}
                 autoFocus={filling}
               />
             </div>
           </div>
-          {error && <p className="text-sm text-destructive">Check your regex: {error}</p>}
+          {error && (
+            <p className="text-sm text-destructive">{t('Check your regex: {error}', { error })}</p>
+          )}
 
           {asked && !error && (
             <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm">
               <span>
-                <strong>{countOf(rows.length, 'match', 'matches')}</strong>,{' '}
-                <strong>{chosen.length.toLocaleString()}</strong> selected
+                {tx(
+                  '<strong>{n, plural, one {# match} other {# matches}}</strong>, <strong>{selected, number}</strong> selected',
+                  { n: rows.length, selected: chosen.length, strong },
+                )}
               </span>
               {writable.length > 0 && (
                 <>
@@ -375,14 +407,14 @@ export const ReplaceDialog = ({
                     className="text-xs text-primary underline-offset-2 hover:underline"
                     onClick={() => setSelected(new Set(writable.map((r) => r.id)))}
                   >
-                    select all
+                    {t('select all')}
                   </button>
                   <button
                     type="button"
                     className="text-xs text-primary underline-offset-2 hover:underline"
                     onClick={() => setSelected(new Set())}
                   >
-                    select none
+                    {t('select none')}
                   </button>
                 </>
               )}
@@ -390,26 +422,37 @@ export const ReplaceDialog = ({
           )}
           {outsideTagset > 0 && (
             <p className="rounded-md border border-destructive/50 bg-destructive/5 px-3 py-2 text-sm text-destructive">
-              {countOf(outsideTagset, 'value')} would fall outside the{' '}
-              <strong>{target?.tagset ?? 'field'}</strong> tagset and cannot be written.
+              {target?.tagset
+                ? tx(
+                    '{n, plural, one {# value} other {# values}} would fall outside the <strong>{tagset}</strong> tagset and cannot be written.',
+                    { n: outsideTagset, tagset: target.tagset, strong },
+                  )
+                : tx(
+                    '{n, plural, one {# value} other {# values}} would fall outside the <strong>field</strong> tagset and cannot be written.',
+                    { n: outsideTagset, strong },
+                  )}
             </p>
           )}
           {renamesReserved > 0 && (
             <p className="rounded-md border border-destructive/50 bg-destructive/5 px-3 py-2 text-sm text-destructive">
-              {countOf(renamesReserved, 'value')} would rename a reserved Status value and cannot be
-              written.
+              {t(
+                '{n, plural, one {# value} other {# values}} would rename a reserved Status value and cannot be written.',
+                { n: renamesReserved },
+              )}
             </p>
           )}
           {emptied > 0 && (
             <p className="rounded-md border border-destructive/50 bg-destructive/5 px-3 py-2 text-sm text-destructive">
-              {countOf(emptied, 'entry', 'entries')} would be left with no form and cannot be
-              written.
+              {t(
+                '{n, plural, one {# entry} other {# entries}} would be left with no form and cannot be written.',
+                { n: emptied },
+              )}
             </p>
           )}
 
           {asked && !error && rows.length === 0 && (
             <p className="py-6 text-center text-sm text-muted-foreground">
-              {filling ? 'No empty values.' : 'No matching values.'}
+              {filling ? t('No empty values.') : t('No matching values.')}
             </p>
           )}
           {rows.length > 0 && (
@@ -427,7 +470,7 @@ export const ReplaceDialog = ({
                       checked={selected.has(r.id)}
                       disabled={!!r.invalid}
                       onChange={(v) => toggle(r.id, v)}
-                      aria-label={`Replace in ${r.form}`}
+                      aria-label={t('Replace in {form}', { form: r.form })}
                     />
                     <FormLabel
                       form={r.form}
@@ -445,14 +488,16 @@ export const ReplaceDialog = ({
         <DialogFooter>
           {progress && <Loading className="mr-auto p-0" label={progress} />}
           <Button variant="outline" onClick={close} disabled={busy}>
-            Cancel
+            {t('Cancel')}
           </Button>
           <Button onClick={doApply} disabled={busy || !!error || chosen.length === 0}>
             {busy
               ? filling
-                ? 'Setting…'
-                : 'Replacing…'
-              : `${filling ? 'Set' : 'Replace'} ${countOf(chosen.length, 'value')}`}
+                ? t('Setting…')
+                : t('Replacing…')
+              : filling
+                ? t('Set {n, plural, one {# value} other {# values}}', { n: chosen.length })
+                : t('Replace {n, plural, one {# value} other {# values}}', { n: chosen.length })}
           </Button>
         </DialogFooter>
       </DialogContent>

@@ -6,7 +6,7 @@ import { AssistantMarkdown } from '@ui/components/assistant/AssistantMarkdown.js
 import { copyText } from '@ui/lib/download.js';
 import { TYPE } from '@ui/lib/typeScale.js';
 import { historyHref } from '@ui/hooks/useHistoryParam.js';
-import { plural } from '@ui/lib/plural.js';
+import { msg, t, tx } from '@ui/lib/i18n.js';
 import { APP_ROUTES } from '@/appRoutes.js';
 import {
   HARMONIZE_BY_TEXT,
@@ -17,7 +17,6 @@ import {
   refusedText,
   skippedText,
 } from './jobText.js';
-import SECTIONS from './jobSections.json';
 import {
   BLANK_ELSEWHERE,
   NOT_WRITTEN,
@@ -37,19 +36,34 @@ import {
 // skipped, `skipped`), what harmonize changed and left, the entries the job
 // made, and those of them nothing links (the job runs no cleanup of its own: a
 // person deletes them). Every list the worker cut says how many it left out. A
-// list's heading is jobSections.json's, which the assistant names sections by
-// (read_job).
+// list's heading is the English of jobSections.json, which the assistant names
+// sections by (read_job): keep the two the same.
+const HEADINGS = {
+  documents: msg('Documents'),
+  skipped: msg('Skipped sentences'),
+  left: msg('Blank'),
+  proposed: msg('Proposed changes'),
+  notes: msg('Notes'),
+  tables: msg('Tables'),
+  'plan.left_out': msg('Left out by the plan'),
+  'harmonize.changed': msg('Analyses made consistent'),
+  'harmonize.left': msg('Forms left inconsistent'),
+  'entries.created': msg('Entries created'),
+  'entries.unlinked': msg('Entries with no links'),
+  refused: msg('Not done, refused'),
+  'totals.fields': msg('Values set in each field'),
+  'totals.blank': msg('Still blank of what the job fills'),
+  respelled: msg('Respelled, analysis kept: check its morphemes'),
+};
 
 export const Heading = ({ section, children }) => (
-  <h3 className={`${TYPE.card} mb-2 mt-6`}>{section ? SECTIONS[section] : children}</h3>
+  <h3 className={`${TYPE.card} mb-2 mt-6`}>{section ? t(HEADINGS[section]) : children}</h3>
 );
 
-export const More = ({ n, noun }) =>
-  n > 0 ? (
-    <p className="mt-1 text-sm text-muted-foreground">
-      And {n.toLocaleString()} more {plural(n, noun)}.
-    </p>
-  ) : null;
+// How many more a list holds than it shows, `children` the whole sentence
+// ("And 3 more forms."), shown when there are any.
+export const More = ({ n, children }) =>
+  n > 0 ? <p className="mt-1 text-sm text-muted-foreground">{children}</p> : null;
 
 const Analysis = ({ text, count }) => (
   <span className="whitespace-nowrap">
@@ -63,21 +77,25 @@ const Analysis = ({ text, count }) => (
 // (`besideExisting`, RPF3 round 4).
 const EntryLine = ({ entry }) => {
   const text = `${entry.form}${entry.gloss ? ` ‘${entry.gloss}’` : ''}`;
+  const shown =
+    entry.id && entry.lexicon ? (
+      <Link
+        className="underline"
+        to={`/vocabularies/${entry.lexicon}?item=${encodeURIComponent(entry.id)}`}
+      >
+        {text}
+      </Link>
+    ) : (
+      text
+    );
   return (
     <li>
-      {entry.id && entry.lexicon ? (
-        <Link
-          className="underline"
-          to={`/vocabularies/${entry.lexicon}?item=${encodeURIComponent(entry.id)}`}
-        >
-          {text}
-        </Link>
-      ) : (
-        text
-      )}
-      {entry.besideExisting && (
-        <span className="text-muted-foreground">, beside an existing entry of this form</span>
-      )}
+      {entry.besideExisting
+        ? tx('{entry}<muted>, beside an existing entry of this form</muted>', {
+            entry: shown,
+            muted: (c) => <span className="text-muted-foreground">{c}</span>,
+          })
+        : shown}
     </li>
   );
 };
@@ -93,12 +111,12 @@ const DocumentName = ({ projectId, d }) =>
       {d.name}
     </Link>
   ) : (
-    <span className="font-medium">{d.name ?? 'Deleted document'}</span>
+    <span className="font-medium">{d.name ?? t('Deleted document')}</span>
   );
 
 const BlankElsewhere = ({ counts }) =>
-  BLANK_ELSEWHERE.flatMap(([key, label]) =>
-    blankLines(counts, key, label).map((line) => (
+  BLANK_ELSEWHERE.flatMap(([key, message]) =>
+    blankLines(counts, key, message).map((line) => (
       <p key={line} className="ml-4 text-muted-foreground">
         {line}
       </p>
@@ -114,7 +132,7 @@ const Refused = ({ projectId, d }) => {
   if (!list.length && !(d.refusedMore > 0)) return null;
   return (
     <>
-      <p className="ml-4 mt-1">Not done, refused:</p>
+      <p className="ml-4 mt-1">{t('Not done, refused:')}</p>
       <ul className="ml-8 list-disc">
         {list.map((r, i) => (
           <li key={`${r.sentenceId ?? r.sentence} ${i}`}>
@@ -134,7 +152,7 @@ const Refused = ({ projectId, d }) => {
       </ul>
       {d.refusedMore > 0 && (
         <p className="ml-8 text-muted-foreground">
-          And {d.refusedMore.toLocaleString()} more refused.
+          {t('And {n, number} more refused.', { n: d.refusedMore })}
         </p>
       )}
     </>
@@ -154,7 +172,7 @@ export const Respelled = ({ report, projectId }) => {
       <ul className="ml-4 list-disc text-sm">
         {list.map((r) => (
           <li key={`${r.sentenceId} ${r.ref}`}>
-            {r.name ?? 'Deleted document'}{' '}
+            {r.name ?? t('Deleted document')}{' '}
             {r.name && r.sentenceId ? (
               <Link
                 className="underline"
@@ -167,13 +185,18 @@ export const Respelled = ({ report, projectId }) => {
             )}{' '}
             <span dir="auto">{r.form}</span>{' '}
             <span className="text-muted-foreground">
-              was <span dir="auto">{r.old}</span>, morphemes{' '}
-              <span dir="auto">{(r.morphemes || []).join(' ')}</span>
+              {tx('was <span>{old}</span>, morphemes <span>{morphemes}</span>', {
+                old: r.old,
+                morphemes: (r.morphemes || []).join(' '),
+                span: (c) => <span dir="auto">{c}</span>,
+              })}
             </span>
           </li>
         ))}
       </ul>
-      <More n={more} noun="word" />
+      <More n={more}>
+        {t('And {n, plural, one {# more word} other {# more words}}.', { n: more })}
+      </More>
     </>
   );
 };
@@ -188,10 +211,10 @@ const ChangesTable = ({ list, projectId }) => (
   <table className="w-full text-sm">
     <thead className="text-left text-muted-foreground">
       <tr>
-        <th className="py-1 pr-4 font-medium">Where</th>
-        <th className="py-1 pr-4 font-medium">Change</th>
-        <th className="py-1 pr-4 font-medium">From</th>
-        <th className="py-1 font-medium">To</th>
+        <th className="py-1 pr-4 font-medium">{t('Where')}</th>
+        <th className="py-1 pr-4 font-medium">{t('Change')}</th>
+        <th className="py-1 pr-4 font-medium">{t('From')}</th>
+        <th className="py-1 font-medium">{t('To')}</th>
       </tr>
     </thead>
     <tbody>
@@ -202,9 +225,9 @@ const ChangesTable = ({ list, projectId }) => (
               <Link
                 className="underline"
                 to={`/projects/${projectId}/documents/${c.documentId}`}
-              >{`${c.document ?? 'Document'}${c.ref ? ` ${c.ref}` : ''}`}</Link>
+              >{`${c.document ?? t('Document')}${c.ref ? ` ${c.ref}` : ''}`}</Link>
             ) : (
-              <span className="text-muted-foreground">Project</span>
+              <span className="text-muted-foreground">{t('Project')}</span>
             )}
           </td>
           <td className="py-1 pr-4">{c.field ?? c.label}</td>
@@ -238,7 +261,9 @@ export const ProposedChanges = ({ report, projectId }) => {
           <ChangesTable list={unwritten} projectId={projectId} />
         </>
       )}
-      <More n={more} noun="change" />
+      <More n={more}>
+        {t('And {n, plural, one {# more change} other {# more changes}}.', { n: more })}
+      </More>
     </>
   );
 };
@@ -256,7 +281,7 @@ export const LeftOut = ({ report, projectId }) => {
         {list.map((d) => (
           <li key={d.documentId}>
             {d.name === null || d.name === undefined ? (
-              <span className="text-muted-foreground">Deleted document</span>
+              <span className="text-muted-foreground">{t('Deleted document')}</span>
             ) : (
               <Link
                 className="hover:underline"
@@ -268,7 +293,9 @@ export const LeftOut = ({ report, projectId }) => {
           </li>
         ))}
       </ul>
-      <More n={more} noun="document" />
+      <More n={more}>
+        {t('And {n, plural, one {# more document} other {# more documents}}.', { n: more })}
+      </More>
     </>
   );
 };
@@ -304,13 +331,13 @@ export const Tables = ({ tables, more = 0 }) =>
   tables.length || more > 0 ? (
     <>
       <Heading section="tables" />
-      {tables.map((t, i) => (
+      {tables.map((table, i) => (
         <div key={i} className="mb-4 text-sm">
-          <p className="font-medium">{t.title}</p>
+          <p className="font-medium">{table.title}</p>
           <table className="w-full">
             <thead className="text-left text-muted-foreground">
               <tr>
-                {(t.columns || []).map((c, j) => (
+                {(table.columns || []).map((c, j) => (
                   <th key={j} className="py-1 pr-4 font-medium">
                     {c}
                   </th>
@@ -318,7 +345,7 @@ export const Tables = ({ tables, more = 0 }) =>
               </tr>
             </thead>
             <tbody>
-              {(t.rows || []).map((r, j) => (
+              {(table.rows || []).map((r, j) => (
                 <tr key={j} className="border-t">
                   {r.map((v, k) => (
                     <td key={k} className="py-1 pr-4" dir="auto">
@@ -329,17 +356,23 @@ export const Tables = ({ tables, more = 0 }) =>
               ))}
             </tbody>
           </table>
-          <More n={t.more || 0} noun="row" />
+          <More n={table.more || 0}>
+            {t('And {n, plural, one {# more row} other {# more rows}}.', { n: table.more || 0 })}
+          </More>
         </div>
       ))}
-      <More n={more} noun="table" />
+      <More n={more}>
+        {t('And {n, plural, one {# more table} other {# more tables}}.', { n: more })}
+      </More>
     </>
   ) : null;
 
 // The line under the model's own text on the page, the summary's and the
 // findings' alike (R4, REV-RPF-P-4): where the worker's counts stand from it.
 const byTheAssistant = (where) =>
-  `Written by the assistant, not checked against the counts ${where}.`;
+  where === 'below'
+    ? t('Written by the assistant, not checked against the counts below.')
+    : t('Written by the assistant, not checked against the counts above.');
 
 // The one report of a job that fills nothing (`findings`, Markdown, CONTRACT,
 // added by RPF), in full, with a way to copy it as written (RP-4).
@@ -348,21 +381,23 @@ export const JobFindings = ({ findings, pieces = null, cut = null }) => {
   const [copied, setCopied] = useState(false);
   useEffect(() => {
     if (!copied) return undefined;
-    const t = setTimeout(() => setCopied(false), 1500);
-    return () => clearTimeout(t);
+    const timer = setTimeout(() => setCopied(false), 1500);
+    return () => clearTimeout(timer);
   }, [copied]);
   return (
-    <section aria-label="Findings" className="mt-6" data-testid="job-findings">
+    <section aria-label={t('Findings')} className="mt-6" data-testid="job-findings">
       <div className="mb-2 flex flex-wrap items-center gap-2">
-        <h3 className={TYPE.card}>Findings</h3>
+        <h3 className={TYPE.card}>{t('Findings')}</h3>
         <Button
           variant="outline"
           size="sm"
           className="gap-1.5"
-          onClick={async () => setCopied(await copyText(findings, 'The findings were not copied.'))}
+          onClick={async () =>
+            setCopied(await copyText(findings, t('The findings were not copied.')))
+          }
         >
           {copied ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
-          Copy
+          {t('Copy')}
         </Button>
       </div>
       <p className="mb-2 text-sm text-muted-foreground" data-testid="job-findings-by">
@@ -382,12 +417,12 @@ export const JobFindings = ({ findings, pieces = null, cut = null }) => {
 export const TotalsList = ({ report, undone = null }) => {
   const rows = [...totalRows(report), ...pausedRows(report)];
   const groups = [
-    ['Written', rows.filter(([, , g]) => g !== NOT_WRITTEN)],
-    ['Not written', rows.filter(([, , g]) => g === NOT_WRITTEN)],
+    [t('Written'), rows.filter(([, , g]) => g !== NOT_WRITTEN)],
+    [t('Not written'), rows.filter(([, , g]) => g === NOT_WRITTEN)],
   ].filter(([, list]) => list.length);
   return (
     <>
-      <Heading>{undone ? 'What the job had written' : 'Totals'}</Heading>
+      <Heading>{undone ? t('What the job had written') : t('Totals')}</Heading>
       <div className="grid max-w-4xl gap-x-12 gap-y-5 lg:grid-cols-2">
         {groups.map(([name, list]) => (
           <div key={name} className="min-w-0">
@@ -418,7 +453,7 @@ export const AssistantSummary = ({ report }) => {
   const long = shown && [...report.summary].length > SUMMARY_FOLDED_CHARS;
   return (
     <>
-      {(shown || report.summaryFailed) && <Heading>Assistant’s summary</Heading>}
+      {(shown || report.summaryFailed) && <Heading>{t('Assistant’s summary')}</Heading>}
       {shown && (
         <>
           <p className="mb-2 text-sm text-muted-foreground">{byTheAssistant('above')}</p>
@@ -439,13 +474,13 @@ export const AssistantSummary = ({ report }) => {
               aria-expanded={open}
               onClick={() => setOpen((o) => !o)}
             >
-              {open ? 'Show less' : 'Show all'}
+              {open ? t('Show less') : t('Show all')}
             </Button>
           )}
         </>
       )}
       {report.summaryFailed && (
-        <p className="text-sm text-muted-foreground">The summary could not be written.</p>
+        <p className="text-sm text-muted-foreground">{t('The summary could not be written.')}</p>
       )}
     </>
   );
@@ -476,12 +511,12 @@ export const SkippedDocument = ({ d, projectId }) => (
     </ul>
     {d.counts?.skippedMore > 0 && (
       <p className="ml-4 text-muted-foreground">
-        And {d.counts.skippedMore.toLocaleString()} more skipped.
+        {t('And {n, number} more skipped.', { n: d.counts.skippedMore })}
       </p>
     )}
     {d.counts?.tooLongMore > 0 && (
       <p className="ml-4 text-muted-foreground">
-        And {d.counts.tooLongMore.toLocaleString()} more too long.
+        {t('And {n, number} more too long.', { n: d.counts.tooLongMore })}
       </p>
     )}
   </div>
@@ -495,7 +530,7 @@ export const BlankDocument = ({ d, projectId }) => (
       <DocumentName projectId={projectId} d={d} />
     </p>
     {(d.left?.length > 0 || d.leftMore > 0) && (
-      <p className="ml-4">Left blank in sentences the job changed:</p>
+      <p className="ml-4">{t('Left blank in sentences the job changed:')}</p>
     )}
     <ul className="ml-8 list-disc">
       {(d.left || []).map((l) => (
@@ -523,10 +558,10 @@ export const BlankDocument = ({ d, projectId }) => (
     </ul>
     {d.leftMore > 0 && (
       <p className="ml-8 text-muted-foreground">
-        And {d.leftMore.toLocaleString()} more left blank.
+        {t('And {n, number} more left blank.', { n: d.leftMore })}
       </p>
     )}
-    {d.leftUnread && <p className="ml-4 text-muted-foreground">Could not be read.</p>}
+    {d.leftUnread && <p className="ml-4 text-muted-foreground">{t('Could not be read.')}</p>}
     <BlankElsewhere counts={d.counts} />
     <Refused projectId={projectId} d={d} />
   </div>
@@ -538,10 +573,10 @@ export const HarmonizeChanged = ({ list, more = 0 }) => (
     <table className="w-full text-sm">
       <thead className="text-left text-muted-foreground">
         <tr>
-          <th className="py-1 pr-4 font-medium">Form</th>
-          <th className="py-1 pr-4 font-medium">Set to</th>
-          <th className="py-1 pr-4 font-medium">Decided by</th>
-          <th className="py-1 font-medium">Replaced</th>
+          <th className="py-1 pr-4 font-medium">{t('Form')}</th>
+          <th className="py-1 pr-4 font-medium">{t('Set to')}</th>
+          <th className="py-1 pr-4 font-medium">{t('Decided by')}</th>
+          <th className="py-1 font-medium">{t('Replaced')}</th>
         </tr>
       </thead>
       <tbody>
@@ -551,7 +586,9 @@ export const HarmonizeChanged = ({ list, more = 0 }) => (
             <td className="py-1 pr-4">
               <Analysis text={c.to} />
             </td>
-            <td className="py-1 pr-4">{HARMONIZE_BY_TEXT[c.by] ?? c.by}</td>
+            <td className="py-1 pr-4">
+              {HARMONIZE_BY_TEXT[c.by] ? t(HARMONIZE_BY_TEXT[c.by]) : c.by}
+            </td>
             <td className="py-1">
               {(c.from || []).map((f) => (
                 <div key={f.analysis}>
@@ -563,7 +600,9 @@ export const HarmonizeChanged = ({ list, more = 0 }) => (
         ))}
       </tbody>
     </table>
-    <More n={more} noun="form" />
+    <More n={more}>
+      {t('And {n, plural, one {# more form} other {# more forms}}.', { n: more })}
+    </More>
   </>
 );
 
@@ -573,9 +612,9 @@ export const HarmonizeLeft = ({ list, more = 0 }) => (
     <table className="w-full text-sm">
       <thead className="text-left text-muted-foreground">
         <tr>
-          <th className="py-1 pr-4 font-medium">Form</th>
-          <th className="py-1 pr-4 font-medium">Analyses</th>
-          <th className="py-1 font-medium">Reason</th>
+          <th className="py-1 pr-4 font-medium">{t('Form')}</th>
+          <th className="py-1 pr-4 font-medium">{t('Analyses')}</th>
+          <th className="py-1 font-medium">{t('Reason')}</th>
         </tr>
       </thead>
       <tbody>
@@ -589,12 +628,16 @@ export const HarmonizeLeft = ({ list, more = 0 }) => (
                 </div>
               ))}
             </td>
-            <td className="py-1">{HARMONIZE_LEFT_TEXT[l.reason] ?? l.reason}</td>
+            <td className="py-1">
+              {HARMONIZE_LEFT_TEXT[l.reason] ? t(HARMONIZE_LEFT_TEXT[l.reason]) : l.reason}
+            </td>
           </tr>
         ))}
       </tbody>
     </table>
-    <More n={more} noun="form" />
+    <More n={more}>
+      {t('And {n, plural, one {# more form} other {# more forms}}.', { n: more })}
+    </More>
   </>
 );
 
@@ -603,7 +646,7 @@ export const HarmonizeLeft = ({ list, more = 0 }) => (
 export const Entries = ({ report, vocabs = [] }) => {
   const entries = report.entries || {};
   const draftLexicons = draftLexiconsOf(report, vocabs);
-  const entryLists = [['Created', entries.created, entries.createdMore]].filter(
+  const entryLists = [[t('Created'), entries.created, entries.createdMore]].filter(
     ([, list = [], more = 0]) => list.length || more,
   );
   const unlinked = entries.unlinked || [];
@@ -611,7 +654,7 @@ export const Entries = ({ report, vocabs = [] }) => {
     <>
       {(entryLists.length > 0 || draftLexicons.length > 0) && (
         <>
-          <Heading>Entries</Heading>
+          <Heading>{t('Entries')}</Heading>
           {entryLists.map(([label, list = [], more = 0]) => (
             <div key={label} className="mb-3 text-sm">
               <p className="font-medium">{label}</p>
@@ -620,7 +663,9 @@ export const Entries = ({ report, vocabs = [] }) => {
                   <EntryLine key={e.id ?? `${e.lexicon} ${e.form} ${e.gloss}`} entry={e} />
                 ))}
               </ul>
-              <More n={more} noun="entry" />
+              <More n={more}>
+                {t('And {n, plural, one {# more entry} other {# more entries}}.', { n: more })}
+              </More>
             </div>
           ))}
           {draftLexicons.length > 0 && (
@@ -628,7 +673,7 @@ export const Entries = ({ report, vocabs = [] }) => {
               {draftLexicons.map((v) => (
                 <li key={v.id}>
                   <Link className="underline" to={`/vocabularies/${v.id}?status=machine`}>
-                    Machine drafts in {v.name}
+                    {t('Machine drafts in {name}', { name: v.name })}
                   </Link>
                 </li>
               ))}
@@ -649,7 +694,11 @@ export const Entries = ({ report, vocabs = [] }) => {
               </li>
             ))}
           </ul>
-          <More n={entries.unlinkedMore || 0} noun="entry" />
+          <More n={entries.unlinkedMore || 0}>
+            {t('And {n, plural, one {# more entry} other {# more entries}}.', {
+              n: entries.unlinkedMore || 0,
+            })}
+          </More>
         </>
       )}
     </>

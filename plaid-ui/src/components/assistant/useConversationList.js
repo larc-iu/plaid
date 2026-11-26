@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { notifyError } from '../../lib/notify.js';
 import { humanizeError } from '../../lib/errors.js';
+import { t } from '../../lib/i18n.js';
 import { ask, deleteConversation, jobFor, metaOf, readMetas, upsert } from './jobs.js';
 
 // The saved conversations behind whichever surface is showing one: the rows,
@@ -40,7 +41,7 @@ export const useConversationList = ({ client, userId, app, projectId, onRemoved 
       return metas;
     } catch (e) {
       console.error('[Assistant] could not load conversations', e);
-      notifyError(humanizeError(e, 'Failed to load past conversations.'));
+      notifyError(humanizeError(e, t('Failed to load past conversations.')));
       return [];
     } finally {
       setLoading(false);
@@ -83,7 +84,7 @@ export const useConversationList = ({ client, userId, app, projectId, onRemoved 
     async (m, { tab = null } = {}) => {
       const j = jobFor(m.id);
       if (j && j.kind === 'apply') {
-        notifyError('That conversation is still applying changes. Delete it once they finish.');
+        notifyError(t('That conversation is still applying changes. Delete it once they finish.'));
         return;
       }
       setRows((prev) => prev.filter((row) => row.id !== m.id));
@@ -93,7 +94,7 @@ export const useConversationList = ({ client, userId, app, projectId, onRemoved 
       } catch (e) {
         setRows(upsert(m));
         notifyError(
-          e?.refused ? e.message : humanizeError(e, 'Failed to delete the conversation.'),
+          e?.refused ? e.message : humanizeError(e, t('Failed to delete the conversation.')),
         );
       }
     },
@@ -120,7 +121,7 @@ export const useConversationList = ({ client, userId, app, projectId, onRemoved 
         }
       } catch (e) {
         setRows(upsert(m));
-        notifyError(humanizeError(e, 'Failed to rename the conversation.'));
+        notifyError(humanizeError(e, t('Failed to rename the conversation.')));
       }
     },
     [store],

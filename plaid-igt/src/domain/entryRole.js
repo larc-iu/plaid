@@ -5,13 +5,14 @@
 // applies the same rule.
 
 import { ENTRY_ROLES, fieldBaseName } from './vocabFields.js';
+import { msg } from '@ui/lib/i18n.js';
 
-/** The roles in the order the field settings offer them, with their labels. */
+/** The roles in the order the field settings offer them, with their labels (messages: t() where shown). */
 export const ENTRY_ROLE_CHOICES = [
-  { role: ENTRY_ROLES.GLOSS, label: 'Gloss' },
-  { role: ENTRY_ROLES.DEFINITION, label: 'Definition' },
-  { role: ENTRY_ROLES.POS, label: 'Part of speech' },
-  { role: ENTRY_ROLES.STATUS, label: 'Status' },
+  { role: ENTRY_ROLES.GLOSS, label: msg('Gloss') },
+  { role: ENTRY_ROLES.DEFINITION, label: msg('Definition') },
+  { role: ENTRY_ROLES.POS, label: msg('Part of speech') },
+  { role: ENTRY_ROLES.STATUS, label: msg('Status') },
 ];
 
 const BY_NAME = {

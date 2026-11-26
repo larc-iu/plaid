@@ -6,6 +6,7 @@ import {
   planHomographOrder,
   withParentSet,
 } from '@/domain/vocabDictionary';
+import { t } from '@ui/lib/i18n.js';
 
 // Placing entries in the sense tree: a sense moved under another entry or
 // out, a new headword raised over an entry, a drop in the tree, and the order
@@ -44,7 +45,7 @@ export function useSenseMoves({
       parentId
         ? `Make "${moving.form}" a sense of "${tree.byId.get(parentId)?.form ?? ''}"`
         : `Make "${moving.form}" its own entry`,
-      'Failed to move the entry',
+      t('Failed to move the entry'),
     );
   };
   // A new headword over `id`, with the same form, taking its place: the
@@ -56,9 +57,9 @@ export function useSenseMoves({
     // draft is re-seeded from what comes back. Unsaved typing goes with it.
     if (dirty && id === selectedId) {
       const ok = await confirm({
-        title: 'Discard unsaved changes?',
-        description: 'Adding a headword reloads this entry.',
-        confirmLabel: 'Discard changes',
+        title: t('Discard unsaved changes?'),
+        description: t('Adding a headword reloads this entry.'),
+        confirmLabel: t('Discard changes'),
         destructive: true,
       });
       if (!ok) return;
@@ -109,7 +110,7 @@ export function useSenseMoves({
         });
         settleEntries(new Map([[headId, headId]]));
       },
-      'Failed to add the headword',
+      t('Failed to add the headword'),
       { minted: [headId] },
     );
   };
@@ -118,7 +119,7 @@ export function useSenseMoves({
     const patches = planSenseDrop(tree, id, target);
     if (!patches.length) return;
     const moving = tree.byId.get(id);
-    commitPatches(patches, `Move "${moving?.form ?? ''}"`, 'Failed to move the sense');
+    commitPatches(patches, `Move "${moving?.form ?? ''}"`, t('Failed to move the sense'));
   };
   // The entries spelled like the open one, reordered by dragging in the
   // homograph dialog: their numbers are written 1..n under one operation.
@@ -128,7 +129,7 @@ export function useSenseMoves({
     commitPatches(
       patches,
       `Reorder the entries spelled "${homographs[0]?.form ?? ''}"`,
-      'Failed to reorder the entries',
+      t('Failed to reorder the entries'),
     );
   };
 

@@ -1,4 +1,5 @@
 import { retryingText } from './retrying.js';
+import { t } from './i18n.js';
 
 // Where an open document's saves stand, read from DocumentModel's `isSaving`,
 // `isOffline` and `isLocked` (or anything shaped like them, such as igt's
@@ -16,10 +17,10 @@ export const saveStateOf = (doc) => {
 // after a save lands, which saveStateOf never answers. The retrying words
 // name the browser's network, so they are read when shown.
 const WORDS = {
-  saving: () => 'Saving…',
+  saving: () => t('Saving…'),
   offline: retryingText,
-  locked: () => 'In use elsewhere, waiting',
-  saved: () => 'Saved ✓',
+  locked: () => t('In use elsewhere, waiting'),
+  saved: () => t('Saved ✓'),
 };
 
 export const saveStateText = (state) => WORDS[state]?.() ?? '';

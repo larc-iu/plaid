@@ -8,6 +8,7 @@ import { NOT_SET_UP } from '@ui/domain/setupGuard.js';
 import { useBaselineOperations } from './useBaselineOperations.js';
 import { useDocumentCtx } from '../contexts/DocumentContext.jsx';
 import { TYPE } from '@ui/lib/typeScale.js';
+import { t } from '@ui/lib/i18n.js';
 
 export function DocumentBaseline() {
   const { doc, readOnly } = useDocumentCtx();
@@ -73,11 +74,11 @@ export function DocumentBaseline() {
         <div className="flex flex-col gap-4">
           <div className="flex items-center justify-between">
             <div>
-              <h2 className={TYPE.card}>Baseline text</h2>
+              <h2 className={TYPE.card}>{t('Baseline text')}</h2>
             </div>
             {!ops.isEditing && !readOnly && (
               <Button ref={editButtonRef} variant="outline" size="sm" onClick={ops.handleEdit}>
-                <Pencil className="h-4 w-4" /> Edit text
+                <Pencil className="h-4 w-4" /> {t('Edit text')}
               </Button>
             )}
           </div>
@@ -87,7 +88,7 @@ export function DocumentBaseline() {
           {ops.isEditing ? (
             <div className="flex flex-col gap-4">
               <div className="flex flex-col gap-1.5">
-                <Label htmlFor="baseline-text">Document text</Label>
+                <Label htmlFor="baseline-text">{t('Document text')}</Label>
                 <Textarea
                   ref={textareaRef}
                   id="baseline-text"
@@ -95,7 +96,7 @@ export function DocumentBaseline() {
                   value={ops.editedText}
                   {...ops.editLogHandlers}
                   onChange={handleTextChange}
-                  placeholder="Type or paste the text"
+                  placeholder={t('Type or paste the text')}
                   readOnly={readOnly}
                   spellCheck={false}
                   rows={10}
@@ -104,7 +105,7 @@ export function DocumentBaseline() {
                 />
                 {ops.changedElsewhere && (
                   <Notice tone="warning" role="alert">
-                    Changed elsewhere in the same passage.
+                    {t('Changed elsewhere in the same passage.')}
                   </Notice>
                 )}
               </div>
@@ -114,23 +115,24 @@ export function DocumentBaseline() {
                   <div className="flex items-start gap-2">
                     <Info className="mt-0.5 h-4 w-4 shrink-0" />
                     <p className="text-sm">
-                      Words inside deleted text are removed with their annotations.
+                      {t('Words inside deleted text are removed with their annotations.')}
                     </p>
                   </div>
                 </div>
               ) : (
                 <p className="text-sm text-muted-foreground">
-                  Each line becomes a sentence. Sentence breaks can be moved later on the Tokenize
-                  tab.
+                  {t(
+                    'Each line becomes a sentence. Sentence breaks can be moved later on the Tokenize tab.',
+                  )}
                 </p>
               )}
 
               <div className="flex items-center justify-end gap-2">
                 <Button variant="outline" onClick={ops.handleCancel} disabled={ops.saving}>
-                  <X className="h-4 w-4" /> Cancel
+                  <X className="h-4 w-4" /> {t('Cancel')}
                 </Button>
                 <Button onClick={ops.handleSave} disabled={ops.saving || readOnly}>
-                  <Save className="h-4 w-4" /> {ops.saving ? 'Saving…' : 'Save changes'}
+                  <Save className="h-4 w-4" /> {ops.saving ? t('Saving…') : t('Save changes')}
                 </Button>
               </div>
             </div>

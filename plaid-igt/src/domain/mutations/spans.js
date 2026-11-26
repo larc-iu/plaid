@@ -8,6 +8,8 @@
 import { mergeMetadata, metadataOps, createdId } from '@larc-iu/plaid-client';
 import { pendingId, settledId } from '@ui/domain/pendingIds.js';
 import { notSetUp } from '@ui/domain/setupGuard.js';
+import { t, msg } from '@ui/lib/i18n.js';
+import { writeLabel } from '../writeLabel.js';
 
 export const findSpanLayer = (doc, scope, fieldName) => {
   const spanLayers = doc.layerInfo.spanLayers?.[scope] || [];
@@ -121,7 +123,7 @@ const makeSpanUpdater = (scope) =>
       this.refuse(notSetUp(`Annotation layer "${fieldName}" not found`));
       return false;
     }
-    const label = `Failed to update ${fieldName}`;
+    const label = writeLabel(msg('Failed to update {field}'), { field: fieldName });
     if (!this._canWrite(label)) return false;
     // Glossing an unanalyzed word writes its morpheme before the span that
     // hangs off it: a span needs a token to point at. Both show at once.
@@ -130,7 +132,7 @@ const makeSpanUpdater = (scope) =>
       creates,
     } = this._planMorphemes([targetId]);
     if (!id) {
-      this.refuse('Morpheme not found');
+      this.refuse(t('Morpheme not found'));
       return false;
     }
     const plan = planSpan(this, layer, id, value, metadata, prob);
@@ -196,7 +198,7 @@ export const spanMutations = {
       (s) => Array.isArray(s.tokens) && s.tokens.includes(sentenceId),
     );
     if (!span || !this.reviewable(span.metadata)) return true;
-    const label = `Failed to discard ${fieldName}`;
+    const label = writeLabel(msg('Failed to discard {field}'), { field: fieldName });
     if (!this._canWrite(label)) return false;
     this._applyRawPatch((next, infoNext) => {
       const layerDoc = (infoNext.spanLayers?.sentence || []).find((sl) => sl.id === layer.id);
@@ -221,7 +223,7 @@ export const spanMutations = {
     );
     const confirm = span ? this.confirmStamp(span.metadata) : null;
     if (!confirm) return true;
-    const label = `Failed to accept ${fieldName}`;
+    const label = writeLabel(msg('Failed to accept {field}'), { field: fieldName });
     if (!this._canWrite(label)) return false;
     this._applyRawPatch((next, infoNext) => {
       const layerDoc = (infoNext.spanLayers?.sentence || []).find((sl) => sl.id === layer.id);

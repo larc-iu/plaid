@@ -1,9 +1,9 @@
 import { html, nothing } from 'lit-html';
 import { directive, Directive, PartType } from 'lit-html/directive.js';
-import { provState, PROV_STATES, isDoubtful } from '@larc-iu/plaid-client';
+import { provState, PROV, PROV_STATES, isDoubtful } from '@larc-iu/plaid-client';
 import { confidenceNote } from '@ui/domain/confidence.js';
-import { originWord } from '@ui/domain/provDescription.js';
 import { keys } from '@/lib/keymap.js';
+import { t, language } from '@ui/lib/i18n.js';
 import { isPendingId, settleKey, stableKey } from '@ui/domain/pendingIds.js';
 
 // Whether two cell keys name the same cell of the same row: the same key, or
@@ -198,19 +198,9 @@ export const PULSE_CLASS = 'igt-confirmed';
 // History version), so the title names no key.
 // `accepts`: what the key accepts. A word's cells go together, a sentence
 // field goes alone.
-const ACCEPTS_WORD = 'the whole word';
-export const ACCEPTS_FIELD = 'it as is';
-const reviewHint = (readOnly, accepts) =>
-  readOnly ? '' : `. Edit to fix, ${keys.words('analyze.accept')} to accept ${accepts}`;
-const provStateText = (state, origin, contributor, note, readOnly, accepts) => {
-  if (state === PROV_STATES.MACHINE)
-    return `machine-made, unverified${note ? `, ${note}` : ''}${reviewHint(readOnly, accepts)}`;
-  if (state === PROV_STATES.CONTRIBUTED)
-    return contributor
-      ? 'contributed, awaiting review'
-      : `contributed, unverified${reviewHint(readOnly, accepts)}`;
-  return `${originWord(origin)}, confirmed`;
-};
+// It is a kind the message selects on, never words put into it.
+const ACCEPTS_WORD = 'word';
+export const ACCEPTS_FIELD = 'field';
 export const provTitle = (
   value,
   state,
@@ -219,7 +209,103 @@ export const provTitle = (
   note = null,
   readOnly = false,
   accepts = ACCEPTS_WORD,
-) => `${value}: ${provStateText(state, origin, contributor, note, readOnly, accepts)}`;
+) => {
+  const key = keys.words('analyze.accept');
+  if (state === PROV_STATES.MACHINE) {
+    if (readOnly) {
+      return note
+        ? t('{value}: machine-made, unverified, {note}', { value, note })
+        : t('{value}: machine-made, unverified', { value });
+    }
+    return note
+      ? t(
+          '{value}: machine-made, unverified, {note}. Edit to fix, {key} to accept {accepts, select, field {it as is} other {the whole word}}',
+          { value, note, key, accepts },
+        )
+      : t(
+          '{value}: machine-made, unverified. Edit to fix, {key} to accept {accepts, select, field {it as is} other {the whole word}}',
+          { value, key, accepts },
+        );
+  }
+  if (state === PROV_STATES.CONTRIBUTED) {
+    if (contributor) return t('{value}: contributed, awaiting review', { value });
+    return readOnly
+      ? t('{value}: contributed, unverified', { value })
+      : t(
+          '{value}: contributed, unverified. Edit to fix, {key} to accept {accepts, select, field {it as is} other {the whole word}}',
+          { value, key, accepts },
+        );
+  }
+  return t('{value}: {origin, select, contributed {contributed} other {machine-made}}, confirmed', {
+    value,
+    origin: origin === PROV.CONTRIBUTED ? 'contributed' : 'machine',
+  });
+};
+
+// The tooltip of a word form a tokenizer marked: as provTitle's, the
+// machine's part named for what it made.
+export const tokenProvTitle = (value, state, origin, contributor, readOnly = false) => {
+  if (state === PROV_STATES.MACHINE) {
+    return readOnly
+      ? t('{value}: machine-tokenized, unverified', { value })
+      : t('{value}: machine-tokenized, unverified. Edit to fix, {key} to accept the whole word', {
+          value,
+          key: keys.words('analyze.accept'),
+        });
+  }
+  if (state === PROV_STATES.CONTRIBUTED) {
+    return provTitle(value, state, origin, contributor, null, readOnly);
+  }
+  return t(
+    '{value}: {origin, select, contributed {contributed} other {machine-tokenized}}, confirmed',
+    { value, origin: origin === PROV.CONTRIBUTED ? 'contributed' : 'machine' },
+  );
+};
+
+// What a row is, as a row label's title and the row menu say it. `kind` is
+// one of orthography, additionalOrthography, word, morpheme, sentence.
+export const rowTitle = (name, kind, collapsed = false) =>
+  collapsed
+    ? t(
+        '{name} ({kind, select, orthography {orthography} additionalOrthography {additional orthography} word {word} morpheme {morpheme} other {sentence}}), minimized',
+        { name, kind },
+      )
+    : t(
+        '{name} ({kind, select, orthography {orthography} additionalOrthography {additional orthography} word {word} morpheme {morpheme} other {sentence}})',
+        { name, kind },
+      );
+
+// Words a template repeats in every cell, worked out once for the language
+// rather than per cell: `const CHIP = onceInLanguage(() => ({ link: t('link') }))`
+// at module level, `CHIP().link` in the template. Built on first use, so the
+// language is known by then.
+export const onceInLanguage = (build) => {
+  let lng = null;
+  let built;
+  return () => {
+    const now = language();
+    if (now !== lng) {
+      lng = now;
+      built = build();
+    }
+    return built;
+  };
+};
+
+// A message with lit-html parts in it (a <kbd>, an <em>), for the island,
+// where tx() cannot go. Each part goes into the message as a marker, and the
+// translated string is cut around the markers and the parts put back:
+//   tlit({ key: html`<kbd>↵</kbd>` }, (m) => t('{key} to accept one', m))
+// The message is the caller's own t() call, so it reads as one. Plain values
+// go in beside the markers: (m) => t('…', { ...m, n }).
+const MARK = String.fromCharCode(1);
+export const tlit = (parts, message) => {
+  const marks = {};
+  for (const name of Object.keys(parts)) marks[name] = `${MARK}${name}${MARK}`;
+  return message(marks)
+    .split(MARK)
+    .map((piece, i) => (i % 2 ? parts[piece] : piece));
+};
 
 // The CSS classes of the marked material this writer reviews (see
 // IgtDocument.reviewable): the review sweep's stops and the confirm/discard

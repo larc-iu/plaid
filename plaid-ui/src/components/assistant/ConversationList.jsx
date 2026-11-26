@@ -36,6 +36,7 @@ import { followable, jobFor } from './jobs.js';
 import { runByLine } from './useAssistantAvailable.js';
 import { useConfirm } from '../shared/ConfirmProvider.jsx';
 import { isEnter } from '../../lib/chords.js';
+import { t } from '../../lib/i18n.js';
 
 // The conversation rail: one row per conversation, the assistant picker, and
 // the export menu.
@@ -56,14 +57,18 @@ const ConversationRow = ({ m, opening, elsewhere = null }) => {
     <>
       <div className="flex items-center gap-1.5">
         <MessageSquare className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-        <span className={cn('truncate', m.draft && 'italic')}>{m.title || 'Untitled'}</span>
+        <span className={cn('truncate', m.draft && 'italic')}>{m.title || t('Untitled')}</span>
       </div>
       <div className="pl-5 text-[11px] text-muted-foreground">
         {m.draft
-          ? 'Nothing sent yet'
-          : (opening === m.id ? 'Opening…' : timeAgo(m.updatedAt)) +
-            (m.model ? ` · ${m.model.split('/').pop()}` : '') +
-            (followable(m.pending) && !jobFor(m.id) ? ' · unfinished' : '')}
+          ? t('Nothing sent yet')
+          : [
+              opening === m.id ? t('Opening…') : timeAgo(m.updatedAt),
+              m.model ? m.model.split('/').pop() : null,
+              followable(m.pending) && !jobFor(m.id) ? t('unfinished') : null,
+            ]
+              .filter(Boolean)
+              .join(' · ')}
       </div>
       {elsewhere && (
         <div className="flex items-center gap-1 pl-5 text-[11px] text-muted-foreground">
@@ -90,8 +95,8 @@ const ConversationRow = ({ m, opening, elsewhere = null }) => {
 // something does not always remember where.
 export const AllProjectsSwitch = ({ checked, onCheckedChange, className }) => (
   <label className={cn('flex items-center gap-2 text-[11px] text-muted-foreground', className)}>
-    <Switch checked={checked} onCheckedChange={onCheckedChange} aria-label="All projects" />
-    All projects
+    <Switch checked={checked} onCheckedChange={onCheckedChange} aria-label={t('All projects')} />
+    {t('All projects')}
   </label>
 );
 
@@ -126,22 +131,24 @@ export const ConversationRows = ({
   const [renaming, setRenaming] = useState(null);
   const askDelete = async (m) => {
     const ok = await confirm({
-      title: `Delete “${m.title || 'New conversation'}”?`,
-      confirmLabel: 'Delete',
+      title: t('Delete “{name}”?', { name: m.title || t('New conversation') }),
+      confirmLabel: t('Delete'),
       destructive: true,
     });
     if (ok) onDelete(m);
   };
   if (loading && !rows.length) return <Loading className="px-2 py-3 text-xs" />;
   if (!rows.length)
-    return <div className="px-2 py-3 text-xs text-muted-foreground">No conversations yet.</div>;
+    return (
+      <div className="px-2 py-3 text-xs text-muted-foreground">{t('No conversations yet.')}</div>
+    );
   return rows.map((m) => {
     const other = m.projectId && m.projectId !== projectId ? m.projectId : null;
     const row = (
       <ConversationRow
         m={m}
         opening={opening}
-        elsewhere={other ? projectNames.get(other) || 'Another project' : null}
+        elsewhere={other ? projectNames.get(other) || t('Another project') : null}
       />
     );
     return (
@@ -185,7 +192,7 @@ export const ConversationRows = ({
           <button
             type="button"
             onClick={() => setRenaming(m.id)}
-            title="Rename conversation"
+            title={t('Rename conversation')}
             className="mt-0.5 rounded p-0.5 text-muted-foreground opacity-0 hover:text-foreground focus:opacity-100 group-hover:opacity-100"
           >
             <Pencil className="h-3.5 w-3.5" />
@@ -195,7 +202,7 @@ export const ConversationRows = ({
           <button
             type="button"
             onClick={() => askDelete(m)}
-            title="Delete conversation"
+            title={t('Delete conversation')}
             className="mt-0.5 rounded p-0.5 text-muted-foreground opacity-0 hover:text-destructive focus:opacity-100 group-hover:opacity-100"
           >
             <Trash2 className="h-3.5 w-3.5" />
@@ -213,7 +220,7 @@ const RenameBox = ({ title, onDone }) => {
   return (
     <input
       autoFocus
-      aria-label="Conversation name"
+      aria-label={t('Conversation name')}
       value={value}
       maxLength={200}
       onChange={(e) => setValue(e.target.value)}
@@ -241,13 +248,13 @@ export const ConversationHistory = ({ allProjects, onAllProjects, onPick, ...lis
   return (
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
-        <Button type="button" variant="ghost" size="sm" title="Past conversations">
+        <Button type="button" variant="ghost" size="sm" title={t('Past conversations')}>
           <History className="h-4 w-4" />
         </Button>
       </PopoverTrigger>
       <PopoverContent align="end" className="w-[22rem] max-w-[calc(100vw-1.5rem)] p-0">
         <div className="flex items-center justify-between gap-2 border-b px-3 py-2">
-          <span className="text-sm font-medium">Conversations</span>
+          <span className="text-sm font-medium">{t('Conversations')}</span>
           <AllProjectsSwitch checked={allProjects} onCheckedChange={onAllProjects} />
         </div>
         <div className="max-h-[60vh] overflow-y-auto p-1.5">
@@ -278,7 +285,7 @@ export const AssistantPicker = ({ assistants, value, onChange, disabled, compact
           ? 'h-7 w-auto min-w-0 gap-1 border-0 px-1.5 text-muted-foreground shadow-none'
           : 'h-8 w-auto min-w-48 gap-2'
       }
-      aria-label="Assistant"
+      aria-label={t('Assistant')}
     >
       <SelectValue />
     </SelectTrigger>
@@ -339,30 +346,30 @@ export const ExportMenu = ({
         markdownFilename(meta, 'html'),
       );
     } catch (e) {
-      notifyError(humanizeError(e, 'Failed to export the conversation.'), 'Not exported');
+      notifyError(humanizeError(e, t('Failed to export the conversation.')), t('Not exported'));
     }
   };
   const copy = async () => {
-    if (await copyText(build(), 'Failed to copy to the clipboard.', 'Not copied')) {
-      notifySuccess('The conversation was copied as Markdown.', 'Copied');
+    if (await copyText(build(), t('Failed to copy to the clipboard.'), t('Not copied'))) {
+      notifySuccess(t('The conversation was copied as Markdown.'), t('Copied'));
     }
   };
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <Button type="button" variant="ghost" size="sm" title="Export this conversation">
+        <Button type="button" variant="ghost" size="sm" title={t('Export this conversation')}>
           <Download className="h-4 w-4" />
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end">
         <DropdownMenuItem onSelect={download}>
-          <FileDown className="mr-2 h-4 w-4" /> Download as Markdown
+          <FileDown className="mr-2 h-4 w-4" /> {t('Download as Markdown')}
         </DropdownMenuItem>
         <DropdownMenuItem onSelect={downloadPage}>
-          <Globe className="mr-2 h-4 w-4" /> Download as web page
+          <Globe className="mr-2 h-4 w-4" /> {t('Download as web page')}
         </DropdownMenuItem>
         <DropdownMenuItem onSelect={copy}>
-          <Copy className="mr-2 h-4 w-4" /> Copy as Markdown
+          <Copy className="mr-2 h-4 w-4" /> {t('Copy as Markdown')}
         </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>

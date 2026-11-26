@@ -19,6 +19,7 @@ import { homeOnly, namedCitations } from './projectReach.js';
 import { AssistantMark } from './PlaidMarks.jsx';
 import { useExport } from './exportContext.js';
 import { WorkTrace } from './WorkTrace.jsx';
+import { t, tx } from '../../lib/i18n.js';
 
 // One turn of a conversation as drawn: the reply with its citations, the
 // example cards a citation opens, the plan it proposed, and the tool trace
@@ -100,7 +101,9 @@ export const CitedMarkdown = ({ text, citations, projectId, adapter }) => {
 const CitedExamples = ({ cited, projectId, adapter }) => {
   const { ExampleCard } = adapter;
   const [open, setOpen] = useState(false);
-  const label = cited.length === 1 ? '1 cited example' : `${cited.length} cited examples`;
+  const label = t('{n, plural, one {# cited example} other {# cited examples}}', {
+    n: cited.length,
+  });
   // The web page export is read with no script: the same fold, as markup.
   if (useExport())
     return (
@@ -142,27 +145,28 @@ const CitedExamples = ({ cited, projectId, adapter }) => {
 // (`withProjects` and `couldNotOpen` in projectReach.js).
 const NAMES = 'min-w-0 [overflow-wrap:anywhere]';
 
-// What a screen calls the place a message was sent from: a `lexicon` is a
-// vocabulary on screen. A kind with no entry is named without a noun.
-const PLACE_NOUN = { document: 'document', lexicon: 'vocabulary' };
-
 // Hover text for the place line above a message. The line is where the reader
-// was when they sent it, not what they have open now.
-const placeTitle = (where) => {
-  const noun = PLACE_NOUN[where.kind];
-  return `When you sent this message, you were in ${noun ? `the ${noun} ` : ''}“${where.name}”.`;
-};
+// was when they sent it, not what they have open now. What a screen calls the
+// place: a `lexicon` is a vocabulary on screen, and a kind the message does
+// not name is said without a noun.
+const placeTitle = (where) =>
+  t(
+    'When you sent this message, you were in {kind, select, document {the document “{name}”} lexicon {the vocabulary “{name}”} other {“{name}”}}.',
+    { kind: where.kind || 'other', name: where.name },
+  );
 
 // Hover text for the projects line above a message: what the assistant could
 // read from that message on.
 const reachTitle = (projects, homeName) => {
-  const names = (projects || []).map((p) => `“${p.name || p.id}”`);
+  const names = (projects || []).map((p) => t('“{name}”', { name: p.name || p.id }));
   if (names.length) {
-    return `From this message on, the assistant could also read ${names.join(', ')}.`;
+    return t('From this message on, the assistant could also read {names}.', {
+      names: names.join(', '),
+    });
   }
   return homeName
-    ? `From this message on, the assistant could read only “${homeName}”.`
-    : 'From this message on, the assistant could read only this project.';
+    ? t('From this message on, the assistant could read only “{name}”.', { name: homeName })
+    : t('From this message on, the assistant could read only this project.');
 };
 
 export const Turn = ({
@@ -243,23 +247,22 @@ export const Turn = ({
           >
             <FolderOpen className="h-3 w-3 shrink-0" />
             <span className={NAMES}>
-              {item.projects?.length > 0 ? (
-                <>
-                  With{' '}
-                  {item.projects.map((p, k) => (
-                    <Fragment key={p.id ?? k}>
-                      {k > 0 && ', '}
-                      <bdi>{p.name || p.id}</bdi>
-                    </Fragment>
-                  ))}
-                </>
-              ) : homeName ? (
-                <>
-                  <bdi>{homeName}</bdi> only
-                </>
-              ) : (
-                homeOnly(null)
-              )}
+              {item.projects?.length > 0
+                ? tx('With {names}', {
+                    names: (
+                      <>
+                        {item.projects.map((p, k) => (
+                          <Fragment key={p.id ?? k}>
+                            {k > 0 && ', '}
+                            <bdi>{p.name || p.id}</bdi>
+                          </Fragment>
+                        ))}
+                      </>
+                    ),
+                  })
+                : homeName
+                  ? tx('<bdi>{name}</bdi> only', { name: homeName, bdi: (c) => <bdi>{c}</bdi> })
+                  : homeOnly(null)}
             </span>
           </div>
         )}
@@ -290,7 +293,7 @@ export const Turn = ({
       item.steps?.length > 0 || item.replyRound ? (
         <WorkTrace
           steps={item.steps || []}
-          summary={item.steps?.length > 0 ? item.stepsSummary : 'No steps'}
+          summary={item.steps?.length > 0 ? item.stepsSummary : t('No steps')}
           partial={item.partial}
           rounds={rounds}
           gone={roundsGone}
@@ -335,7 +338,10 @@ export const Turn = ({
       <div className="flex min-w-0 flex-1 flex-col gap-2">
         {fromAnotherModel && (
           <div className="text-xs text-muted-foreground">
-            Answered by <span className="font-medium text-foreground">{item.model}</span>
+            {tx('Answered by <span>{model}</span>', {
+              model: item.model,
+              span: (c) => <span className="font-medium text-foreground">{c}</span>,
+            })}
           </div>
         )}
         {/* `partial`: the text of a last call that failed after the plan was
@@ -343,7 +349,7 @@ export const Turn = ({
         {(item.steps?.length > 0 || item.replyRound) && (
           <WorkTrace
             steps={item.steps || []}
-            summary={item.steps?.length > 0 ? item.stepsSummary : 'No steps'}
+            summary={item.steps?.length > 0 ? item.stepsSummary : t('No steps')}
             partial={item.partial}
             rounds={rounds}
             gone={roundsGone}
@@ -361,7 +367,9 @@ export const Turn = ({
         {typeof item.elapsedMs === 'number' && (
           <div className="flex items-center gap-1 text-xs text-muted-foreground">
             <Clock className="h-3 w-3 shrink-0" />
-            <span className="tabular-nums">Answered in {formatElapsed(item.elapsedMs)}</span>
+            <span className="tabular-nums">
+              {t('Answered in {time}', { time: formatElapsed(item.elapsedMs) })}
+            </span>
           </div>
         )}
         {item.contextNote && (
@@ -384,8 +392,8 @@ export const Turn = ({
                     e.stopPropagation();
                     onDownloadFile(f);
                   }}
-                  title={`Download ${f.name}`}
-                  aria-label={`Download ${f.name}`}
+                  title={t('Download {name}', { name: f.name })}
+                  aria-label={t('Download {name}', { name: f.name })}
                   className="max-w-full rounded-full"
                 >
                   <AttachmentChip
@@ -414,7 +422,10 @@ export const Turn = ({
               {item.unavailableProjects.map((p, k) => (
                 <Fragment key={p.id ?? k}>
                   {k > 0 && ' '}
-                  <bdi>{p.name || p.id}</bdi> could not be opened.
+                  {tx('<bdi>{name}</bdi> could not be opened.', {
+                    name: p.name || p.id,
+                    bdi: (c) => <bdi>{c}</bdi>,
+                  })}
                 </Fragment>
               ))}
             </span>
@@ -431,7 +442,7 @@ export const Turn = ({
           !item.plan &&
           !(item.job && adapter.JobCard) && (
             <div className="text-sm italic text-muted-foreground">
-              (The assistant sent no text.)
+              {t('(The assistant sent no text.)')}
             </div>
           )
         )}

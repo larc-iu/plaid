@@ -5,6 +5,7 @@ import { cn } from '@ui/lib/utils';
 import { collationKey } from '@ui/domain/collation';
 import { FormLabel } from './FormLabel';
 import { isEnter, isImeKey } from '@ui/lib/chords.js';
+import { t } from '@ui/lib/i18n.js';
 
 // Find one entry of a vocabulary by typing part of its form or gloss, and
 // pick it. Used wherever an entry is chosen as a value: a reference field,
@@ -27,7 +28,7 @@ export const ItemPicker = ({
   numbers,
   exclude,
   onPick,
-  placeholder = 'Type a form or gloss…',
+  placeholder = t('Type a form or gloss…'),
   autoFocus = false,
   disabled = false,
   id,

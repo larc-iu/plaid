@@ -24,6 +24,7 @@
     "plaid-ui/src/domain/pendingIds.js",
     "plaid-ui/src/domain/punctuationClasses.js",
     "plaid-ui/src/domain/setupGuard.js",
+    "plaid-ui/src/lib/i18n.js",
     "plaid-ui/src/lib/unicodeRanges.js"
   ],
   "precedent": [
@@ -43,6 +44,7 @@
     "plaid-igt/src/domain/vocabDictionary.js",
     "plaid-igt/src/domain/vocabFields.js",
     "plaid-igt/src/domain/vocabLookup.js",
+    "plaid-igt/src/domain/writeLabel.js",
     "plaid-igt/src/domain/zeroMorph.js",
     "plaid-ui/src/domain/collation.js",
     "plaid-ui/src/domain/glossCase.js",
@@ -51,6 +53,7 @@
     "plaid-ui/src/domain/pendingIds.js",
     "plaid-ui/src/domain/punctuationClasses.js",
     "plaid-ui/src/domain/setupGuard.js",
+    "plaid-ui/src/lib/i18n.js",
     "plaid-ui/src/lib/unicodeRanges.js"
   ]
 }

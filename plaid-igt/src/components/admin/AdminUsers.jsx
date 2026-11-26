@@ -19,6 +19,7 @@ import { UserAdminDialogs } from '@ui/components/shared/UserAdminDialogs.jsx';
 import { UserDetail } from './UserDetail';
 import { textIncludes } from '@ui/domain/collation.js';
 import { formatBytes } from '@/utils/formatBytes';
+import { t } from '@ui/lib/i18n.js';
 
 // The whole account directory. The project Access tab resolves one project's
 // members; this browses everyone, and opens onto what one person has been
@@ -49,7 +50,7 @@ export const AdminUsers = ({ client, currentUser }) => {
       setUsers((list || []).map((u) => ({ ...u, privateBytes: bytes.get(u.id) ?? null })));
     } catch (err) {
       console.error('Error loading users:', err);
-      notifyError(humanizeError(err), 'Failed to load the accounts');
+      notifyError(humanizeError(err), t('Failed to load the accounts'));
     } finally {
       setLoading(false);
     }
@@ -76,7 +77,7 @@ export const AdminUsers = ({ client, currentUser }) => {
   const columns = [
     {
       key: 'name',
-      label: 'Name',
+      label: t('Name'),
       sort: (u) => (u.displayName || u.id).toLowerCase(),
       render: (u) => (
         <Link to={withUser(u.id)} className="flex items-center gap-2 hover:underline">
@@ -93,27 +94,30 @@ export const AdminUsers = ({ client, currentUser }) => {
     },
     {
       key: 'email',
-      label: 'Email',
+      label: t('Email'),
       sort: (u) => u.id.toLowerCase(),
       className: 'text-muted-foreground',
       render: (u) => u.id,
     },
     {
       key: 'status',
-      label: 'Status',
+      label: t('Status'),
       // Admins first, then active, then deactivated, so the column groups the
       // way someone scanning it expects.
       sort: (u) => (u.deactivatedAt ? 2 : u.isAdmin ? 0 : 1),
       render: (u) => (
         <div className="flex items-center gap-1.5">
-          {u.isAdmin && <Badge variant="secondary">Admin</Badge>}
+          {u.isAdmin && <Badge variant="secondary">{t('Admin')}</Badge>}
           {u.deactivatedAt && (
             <Badge
               variant="outline"
               className="whitespace-nowrap"
-              title={`Deactivated ${timeAgo(u.deactivatedAt)} (${fullTimestamp(u.deactivatedAt)})`}
+              title={t('Deactivated {when} ({time})', {
+                when: timeAgo(u.deactivatedAt),
+                time: fullTimestamp(u.deactivatedAt),
+              })}
             >
-              Deactivated
+              {t('Deactivated')}
             </Badge>
           )}
         </div>
@@ -121,7 +125,7 @@ export const AdminUsers = ({ client, currentUser }) => {
     },
     {
       key: 'privateData',
-      label: 'Private data',
+      label: t('Private data'),
       sort: (u) => u.privateBytes,
       align: 'right',
       className: 'tabular-nums text-muted-foreground',
@@ -134,26 +138,33 @@ export const AdminUsers = ({ client, currentUser }) => {
       render: (u) => (
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <Button variant="ghost" size="icon" className="h-8 w-8" aria-label="Account actions">
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-8 w-8"
+              aria-label={t('Account actions')}
+            >
               <MoreVertical className="h-4 w-4" />
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end">
             <DropdownMenuItem asChild>
-              <Link to={withUser(u.id)}>Open</Link>
+              <Link to={withUser(u.id)}>{t('Open')}</Link>
             </DropdownMenuItem>
-            <DropdownMenuItem onSelect={() => userAdmin.startEdit(u)}>Edit user</DropdownMenuItem>
+            <DropdownMenuItem onSelect={() => userAdmin.startEdit(u)}>
+              {t('Edit user')}
+            </DropdownMenuItem>
             {!u.deactivatedAt && (
               <DropdownMenuItem
                 disabled={userAdmin.resetting}
                 onSelect={() => userAdmin.createResetLink(u)}
               >
-                Create password reset link
+                {t('Create password reset link')}
               </DropdownMenuItem>
             )}
             {u.deactivatedAt && (
               <DropdownMenuItem onSelect={() => userAdmin.activateUser(u)}>
-                Reactivate
+                {t('Reactivate')}
               </DropdownMenuItem>
             )}
           </DropdownMenuContent>
@@ -171,15 +182,16 @@ export const AdminUsers = ({ client, currentUser }) => {
         id="admin-users"
         defaultSort={{ key: 'name', dir: 'asc' }}
         search={{
-          placeholder: 'Search accounts…',
+          placeholder: t('Search accounts…'),
           match: (u, q) => textIncludes(u.id, q) || textIncludes(u.displayName || '', q),
         }}
         noun="account"
-        empty="No accounts."
+        empty={t('No accounts.')}
+        noMatch={t('No accounts match.')}
         loading={loading}
         actions={
           <Button size="sm" onClick={userAdmin.openCreate}>
-            <UserPlus className="h-4 w-4" /> Create user
+            <UserPlus className="h-4 w-4" /> {t('Create user')}
           </Button>
         }
       />

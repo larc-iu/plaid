@@ -22,15 +22,25 @@ import { notifyError, humanizeError } from '@/utils/feedback';
 import { readNativeArchive } from '../../import/native/readArchive';
 import { deriveSetupData, runNativeImport } from '../../import/native/importEngine';
 import { useProjectImportRun } from '@/hooks/useProjectImportRun';
-import { countOf } from '@ui/lib/plural.js';
+import { t } from '@ui/lib/i18n.js';
 
 import { documentFraction, documentLabel } from '../../import/progress';
 import { useDocumentTitle } from '@ui/hooks/useDocumentTitle.js';
 import { FORM_PAGE_WIDTH } from '@ui/lib/pageWidth.js';
 import { NATIVE_IMPORT_KIND } from '@/domain/importFinish';
 
+// When the archive was exported, and the past state it holds if it holds one.
+const exportedLine = (manifest) => {
+  const when = manifest.exportedAt ? new Date(manifest.exportedAt).toLocaleString() : null;
+  const asOf = manifest.asOf ? new Date(manifest.asOf).toLocaleString() : null;
+  if (when && asOf) return t('exported {when} (as of {asOf})', { when, asOf });
+  if (when) return t('exported {when}', { when });
+  if (asOf) return t('exported unknown (as of {asOf})', { asOf });
+  return t('exported unknown');
+};
+
 export const ImportNativeProject = () => {
-  useDocumentTitle('Import archive');
+  useDocumentTitle(t('Import archive'));
   const { client: session } = useAuth();
   // The run's own client, so a write made elsewhere in the tab meanwhile is
   // neither stamped with its document version nor filed under its operation.
@@ -65,7 +75,7 @@ export const ImportNativeProject = () => {
       setStage('review');
     } catch (e) {
       console.error('Archive read failed:', e);
-      notifyError(humanizeError(e), 'Failed to read the archive');
+      notifyError(humanizeError(e), t('Failed to read the archive'));
       setStage('pick');
     }
   };
@@ -84,7 +94,11 @@ export const ImportNativeProject = () => {
           onProgress: (p) => {
             if (p.phase === 'vocabulary') {
               setProgress({
-                label: `Importing vocabulary "${p.name}" (${p.done}/${p.total})`,
+                label: t('Importing vocabulary "{name}" ({done}/{total})', {
+                  name: p.name,
+                  done: p.done,
+                  total: p.total,
+                }),
                 pct: 15 + (p.total ? (p.done / p.total) * 15 : 15),
               });
             } else if (p.phase === 'document') {
@@ -111,46 +125,57 @@ export const ImportNativeProject = () => {
   return (
     <div className={FORM_PAGE_WIDTH}>
       <div className="flex flex-col gap-6">
-        <ImportHeader title="Import a Plaid IGT archive">
-          Recreate a project from a “Plaid IGT JSON” export: texts, analyses, vocabularies, time
-          alignment, media, and provenance.
+        <ImportHeader title={t('Import a Plaid IGT archive')}>
+          {t(
+            'Recreate a project from a “Plaid IGT JSON” export: texts, analyses, vocabularies, time alignment, media, and provenance.',
+          )}
         </ImportHeader>
 
         {stage === 'pick' && (
           <FileDropZone
             onFiles={(files) => handleFile(files?.[0])}
-            title="Drop an exported .zip archive here, or click to choose"
-            hint="Produced by Export → “Plaid IGT JSON (lossless .zip archive)”"
+            title={t('Drop an exported .zip archive here, or click to choose')}
+            hint={t('Produced by Export → “Plaid IGT JSON (lossless .zip archive)”')}
             accept=".zip,application/zip"
           />
         )}
 
-        {stage === 'parsing' && <ReadingPanel label="Reading archive…" />}
+        {stage === 'parsing' && <ReadingPanel label={t('Reading archive…')} />}
 
         {(stage === 'review' || stage === 'running' || stage === 'done') && archive && (
           <div className="flex flex-col gap-4">
             <div className="rounded-lg border bg-card p-4">
               <p className="mb-2 font-medium">
-                Contents of “{manifest.project?.name ?? 'archive'}”
+                {t('Contents of “{name}”', { name: manifest.project?.name ?? t('archive') })}
                 <span className="ml-2 text-xs font-normal text-muted-foreground">
-                  exported{' '}
-                  {manifest.exportedAt ? new Date(manifest.exportedAt).toLocaleString() : 'unknown'}
-                  {manifest.asOf ? ` (as of ${new Date(manifest.asOf).toLocaleString()})` : ''}
+                  {exportedLine(manifest)}
                 </span>
               </p>
               <div className="grid grid-cols-2 gap-x-8 gap-y-1 text-sm sm:grid-cols-3">
-                <p>{countOf(archive.documents.length, 'document')}</p>
-                <p>{countOf(archive.vocabularies.length, 'vocabulary', 'vocabularies')}</p>
-                <p>{countOf(itemCount, 'entry', 'entries')}</p>
-                <p>{countOf(fieldCount, 'annotation field')}</p>
                 <p>
-                  {countOf(
-                    manifest.schema?.orthographies?.length ?? 0,
-                    'orthography',
-                    'orthographies',
-                  )}
+                  {t('{n, plural, one {# document} other {# documents}}', {
+                    n: archive.documents.length,
+                  })}
                 </p>
-                <p>{countOf(mediaCount, 'media file')}</p>
+                <p>
+                  {t('{n, plural, one {# vocabulary} other {# vocabularies}}', {
+                    n: archive.vocabularies.length,
+                  })}
+                </p>
+                <p>{t('{n, plural, one {# entry} other {# entries}}', { n: itemCount })}</p>
+                <p>
+                  {t('{n, plural, one {# annotation field} other {# annotation fields}}', {
+                    n: fieldCount,
+                  })}
+                </p>
+                <p>
+                  {t('{n, plural, one {# orthography} other {# orthographies}}', {
+                    n: manifest.schema?.orthographies?.length ?? 0,
+                  })}
+                </p>
+                <p>
+                  {t('{n, plural, one {# media file} other {# media files}}', { n: mediaCount })}
+                </p>
               </div>
             </div>
 
@@ -176,14 +201,18 @@ export const ImportNativeProject = () => {
 
             {stage === 'done' && results && (
               <Notice tone="success" className="p-4">
-                <p className="font-medium">Imported {countOf(results.imported, 'document')}</p>
+                <p className="font-medium">
+                  {t('Imported {n, plural, one {# document} other {# documents}}', {
+                    n: results.imported,
+                  })}
+                </p>
                 {results.warnings.length > 0 && (
                   <ul className="mt-2 list-disc pl-5">
                     {results.warnings.slice(0, 8).map((w, i) => (
                       <li key={i}>{w}</li>
                     ))}
                     {results.warnings.length > 8 && (
-                      <li>…and {results.warnings.length - 8} more</li>
+                      <li>{t('…and {n} more', { n: results.warnings.length - 8 })}</li>
                     )}
                   </ul>
                 )}
@@ -193,12 +222,12 @@ export const ImportNativeProject = () => {
             <div className="flex justify-end gap-2">
               {stage === 'review' && !unfinished && (
                 <Button onClick={startImport} disabled={!projectName.trim()}>
-                  Create project and import
+                  {t('Create project and import')}
                 </Button>
               )}
               {stage === 'done' && !finishPending && (
                 <Button asChild>
-                  <Link to={`/projects/${projectIdRef.current}`}>Open project</Link>
+                  <Link to={`/projects/${projectIdRef.current}`}>{t('Open project')}</Link>
                 </Button>
               )}
             </div>

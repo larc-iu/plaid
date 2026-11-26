@@ -8,6 +8,7 @@ import { useLatestCall } from '../../hooks/useLatestCall.js';
 import { AuditFeed } from './AuditFeed.jsx';
 import { textIncludes } from '../../domain/collation.js';
 import { SegmentedControl } from './SegmentedControl.jsx';
+import { t, msg } from '../../lib/i18n.js';
 
 // Who has been working, and on what. Two reads: a tally of people, and the
 // feed of what happened. `projectId` scopes both to one project, which is what
@@ -18,11 +19,13 @@ import { SegmentedControl } from './SegmentedControl.jsx';
 // was expected and has not appeared.
 
 const WINDOWS = [
-  { value: '7', label: 'Last 7 days' },
-  { value: '30', label: 'Last 30 days' },
-  { value: '90', label: 'Last 90 days' },
-  { value: 'all', label: 'All time' },
+  { value: '7', label: msg('Last 7 days') },
+  { value: '30', label: msg('Last 30 days') },
+  { value: '90', label: msg('Last 90 days') },
+  { value: 'all', label: msg('All time') },
 ];
+
+const peopleCount = (v) => t('{total} {n, plural, one {person} other {people}}', v);
 
 const startFor = (range) =>
   range === 'all' ? undefined : new Date(Date.now() - Number(range) * 86400000).toISOString();
@@ -78,7 +81,7 @@ export const ActivityPanel = ({ client, projectId, roster, projectHref, document
     } catch (err) {
       if (!isCurrent()) return;
       console.error('Error loading activity:', err);
-      notifyError(humanizeError(err), 'Failed to load the activity');
+      notifyError(humanizeError(err), t('Failed to load the activity'));
     } finally {
       if (isCurrent()) setLoading(false);
     }
@@ -107,7 +110,7 @@ export const ActivityPanel = ({ client, projectId, roster, projectHref, document
   const tallyColumns = [
     {
       key: 'person',
-      label: 'Person',
+      label: t('Person'),
       sort: (row) => nameOf(row).toLowerCase(),
       render: (row) =>
         row.user?.id ? (
@@ -124,12 +127,12 @@ export const ActivityPanel = ({ client, projectId, roster, projectHref, document
         ) : (
           // A change with no user is one the server made itself: an upgrade
           // rewriting stored data, or the first account being set up.
-          <span className="text-muted-foreground">Plaid, during an upgrade or setup</span>
+          <span className="text-muted-foreground">{t('Plaid, during an upgrade or setup')}</span>
         ),
     },
     {
       key: 'changes',
-      label: 'Changes',
+      label: t('Changes'),
       sort: (row) => row.changes,
       align: 'right',
       className: 'tabular-nums',
@@ -152,7 +155,7 @@ export const ActivityPanel = ({ client, projectId, roster, projectHref, document
     // tally's `delegatedChanges`). "Changes" stays the total.
     {
       key: 'delegated',
-      label: 'By services and jobs',
+      label: t('By services and jobs'),
       sort: (row) => row.delegatedChanges,
       align: 'right',
       className: 'tabular-nums',
@@ -160,7 +163,7 @@ export const ActivityPanel = ({ client, projectId, roster, projectHref, document
     },
     {
       key: 'documents',
-      label: 'Documents',
+      label: t('Documents'),
       sort: (row) => row.documents,
       align: 'right',
       className: 'tabular-nums',
@@ -168,7 +171,7 @@ export const ActivityPanel = ({ client, projectId, roster, projectHref, document
     },
     {
       key: 'lastSeen',
-      label: 'Last seen',
+      label: t('Last seen'),
       sort: (row) => (row.lastTs ? new Date(row.lastTs).getTime() : null),
       className: 'text-muted-foreground',
       render: (row) => (
@@ -186,7 +189,7 @@ export const ActivityPanel = ({ client, projectId, roster, projectHref, document
   const quietColumns = [
     {
       key: 'person',
-      label: 'Person',
+      label: t('Person'),
       sort: (m) => (m.displayName || m.id).toLowerCase(),
       render: (m) => (
         <div className="flex items-center gap-2">
@@ -203,7 +206,7 @@ export const ActivityPanel = ({ client, projectId, roster, projectHref, document
     },
     {
       key: 'email',
-      label: 'Email',
+      label: t('Email'),
       sort: (m) => m.id.toLowerCase(),
       align: 'right',
       className: 'text-muted-foreground',
@@ -214,15 +217,15 @@ export const ActivityPanel = ({ client, projectId, roster, projectHref, document
   return (
     <div className="flex flex-col gap-4">
       <SegmentedControl
-        label="Time window"
+        label={t('Time window')}
         value={range}
         onChange={setRange}
-        options={WINDOWS}
+        options={WINDOWS.map((w) => ({ ...w, label: t(w.label) }))}
         className="self-start"
       />
 
       <DataTable
-        title="Who has been working"
+        title={t('Who has been working')}
         rows={tally}
         columns={tallyColumns}
         rowKey={(row) => row.user?.id || 'system'}
@@ -230,17 +233,18 @@ export const ActivityPanel = ({ client, projectId, roster, projectHref, document
         scope={projectId}
         defaultSort={{ key: 'changes', dir: 'desc' }}
         search={{
-          placeholder: 'Search people…',
+          placeholder: t('Search people…'),
           match: (row, q) => textIncludes(nameOf(row), q),
         }}
-        noun={['person', 'people']}
-        empty="Nothing in this window."
+        countLabel={peopleCount}
+        noMatch={t('No people match.')}
+        empty={t('Nothing in this window.')}
         loading={loading}
       />
 
       {quiet.length > 0 && (
         <DataTable
-          title="No changes in this window"
+          title={t('No changes in this window')}
           rows={quiet}
           columns={quietColumns}
           rowKey={(m) => m.id}
@@ -248,22 +252,23 @@ export const ActivityPanel = ({ client, projectId, roster, projectHref, document
           scope={projectId}
           defaultSort={{ key: 'person', dir: 'asc' }}
           search={{
-            placeholder: 'Search people…',
+            placeholder: t('Search people…'),
             match: (m, q) => textIncludes(m.displayName || m.id, q),
           }}
-          noun={['person', 'people']}
+          countLabel={peopleCount}
+          noMatch={t('No people match.')}
         />
       )}
 
       <AuditFeed
-        title="Recent changes"
+        title={t('Recent changes')}
         id="activity-feed"
         scope={projectId}
         projectHref={projectHref}
         documentHref={documentHref}
         resetKey={`${projectId || 'all'}:${range}`}
         showUser
-        empty="Nothing in this window."
+        empty={t('Nothing in this window.')}
         fetchPage={({ limit, cursor }) => {
           const opts = {
             limit,

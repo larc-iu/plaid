@@ -29,6 +29,7 @@ import {
 } from '@/domain/igtConfig';
 import { lexiconFieldChoices } from '@/domain/lexiconField';
 import { notSetUp } from '@ui/domain/setupGuard.js';
+import { t } from '@ui/lib/i18n.js';
 import { fieldChange } from './fieldChange.js';
 import { queueFieldDeclarations, refusedBySave, tagsetRefusal } from '@/domain/igtConstraints';
 import { putRulesInForce } from './putRulesInForce.js';
@@ -42,7 +43,7 @@ import {
   wordFormsQuery,
 } from '@/domain/ignoredChange';
 
-const PREDEFINED = ['Gloss', 'POS', 'Translation', 'Literal Translation', 'Note'];
+const PREDEFINED = ['Gloss', 'POS', 'Translation', 'Literal Translation', 'Note']; // i18n-ignore: default field names, stored
 const isPredefinedField = (fieldName) => PREDEFINED.includes(fieldName);
 
 // A field's identity on a layer: the same (scope, name) pair FieldsManager
@@ -175,7 +176,7 @@ export const FieldsSettings = ({
     const fresh = await client.projects.get(projectId);
     const layers = layersOf(fresh);
     if (!layers) {
-      throw new Error(notSetUp('No baseline text layer found in project'));
+      throw new Error(notSetUp('No baseline text layer found in project')); // i18n-ignore: console only
     }
     const { primary, sentence, morpheme, managed } = layers;
 
@@ -203,6 +204,7 @@ export const FieldsSettings = ({
       fresh?.config,
     );
     if (asked.length) {
+      // i18n-ignore: never shown, RefusedValuesNotice says it
       throw Object.assign(new Error('Values in use are not in the list'), {
         refusedValues: asked,
       });
@@ -269,7 +271,7 @@ export const FieldsSettings = ({
   // changed since the page read it refuses the save (409), and so does the
   // server when it changes between this read and the write.
   const queueRest = (b, data, change, { primary, managed }, layerIds, projectConfig) => {
-    const changedElsewhere = () => Object.assign(new Error('Changed elsewhere'), { status: 409 });
+    const changedElsewhere = () => Object.assign(new Error('Changed elsewhere'), { status: 409 }); // i18n-ignore: a 409, which notifyError words
     const shown = new Map(data.previous.fields.map((f) => [fieldKey(f), f]));
     const layerOf = new Map(managed.map((l) => [layerKey(l), l]));
 
@@ -451,6 +453,7 @@ export const FieldsSettings = ({
   const handleTokenizeNewTextChange = (next) =>
     inTurn(async () => {
       const primary = layersOf(project)?.primary;
+      // i18n-ignore: console only
       if (!primary) throw new Error(notSetUp('No baseline text layer found in project'));
       await client.tokenLayers.setConfig(
         primary.id,
@@ -469,7 +472,7 @@ export const FieldsSettings = ({
   // table shows what the server holds rather than what was asked for.
   const handleError = (error) => {
     if (error?.refusedValues) setRefused(error.refusedValues);
-    else notifyError(tagsetRefusal(error) ?? error, 'Not saved');
+    else notifyError(tagsetRefusal(error) ?? error, t('Not saved'));
     Promise.resolve(onProjectUpdate?.()).catch((err) =>
       console.error('Failed to reload the project:', err),
     );

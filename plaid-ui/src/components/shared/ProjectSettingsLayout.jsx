@@ -1,6 +1,7 @@
 import { Link } from 'react-router-dom';
 import { FORM_PAGE_WIDTH } from '../../lib/pageWidth.js';
 import { cn } from '../../lib/utils.js';
+import { t } from '../../lib/i18n.js';
 
 /**
  * A project's settings as one layout in every app: a list of links down the
@@ -8,7 +9,8 @@ import { cn } from '../../lib/utils.js';
  *
  * Props:
  * - `sections`: the app's, as data, `[{ value, label, body }]`, in the order
- *   they are listed. General comes first in every app: it is where a
+ *   they are listed. `label` is a message (marked with `msg()` where the app
+ *   keeps its sections in a constant), translated here. General comes first in every app: it is where a
  *   maintainer goes most, and it holds the delete.
  * - `active`: the section shown, one of `sections`.
  * - `href(value)`: the URL of a section. Each section IS a page with its own
@@ -23,7 +25,7 @@ import { cn } from '../../lib/utils.js';
  */
 export const ProjectSettingsLayout = ({ sections, active, href, bodyProps }) => (
   <div className={cn('flex flex-col gap-6 sm:flex-row sm:items-start', FORM_PAGE_WIDTH)}>
-    <nav aria-label="Settings" className="flex shrink-0 flex-col gap-1 sm:w-52">
+    <nav aria-label={t('Settings')} className="flex shrink-0 flex-col gap-1 sm:w-52">
       {sections.map(({ value, label }) => (
         <Link
           key={value}
@@ -36,7 +38,7 @@ export const ProjectSettingsLayout = ({ sections, active, href, bodyProps }) => 
               : 'text-muted-foreground hover:bg-accent/60 hover:text-foreground',
           )}
         >
-          {label}
+          {t(label)}
         </Link>
       ))}
     </nav>

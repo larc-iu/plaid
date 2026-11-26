@@ -24,11 +24,11 @@ import { timeAgo, fullTimestamp } from '@ui/lib/formatTime.js';
 import { notifySuccess, notifyError, humanizeError } from '@/utils/feedback';
 import { useConfirm } from '@ui/components/shared/ConfirmProvider';
 import { InviteStatusBadge } from '@ui/components/shared/InviteStatusBadge.jsx';
-import { inviteLinkFor, GRANT_ROLES, cap, inviteRevocable } from '@ui/domain/invites.js';
+import { inviteLinkFor, GRANT_ROLES, inviteRevocable } from '@ui/domain/invites.js';
 import { ProjectLink } from './ProjectLink';
 import { ROLE_HINTS } from '@/domain/roleGrants.js';
 import { textIncludes } from '@ui/domain/collation.js';
-import { countOf } from '@ui/lib/plural.js';
+import { t } from '@ui/lib/i18n.js';
 import { copyText } from '@ui/lib/download.js';
 
 // Every invite on the server, whoever minted it. A project's own tab shows
@@ -48,7 +48,7 @@ const LinkResult = ({ link, onClose }) => {
   const text = link ? inviteLinkFor(link.code) : '';
 
   const copy = async () => {
-    if (!(await copyText(text, 'Select the link and copy it by hand.'))) return;
+    if (!(await copyText(text, t('Select the link and copy it by hand.')))) return;
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };
@@ -57,25 +57,27 @@ const LinkResult = ({ link, onClose }) => {
     <Dialog open={Boolean(link)} onOpenChange={(o) => !o && onClose()}>
       <DialogContent className="max-w-2xl">
         <DialogHeader>
-          <DialogTitle>Link created</DialogTitle>
+          <DialogTitle>{t('Link created')}</DialogTitle>
           <DialogDescription>
-            Copy it now. It cannot be shown again. It creates up to{' '}
-            {countOf(link?.maxUses ?? 0, 'account')}.
+            {t(
+              'Copy it now. It cannot be shown again. It creates up to {n, plural, one {# account} other {# accounts}}.',
+              { n: link?.maxUses ?? 0 },
+            )}
           </DialogDescription>
         </DialogHeader>
         <Input
           readOnly
           value={text}
-          aria-label="Invite link"
+          aria-label={t('Invite link')}
           className="font-mono text-xs"
           onFocus={(e) => e.target.select()}
         />
         <DialogFooter className="sm:justify-between">
           <Button variant="outline" onClick={copy}>
             {copied ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
-            Copy
+            {t('Copy')}
           </Button>
-          <Button onClick={onClose}>Done</Button>
+          <Button onClick={onClose}>{t('Done')}</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
@@ -108,7 +110,7 @@ export const AdminInvites = ({ client }) => {
     } catch (err) {
       console.error('Error loading invites:', err);
       setLoadFailed(true);
-      notifyError(humanizeError(err), 'Failed to load the invitations');
+      notifyError(humanizeError(err), t('Failed to load the invitations'));
     } finally {
       setLoading(false);
     }
@@ -133,17 +135,17 @@ export const AdminInvites = ({ client }) => {
   const mintBatch = async () => {
     const maxUses = Number(batch.uses);
     if (batch.uses === '' || !Number.isInteger(maxUses) || maxUses < 1 || maxUses > 200) {
-      notifyError('Between 1 and 200.', 'Check the number of uses');
+      notifyError(t('Between 1 and 200.'), t('Check the number of uses'));
       return;
     }
     // Blank or 0 must not fall through to the server's default.
     const ttlDays = Number(batch.ttlDays);
     if (batch.ttlDays === '' || !Number.isInteger(ttlDays) || ttlDays < 1 || ttlDays > 365) {
-      notifyError('Between 1 and 365.', 'Check the expiry');
+      notifyError(t('Between 1 and 365.'), t('Check the expiry'));
       return;
     }
     if (!batch.projectId) {
-      notifyError('Choose a project, or No project.', 'Project required');
+      notifyError(t('Choose a project, or No project.'), t('Project required'));
       return;
     }
     const grant =
@@ -162,7 +164,7 @@ export const AdminInvites = ({ client }) => {
       await load();
     } catch (err) {
       console.error('Error minting invite:', err);
-      notifyError(humanizeError(err), 'Failed to create the link');
+      notifyError(humanizeError(err), t('Failed to create the link'));
     } finally {
       setMinting(false);
     }
@@ -170,38 +172,44 @@ export const AdminInvites = ({ client }) => {
 
   const revoke = async (invite) => {
     const ok = await confirm({
-      title: 'Revoke this link?',
-      description: `${invite.note || 'The link'} stops working immediately. Accounts already created keep their access.`,
-      confirmLabel: 'Revoke',
+      title: t('Revoke this link?'),
+      description: invite.note
+        ? t('{note} stops working immediately. Accounts already created keep their access.', {
+            note: invite.note,
+          })
+        : t('The link stops working immediately. Accounts already created keep their access.'),
+      confirmLabel: t('Revoke'),
       destructive: true,
     });
     if (!ok) return;
     try {
       await client.invites.revoke(invite.id);
-      notifySuccess('Link revoked');
+      notifySuccess(t('Link revoked'));
       await load();
     } catch (err) {
-      notifyError(humanizeError(err), 'Failed to revoke the invitation');
+      notifyError(humanizeError(err), t('Failed to revoke the invitation'));
     }
   };
 
   const columns = [
     {
       key: 'note',
-      label: 'Note',
+      label: t('Note'),
       sort: (i) => (i.note || '').toLowerCase(),
-      render: (i) => i.note || <span className="text-muted-foreground">Untitled</span>,
+      render: (i) => i.note || <span className="text-muted-foreground">{t('Untitled')}</span>,
     },
     {
       key: 'grants',
-      label: 'Grants',
+      label: t('Grants'),
       sort: (i) => (i.grantAdmin ? 'admin' : projectName(i.projectId).toLowerCase()),
       render: (i) =>
         i.kind === 'password-reset' ? (
-          <span className="text-muted-foreground">Password reset for {i.targetUserId}</span>
+          <span className="text-muted-foreground">
+            {t('Password reset for {user}', { user: i.targetUserId })}
+          </span>
         ) : (
           <span className="flex flex-wrap items-center gap-1">
-            {i.grantAdmin && <Badge variant="destructive">Admin</Badge>}
+            {i.grantAdmin && <Badge variant="destructive">{t('Admin')}</Badge>}
             {i.projectId && (
               <ProjectLink
                 project={projects.find((p) => p.id === i.projectId) ?? { id: i.projectId }}
@@ -210,23 +218,30 @@ export const AdminInvites = ({ client }) => {
                 {projectName(i.projectId)}
               </ProjectLink>
             )}
-            {i.projectRole && <span className="text-muted-foreground">{i.projectRole}</span>}
+            {i.projectRole && (
+              <span className="text-muted-foreground">
+                {t(
+                  '{role, select, reader {reader} writer {writer} maintainer {maintainer} other {{role}}}',
+                  { role: i.projectRole },
+                )}
+              </span>
+            )}
             {!i.grantAdmin && !i.projectId && (
-              <span className="text-muted-foreground">Account only</span>
+              <span className="text-muted-foreground">{t('Account only')}</span>
             )}
           </span>
         ),
     },
     {
       key: 'createdBy',
-      label: 'Created by',
+      label: t('Created by'),
       sort: (i) => (i.createdBy || '').toLowerCase(),
       className: 'text-muted-foreground',
       render: (i) => i.createdBy,
     },
     {
       key: 'uses',
-      label: 'Uses',
+      label: t('Uses'),
       sort: (i) => i.uses,
       align: 'right',
       className: 'tabular-nums',
@@ -234,14 +249,14 @@ export const AdminInvites = ({ client }) => {
     },
     {
       key: 'expires',
-      label: 'Expires',
+      label: t('Expires'),
       sort: (i) => (i.expiresAt ? new Date(i.expiresAt).getTime() : null),
       className: 'text-muted-foreground',
       render: (i) => <span title={fullTimestamp(i.expiresAt)}>{timeAgo(i.expiresAt)}</span>,
     },
     {
       key: 'status',
-      label: 'Status',
+      label: t('Status'),
       sort: (i) => i.status,
       render: (i) => <InviteStatusBadge status={i.status} />,
     },
@@ -253,7 +268,7 @@ export const AdminInvites = ({ client }) => {
       render: (i) =>
         inviteRevocable(i.status) ? (
           <Button size="sm" variant="ghost" onClick={() => revoke(i)}>
-            Revoke
+            {t('Revoke')}
           </Button>
         ) : null,
     },
@@ -268,7 +283,7 @@ export const AdminInvites = ({ client }) => {
         id="admin-invites"
         defaultSort={{ key: 'expires', dir: 'desc' }}
         search={{
-          placeholder: 'Search invites\u2026',
+          placeholder: t('Search invites…'),
           match: (i, q) =>
             textIncludes(i.note || '', q) ||
             textIncludes(i.createdBy || '', q) ||
@@ -276,7 +291,8 @@ export const AdminInvites = ({ client }) => {
         }}
         noun="invite"
         showCount={!loadFailed}
-        empty={loadFailed ? 'Not loaded.' : 'No invites.'}
+        empty={loadFailed ? t('Not loaded.') : t('No invites.')}
+        noMatch={t('No invites match.')}
         loading={loading}
         actions={
           <>
@@ -285,16 +301,16 @@ export const AdminInvites = ({ client }) => {
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="all">Any status</SelectItem>
-                <SelectItem value="active">Active</SelectItem>
-                <SelectItem value="used">Used</SelectItem>
-                <SelectItem value="expired">Expired</SelectItem>
-                <SelectItem value="revoked">Revoked</SelectItem>
-                <SelectItem value="inactive">Inactive</SelectItem>
+                <SelectItem value="all">{t('Any status')}</SelectItem>
+                <SelectItem value="active">{t('Active')}</SelectItem>
+                <SelectItem value="used">{t('Used')}</SelectItem>
+                <SelectItem value="expired">{t('Expired')}</SelectItem>
+                <SelectItem value="revoked">{t('Revoked')}</SelectItem>
+                <SelectItem value="inactive">{t('Inactive')}</SelectItem>
               </SelectContent>
             </Select>
             <Button size="sm" onClick={() => setBatchOpen(true)}>
-              <Link2 className="h-4 w-4" /> Create link
+              <Link2 className="h-4 w-4" /> {t('Create link')}
             </Button>
           </>
         }
@@ -303,14 +319,14 @@ export const AdminInvites = ({ client }) => {
       <Dialog open={batchOpen} onOpenChange={setBatchOpen}>
         <DialogContent className="max-w-md">
           <DialogHeader>
-            <DialogTitle>Create link</DialogTitle>
+            <DialogTitle>{t('Create link')}</DialogTitle>
             <DialogDescription>
-              One link that creates as many accounts as it has uses.
+              {t('One link that creates as many accounts as it has uses.')}
             </DialogDescription>
           </DialogHeader>
           <div className="flex flex-col gap-4">
             <div className="flex flex-col gap-1.5">
-              <Label htmlFor="invite-uses">Uses</Label>
+              <Label htmlFor="invite-uses">{t('Uses')}</Label>
               <Input
                 id="invite-uses"
                 type="number"
@@ -322,16 +338,16 @@ export const AdminInvites = ({ client }) => {
               />
             </div>
             <div className="flex flex-col gap-1.5">
-              <Label htmlFor="invite-project">Project</Label>
+              <Label htmlFor="invite-project">{t('Project')}</Label>
               <Select
                 value={batch.projectId}
                 onValueChange={(v) => setBatch({ ...batch, projectId: v })}
               >
                 <SelectTrigger id="invite-project">
-                  <SelectValue placeholder="Choose a project" />
+                  <SelectValue placeholder={t('Choose a project')} />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value={NO_PROJECT}>No project</SelectItem>
+                  <SelectItem value={NO_PROJECT}>{t('No project')}</SelectItem>
                   {projects.map((p) => (
                     <SelectItem key={p.id} value={p.id}>
                       {p.name}
@@ -342,15 +358,18 @@ export const AdminInvites = ({ client }) => {
             </div>
             {batch.projectId !== NO_PROJECT && (
               <div className="flex flex-col gap-1.5">
-                <Label htmlFor="invite-role">Role</Label>
+                <Label htmlFor="invite-role">{t('Role')}</Label>
                 <Select value={batch.role} onValueChange={(v) => setBatch({ ...batch, role: v })}>
                   <SelectTrigger id="invite-role">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
                     {GRANT_ROLES.map((r) => (
-                      <SelectItem key={r} value={r} hint={ROLE_HINTS[r]}>
-                        {cap(r)}
+                      <SelectItem key={r} value={r} hint={t(ROLE_HINTS[r])}>
+                        {t(
+                          '{role, select, reader {Reader} writer {Writer} maintainer {Maintainer} other {{role}}}',
+                          { role: r },
+                        )}
                       </SelectItem>
                     ))}
                   </SelectContent>
@@ -358,7 +377,7 @@ export const AdminInvites = ({ client }) => {
               </div>
             )}
             <div className="flex flex-col gap-1.5">
-              <Label htmlFor="invite-ttl">Expires in (days)</Label>
+              <Label htmlFor="invite-ttl">{t('Expires in (days)')}</Label>
               <Input
                 id="invite-ttl"
                 type="number"
@@ -369,10 +388,10 @@ export const AdminInvites = ({ client }) => {
               />
             </div>
             <div className="flex flex-col gap-1.5">
-              <Label htmlFor="invite-label">Label</Label>
+              <Label htmlFor="invite-label">{t('Label')}</Label>
               <Input
                 id="invite-label"
-                placeholder="Field methods Fall 2026"
+                placeholder={t('Field methods Fall 2026')}
                 value={batch.note}
                 onChange={(e) => setBatch({ ...batch, note: e.target.value })}
               />
@@ -380,10 +399,10 @@ export const AdminInvites = ({ client }) => {
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setBatchOpen(false)} disabled={minting}>
-              Cancel
+              {t('Cancel')}
             </Button>
             <Button onClick={mintBatch} disabled={minting}>
-              {minting ? 'Creating…' : 'Create'}
+              {minting ? t('Creating…') : t('Create')}
             </Button>
           </DialogFooter>
         </DialogContent>

@@ -161,6 +161,9 @@ const APP_SOURCES = [
   ':!*.test.*',
   ':!**/src/test/**',
   ':!**/src/data/**',
+  // A catalog translates copy that is judged where the code has it, and JSON
+  // has nowhere to put a mark.
+  ':!**/src/locales/**',
 ];
 
 /** Lines naming a service outside a comment, unmarked, as `file:line: text`. */

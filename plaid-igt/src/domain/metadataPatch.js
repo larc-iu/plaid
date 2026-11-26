@@ -13,6 +13,7 @@
 // means to change.
 
 import { metadataOps } from '@larc-iu/plaid-client';
+import { t } from '@ui/lib/i18n.js';
 
 /**
  * The metadata ops that turn `before` into `after`, keys and deletions alike.
@@ -78,15 +79,17 @@ export const changedUnderSave = (loaded, next, now) => {
  */
 export const changedElsewhereText = (
   { key, value },
-  labelOf = (k) => (k === 'form' ? 'Form' : k),
+  labelOf = (k) => (k === 'form' ? t('Form') : k),
 ) => {
   const label = String(labelOf(key) ?? key);
-  const name = label.charAt(0).toUpperCase() + label.slice(1);
-  const what =
-    value === undefined || value === null || value === ''
-      ? 'was removed elsewhere'
-      : typeof value === 'string' || typeof value === 'number'
-        ? `was changed elsewhere to “${value}”`
-        : 'was changed elsewhere';
-  return `${name} ${what}. Save again to keep yours.`;
+  const field = label.charAt(0).toUpperCase() + label.slice(1);
+  if (value === undefined || value === null || value === '') {
+    return t('{field} was removed elsewhere. Save again to keep yours.', { field });
+  }
+  return typeof value === 'string' || typeof value === 'number'
+    ? t('{field} was changed elsewhere to “{value}”. Save again to keep yours.', {
+        field,
+        value: String(value),
+      })
+    : t('{field} was changed elsewhere. Save again to keep yours.', { field });
 };

@@ -1,4 +1,5 @@
 import { reviewsAnyone } from '@larc-iu/plaid-client';
+import { t } from '../../lib/i18n.js';
 import { LegendRow } from './LegendRow.jsx';
 
 // An editor legend's Marks line, the provenance marks in the shared
@@ -8,18 +9,18 @@ import { LegendRow } from './LegendRow.jsx';
 // `lowConfidence` lists the heavier mark of a doubtful machine value, for an
 // app that draws it. `children` is the app's own rest of the line.
 export const MarksRow = ({ project, lowConfidence = false, children }) => (
-  <LegendRow title="Marks">
-    <span className="plaid-prov--machine">machine-made</span>
+  <LegendRow title={t('Marks')}>
+    <span className="plaid-prov--machine">{t('machine-made')}</span>
     {' · '}
     {lowConfidence && (
       <>
-        <span className="plaid-prov--machine plaid-prov--doubtful">low confidence</span>
+        <span className="plaid-prov--machine plaid-prov--doubtful">{t('low confidence')}</span>
         {' · '}
       </>
     )}
     {reviewsAnyone(project?.config) && (
       <>
-        <span className="plaid-prov--contributed">contributed</span>
+        <span className="plaid-prov--contributed">{t('contributed')}</span>
         {' · '}
       </>
     )}

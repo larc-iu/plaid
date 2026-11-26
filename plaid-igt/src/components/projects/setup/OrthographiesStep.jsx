@@ -1,3 +1,4 @@
+import { t } from '@ui/lib/i18n.js';
 import { OrthographiesManager } from '../settings/OrthographiesManager.jsx';
 
 export const OrthographiesStep = ({ data, onDataChange }) => {
@@ -16,7 +17,7 @@ export const OrthographiesStep = ({ data, onDataChange }) => {
       initialData={data}
       onSaveChanges={handleSaveChanges}
       autoSaveDefaults={true}
-      note="Every orthography listed here is created. Remove the ones you do not want."
+      note={t('Every orthography listed here is created. Remove the ones you do not want.')}
     />
   );
 };

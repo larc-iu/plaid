@@ -11,6 +11,8 @@
 // Pure, so it is tested as arithmetic. The chips and the picker are
 // ProjectChips.jsx.
 
+import { t } from '../../lib/i18n.js';
+
 // The set the conversation's last message carried, which is the set the next
 // one carries unless the reader changes it.
 export const lastProjects = (display) => {
@@ -64,7 +66,12 @@ export const atProjectCap = (joined, max) => !!max && (joined?.length ?? 0) + 1 
 
 // Why a project was refused: whoever runs the assistant does not maintain it.
 const notMaintainedThere = (runnerName, name) =>
-  `This assistant is run by ${runnerName || 'another member'}, who is not a maintainer of ${name}.`;
+  runnerName
+    ? t('This assistant is run by {runner}, who is not a maintainer of {name}.', {
+        runner: runnerName,
+        name,
+      })
+    : t('This assistant is run by another member, who is not a maintainer of {name}.', { name });
 
 // Why the assistant answering cannot read a project for the reader, from that
 // project's discovery answer, or null when it can. A project joins only where
@@ -118,16 +125,21 @@ export const reachChanged = (display, i) => {
 
 // The line on a message, and in the export: the other projects it reads, or,
 // where the reader removed them all, its home project alone.
-export const withProjects = (projects) => `With ${projects.map((p) => p.name || p.id).join(', ')}`;
-export const homeOnly = (homeName) => `${homeName || 'This project'} only`;
+// Project names, listed as the message carried them.
+export const withProjects = (projects) =>
+  t('With {names}', { names: projects.map((p) => p.name || p.id).join(', ') });
+export const homeOnly = (homeName) =>
+  homeName ? t('{name} only', { name: homeName }) : t('This project only');
 
 // Why a project was refused: the assistant answering does not run there.
 export const notServedThere = (serviceName, name) =>
-  `${serviceName || 'The assistant'} is not running in ${name}.`;
+  serviceName
+    ? t('{service} is not running in {name}.', { service: serviceName, name })
+    : t('The assistant is not running in {name}.', { name });
 
 // The line under a reply for projects the assistant could not read.
 export const couldNotOpen = (projects) =>
-  projects.map((p) => `${p.name || p.id} could not be opened.`).join(' ');
+  projects.map((p) => t('{name} could not be opened.', { name: p.name || p.id })).join(' ');
 
 // The name each other project had as of the message at `i`: the latest one a
 // message up to there carried. A later rename leaves an earlier turn alone.
@@ -167,10 +179,10 @@ export const chipRemoveLabels = (projects) => {
   for (const p of projects || []) count.set(p.name, (count.get(p.name) ?? 0) + 1);
   const seen = new Map();
   return (projects || []).map((p) => {
-    if (count.get(p.name) < 2) return `Remove ${p.name}`;
+    if (count.get(p.name) < 2) return t('Remove {name}', { name: p.name });
     const n = (seen.get(p.name) ?? 0) + 1;
     seen.set(p.name, n);
-    return `Remove ${p.name} (${n})`;
+    return t('Remove {name} ({n})', { name: p.name, n });
   });
 };
 

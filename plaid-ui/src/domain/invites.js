@@ -1,4 +1,5 @@
 import PlaidClient from '@larc-iu/plaid-client';
+import { language, msg } from '../lib/i18n.js';
 
 // The link a redeemer opens: the minting app's own origin and path, with the
 // code. The server never learns the app's public URL, so the app that minted
@@ -21,9 +22,10 @@ export const INVITE_STATUS_CLASS = {
   inactive: 'border-warning/40 bg-warning/10 text-warning-foreground',
 };
 
-/** The hover text a status badge carries, where the word alone does not say it. */
+/** The hover text a status badge carries, where the word alone does not say
+ * it. Messages: the badge calls t(). */
 export const INVITE_STATUS_TITLE = {
-  inactive: 'Creator no longer has the access this link grants',
+  inactive: msg('Creator no longer has the access this link grants'),
 };
 
 /** Whether a link can still be revoked: one that works, or one that could again. */
@@ -32,11 +34,11 @@ export const inviteRevocable = (status) => status === 'active' || status === 'in
 /** The three levels an invite can grant on a project, lowest first. */
 export const GRANT_ROLES = ['reader', 'writer', 'maintainer'];
 
-export const cap = (s) => (s ? s.charAt(0).toUpperCase() + s.slice(1) : '');
-
-/** A date as the reader's locale writes it, or nothing at all. */
+/** A date as the reader's locale writes it, or nothing at all: in the
+ * interface's language, or in English as the browser writes dates. */
 export const fmtDate = (iso) => {
   if (!iso) return '';
   const d = new Date(iso);
-  return Number.isNaN(d.getTime()) ? '' : d.toLocaleDateString();
+  const lng = language();
+  return Number.isNaN(d.getTime()) ? '' : d.toLocaleDateString(lng === 'en' ? undefined : lng);
 };

@@ -6,6 +6,7 @@
 // batch, so R2 holds.
 
 import { ROLES } from '@larc-iu/plaid-client';
+import { t } from '@ui/lib/i18n.js';
 import { canEditProject } from '@ui/domain/permissions.js';
 import { statusOf } from '@ui/lib/errors.js';
 import { CHUNK } from './bulk.js';
@@ -53,7 +54,7 @@ export async function planKeptTypes(client, user, { itemIds, vocabId, projectId 
   const scope = projectId ? { scope: { projectIds: [projectId] } } : {};
   const read = async (q) => {
     const res = await client.query({ ...q, limit: QUERY_LIMIT, ...scope });
-    if (res?.truncated) throw new Error('Too many linked morphemes to read at once.');
+    if (res?.truncated) throw new Error(t('Too many linked morphemes to read at once.'));
     return res?.results || [];
   };
   // A query answers at most QUERY_LIMIT rows, so the links are read a few

@@ -67,12 +67,23 @@ import { useMaintainersOnly } from './useMaintainersOnly.js';
 import { UnfinishedImportScreen } from './UnfinishedImport.jsx';
 import { readImportState } from '@/domain/igtConfig';
 import { getIgnoredTokensConfig } from '@/utils/tokenizationUtils';
-import { countOf } from '@ui/lib/plural.js';
+import { t, tx } from '@ui/lib/i18n.js';
 
 const NEW_FIELD = '__new__';
 
+const elanLink = (c) => (
+  <a
+    href="https://archive.mpi.nl/tla/elan"
+    target="_blank"
+    rel="noreferrer"
+    className="underline underline-offset-2"
+  >
+    {c}
+  </a>
+);
+
 export const ImportElanDocuments = () => {
-  useDocumentTitle('Add ELAN or Praat documents');
+  useDocumentTitle(t('Add ELAN or Praat documents'));
   const { client: session } = useAuth();
   // The run's own client, so a write made elsewhere in the tab meanwhile is
   // neither stamped with its document version nor filed under its operation.
@@ -157,7 +168,7 @@ export const ImportElanDocuments = () => {
       })
       .catch((err) => {
         console.error('Could not load the project:', err);
-        if (!cancelled) setLoadError('This project could not be loaded.');
+        if (!cancelled) setLoadError(t('This project could not be loaded.'));
       });
     return () => {
       cancelled = true;
@@ -175,7 +186,7 @@ export const ImportElanDocuments = () => {
       setStage('review');
     } catch (e) {
       console.error('ELAN read failed:', e);
-      notifyError(humanizeError(e), 'Failed to read the files');
+      notifyError(humanizeError(e), t('Failed to read the files'));
       setStage(batch.files ? 'review' : 'pick');
     }
   };
@@ -229,7 +240,7 @@ export const ImportElanDocuments = () => {
     stopRef.current = false;
     try {
       if (newFields.length || newOrthographies.length) {
-        setProgress({ label: 'Adding fields', pct: 2 });
+        setProgress({ label: t('Adding fields'), pct: 2 });
         await createFields(client, project, newFields, (label) => setProgress({ label, pct: 5 }));
         await addOrthographies(client, project, newOrthographies);
         // The engine reads the project itself and so sees the new layers; this
@@ -253,7 +264,9 @@ export const ImportElanDocuments = () => {
           const n = (p.index ?? 0) + 1;
           const total = p.total ?? batch.build.documents.length;
           setProgress({
-            label: `${p.doc}${p.step ? `: ${p.step}` : ''} (${n}/${total})`,
+            label: p.step
+              ? t('{doc}: {step} ({n}/{total})', { doc: p.doc, step: t(p.step), n, total })
+              : t('{doc} ({n}/{total})', { doc: p.doc, n, total }),
             pct: 10 + (n / total) * 90,
           });
         },
@@ -262,11 +275,13 @@ export const ImportElanDocuments = () => {
       setStage('done');
       if (res.warnings.length) {
         notifyWarning(
-          `Imported with ${countOf(res.warnings.length, 'warning')}.`,
-          'Import finished',
+          t('Imported with {n, plural, one {# warning} other {# warnings}}.', {
+            n: res.warnings.length,
+          }),
+          t('Import finished'),
         );
       } else {
-        notifySuccess(elanTally(res), 'Import complete');
+        notifySuccess(elanTally(res), t('Import complete'));
       }
     } catch (e) {
       console.error('ELAN import failed:', e);
@@ -287,7 +302,7 @@ export const ImportElanDocuments = () => {
       priorImports(client, projectId)
         .then(setPrior)
         .catch((err) => console.error('Could not read what is already imported:', err));
-      if (!(e instanceof ImportCancelled)) notifyError(humanizeError(e), 'Failed to import');
+      if (!(e instanceof ImportCancelled)) notifyError(humanizeError(e), t('Failed to import'));
     }
   };
 
@@ -303,13 +318,16 @@ export const ImportElanDocuments = () => {
     if (!name || !NAMED_ROLES.has(role)) return null;
     const scope = SCOPE_OF_ROLE[role];
     if (!scope) {
-      return newOrthographies.includes(name) ? { text: 'new orthography' } : null;
+      return newOrthographies.includes(name) ? { text: t('new orthography') } : null;
     }
     const added = newFields.find((f) => f.scope === scope && f.name === name);
     if (!added) return null;
     return added.similarTo
-      ? { tone: 'warn', text: `new field, and this project already has “${added.similarTo}”` }
-      : { text: 'new field' };
+      ? {
+          tone: 'warn',
+          text: t('new field, and this project already has “{name}”', { name: added.similarTo }),
+        }
+      : { text: t('new field') };
   };
 
   // What a tier's new field is called: the FLEx importer's name for it when the
@@ -327,7 +345,7 @@ export const ImportElanDocuments = () => {
       // An orthography is a name on the word layer, not a field to pick.
       return (
         <Input
-          aria-label={`Name for ${nodeLabel(node)}`}
+          aria-label={t('Name for {name}', { name: nodeLabel(node) })}
           value={batch.fieldNames[node.key] ?? ''}
           disabled={!editable}
           onChange={(e) => batch.setName(node.key, e.target.value)}
@@ -350,7 +368,7 @@ export const ImportElanDocuments = () => {
           }}
         >
           <SelectTrigger className="h-8 w-44">
-            <SelectValue placeholder="Choose a field" />
+            <SelectValue placeholder={t('Choose a field')} />
           </SelectTrigger>
           <SelectContent>
             {fields[scope].map((f) => (
@@ -358,12 +376,12 @@ export const ImportElanDocuments = () => {
                 {f.name}
               </SelectItem>
             ))}
-            <SelectItem value={NEW_FIELD}>New field…</SelectItem>
+            <SelectItem value={NEW_FIELD}>{t('New field…')}</SelectItem>
           </SelectContent>
         </Select>
         {isNew && (
           <Input
-            aria-label={`New field name for ${nodeLabel(node)}`}
+            aria-label={t('New field name for {name}', { name: nodeLabel(node) })}
             value={name}
             disabled={!editable}
             onChange={(e) => batch.setName(node.key, e.target.value)}
@@ -404,45 +422,45 @@ export const ImportElanDocuments = () => {
       />
       <div className="flex flex-col gap-6">
         <ImportHeader
-          title="Add ELAN or Praat documents"
+          title={t('Add ELAN or Praat documents')}
           crumbs={[
-            { label: 'Projects', to: '/projects', fixed: true },
+            { label: t('Projects'), to: '/projects', fixed: true },
             {
-              label: project?.name ?? 'Project',
+              label: project?.name ?? t('Project'),
               to: projectHref,
               icon: <ProjectTartan project={project} size={14} />,
             },
           ]}
         >
-          Import{' '}
-          <a
-            href="https://archive.mpi.nl/tla/elan"
-            target="_blank"
-            rel="noreferrer"
-            className="underline underline-offset-2"
-          >
-            ELAN
-          </a>{' '}
-          annotation files into {project?.name ? `“${project.name}”` : 'this project'}.
+          {project?.name
+            ? tx('Import <a>ELAN</a> annotation files into “{name}”.', {
+                name: project.name,
+                a: elanLink,
+              })
+            : tx('Import <a>ELAN</a> annotation files into this project.', { a: elanLink })}
         </ImportHeader>
 
         {stage === 'pick' && (
           <FileDropZone
             onFiles={handleFiles}
-            hint="Drop your .eaf or Praat .TextGrid files and their recordings here, or choose them below."
+            hint={t(
+              'Drop your .eaf or Praat .TextGrid files and their recordings here, or choose them below.',
+            )}
             onChoose={() => fileInputRef.current?.click()}
-            chooseLabel="Choose .eaf or .TextGrid files and recordings"
+            chooseLabel={t('Choose .eaf or .TextGrid files and recordings')}
           />
         )}
 
         {stage === 'parsing' && (
           <p className="text-sm text-muted-foreground" aria-live="polite">
-            {batch.decoding ? `Converting ${batch.decoding} to PCM WAV.` : 'Reading files…'}
+            {batch.decoding
+              ? t('Converting {name} to PCM WAV.', { name: batch.decoding })
+              : t('Reading files…')}
           </p>
         )}
         {stage !== 'parsing' && batch.decoding && (
           <p className="text-sm text-muted-foreground" aria-live="polite">
-            Converting {batch.decoding} to PCM WAV.
+            {t('Converting {name} to PCM WAV.', { name: batch.decoding })}
           </p>
         )}
 
@@ -497,18 +515,20 @@ export const ImportElanDocuments = () => {
                 <ElanProblems batch={batch} />
 
                 {runError && (
-                  <Panel tone="error" title="Failed to import">
+                  <Panel tone="error" title={t('Failed to import')}>
                     <p className="mt-1 text-xs">{runError.message}</p>
                     {runError.unfinishedRemoved && (
-                      <p className="mt-1 text-xs">The unfinished document was removed.</p>
+                      <p className="mt-1 text-xs">{t('The unfinished document was removed.')}</p>
                     )}
                     {runError.replacedGone && (
                       <p className="mt-1 text-xs">{replacedGoneLine(runError.replacedGone.name)}</p>
                     )}
                     {runError.unfinishedLeft && (
                       <p className="mt-1 text-xs">
-                        The unfinished document “{runError.unfinishedLeft.name}” could not be
-                        removed. Retrying replaces it.
+                        {t(
+                          'The unfinished document “{name}” could not be removed. Retrying replaces it.',
+                          { name: runError.unfinishedLeft.name },
+                        )}
                       </p>
                     )}
                   </Panel>
@@ -532,19 +552,19 @@ export const ImportElanDocuments = () => {
                   <Button onClick={startImport} disabled={!canRun}>
                     {runError ? (
                       <>
-                        <RefreshCw className="h-4 w-4" /> Retry import
+                        <RefreshCw className="h-4 w-4" /> {t('Retry import')}
                       </>
                     ) : (
-                      'Import'
+                      t('Import')
                     )}
                   </Button>
                   {stage === 'running' && (
                     <Button variant="outline" onClick={() => (stopRef.current = true)}>
-                      <Square className="h-4 w-4" /> Stop
+                      <Square className="h-4 w-4" /> {t('Stop')}
                     </Button>
                   )}
                   <Button variant="outline" asChild>
-                    <Link to={projectHref}>Cancel</Link>
+                    <Link to={projectHref}>{t('Cancel')}</Link>
                   </Button>
                   <span className="ms-2 text-xs text-muted-foreground">
                     {elanCounts(batch.build)}
@@ -557,14 +577,19 @@ export const ImportElanDocuments = () => {
 
         {stage === 'done' && results && (
           <div className="flex flex-col gap-4">
-            <Panel tone="success" title="Import complete">
+            <Panel tone="success" title={t('Import complete')}>
               <p className="mt-1 text-xs">{elanTally(results)}</p>
             </Panel>
             {log.length > 0 ? (
               <WarningLog log={log} />
             ) : (
               results.warnings.length > 0 && (
-                <Panel tone="warning" title={`${countOf(results.warnings.length, 'warning')}`}>
+                <Panel
+                  tone="warning"
+                  title={t('{n, plural, one {# warning} other {# warnings}}', {
+                    n: results.warnings.length,
+                  })}
+                >
                   <ul className="mt-1 list-inside list-disc text-xs">
                     {results.warnings.map((w, i) => (
                       <li key={i}>{w}</li>
@@ -575,7 +600,7 @@ export const ImportElanDocuments = () => {
             )}
             <div>
               <Button asChild>
-                <Link to={projectHref}>Open project</Link>
+                <Link to={projectHref}>{t('Open project')}</Link>
               </Button>
             </div>
           </div>

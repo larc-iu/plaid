@@ -23,6 +23,7 @@ import {
   workReplaced,
 } from './planChanges.js';
 import { useExport } from './exportContext.js';
+import { t, tx } from '../../lib/i18n.js';
 
 // A proposed change set, row by row, with its apply controls.
 // A proposed plan: what it does in one line, every change as a row under the
@@ -145,43 +146,43 @@ export const PlanCard = ({
       {/* The summary wraps in its own column, so a badge keeps to the first
           line beside it rather than wrapping onto a line of its own. */}
       <div className="flex items-start gap-2 [&>.ml-auto]:shrink-0">
-        <span className="shrink-0 font-medium">Proposed changes</span>
+        <span className="shrink-0 font-medium">{t('Proposed changes')}</span>
         <span className="min-w-0 flex-1 text-muted-foreground">{plan.summary}</span>
         {status === 'applied' && (
           <Badge variant="secondary" className="ml-auto">
-            <Check className="mr-1 h-3 w-3" /> Applied
+            <Check className="mr-1 h-3 w-3" /> {t('Applied')}
           </Badge>
         )}
         {status === 'discarded' && (
           <Badge variant="outline" className="ml-auto">
-            Discarded
+            {t('Discarded')}
           </Badge>
         )}
         {stale && (
           <Badge variant="outline" className="ml-auto">
-            Out of date
+            {t('Out of date')}
           </Badge>
         )}
         {superseded && (
           <Badge variant="outline" className="ml-auto">
-            Replaced
+            {t('Replaced')}
           </Badge>
         )}
         {partial && (
           <Badge variant="outline" className="ml-auto">
-            Partly applied
+            {t('Partly applied')}
           </Badge>
         )}
         {applying && (
           <Badge variant="secondary" className="ml-auto">
-            <Loader2 className="mr-1 h-3 w-3 animate-spin" /> Applying…
+            <Loader2 className="mr-1 h-3 w-3 animate-spin" /> {t('Applying…')}
           </Badge>
         )}
         {/* Read by someone who cannot decide it: the state, in place of the
             buttons. */}
         {readOnly && undecided && !applying && (
           <Badge variant="outline" className="ml-auto">
-            Waiting for approval
+            {t('Waiting for approval')}
           </Badge>
         )}
       </div>
@@ -189,7 +190,10 @@ export const PlanCard = ({
         <div className="mt-1 flex items-center gap-1 text-xs text-muted-foreground">
           <FolderOpen className="h-3 w-3 shrink-0" />
           <span className="min-w-0 truncate">
-            In <bdi className="font-medium text-foreground">{planProject}</bdi>
+            {tx('In <bdi>{name}</bdi>', {
+              name: planProject,
+              bdi: (c) => <bdi className="font-medium text-foreground">{c}</bdi>,
+            })}
           </span>
         </div>
       )}
@@ -201,7 +205,7 @@ export const PlanCard = ({
       {partial && (
         <p className="mt-2 text-xs text-muted-foreground">
           {outcome}
-          {unknown && ' The server did not answer for the rest.'}
+          {unknown && ` ${t('The server did not answer for the rest.')}`}
         </p>
       )}
       {/* A plan with no stamp to choose was approved with one Approve, so no
@@ -225,17 +229,21 @@ export const PlanCard = ({
       {rewrites > 0 && !unwritable && (
         <p className="mt-1.5 flex items-center gap-1.5 text-xs text-warning-foreground">
           <PenLine className="h-3.5 w-3.5 shrink-0" />
-          {rewrites === 1
-            ? `1 change rewrites ${adapter.textName}.`
-            : `${rewrites.toLocaleString('en-US')} changes rewrite ${adapter.textName}.`}
+          {adapter.textRewrites
+            ? t(adapter.textRewrites, { n: rewrites })
+            : t('{n, plural, one {# change rewrites {text}.} other {# changes rewrite {text}.}}', {
+                n: rewrites,
+                text: adapter.textName,
+              })}
         </p>
       )}
       {replaced > 0 && !unwritable && (
         <p className="mt-1.5 flex items-center gap-1.5 text-xs text-warning-foreground">
           <UserCheck className="h-3.5 w-3.5 shrink-0" />
-          {replaced === 1
-            ? '1 change replaces accepted work.'
-            : `${replaced.toLocaleString('en-US')} changes replace accepted work.`}
+          {t(
+            '{n, plural, one {# change replaces accepted work.} other {# changes replace accepted work.}}',
+            { n: replaced },
+          )}
         </p>
       )}
       {/* A size container, so a row's place can be held to a share of the
@@ -278,8 +286,9 @@ export const PlanCard = ({
                           settled to none, writes nothing. */}
                       {groupChanges.get(g.key) > 0 && (
                         <span className="ml-1.5 font-normal text-muted-foreground">
-                          {groupChanges.get(g.key).toLocaleString('en-US')}
-                          {omitted > 0 && ' shown'}
+                          {omitted > 0
+                            ? t('{n, number} shown', { n: groupChanges.get(g.key) })
+                            : groupChanges.get(g.key).toLocaleString('en-US')}
                         </span>
                       )}
                     </th>
@@ -326,21 +335,23 @@ export const PlanCard = ({
           <ChevronDown className="h-3 w-3" />{' '}
           {total == null
             ? omitted > 0
-              ? 'Show more'
-              : 'Show all'
-            : `${omitted > 0 ? 'Show' : 'Show all'} ${total.toLocaleString('en-US')}`}
+              ? t('Show more')
+              : t('Show all')
+            : omitted > 0
+              ? t('Show {n, number}', { n: total })
+              : t('Show all {n, number}', { n: total })}
         </button>
       )}
       {stale && !dismissed && !readOnly && (
         <>
           <p className="mt-2 text-xs text-muted-foreground">
             {reason
-              ? 'Ask the assistant to plan again.'
-              : 'Changed since this plan was made. Ask the assistant to plan again.'}
+              ? t('Ask the assistant to plan again.')
+              : t('Changed since this plan was made. Ask the assistant to plan again.')}
           </p>
           <div className="mt-2 flex flex-wrap items-center gap-2">
             <Button type="button" size="sm" variant="outline" onClick={onDiscard} disabled={busy}>
-              <X className="h-4 w-4" /> Discard
+              <X className="h-4 w-4" /> {t('Discard')}
             </Button>
           </div>
         </>
@@ -348,10 +359,10 @@ export const PlanCard = ({
       {nothingToWrite && !readOnly && (
         <div className="mt-2 flex flex-wrap items-center gap-2">
           <span className="text-muted-foreground" data-testid="nothing-to-write">
-            Nothing to write
+            {t('Nothing to write')}
           </span>
           <Button type="button" size="sm" variant="outline" onClick={onDiscard} disabled={busy}>
-            <X className="h-4 w-4" /> Discard
+            <X className="h-4 w-4" /> {t('Discard')}
           </Button>
         </div>
       )}
@@ -370,11 +381,11 @@ export const PlanCard = ({
               type="button"
               size="sm"
               variant="secondary"
-              title={asHuman ? 'Record every change as your own work.' : undefined}
+              title={asHuman ? t('Record every change as your own work.') : undefined}
               onClick={() => onApprove({ asHuman, asUnverified: false })}
               disabled={busy}
             >
-              <Check className="h-4 w-4" /> Approve
+              <Check className="h-4 w-4" /> {t('Approve')}
             </Button>
           ) : canWrite ? (
             <>
@@ -382,11 +393,11 @@ export const PlanCard = ({
                 type="button"
                 size="sm"
                 variant="secondary"
-                title="Record the assistant's values as its proposals, unconfirmed."
+                title={t("Record the assistant's values as its proposals, unconfirmed.")}
                 onClick={() => onApprove({ asHuman: false, asUnverified: true })}
                 disabled={busy}
               >
-                <Check className="h-4 w-4" /> Approve as unverified
+                <Check className="h-4 w-4" /> {t('Approve as unverified')}
               </Button>
               <Button
                 type="button"
@@ -394,27 +405,27 @@ export const PlanCard = ({
                 variant="secondary"
                 title={
                   contributor
-                    ? "Record the assistant's values as your contribution, for a reviewer."
-                    : "Record the assistant's values as its work, verified by you."
+                    ? t("Record the assistant's values as your contribution, for a reviewer.")
+                    : t("Record the assistant's values as its work, verified by you.")
                 }
                 onClick={() => onApprove({ asHuman: false, asUnverified: false })}
                 disabled={busy}
               >
                 <Check className="h-4 w-4" />{' '}
-                {contributor ? 'Approve as your contribution' : 'Approve as verified'}
+                {contributor ? t('Approve as your contribution') : t('Approve as verified')}
               </Button>
             </>
           ) : (
-            <span className="text-muted-foreground">Applying needs write access.</span>
+            <span className="text-muted-foreground">{t('Applying needs write access.')}</span>
           )}
           <Button type="button" size="sm" variant="outline" onClick={onDiscard} disabled={busy}>
-            <X className="h-4 w-4" /> Discard
+            <X className="h-4 w-4" /> {t('Discard')}
           </Button>
           {canWrite && !contributor && (
             <label
               htmlFor={humanId}
               className="ml-auto flex cursor-pointer items-center gap-1.5 whitespace-nowrap text-xs text-muted-foreground"
-              title="Record every change as your own work."
+              title={t('Record every change as your own work.')}
             >
               <input
                 id={humanId}
@@ -424,7 +435,7 @@ export const PlanCard = ({
                 disabled={busy}
                 onChange={(e) => setAsHuman(e.target.checked)}
               />
-              Record as human-made
+              {t('Record as human-made')}
             </label>
           )}
         </div>
@@ -454,14 +465,17 @@ const RuleRow = ({ row, projectId, adapter, open: openFirst = false, written }) 
       >
         <td colSpan={2} className="pt-2 pb-0.5">
           {written && (
-            <Check className="mr-1 inline h-3 w-3 align-[-2px] text-success" aria-label="Written" />
+            <Check
+              className="mr-1 inline h-3 w-3 align-[-2px] text-success"
+              aria-label={t('Written')}
+            />
           )}
           {row.writesText > 0 && (
             <Badge
               variant="outline"
               className="mr-1.5 border-warning/40 px-1 py-0 align-[1px] text-[10px] font-medium text-warning-foreground"
             >
-              Rewrite
+              {t('Rewrite')}
             </Badge>
           )}
           {row.replacesWork > 0 && (
@@ -469,7 +483,7 @@ const RuleRow = ({ row, projectId, adapter, open: openFirst = false, written }) 
               variant="outline"
               className="mr-1.5 border-warning/40 px-1 py-0 align-[1px] text-[10px] font-medium text-warning-foreground"
             >
-              Accepted
+              {t('Accepted')}
             </Badge>
           )}
           <span className="font-medium text-foreground">{row.change ?? row.label}</span>
@@ -489,7 +503,7 @@ const RuleRow = ({ row, projectId, adapter, open: openFirst = false, written }) 
               className="ml-1.5 inline-flex items-center gap-0.5 text-muted-foreground hover:text-foreground"
             >
               <ChevronDown className={cn('h-3 w-3', open && 'rotate-180')} />
-              {open ? 'Hide' : 'Show where'}
+              {open ? t('Hide') : t('Show where')}
             </button>
           )}
         </td>
@@ -505,16 +519,16 @@ const RuleRow = ({ row, projectId, adapter, open: openFirst = false, written }) 
           </td>
         </tr>
       )}
-      {changes.rows.map((t, i) => (
+      {changes.rows.map((tr, i) => (
         <tr key={`change:${i}`} className="align-top" data-rule-change={i}>
           <td className="w-px whitespace-nowrap py-0.5 pl-3 pr-4">
-            <bdi>&quot;{t.from}&quot;</bdi> → <bdi>&quot;{t.to}&quot;</bdi>
+            <bdi>&quot;{tr.from}&quot;</bdi> → <bdi>&quot;{tr.to}&quot;</bdi>
           </td>
           <td className="py-0.5 text-muted-foreground">
-            {t.count.toLocaleString('en-US')}
-            {t.notes.length > 0 && (
+            {tr.count.toLocaleString('en-US')}
+            {tr.notes.length > 0 && (
               <span className="ml-1.5 font-medium text-warning-foreground">
-                {t.notes.join(', ')}
+                {tr.notes.join(', ')}
               </span>
             )}
           </td>
@@ -566,7 +580,7 @@ const RuleRow = ({ row, projectId, adapter, open: openFirst = false, written }) 
             scope="colgroup"
             className="pt-1 pl-3 text-left font-normal text-muted-foreground"
           >
-            For example
+            {t('For example')}
           </th>
         </tr>
       )}
@@ -648,14 +662,17 @@ const ChangeRow = ({
       </td>
       <td className="py-0.5">
         {written && (
-          <Check className="mr-1 inline h-3 w-3 align-[-2px] text-success" aria-label="Written" />
+          <Check
+            className="mr-1 inline h-3 w-3 align-[-2px] text-success"
+            aria-label={t('Written')}
+          />
         )}
         {row.writesText > 0 && (
           <Badge
             variant="outline"
             className="mr-1.5 border-warning/40 px-1 py-0 align-[1px] text-[10px] font-medium text-warning-foreground"
           >
-            Rewrite
+            {t('Rewrite')}
           </Badge>
         )}
         {row.replacesWork > 0 && (
@@ -663,12 +680,12 @@ const ChangeRow = ({
             variant="outline"
             className="mr-1.5 border-warning/40 px-1 py-0 align-[1px] text-[10px] font-medium text-warning-foreground"
           >
-            Accepted
+            {t('Accepted')}
           </Badge>
         )}
         {/* An adapter that draws no place may say the row its own way. */}
         {adapter.rowText ? adapter.rowText(row) : (row.change ?? row.label)}
-        {nothingWritten && <span className="ml-1.5">(nothing written)</span>}
+        {nothingWritten && <span className="ml-1.5">{t('(nothing written)')}</span>}
       </td>
     </tr>
   );

@@ -1,6 +1,7 @@
 import { CommentThread } from '@ui/components/shared/CommentThread.jsx';
 import { useCommentStore } from '@ui/domain/useCommentStore.js';
 import { humanizeError } from '@/utils/feedback';
+import { t } from '@ui/lib/i18n.js';
 
 // One vocabulary entry's thread, for the entry panel on the vocabulary page.
 // Keyed by the entry, so a half-typed comment is never carried into another
@@ -8,7 +9,8 @@ import { humanizeError } from '@/utils/feedback';
 export const EntryComments = ({ store, itemId, caption, canWrite, canDeleteAny }) => {
   useCommentStore(store);
   if (!itemId) return null;
-  if (!store.isLoaded) return <p className="text-sm text-muted-foreground">Loading comments…</p>;
+  if (!store.isLoaded)
+    return <p className="text-sm text-muted-foreground">{t('Loading comments…')}</p>;
   return (
     <div className="-mx-3">
       {store.error && (

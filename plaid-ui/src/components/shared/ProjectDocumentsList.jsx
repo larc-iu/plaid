@@ -1,6 +1,7 @@
 import { DocumentTable } from './DocumentTable.jsx';
 import { LoadError } from './LoadError.jsx';
 import { SectionHeader } from './SectionHeader.jsx';
+import { t } from '../../lib/i18n.js';
 
 /**
  * A project's Documents tab body in every app: the heading, the app's way to
@@ -31,7 +32,7 @@ export const ProjectDocumentsList = ({
 }) => (
   <div>
     <SectionHeader
-      title="Documents"
+      title={t('Documents')}
       actions={
         canEdit && (NewDocument || actions) ? (
           <>

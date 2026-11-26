@@ -28,7 +28,7 @@ import { Notice } from './Notice.jsx';
 import { NotSetUpNotice } from './NotSetUpNotice.jsx';
 import { SectionHeader } from './SectionHeader.jsx';
 import { FileDropzone } from './FileDropzone.jsx';
-import { countOf } from '../../lib/plural.js';
+import { msg, t, tx } from '../../lib/i18n.js';
 
 const isZip = (file) => /\.zip$/i.test(file.name);
 // What an operating system puts in a zip beside the files: macOS's
@@ -84,6 +84,10 @@ const filesToImport = async (files, unzip) => {
 };
 
 const code = (text) => <code className="rounded bg-muted px-1 py-0.5 font-mono">{text}</code>;
+const DROP_MESSAGE = msg('Drop <code>{extension}</code> files here, or click to choose');
+const DROP_ZIP_MESSAGE = msg(
+  'Drop <code>{extension}</code> or <code>.zip</code> files here, or click to choose',
+);
 
 /**
  * A project's Import and export tab in plaid-ud and plaid-umr: files of the
@@ -98,7 +102,10 @@ const code = (text) => <code className="rounded bg-muted px-1 py-0.5 font-mono">
  * page for setting the project up. `format` is the rest of the app's part:
  * - `app`: the short name the not-set-up notice uses ("UD").
  * - `extension` (".conllu"), `accept` for the file picker, `importTitle`,
- *   and `exportWhat`, what the zip holds ("CoNLL-U files").
+ *   and `exportNote`, the whole line under Export project, which says what
+ *   the zip holds ("Every document in this project as a .zip of CoNLL-U
+ *   files."). `exportWhat`, the older form, is only what the zip holds
+ *   ("CoNLL-U files"), put into a sentence of this page's own.
  * - `layerInfo(project)`: the app's reading of the project, with `isConfigured`.
  * - `prepareImport({ client, project, projectId, user })`: run once per
  *   import, resolves to `importFile({ file, text, index, name, push })`, which
@@ -121,8 +128,8 @@ const code = (text) => <code className="rounded bg-muted px-1 py-0.5 font-mono">
 export const ProjectImportExportPage = ({ tabs: Tabs, setupHref, format }) => {
   const { getClient, user } = useAuth();
   const { projectId, project, loading, error } = useProject({ logoutOnAuthError: true });
-  const loadError = error ? humanizeError(error, 'Failed to load this project.') : '';
-  useDocumentTitle('Import and export', project?.name);
+  const loadError = error ? humanizeError(error, t('Failed to load this project.')) : '';
+  useDocumentTitle(t('Import and export'), project?.name);
 
   // Import state
   const [files, setFiles] = useState([]);
@@ -170,7 +177,7 @@ export const ProjectImportExportPage = ({ tabs: Tabs, setupHref, format }) => {
       importFile = await format.prepareImport({ client, project, projectId, user });
     } catch (err) {
       console.error('Import failed:', err);
-      notifyError(humanizeError(err, 'Failed to import.'));
+      notifyError(humanizeError(err, t('Failed to import.')));
       setImporting(false);
       return;
     }
@@ -186,7 +193,7 @@ export const ProjectImportExportPage = ({ tabs: Tabs, setupHref, format }) => {
           file: file.name,
           name: file.name,
           status: 'rejected',
-          reason: 'Failed to open the zip',
+          reason: t('Failed to open the zip'),
         });
         continue;
       }
@@ -199,7 +206,7 @@ export const ProjectImportExportPage = ({ tabs: Tabs, setupHref, format }) => {
           file: file.name,
           name,
           status: 'rejected',
-          reason: err instanceof NotUtf8FileError ? err.message : 'Failed to read the file',
+          reason: err instanceof NotUtf8FileError ? err.message : t('Failed to read the file'),
         });
         continue;
       }
@@ -231,10 +238,15 @@ export const ProjectImportExportPage = ({ tabs: Tabs, setupHref, format }) => {
     const rejected = acc.length - imported;
     if (imported > 0) {
       notifySuccess(
-        `Imported ${countOf(imported, 'document')}${rejected ? `, ${rejected} rejected` : ''}.`,
+        rejected
+          ? t('Imported {n, plural, one {# document} other {# documents}}, {rejected} rejected.', {
+              n: imported,
+              rejected,
+            })
+          : t('Imported {n, plural, one {# document} other {# documents}}.', { n: imported }),
       );
     } else {
-      notifyError(`No documents imported (${rejected} rejected).`);
+      notifyError(t('No documents imported ({rejected} rejected).', { rejected }));
     }
   };
 
@@ -252,14 +264,14 @@ export const ProjectImportExportPage = ({ tabs: Tabs, setupHref, format }) => {
         onProgress: (done, total) => setExportProgress({ done, total }),
       });
       if (!found.documents) {
-        notifyError('This project has no documents to export.');
+        notifyError(t('This project has no documents to export.'));
         return;
       }
       const skippedAcc = found.skipped || [];
       setSkipped(skippedAcc);
       if (found.entries.length === 0) {
         // The list under the button says why each was skipped.
-        notifyError('No documents could be exported.');
+        notifyError(t('No documents could be exported.'));
         return;
       }
       const used = new Set([NAMES_FILE]);
@@ -275,9 +287,16 @@ export const ProjectImportExportPage = ({ tabs: Tabs, setupHref, format }) => {
       const count = files.length;
       saveBlob(blob, `${sanitizeFilename(project?.name)}.zip`);
       if (skippedAcc.length > 0) {
-        notifyWarning(`Exported ${countOf(count, 'document')}. ${skippedAcc.length} skipped.`);
+        notifyWarning(
+          t('Exported {n, plural, one {# document} other {# documents}}. {skipped} skipped.', {
+            n: count,
+            skipped: skippedAcc.length,
+          }),
+        );
       } else {
-        notifySuccess(`Exported ${countOf(count, 'document')}.`);
+        notifySuccess(
+          t('Exported {n, plural, one {# document} other {# documents}}.', { n: count }),
+        );
       }
     } catch (err) {
       const shown = format.exportFailure?.(err);
@@ -286,7 +305,7 @@ export const ProjectImportExportPage = ({ tabs: Tabs, setupHref, format }) => {
         return;
       }
       console.error('Export failed:', err);
-      notifyError(humanizeError(err, 'Failed to export.'));
+      notifyError(humanizeError(err, t('Failed to export.')));
     } finally {
       setExporting(false);
     }
@@ -302,7 +321,7 @@ export const ProjectImportExportPage = ({ tabs: Tabs, setupHref, format }) => {
   if (!project)
     return (
       <Notice tone="error" role="alert">
-        {loadError || 'Project not found'}
+        {loadError || t('Project not found')}
       </Notice>
     );
 
@@ -327,19 +346,27 @@ export const ProjectImportExportPage = ({ tabs: Tabs, setupHref, format }) => {
           }}
         >
           <DialogHeader>
-            <DialogTitle>Importing documents</DialogTitle>
+            <DialogTitle>{t('Importing documents')}</DialogTitle>
           </DialogHeader>
           <div className="flex flex-col gap-3">
             <Progress
               value={importProgress.total ? (importProgress.done / importProgress.total) * 100 : 0}
-              label="Import progress"
+              label={t('Import progress')}
             />
             <p className="text-sm text-muted-foreground">
-              {Math.min(importProgress.done + 1, importProgress.total)} of {importProgress.total}
-              {importProgress.current ? `: ${importProgress.current}` : ''}
+              {importProgress.current
+                ? t('{i} of {n}: {name}', {
+                    i: Math.min(importProgress.done + 1, importProgress.total),
+                    n: importProgress.total,
+                    name: importProgress.current,
+                  })
+                : t('{i} of {n}', {
+                    i: Math.min(importProgress.done + 1, importProgress.total),
+                    n: importProgress.total,
+                  })}
             </p>
             <p className="text-xs text-muted-foreground">
-              Keep this tab open until the import finishes.
+              {t('Keep this tab open until the import finishes.')}
             </p>
           </div>
         </DialogContent>
@@ -347,7 +374,7 @@ export const ProjectImportExportPage = ({ tabs: Tabs, setupHref, format }) => {
 
       <Tabs projectId={projectId} project={project} />
 
-      <SectionHeader title="Import and export" />
+      <SectionHeader title={t('Import and export')} />
       <div className="flex flex-col gap-6">
         {canEdit && (
           <Card>
@@ -370,8 +397,10 @@ export const ProjectImportExportPage = ({ tabs: Tabs, setupHref, format }) => {
                   >
                     <FileText className="h-10 w-10 text-muted-foreground" />
                     <p className="text-sm">
-                      Drop {code(format.extension)}
-                      {format.unzip ? <> or {code('.zip')}</> : null} files here, or click to choose
+                      {tx(format.unzip ? DROP_ZIP_MESSAGE : DROP_MESSAGE, {
+                        extension: format.extension,
+                        code,
+                      })}
                     </p>
                   </FileDropzone>
 
@@ -379,7 +408,9 @@ export const ProjectImportExportPage = ({ tabs: Tabs, setupHref, format }) => {
                     <div className="rounded-md border bg-muted/40 p-3">
                       <div className="mb-2 flex items-center justify-between">
                         <p className="text-sm font-medium">
-                          {countOf(files.length, 'file')} queued
+                          {t('{n, plural, one {# file queued} other {# files queued}}', {
+                            n: files.length,
+                          })}
                         </p>
                         <Button
                           size="sm"
@@ -387,7 +418,7 @@ export const ProjectImportExportPage = ({ tabs: Tabs, setupHref, format }) => {
                           onClick={() => setFiles([])}
                           disabled={importing}
                         >
-                          Clear
+                          {t('Clear')}
                         </Button>
                       </div>
                       <div className="flex flex-col gap-1">
@@ -402,8 +433,8 @@ export const ProjectImportExportPage = ({ tabs: Tabs, setupHref, format }) => {
                                 size="icon"
                                 variant="ghost"
                                 className="h-6 w-6 text-muted-foreground hover:text-destructive"
-                                aria-label={`Remove ${f.name}`}
-                                title="Remove"
+                                aria-label={t('Remove {name}', { name: f.name })}
+                                title={t('Remove')}
                                 onClick={() => setFiles((prev) => prev.filter((_, j) => j !== i))}
                               >
                                 <Trash2 className="h-3.5 w-3.5" />
@@ -418,7 +449,7 @@ export const ProjectImportExportPage = ({ tabs: Tabs, setupHref, format }) => {
                   <div>
                     <Button onClick={runImport} disabled={!files.length || importing}>
                       <Upload className="h-4 w-4" />
-                      Import{files.length ? ` (${files.length})` : ''}
+                      {files.length ? t('Import ({n})', { n: files.length }) : t('Import')}
                     </Button>
                   </div>
 
@@ -430,9 +461,22 @@ export const ProjectImportExportPage = ({ tabs: Tabs, setupHref, format }) => {
                         className="mb-2 font-semibold focus:outline-none"
                       >
                         {importing
-                          ? `Importing, ${importedCount} imported`
-                          : `Imported ${importedCount} of ${results.length}`}
-                        {rejectedCount ? `, ${rejectedCount} rejected` : ''}
+                          ? rejectedCount
+                            ? t('Importing, {imported} imported, {rejected} rejected', {
+                                imported: importedCount,
+                                rejected: rejectedCount,
+                              })
+                            : t('Importing, {imported} imported', { imported: importedCount })
+                          : rejectedCount
+                            ? t('Imported {imported} of {n}, {rejected} rejected', {
+                                imported: importedCount,
+                                n: results.length,
+                                rejected: rejectedCount,
+                              })
+                            : t('Imported {imported} of {n}', {
+                                imported: importedCount,
+                                n: results.length,
+                              })}
                       </p>
                       <div className="max-h-[360px] overflow-y-auto">
                         <div className="flex flex-col gap-2">
@@ -472,7 +516,7 @@ export const ProjectImportExportPage = ({ tabs: Tabs, setupHref, format }) => {
                                 {r.status === 'imported' && r.attached && (
                                   <span className="text-xs text-muted-foreground">
                                     {' '}
-                                    onto the existing document
+                                    {t('onto the existing document')}
                                   </span>
                                 )}
                                 {r.status === 'imported' && r.warnings?.length > 0 && (
@@ -488,7 +532,7 @@ export const ProjectImportExportPage = ({ tabs: Tabs, setupHref, format }) => {
                       </div>
                       {!importing && importedCount > 0 && (
                         <Button variant="outline" className="mt-4" asChild>
-                          <Link to={appRoutes().documents(projectId)}>Documents</Link>
+                          <Link to={appRoutes().documents(projectId)}>{t('Documents')}</Link>
                         </Button>
                       )}
                     </div>
@@ -501,17 +545,21 @@ export const ProjectImportExportPage = ({ tabs: Tabs, setupHref, format }) => {
 
         <Card>
           <CardHeader>
-            <CardTitle>Export project</CardTitle>
+            <CardTitle>{t('Export project')}</CardTitle>
           </CardHeader>
           <CardContent className="flex flex-col gap-4">
             <p className="text-sm text-muted-foreground">
-              Every document in this project as a {code('.zip')} of {format.exportWhat}.
+              {format.exportNote ??
+                tx('Every document in this project as a <code>.zip</code> of {what}.', {
+                  what: format.exportWhat,
+                  code,
+                })}
             </p>
 
             <div>
               <Button onClick={runExport} disabled={exporting}>
                 <Download className="h-4 w-4" />
-                {exporting ? 'Exporting…' : 'Export'}
+                {exporting ? t('Exporting…') : t('Export')}
               </Button>
             </div>
 
@@ -523,21 +571,25 @@ export const ProjectImportExportPage = ({ tabs: Tabs, setupHref, format }) => {
                   value={
                     exportProgress.total ? (exportProgress.done / exportProgress.total) * 100 : 0
                   }
-                  label="Export progress"
+                  label={t('Export progress')}
                 />
                 <p className="text-xs text-muted-foreground">
-                  {exportProgress.done} of {exportProgress.total}
+                  {t('{i} of {n}', { i: exportProgress.done, n: exportProgress.total })}
                 </p>
               </div>
             )}
 
             {skipped.length > 0 && (
               <Notice tone="warning">
-                <p className="font-medium">{countOf(skipped.length, 'document')} skipped</p>
+                <p className="font-medium">
+                  {t('{n, plural, one {# document skipped} other {# documents skipped}}', {
+                    n: skipped.length,
+                  })}
+                </p>
                 <ul className="ms-5 list-disc space-y-0.5 text-xs">
                   {skipped.map((s, i) => (
                     <li key={i}>
-                      <b dir="auto">{s.name || 'Untitled'}</b>: {s.reason}
+                      <b dir="auto">{s.name || t('Untitled')}</b>: {s.reason}
                     </li>
                   ))}
                 </ul>

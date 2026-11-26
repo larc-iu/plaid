@@ -4,8 +4,9 @@
 // `{kind, id, document | vocabLayer}`.
 
 import { APP_ROUTES } from '@/appRoutes.js';
+import { t } from '@ui/lib/i18n.js';
 
-const idOf = (t) => (t && typeof t === 'object' ? t.id : t);
+const idOf = (tok) => (tok && typeof tok === 'object' ? tok.id : tok);
 
 /**
  * In a document's History: a row in a sentence of the document now
@@ -23,7 +24,7 @@ export const documentPlacer = (doc, { projectId, documentId, rows = [] }) => {
   const relationSpan = new Map();
   for (const tl of doc?.raw?.textLayers || []) {
     for (const tkl of tl.tokenLayers || []) {
-      for (const t of tkl.tokens || []) tokens.set(t.id, t);
+      for (const tok of tkl.tokens || []) tokens.set(tok.id, tok);
       for (const sl of tkl.spanLayers || []) {
         for (const s of sl.spans || []) spanTokens.set(s.id, (s.tokens || []).map(idOf));
         for (const rl of sl.relationLayers || []) {
@@ -67,9 +68,9 @@ export const documentPlacer = (doc, { projectId, documentId, rows = [] }) => {
   };
 
   return (row) => {
-    if (row.kind === 'text') return { key: 'text', label: 'Text', to: `${base}?tab=baseline` };
+    if (row.kind === 'text') return { key: 'text', label: t('Text'), to: `${base}?tab=baseline` };
     if (row.kind === 'document') {
-      return { key: 'document', label: 'Name and fields', to: `${base}?tab=details` };
+      return { key: 'document', label: t('Name and fields'), to: `${base}?tab=details` };
     }
     for (const id of tokensOf(row) || []) {
       const live = tokens.get(id);
@@ -83,7 +84,7 @@ export const documentPlacer = (doc, { projectId, documentId, rows = [] }) => {
       if (s && number.has(s.id)) {
         return {
           key: s.id,
-          label: `Sentence ${number.get(s.id)}`,
+          label: t('Sentence {n}', { n: number.get(s.id) }),
           to: APP_ROUTES.sentence(projectId, documentId, s.id),
         };
       }
@@ -140,7 +141,7 @@ export const jobPlacer = ({ projectId, documents = [], vocabs = [] }) => {
       const named = d?.name !== null && d?.name !== undefined;
       return {
         key: row.document,
-        label: named ? d.name : 'Deleted document',
+        label: named ? d.name : t('Deleted document'),
         to: named ? APP_ROUTES.document(projectId, row.document) : null,
         rank: d?.rank ?? documents.length,
       };

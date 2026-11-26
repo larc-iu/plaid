@@ -8,6 +8,9 @@ import { Dialog, DialogContent, DialogHeader, DialogFooter, DialogTitle } from '
 import { DELETE_BUTTON_CLASS } from '../../lib/destructive.js';
 import { ConfirmDeleteDialog } from './ConfirmDeleteDialog.jsx';
 import { MintedLinkDialog } from './MintedLinkDialog.jsx';
+import { msg, t, tx } from '../../lib/i18n.js';
+
+const ROLE_LABELS = { reader: msg('Reader'), writer: msg('Writer'), maintainer: msg('Maintainer') };
 
 // The dialogs behind useUserAdmin (its own module): one copy of the create,
 // edit, deactivate, and reset-link screens, wherever accounts are managed.
@@ -44,11 +47,11 @@ export const UserAdminDialogs = ({ controller }) => {
       <Dialog open={createOpen} onOpenChange={setCreateOpen}>
         <DialogContent className="max-w-md">
           <DialogHeader>
-            <DialogTitle>Create user</DialogTitle>
+            <DialogTitle>{t('Create user')}</DialogTitle>
           </DialogHeader>
           <div className="flex flex-col gap-4">
             <div className="flex flex-col gap-1.5">
-              <Label htmlFor="user-admin-email">Email address</Label>
+              <Label htmlFor="user-admin-email">{t('Email address')}</Label>
               <Input
                 id="user-admin-email"
                 type="text"
@@ -56,26 +59,26 @@ export const UserAdminDialogs = ({ controller }) => {
                 autoCapitalize="none"
                 spellCheck={false}
                 autoComplete="off"
-                placeholder="you@example.com"
+                placeholder="you@example.com" // i18n-ignore: a sample address
                 value={newUser.email}
                 onChange={(e) => setNewUser({ ...newUser, email: e.target.value })}
                 autoFocus
               />
               <p className="text-xs text-muted-foreground">
-                What they sign in with. It cannot be changed later.
+                {t('What they sign in with. It cannot be changed later.')}
               </p>
             </div>
             <div className="flex flex-col gap-1.5">
-              <Label htmlFor="user-admin-display-name">Display name (optional)</Label>
+              <Label htmlFor="user-admin-display-name">{t('Display name (optional)')}</Label>
               <Input
                 id="user-admin-display-name"
-                placeholder="How they appear to everyone else"
+                placeholder={t('How they appear to everyone else')}
                 value={newUser.displayName}
                 onChange={(e) => setNewUser({ ...newUser, displayName: e.target.value })}
               />
             </div>
             <div className="flex flex-col gap-1.5">
-              <Label htmlFor="user-admin-password">Password</Label>
+              <Label htmlFor="user-admin-password">{t('Password')}</Label>
               <Input
                 id="user-admin-password"
                 type="password"
@@ -85,7 +88,7 @@ export const UserAdminDialogs = ({ controller }) => {
               />
             </div>
             <div className="flex flex-col gap-1.5">
-              <Label htmlFor="user-admin-password-confirm">Confirm password</Label>
+              <Label htmlFor="user-admin-password-confirm">{t('Confirm password')}</Label>
               <Input
                 id="user-admin-password-confirm"
                 type="password"
@@ -96,7 +99,7 @@ export const UserAdminDialogs = ({ controller }) => {
             </div>
             {projectId && (
               <div className="flex flex-col gap-1.5">
-                <Label htmlFor="user-admin-role">Role in this project</Label>
+                <Label htmlFor="user-admin-role">{t('Role in this project')}</Label>
                 <Select
                   value={newUser.role}
                   onValueChange={(v) => setNewUser({ ...newUser, role: v })}
@@ -106,8 +109,8 @@ export const UserAdminDialogs = ({ controller }) => {
                   </SelectTrigger>
                   <SelectContent>
                     {GRANT_ROLES.map((r) => (
-                      <SelectItem key={r} value={r} hint={roleHints[r]}>
-                        {r.charAt(0).toUpperCase() + r.slice(1)}
+                      <SelectItem key={r} value={r} hint={roleHints[r] && t(roleHints[r])}>
+                        {t(ROLE_LABELS[r])}
                       </SelectItem>
                     ))}
                   </SelectContent>
@@ -121,17 +124,19 @@ export const UserAdminDialogs = ({ controller }) => {
                 onCheckedChange={(c) => setNewUser({ ...newUser, isAdmin: c })}
               />
               <div>
-                <Label htmlFor="new-admin">Admin user</Label>
-                <p className="text-xs text-muted-foreground">Grant this user admin privileges</p>
+                <Label htmlFor="new-admin">{t('Admin user')}</Label>
+                <p className="text-xs text-muted-foreground">
+                  {t('Grant this user admin privileges')}
+                </p>
               </div>
             </div>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setCreateOpen(false)} disabled={creating}>
-              Cancel
+              {t('Cancel')}
             </Button>
             <Button onClick={createUser} disabled={creating}>
-              {creating ? 'Creating…' : 'Create user'}
+              {creating ? t('Creating…') : t('Create user')}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -145,20 +150,22 @@ export const UserAdminDialogs = ({ controller }) => {
       >
         <DialogContent className="max-w-md">
           <DialogHeader>
-            <DialogTitle>{editingUser ? `Edit user: ${editingUser.displayName}` : ''}</DialogTitle>
+            <DialogTitle>
+              {editingUser ? t('Edit user: {name}', { name: editingUser.displayName }) : ''}
+            </DialogTitle>
           </DialogHeader>
           {editingUser && (
             <>
               <div className="flex flex-col gap-4">
                 <div className="flex flex-col gap-1.5">
-                  <Label htmlFor="user-admin-edit-email">Email address</Label>
+                  <Label htmlFor="user-admin-edit-email">{t('Email address')}</Label>
                   <Input id="user-admin-edit-email" value={editingUser.id} disabled readOnly />
                   <p className="text-xs text-muted-foreground">
-                    What they sign in with. It cannot be changed.
+                    {t('What they sign in with. It cannot be changed.')}
                   </p>
                 </div>
                 <div className="flex flex-col gap-1.5">
-                  <Label htmlFor="user-admin-edit-display-name">Display name</Label>
+                  <Label htmlFor="user-admin-edit-display-name">{t('Display name')}</Label>
                   <Input
                     id="user-admin-edit-display-name"
                     value={editForm.displayName}
@@ -167,13 +174,13 @@ export const UserAdminDialogs = ({ controller }) => {
                 </div>
                 {editingUser.id === currentUser?.id ? (
                   <p className="text-xs text-muted-foreground">
-                    Change your own password on Profile.
+                    {t('Change your own password on Profile.')}
                   </p>
                 ) : (
                   <>
                     <div className="flex flex-col gap-1.5">
                       <Label htmlFor="user-admin-edit-password">
-                        New password (leave blank to keep current)
+                        {t('New password (leave blank to keep current)')}
                       </Label>
                       <Input
                         id="user-admin-edit-password"
@@ -184,7 +191,9 @@ export const UserAdminDialogs = ({ controller }) => {
                       />
                     </div>
                     <div className="flex flex-col gap-1.5">
-                      <Label htmlFor="user-admin-edit-password-confirm">Confirm new password</Label>
+                      <Label htmlFor="user-admin-edit-password-confirm">
+                        {t('Confirm new password')}
+                      </Label>
                       <Input
                         id="user-admin-edit-password-confirm"
                         type="password"
@@ -203,7 +212,7 @@ export const UserAdminDialogs = ({ controller }) => {
                     checked={editForm.isAdmin}
                     onCheckedChange={(c) => setEditForm({ ...editForm, isAdmin: c })}
                   />
-                  <Label htmlFor="edit-admin">Admin user</Label>
+                  <Label htmlFor="edit-admin">{t('Admin user')}</Label>
                 </div>
               </div>
               <DialogFooter className="sm:justify-between">
@@ -216,7 +225,7 @@ export const UserAdminDialogs = ({ controller }) => {
                     onClick={() => setDeactivateTarget(editingUser)}
                     disabled={editingUser.id === currentUser?.id || savingEdit}
                   >
-                    Deactivate
+                    {t('Deactivate')}
                   </Button>
                 )}
                 <div className="flex gap-2">
@@ -225,10 +234,10 @@ export const UserAdminDialogs = ({ controller }) => {
                     onClick={() => setEditingUser(null)}
                     disabled={savingEdit}
                   >
-                    Cancel
+                    {t('Cancel')}
                   </Button>
                   <Button onClick={updateUser} disabled={savingEdit}>
-                    {savingEdit ? 'Saving…' : 'Save'}
+                    {savingEdit ? t('Saving…') : t('Save')}
                   </Button>
                 </div>
               </DialogFooter>
@@ -240,7 +249,7 @@ export const UserAdminDialogs = ({ controller }) => {
       <MintedLinkDialog
         code={resetCode}
         onClose={() => setResetCode(null)}
-        title="Password reset link created"
+        title={t('Password reset link created')}
       />
 
       <ConfirmDeleteDialog
@@ -248,8 +257,8 @@ export const UserAdminDialogs = ({ controller }) => {
         onOpenChange={(o) => {
           if (!o && !deactivating) setDeactivateTarget(null);
         }}
-        title="Deactivate user?"
-        confirmLabel={deactivating ? 'Deactivating…' : 'Deactivate'}
+        title={t('Deactivate user?')}
+        confirmLabel={deactivating ? t('Deactivating…') : t('Deactivate')}
         busy={deactivating}
         onConfirm={(e) => {
           e.preventDefault();
@@ -257,9 +266,14 @@ export const UserAdminDialogs = ({ controller }) => {
         }}
       >
         <p>
-          <strong>{deactivateTarget?.displayName}</strong> ({deactivateTarget?.id}) will be signed
-          out, lose every project role and API token, and be refused at sign-in. Reactivating
-          restores sign-in only.
+          {tx(
+            '<strong>{name}</strong> ({email}) will be signed out, lose every project role and API token, and be refused at sign-in. Reactivating restores sign-in only.',
+            {
+              name: deactivateTarget?.displayName,
+              email: deactivateTarget?.id,
+              strong: (c) => <strong>{c}</strong>,
+            },
+          )}
         </p>
       </ConfirmDeleteDialog>
     </>

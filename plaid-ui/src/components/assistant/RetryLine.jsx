@@ -1,5 +1,6 @@
 import { RotateCcw } from 'lucide-react';
 import { Button } from '../ui/button.jsx';
+import { t } from '../../lib/i18n.js';
 
 // The line under a turn that has no answer (`retryNote` in resume.js says
 // which), with Retry beside it. A read-only transcript passes no `onRetry`
@@ -9,7 +10,7 @@ export const RetryLine = ({ note, onRetry = null, disabled = false }) => (
     <span className="flex-1">{note}</span>
     {onRetry && (
       <Button type="button" size="sm" variant="outline" onClick={onRetry} disabled={disabled}>
-        <RotateCcw className="h-4 w-4" /> Retry
+        <RotateCcw className="h-4 w-4" /> {t('Retry')}
       </Button>
     )}
   </div>

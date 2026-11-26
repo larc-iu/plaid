@@ -7,7 +7,7 @@ import { timeAgo, fullTimestamp } from '@ui/lib/formatTime.js';
 import { notifySuccess, notifyError, humanizeError } from '@/utils/feedback';
 import { useConfirm } from '@ui/components/shared/ConfirmProvider';
 import { compareNames, textIncludes } from '@ui/domain/collation.js';
-import { countOf } from '@ui/lib/plural.js';
+import { t, msg } from '@ui/lib/i18n.js';
 import { ProjectLink } from './ProjectLink';
 
 // Services register per project, so "is the analyze service up" can only be
@@ -22,17 +22,17 @@ import { ProjectLink } from './ProjectLink';
 // there is nothing to forget, only the id to release.
 const isRegistration = (e) => e.seen !== false;
 
-const tokens = (n) => (typeof n === 'number' ? `${n.toLocaleString()} tokens` : null);
+const tokens = (n) => (typeof n === 'number' ? t('{n, number} tokens', { n }) : null);
 
 // What a registration says it runs, in the order the expanded row lists it.
 const FACTS = [
-  ['Model', (x) => x.model],
-  ['Version', (x) => x.version],
-  ['Model key', (x) => x.modelPool],
-  ['Output limit', (x) => tokens(x.maxOutputTokens)],
-  ['Context window', (x) => tokens(x.contextWindow)],
-  ['Reasoning effort', (x) => x.reasoningEffort],
-  ['Web search', (x) => x.webSearch],
+  [msg('Model'), (x) => x.model],
+  [msg('Version'), (x) => x.version],
+  [msg('Model key'), (x) => x.modelPool],
+  [msg('Output limit'), (x) => tokens(x.maxOutputTokens)],
+  [msg('Context window'), (x) => tokens(x.contextWindow)],
+  [msg('Reasoning effort'), (x) => x.reasoningEffort],
+  [msg('Web search'), (x) => x.webSearch],
 ];
 
 const factsOf = (entry) =>
@@ -95,7 +95,7 @@ export const AdminServices = ({ client, currentUser }) => {
       setRegistrations(found.flat());
     } catch (err) {
       console.error('Error loading services:', err);
-      notifyError(humanizeError(err), 'Failed to load the services');
+      notifyError(humanizeError(err), t('Failed to load the services'));
     } finally {
       setLoading(false);
     }
@@ -109,18 +109,21 @@ export const AdminServices = ({ client, currentUser }) => {
 
   const discardOne = async (entry) => {
     const ok = await confirm({
-      title: 'Forget this registration?',
-      description: `${entry.serviceName} is removed from ${entry.project.name}. It reappears if it connects again.`,
-      confirmLabel: 'Forget',
+      title: t('Forget this registration?'),
+      description: t('{service} is removed from {project}. It reappears if it connects again.', {
+        service: entry.serviceName,
+        project: entry.project.name,
+      }),
+      confirmLabel: t('Forget'),
       destructive: true,
     });
     if (!ok) return;
     try {
       await client.messages.discardService(entry.project.id, entry.serviceId);
-      notifySuccess('Registration forgotten');
+      notifySuccess(t('Registration forgotten'));
       await load();
     } catch (err) {
-      notifyError(humanizeError(err), 'Failed to forget the registration');
+      notifyError(humanizeError(err), t('Failed to forget the registration'));
     }
   };
 
@@ -131,27 +134,33 @@ export const AdminServices = ({ client, currentUser }) => {
 
   const releaseOne = async (entry) => {
     const ok = await confirm({
-      title: 'Release this service id?',
-      description: `${entry.serviceId} on ${entry.project.name} belongs to ${entry.claimedBy}. The next account to connect it holds it.`,
-      confirmLabel: 'Release',
+      title: t('Release this service id?'),
+      description: t(
+        '{id} on {project} belongs to {owner}. The next account to connect it holds it.',
+        { id: entry.serviceId, project: entry.project.name, owner: entry.claimedBy },
+      ),
+      confirmLabel: t('Release'),
       destructive: true,
     });
     if (!ok) return;
     try {
       await client.messages.releaseService(entry.project.id, entry.serviceId);
-      notifySuccess('Service id released');
+      notifySuccess(t('Service id released'));
       await load();
     } catch (err) {
-      notifyError(humanizeError(err), 'Failed to release the service id');
+      notifyError(humanizeError(err), t('Failed to release the service id'));
     }
   };
 
   const discardEverywhere = async (row) => {
     const offline = row.entries.filter((e) => !e.online && isRegistration(e));
     const ok = await confirm({
-      title: `Forget ${row.serviceName} everywhere?`,
-      description: `Removes ${countOf(offline.length, 'registration')}, on every project where it is offline. Each reappears if it connects again.`,
-      confirmLabel: `Forget ${offline.length}`,
+      title: t('Forget {service} everywhere?', { service: row.serviceName }),
+      description: t(
+        'Removes {n, plural, one {# registration} other {# registrations}}, on every project where it is offline. Each reappears if it connects again.',
+        { n: offline.length },
+      ),
+      confirmLabel: t('Forget {n}', { n: offline.length }),
       destructive: true,
     });
     if (!ok) return;
@@ -164,9 +173,16 @@ export const AdminServices = ({ client, currentUser }) => {
       }
     }
     if (failed.length) {
-      notifyError(`${failed.length} could not be removed: ${failed.join(', ')}`, 'Partly done');
+      notifyError(
+        t('{n} could not be removed: {names}', { n: failed.length, names: failed.join(', ') }),
+        t('Partly done'),
+      );
     } else {
-      notifySuccess(`${countOf(offline.length, 'registration')} forgotten`);
+      notifySuccess(
+        t('{n, plural, one {# registration} other {# registrations}} forgotten', {
+          n: offline.length,
+        }),
+      );
     }
     await load();
   };
@@ -174,13 +190,13 @@ export const AdminServices = ({ client, currentUser }) => {
   const columns = [
     {
       key: 'name',
-      label: 'Service',
+      label: t('Service'),
       sort: (r) => r.serviceName.toLowerCase(),
       render: (r) => (
         <div>
           <div className="flex items-center gap-2">
             <Badge variant={r.online > 0 ? 'default' : 'outline'}>
-              {r.online > 0 ? 'Online' : 'Offline'}
+              {r.online > 0 ? t('Online') : t('Offline')}
             </Badge>
             <span className="font-medium">{r.serviceName}</span>
           </div>
@@ -190,20 +206,20 @@ export const AdminServices = ({ client, currentUser }) => {
     },
     {
       key: 'model',
-      label: 'Model',
+      label: t('Model'),
       sort: (r) => r.model,
       render: (r) => r.model,
     },
     {
       key: 'version',
-      label: 'Version',
+      label: t('Version'),
       sort: (r) => r.version,
       render: (r) => (
         <>
           <span className="font-mono text-xs">{r.version}</span>
           {r.versionsDiffer && (
             <span data-differ className="pl-2 text-muted-foreground">
-              Versions differ
+              {t('Versions differ')}
             </span>
           )}
         </>
@@ -211,34 +227,37 @@ export const AdminServices = ({ client, currentUser }) => {
     },
     {
       key: 'modelPool',
-      label: 'Model key',
+      label: t('Model key'),
       sort: (r) => r.modelPool,
       render: (r) => r.modelPool,
     },
     {
       key: 'tasks',
-      label: 'Tasks',
+      label: t('Tasks'),
       sort: (r) => r.tasks.join(', '),
       className: 'text-muted-foreground',
       render: (r) => r.tasks.join(', '),
     },
     {
       key: 'projects',
-      label: 'Projects',
+      label: t('Projects'),
       sort: (r) => r.projects,
       align: 'right',
       className: 'tabular-nums',
-      render: (r) => (r.online > 0 ? `${r.online} of ${r.projects}` : r.projects),
+      render: (r) =>
+        r.online > 0
+          ? t('{online} of {total}', { online: r.online, total: r.projects })
+          : r.projects,
     },
     {
       key: 'lastSeen',
-      label: 'Last seen',
+      label: t('Last seen'),
       sort: (r) =>
         r.online > 0 ? Infinity : r.lastSeenAt ? new Date(r.lastSeenAt).getTime() : null,
       className: 'text-muted-foreground',
       render: (r) =>
         r.online > 0 ? (
-          'Now'
+          t('Now')
         ) : (
           <span title={fullTimestamp(r.lastSeenAt)}>
             {r.lastSeenAt ? timeAgo(r.lastSeenAt) : ''}
@@ -253,7 +272,7 @@ export const AdminServices = ({ client, currentUser }) => {
       render: (r) =>
         r.entries.some((e) => !e.online && isRegistration(e)) ? (
           <Button size="sm" variant="ghost" onClick={() => discardEverywhere(r)}>
-            Forget offline
+            {t('Forget offline')}
           </Button>
         ) : null,
     },
@@ -269,7 +288,7 @@ export const AdminServices = ({ client, currentUser }) => {
       id="admin-services"
       defaultSort={{ key: 'lastSeen', dir: 'desc' }}
       search={{
-        placeholder: 'Search services…',
+        placeholder: t('Search services…'),
         match: (r, q) =>
           textIncludes(r.serviceName, q) ||
           textIncludes(r.serviceId, q) ||
@@ -277,15 +296,19 @@ export const AdminServices = ({ client, currentUser }) => {
           r.entries.some((e) => textIncludes(e.project.name, q)),
       }}
       noun="service"
-      empty="No project has seen a service."
+      empty={t('No project has seen a service.')}
+      noMatch={t('No services match.')}
       loading={loading}
       actions={
         <>
           <span className="text-sm text-muted-foreground">
-            {online} online, {countOf(registrations.filter(isRegistration).length, 'registration')}
+            {t('{online} online, {n, plural, one {# registration} other {# registrations}}', {
+              online,
+              n: registrations.filter(isRegistration).length,
+            })}
           </span>
           <Button variant="outline" size="sm" onClick={load} disabled={loading}>
-            <RefreshCw className="h-4 w-4" /> Refresh
+            <RefreshCw className="h-4 w-4" /> {t('Refresh')}
           </Button>
         </>
       }
@@ -296,7 +319,7 @@ export const AdminServices = ({ client, currentUser }) => {
               <tr key={e.project.id} className="border-b last:border-0">
                 <td className="py-1 pr-3">
                   <Badge variant={e.online ? 'default' : 'outline'}>
-                    {e.online ? 'Online' : 'Offline'}
+                    {e.online ? t('Online') : t('Offline')}
                   </Badge>
                 </td>
                 <td className="py-1 pr-3">
@@ -305,16 +328,16 @@ export const AdminServices = ({ client, currentUser }) => {
                   </ProjectLink>
                 </td>
                 <td className="py-1 pr-3 text-muted-foreground" title={fullTimestamp(e.lastSeenAt)}>
-                  {e.online ? 'Now' : e.lastSeenAt ? timeAgo(e.lastSeenAt) : ''}
+                  {e.online ? t('Now') : e.lastSeenAt ? timeAgo(e.lastSeenAt) : ''}
                 </td>
                 <td className="py-1 pr-3 text-muted-foreground">
-                  {e.claimedBy ? `Held by ${e.claimedBy}` : ''}
+                  {e.claimedBy ? t('Held by {name}', { name: e.claimedBy }) : ''}
                 </td>
                 <td className="py-1 pr-3">
                   <div data-facts className="flex flex-wrap gap-x-3">
                     {factsOf(e).map(([label, value]) => (
                       <span key={label} data-fact>
-                        <span className="text-muted-foreground">{label}</span> {value}
+                        <span className="text-muted-foreground">{t(label)}</span> {value}
                       </span>
                     ))}
                   </div>
@@ -322,12 +345,12 @@ export const AdminServices = ({ client, currentUser }) => {
                 <td className="py-1 text-right">
                   {heldByOther(e) && (
                     <Button size="sm" variant="ghost" onClick={() => releaseOne(e)}>
-                      Release
+                      {t('Release')}
                     </Button>
                   )}
                   {!e.online && isRegistration(e) && (
                     <Button size="sm" variant="ghost" onClick={() => discardOne(e)}>
-                      Forget
+                      {t('Forget')}
                     </Button>
                   )}
                 </td>

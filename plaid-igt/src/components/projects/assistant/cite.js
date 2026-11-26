@@ -6,6 +6,7 @@
 // uninitialized and went blank.
 import { citationFocus } from '@ui/components/assistant/citations.js';
 import { APP_ROUTES } from '../../../appRoutes.js';
+import { t } from '@ui/lib/i18n.js';
 
 // The sentence in the editor, and the first cited word within it: both ride in
 // the URL, so the link is shareable and a middle-click opens it in a new tab
@@ -18,15 +19,21 @@ export const sentenceHref = (origin, projectId, c) => {
 
 export const citationTitle = (c) => {
   const focus = citationFocus(c);
-  const head = `${c.documentName}, sentence ${c.sentence}`;
-  if (focus.length === 0) return head;
+  const v = { name: c.documentName, sentence: c.sentence };
+  if (focus.length === 0) return t('{name}, sentence {sentence}', v);
   if (focus.length === 1) {
     const [f] = focus;
-    return `${head}, word ${f.word}` + (f.morpheme ? `, morpheme ${f.morpheme}` : '');
+    return f.morpheme
+      ? t('{name}, sentence {sentence}, word {word}, morpheme {morpheme}', {
+          ...v,
+          word: f.word,
+          morpheme: f.morpheme,
+        })
+      : t('{name}, sentence {sentence}, word {word}', { ...v, word: f.word });
   }
   // Several: the words locate them, and the highlight shows which morphemes.
   const words = [...new Set(focus.map((f) => f.word))];
-  return `${head}, words ${words.join(', ')}`;
+  return t('{name}, sentence {sentence}, words {words}', { ...v, words: words.join(', ') });
 };
 
 // Highlights by word index: `true` for the whole word, or a Set of morpheme
@@ -46,12 +53,12 @@ export const citationHighlights = (c) => {
 export const citationRows = (c) => {
   const words = c.words || [];
   const rows = [{ label: '', kind: 'surface', cells: words.map((w) => w.surface) }];
-  for (const t of c.tiers || []) {
+  for (const tier of c.tiers || []) {
     const cells =
-      t.kind === 'morphemes'
+      tier.kind === 'morphemes'
         ? words.map((w) => w.seg || '')
-        : words.map((w) => (w.lines || []).find((l) => l.field === t.name)?.value || '');
-    if (cells.some(Boolean)) rows.push({ label: t.name, kind: t.kind, cells });
+        : words.map((w) => (w.lines || []).find((l) => l.field === tier.name)?.value || '');
+    if (cells.some(Boolean)) rows.push({ label: tier.name, kind: tier.kind, cells });
   }
   return rows;
 };

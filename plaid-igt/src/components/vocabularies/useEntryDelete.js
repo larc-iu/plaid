@@ -10,7 +10,7 @@ import {
 } from '@/domain/keptMorphType';
 import { dropPrecedent } from '@/domain/precedentCache';
 import { settledId } from '@ui/domain/pendingIds.js';
-import { countOf } from '@ui/lib/plural.js';
+import { t } from '@ui/lib/i18n.js';
 
 // Deleting the open entry: what it would touch, the link count the delete
 // names and the server checks, and a refusal for that count, which opens the
@@ -76,8 +76,6 @@ export function useEntryDelete({
   const [typesElsewhere, setTypesElsewhere] = useState(null);
   const typesElsewhereRef = useRef(null);
   typesElsewhereRef.current = typesElsewhere;
-  const LOST_TYPES =
-    'Morphemes in projects you cannot write that took their type from it will have none.';
   const [deleteLinksChanged, setDeleteLinksChanged] = useState(false);
   const [deleteRefsChanged, setDeleteRefsChanged] = useState(false);
   const [deleteHidden, setDeleteHidden] = useState(null); // { id, total, hidden } | null
@@ -140,7 +138,7 @@ export function useEntryDelete({
     try {
       stored = await readNow();
     } catch (err) {
-      notifyError(err, 'Failed to delete the entry');
+      notifyError(err, t('Failed to delete the entry'));
       return;
     }
     const patches = planDeleteRefs(stored, fields, [settledId(deletedId)]);
@@ -203,13 +201,13 @@ export function useEntryDelete({
           dropPrecedent();
         }
       },
-      'Failed to delete the entry',
+      t('Failed to delete the entry'),
       {
         answered: (err) => serverCount != null || !!busyLinkedDocument(err),
         refused: async (err) => {
           unseedUnlessTyped();
           const busy = busyLinkedDocument(err);
-          if (busy) notifyError(busy, 'Entry not deleted');
+          if (busy) notifyError(busy, t('Entry not deleted'));
           if (serverCount == null) return;
           const now = await countLinks(deletedId);
           const visible = now ?? expectedLinkCount;
@@ -219,9 +217,17 @@ export function useEntryDelete({
             deletedType != null &&
             (hidden > 0 ||
               (typesElsewhereRef.current?.id === deletedId && typesElsewhereRef.current.lost));
-          const linked = `It is linked to ${countOf(serverCount, 'word/morpheme', 'words/morphemes')}${
-            hidden ? `, ${hidden} of them in projects you cannot open` : ''
-          }.${lost ? ` ${LOST_TYPES}` : ''}`;
+          const linkedTo = hidden
+            ? t(
+                'It is linked to {n, plural, one {# word/morpheme} other {# words/morphemes}}, {hidden} of them in projects you cannot open.',
+                { n: serverCount, hidden },
+              )
+            : t('It is linked to {n, plural, one {# word/morpheme} other {# words/morphemes}}.', {
+                n: serverCount,
+              });
+          const linked = lost
+            ? `${linkedTo} ${t('Morphemes in projects you cannot write that took their type from it will have none.')}`
+            : linkedTo;
           // Someone moved on meanwhile (another entry or dialog open, or
           // this screen left): the count is said, not asked again. A refusal can come back before
           // the delete's own close and navigation have rendered.
@@ -232,7 +238,7 @@ export function useEntryDelete({
             (openId && openId !== deletedId) ||
             (dialogRef.current && dialogRef.current.kind !== 'delete');
           if (movedOn) {
-            notifyError(linked, 'Entry not deleted');
+            notifyError(linked, t('Entry not deleted'));
             return;
           }
           setItems((prev) =>

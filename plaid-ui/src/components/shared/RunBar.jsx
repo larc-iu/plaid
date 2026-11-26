@@ -1,6 +1,7 @@
 import { useId, useState } from 'react';
 import { ChevronFirst, ChevronLast, ChevronLeft, ChevronRight } from 'lucide-react';
 import { cn } from '../../lib/utils.js';
+import { msg, t } from '../../lib/i18n.js';
 import {
   RUN_BAR,
   HELP_TOGGLE,
@@ -63,12 +64,14 @@ export function RunBar({ run = null, children = null, helpLabel, help = null, cl
 }
 
 const PAGER_STEPS = [
-  { icon: ChevronFirst, label: 'First page', to: () => 0, at: 'start' },
-  { icon: ChevronLeft, label: 'Previous page', to: (p) => p - 1, at: 'start' },
+  { icon: ChevronFirst, label: msg('First page'), to: () => 0, at: 'start' },
+  { icon: ChevronLeft, label: msg('Previous page'), to: (p) => p - 1, at: 'start' },
   null,
-  { icon: ChevronRight, label: 'Next page', to: (p) => p + 1, at: 'end' },
-  { icon: ChevronLast, label: 'Last page', to: (p, n) => n - 1, at: 'end' },
+  { icon: ChevronRight, label: msg('Next page'), to: (p) => p + 1, at: 'end' },
+  { icon: ChevronLast, label: msg('Last page'), to: (p, n) => n - 1, at: 'end' },
 ];
+
+const sentenceCount = (v) => t('{total} {n, plural, one {sentence} other {sentences}}', v);
 
 /**
  * The sentences' place in the RunBar, after the run: the count while they fit
@@ -78,6 +81,10 @@ const PAGER_STEPS = [
  * Takes the shape `usePagedList` returns, so a call site spreads it:
  *   <RunBarPager {...paged} onPage={setPage} />
  * Nothing at all without sentences: the empty state says so.
+ *
+ * `countLabel({ n, total })` names the count as one message, `n` the number
+ * for the plural and `total` the number as written, as ListCount takes it.
+ * Left out, it counts sentences.
  */
 export function RunBarPager({
   page,
@@ -86,16 +93,14 @@ export function RunBarPager({
   rangeEnd,
   total,
   onPage,
-  noun = 'sentence',
+  countLabel = sentenceCount,
   position = 'top',
 }) {
   if (!total) return null;
   if (pageCount <= 1) {
     if (position === 'bottom') return null;
     return (
-      <span className={RUN_COUNT}>
-        {total.toLocaleString()} {total === 1 ? noun : `${noun}s`}
-      </span>
+      <span className={RUN_COUNT}>{countLabel({ n: total, total: total.toLocaleString() })}</span>
     );
   }
   const pager = (
@@ -104,7 +109,11 @@ export function RunBarPager({
         if (!step) {
           return (
             <span key="label" className={PAGER_LABEL}>
-              {rangeStart.toLocaleString()}–{rangeEnd.toLocaleString()} of {total.toLocaleString()}
+              {t('{start}–{end} of {total}', {
+                start: rangeStart.toLocaleString(),
+                end: rangeEnd.toLocaleString(),
+                total: total.toLocaleString(),
+              })}
             </span>
           );
         }
@@ -115,8 +124,8 @@ export function RunBarPager({
             key={step.label}
             type="button"
             className={PAGER_BUTTON}
-            aria-label={step.label}
-            title={step.label}
+            aria-label={t(step.label)}
+            title={t(step.label)}
             disabled={disabled}
             onClick={() => onPage(step.to(page, pageCount))}
           >

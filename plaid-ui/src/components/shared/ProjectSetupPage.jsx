@@ -12,6 +12,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '../ui/card';
 import { Loading } from './Loading.jsx';
 import { SetupBlocked } from './SetupBlocked.jsx';
 import { TYPE } from '../../lib/typeScale.js';
+import { msg, t } from '../../lib/i18n.js';
 
 /**
  * The standalone setup page of plaid-ud and plaid-umr: the app's layers in a
@@ -29,18 +30,18 @@ import { TYPE } from '../../lib/typeScale.js';
  * a run finishes it.
  */
 // What the page says of a set-up that stopped after the layers landed.
-const UNFINISHED = 'The last set-up stopped before it finished.';
+const UNFINISHED = msg('The last set-up stopped before it finished.');
 
 export const ProjectSetupPage = ({ layerInfo, setup }) => {
   const navigate = useNavigate();
   const { getClient, user } = useAuth();
   const { projectId, project, loading, error, reload } = useProject();
   const [saving, setSaving] = useState(false);
-  useDocumentTitle('Configuration', project?.name);
+  useDocumentTitle(t('Configuration'), project?.name);
   const documentsHref = appRoutes().documents(projectId);
 
   useEffect(() => {
-    if (error) notifyError(humanizeError(error, 'Failed to load the project.'));
+    if (error) notifyError(humanizeError(error, t('Failed to load the project.')));
   }, [error]);
 
   const info = layerInfo(project);
@@ -51,11 +52,11 @@ export const ProjectSetupPage = ({ layerInfo, setup }) => {
       const client = getClient();
       if (!client) throw new Error('Not authenticated');
       await setup.adopt(client, project, info);
-      notifySuccess(`Set up for ${setup.app}`);
+      notifySuccess(t('Set up for {app}', { app: setup.app }));
       navigate(documentsHref);
     } catch (err) {
       console.error(`Failed to set the project up for ${setup.app}:`, err);
-      notifyError(humanizeError(err, 'Failed to set up the project.'));
+      notifyError(humanizeError(err, t('Failed to set up the project.')));
       // The layers may have landed before a later step failed. Show the
       // project as it is now, not the copy the button was pressed on.
       await reload({ quiet: true });
@@ -73,11 +74,11 @@ export const ProjectSetupPage = ({ layerInfo, setup }) => {
       <div className="flex flex-col items-start gap-3 p-4">
         <p className="text-sm text-muted-foreground">
           {project
-            ? `Only a project maintainer can set a project up for ${setup.app}.`
-            : 'Failed to load the project.'}
+            ? t('Only a project maintainer can set a project up for {app}.', { app: setup.app })
+            : t('Failed to load the project.')}
         </p>
         <Button variant="outline" size="sm" asChild>
-          <Link to={documentsHref}>Back to documents</Link>
+          <Link to={documentsHref}>{t('Back to documents')}</Link>
         </Button>
       </div>
     );
@@ -91,18 +92,22 @@ export const ProjectSetupPage = ({ layerInfo, setup }) => {
     <div className="mx-auto flex max-w-4xl flex-col gap-6 py-4">
       <div className="flex items-start justify-between gap-4">
         <div className="flex flex-col gap-1">
-          <h1 className={TYPE.page}>Set up {setup.app} layers</h1>
+          <h1 className={TYPE.page}>{t('Set up {app} layers', { app: setup.app })}</h1>
           <p className="text-sm text-muted-foreground">{project.name}</p>
           {unfinished ? (
-            <p className="text-sm text-warning-foreground">{UNFINISHED}</p>
+            <p className="text-sm text-warning-foreground">{t(UNFINISHED)}</p>
           ) : info.isConfigured ? (
             <p className="text-sm text-success-foreground">{setup.allSet}</p>
           ) : (
-            missing && <p className="text-sm text-muted-foreground">Missing: {missing}</p>
+            missing && (
+              <p className="text-sm text-muted-foreground">
+                {t('Missing: {names}', { names: missing })}
+              </p>
+            )
           )}
         </div>
         <Button variant="outline" asChild>
-          <Link to={documentsHref}>Documents</Link>
+          <Link to={documentsHref}>{t('Documents')}</Link>
         </Button>
       </div>
 
@@ -119,10 +124,10 @@ export const ProjectSetupPage = ({ layerInfo, setup }) => {
             {(!info.isConfigured || unfinished) && (
               <Button className="self-start" onClick={handleSetUp} disabled={saving}>
                 {saving
-                  ? 'Saving…'
+                  ? t('Saving…')
                   : unfinished
-                    ? `Finish setting up for ${setup.app}`
-                    : `Set up for ${setup.app}`}
+                    ? t('Finish setting up for {app}', { app: setup.app })
+                    : t('Set up for {app}', { app: setup.app })}
               </Button>
             )}
           </CardContent>

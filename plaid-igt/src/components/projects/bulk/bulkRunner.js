@@ -22,6 +22,7 @@ import { readVocabulary } from '@/domain/vocabCache';
 import { extractAnalysis, analysisSignature } from '@/domain/analysisMemory';
 import { isChangedElsewhere, statusOf } from '@ui/lib/errors.js';
 import { atVersion } from '@ui/domain/atVersion.js';
+import { t } from '@ui/lib/i18n.js';
 import { metadataOps, FORM_PROBS_KEY, VALUE_PROBS_KEY } from '@larc-iu/plaid-client';
 import { buildMatchSpec, hitsByDocQueries } from '../search/searchQueries.js';
 import {
@@ -301,7 +302,7 @@ export async function applyRespell(
     if (includeLexicon) {
       try {
         const open = lexiconRows.filter((r) => !r.applied && !r.locked && !r.invalid);
-        if (open.length) onProgress?.('Respelling lexicon entries…');
+        if (open.length) onProgress?.(t('Respelling lexicon entries…'));
         const kept = await unchangedEntries(client, open);
         const keptSet = new Set(kept);
         for (const r of open) {

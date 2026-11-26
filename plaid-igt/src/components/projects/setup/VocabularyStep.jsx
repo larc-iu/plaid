@@ -1,3 +1,4 @@
+import { t } from '@ui/lib/i18n.js';
 import { VocabularyManager } from '../settings/VocabularyManager.jsx';
 import { useAuth } from '@/contexts/AuthContext.jsx';
 import { canLinkVocabulary } from '@ui/domain/permissions.js';
@@ -11,7 +12,7 @@ export const VocabularyStep = ({ data, onDataChange, client, projectId, isNewPro
   // Load vocabularies from API on mount
   const handleLoadData = async () => {
     try {
-      if (!client) throw new Error('Not authenticated');
+      if (!client) throw new Error(t('Not authenticated'));
 
       const [listed, readable] = await Promise.all([
         client.vocabLayers.list(),
@@ -39,7 +40,7 @@ export const VocabularyStep = ({ data, onDataChange, client, projectId, isNewPro
             !own &&
             canLinkVocabulary(vocab, home, settingUp, user) &&
             !vocabImporting(vocab.config),
-          ...(vocabImporting(vocab.config) ? { lockNote: 'Import did not finish.' } : {}),
+          ...(vocabImporting(vocab.config) ? { lockNote: t('Import did not finish.') } : {}),
         };
       });
 
@@ -60,9 +61,9 @@ export const VocabularyStep = ({ data, onDataChange, client, projectId, isNewPro
       {/* Explanatory header */}
       <div>
         <p className="text-sm">
-          A vocabulary is a lexicon. Words and morphemes link to its entries, so one entry is
-          glossed the same way everywhere. A vocabulary that belongs to another project is changed
-          by the writers and maintainers of that project.
+          {t(
+            'A vocabulary is a lexicon. Words and morphemes link to its entries, so one entry is glossed the same way everywhere. A vocabulary that belongs to another project is changed by the writers and maintainers of that project.',
+          )}
         </p>
         {/* It starts empty and stays empty until someone puts entries in it,
           which the sentence above does not say. A linguist read it, made one,
@@ -71,8 +72,9 @@ export const VocabularyStep = ({ data, onDataChange, client, projectId, isNewPro
           project, not from the lexicon, so it looked like the lexicon was
           doing the work. Name the three ways in. */}
         <p className="mt-2 text-sm text-muted-foreground">
-          A new vocabulary starts empty. Fill it from the Vocabularies screen, by linking a word or
-          morpheme to a new entry as you gloss, or with Auto-analyze.
+          {t(
+            'A new vocabulary starts empty. Fill it from the Vocabularies screen, by linking a word or morpheme to a new entry as you gloss, or with Auto-analyze.',
+          )}
         </p>
       </div>
 

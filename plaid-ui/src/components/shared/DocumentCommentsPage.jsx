@@ -5,6 +5,7 @@ import { useDocumentEditor } from '../../hooks/useDocumentEditor.js';
 import { useDocumentModel } from '../../domain/useDocumentModel.js';
 import { useDocumentTitle } from '../../hooks/useDocumentTitle.js';
 import { appRoutes } from '../../lib/uiConfig.js';
+import { t } from '../../lib/i18n.js';
 
 // The document's Comments tab: every thread in it, the document's own pinned
 // first, each one a sentence you can jump to.
@@ -20,7 +21,7 @@ export const DocumentCommentsPage = ({ buildAnchors }) => {
     useDocumentEditor();
   useDocumentModel(doc);
 
-  useDocumentTitle('Comments', doc?.name, project?.name);
+  useDocumentTitle(t('Comments'), doc?.name, project?.name);
 
   // Live only while this tab is open. The claim is refcounted in the store, so
   // a thread popover in the editor can hold one at the same time and the stream
@@ -47,9 +48,11 @@ export const DocumentCommentsPage = ({ buildAnchors }) => {
         canWrite={canComment}
         canDeleteAny={canDeleteAnyComment}
         jumpHref={(sentenceId) => appRoutes().sentence(projectId, documentId, sentenceId)}
-        jumpTitle="Show this sentence in the editor"
-        emptyText="No comments on this document yet. Add one here, or from a sentence in the editor."
-        positionLabel="In text order"
+        jumpTitle={t('Show this sentence in the editor')}
+        emptyText={t(
+          'No comments on this document yet. Add one here, or from a sentence in the editor.',
+        )}
+        positionLabel={t('In text order')}
       />
     </div>
   );

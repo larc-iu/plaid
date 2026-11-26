@@ -36,6 +36,7 @@ import { fullTimestamp } from '../../lib/formatTime.js';
 import { statusOf } from '../../lib/errors.js';
 import { IsolatedLabel } from './IsolatedLabel.jsx';
 import { useConfirm } from './ConfirmProvider.jsx';
+import { t } from '../../lib/i18n.js';
 
 export const RestoreDialog = ({
   open,
@@ -93,7 +94,7 @@ export const RestoreDialog = ({
         if (!cancelled) setPreview(s);
       })
       .catch((err) => {
-        if (!cancelled) setError(restoreError(err, 'Failed to read that state.'));
+        if (!cancelled) setError(restoreError(err, t('Failed to read that state.')));
       });
     return () => {
       cancelled = true;
@@ -122,10 +123,11 @@ export const RestoreDialog = ({
     const now = await latestState(client, documentId).catch(() => null);
     if (now && after && now.time !== after.time) {
       const ok = await confirm({
-        title: 'Undo the restore?',
-        description:
+        title: t('Undo the restore?'),
+        description: t(
           'The document has been edited since the restore. Going back to the state before it takes those edits too.',
-        confirmLabel: 'Undo the restore',
+        ),
+        confirmLabel: t('Undo the restore'),
         destructive: true,
       });
       if (!ok) return;
@@ -141,14 +143,14 @@ export const RestoreDialog = ({
     notifyPromise(
       run.finally(() => onRestoredRef.current?.()),
       {
-        loading: 'Undoing the restore…',
+        loading: t('Undoing the restore…'),
         success: (res) =>
           [
-            'Back to the state before the restore.',
+            t('Back to the state before the restore.'),
             ...skippedLines(res?.skipped),
             ...keptLines(res?.kept),
           ].join(' '),
-        error: (err) => restoreError(err, 'The undo was not applied.'),
+        error: (err) => restoreError(err, t('The undo was not applied.')),
       },
     ).catch(() => {});
   };
@@ -166,20 +168,20 @@ export const RestoreDialog = ({
       const message = [
         res?.skipped?.length
           ? skippedLines(res.skipped).join(' ')
-          : `Restored to ${fullTimestamp(asOf)}.`,
+          : t('Restored to {when}.', { when: fullTimestamp(asOf) }),
         nameKeptLine(res),
         ...keptLines(res?.kept),
       ]
         .filter(Boolean)
         .join(' ');
-      const title = res?.skipped?.length ? 'Restored, with gaps' : 'Restored';
+      const title = res?.skipped?.length ? t('Restored, with gaps') : t('Restored');
       const kind = res?.skipped?.length ? 'warning' : 'success';
       if (before) {
         // What the restore itself left as the newest entry: an undo compares
         // against it to see whether anything has been written since.
         const after = await latestState(client, documentId).catch(() => null);
         notifyWithAction(message, title, {
-          label: 'Undo',
+          label: t('Undo'),
           onClick: () => undo(before, after),
           kind,
         });
@@ -192,7 +194,7 @@ export const RestoreDialog = ({
       await onRestored?.();
     } catch (err) {
       console.error('Restore failed:', err);
-      notifyError(restoreError(err, 'The restore was not applied.'), 'Failed to restore');
+      notifyError(restoreError(err, t('The restore was not applied.')), t('Failed to restore'));
       await onRestored?.();
       setReread((n) => n + 1);
     } finally {
@@ -204,7 +206,9 @@ export const RestoreDialog = ({
     <Dialog open={open} onOpenChange={(o) => (o ? onOpenChange(true) : close())}>
       <DialogContent className="max-w-md">
         <DialogHeader>
-          <DialogTitle>Restore to {asOf ? fullTimestamp(asOf) : ''}?</DialogTitle>
+          <DialogTitle>
+            {t('Restore to {when}?', { when: asOf ? fullTimestamp(asOf) : '' })}
+          </DialogTitle>
         </DialogHeader>
 
         <div className="flex flex-col gap-3">
@@ -216,10 +220,12 @@ export const RestoreDialog = ({
 
           {error && <p className="text-sm text-destructive">{error}</p>}
 
-          {!error && !preview && <Loading label="Comparing…" className="p-0" />}
+          {!error && !preview && <Loading label={t('Comparing…')} className="p-0" />}
 
           {preview && groups.length === 0 && !nameKept && kept.length === 0 && (
-            <p className="text-sm text-muted-foreground">Nothing differs from the current state.</p>
+            <p className="text-sm text-muted-foreground">
+              {t('Nothing differs from the current state.')}
+            </p>
           )}
 
           {nameKept && <p className="text-sm text-muted-foreground">{nameKept}</p>}
@@ -254,10 +260,10 @@ export const RestoreDialog = ({
 
         <DialogFooter>
           <Button variant="outline" onClick={close} disabled={busy}>
-            Cancel
+            {t('Cancel')}
           </Button>
           <Button onClick={restore} disabled={busy || !preview || groups.length === 0}>
-            {busy ? 'Restoring…' : 'Restore'}
+            {busy ? t('Restoring…') : t('Restore')}
           </Button>
         </DialogFooter>
       </DialogContent>

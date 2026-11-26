@@ -1,7 +1,7 @@
 // The report's totals as the job page says them, from the report alone: its
 // rows of counts, and what is still blank of what the job fills. Pure, so the
 // page's Overview and its sections read the same numbers.
-import { plural } from '@ui/lib/plural.js';
+import { msg, t } from '@ui/lib/i18n.js';
 import {
   changesText,
   documentCounts,
@@ -11,6 +11,7 @@ import {
   noticeText,
   oneStep,
   sumParts,
+  unitCount,
 } from './jobText.js';
 
 // What is still blank of each thing the job fills (the plan's targets, by
@@ -43,9 +44,6 @@ export const blankSums = (report) => {
   );
   return [...sums.values()];
 };
-
-// A count of what a target holds blank, in the unit Left blank lists.
-const unitCount = (n, unit) => `${n.toLocaleString()} ${plural(n, unit)}`;
 
 // Rows `{field, id, values, inAnalyses?, outside?}` summed by the target's id (each row
 // carries it, REV-SUFIX-2), named as the first row names it.
@@ -108,7 +106,7 @@ export const NOT_WRITTEN = 'not-written';
 // those it did not reach ("Role left blank in sentences the job changed: 7
 // words"), so the rows sum. Each row is `[label, value, group]`.
 export const totalRows = (report) => {
-  const t = report.totals || {};
+  const totals = report.totals || {};
   // The documents as the table says them, one function with read_job's
   // (REV-RPF3-4): skipped apart from done (
   // REV-RPF-P-9), stopped partway apart from not reached (RPF3-D2).
@@ -119,94 +117,117 @@ export const totalRows = (report) => {
   const rows = stepped
     ? [
         [
-          'Documents done',
-          `${docs.done.toLocaleString()}, changed ${docs.changed.toLocaleString()}`,
+          t('Documents done'),
+          t('{done, number}, changed {changed, number}', {
+            done: docs.done,
+            changed: docs.changed,
+          }),
         ],
       ]
-    : [['Documents done', docs.done]];
+    : [[t('Documents done'), docs.done]];
   const optional = (label, n, group) => n > 0 && rows.push([label, n, group]);
   // Ended by the plan's search with no model call, apart from done (SF).
   optional(
-    'Documents with nothing found by the plan’s search',
+    t('Documents with nothing found by the plan’s search'),
     docs.withNothingFoundByTheSearch,
     NOT_WRITTEN,
   );
-  optional('Documents skipped', docs.skipped, NOT_WRITTEN);
-  optional('Documents in use', t.documentsInUse, NOT_WRITTEN);
-  optional('Documents deleted', t.documentsGone, NOT_WRITTEN);
-  optional('Documents not reached', docs.notReached, NOT_WRITTEN);
+  optional(t('Documents skipped'), docs.skipped, NOT_WRITTEN);
+  optional(t('Documents in use'), totals.documentsInUse, NOT_WRITTEN);
+  optional(t('Documents deleted'), totals.documentsGone, NOT_WRITTEN);
+  optional(t('Documents not reached'), docs.notReached, NOT_WRITTEN);
   // The plan's left-out documents (D22) and those the server never answered
   // for (REV-JR2-3), apart from those not reached.
-  optional('Documents left out by the plan', docs.leftOut, NOT_WRITTEN);
-  optional('Documents not worked, the server did not answer', docs.unanswered, NOT_WRITTEN);
-  optional('Documents stopped partway', docs.stoppedPartway, NOT_WRITTEN);
-  rows.push(['Sentences written in', t.sentences]);
+  optional(t('Documents left out by the plan'), docs.leftOut, NOT_WRITTEN);
+  optional(t('Documents not worked, the server did not answer'), docs.unanswered, NOT_WRITTEN);
+  optional(t('Documents stopped partway'), docs.stoppedPartway, NOT_WRITTEN);
+  rows.push([t('Sentences written in'), totals.sentences]);
   // One definition of a change, said in its parts (RP-3, RP-6).
-  if (t.changes > 0) rows.push(['Changes written', changesText(t.changes, changeParts(report))]);
-  optional('Deletions', t.deletions);
+  if (totals.changes > 0)
+    rows.push([t('Changes written'), changesText(totals.changes, changeParts(report))]);
+  optional(t('Deletions'), totals.deletions);
   // Parts that ended without finishing, their steps used up, their answer
   // too long or the model repeating itself, what they had staged written (the worker's `pieces_ended`,
   // BRIEF RW, REV-RW-6).
-  optional('Parts that ended unfinished', report.piecesEnded);
+  optional(t('Parts that ended unfinished'), report.piecesEnded);
   // What the job changed of what people wrote, by provenance, and of the
   // text: each document's History entry shows the changes (REV-DAY-S-3).
-  optional('People’s values, morphemes and links changed or removed', t.peoplesValuesChanged);
-  optional('Changes to the text', t.textChanges);
+  optional(
+    t('People’s values, morphemes and links changed or removed'),
+    totals.peoplesValuesChanged,
+  );
+  optional(t('Changes to the text'), totals.textChanges);
   // What the text edits did to the words (RP-6).
-  optional('Words added', t.wordsAdded);
-  optional('Existing words or punctuation marks changed or removed', t.tokensChanged);
-  optional('Translations written', t.translations);
-  optional('Translations replaced', t.refreshed);
-  optional('Words analyzed', t.words);
+  optional(t('Words added'), totals.wordsAdded);
+  optional(t('Existing words or punctuation marks changed or removed'), totals.tokensChanged);
+  optional(t('Translations written'), totals.translations);
+  optional(t('Translations replaced'), totals.refreshed);
+  optional(t('Words analyzed'), totals.words);
   fieldSums(report).forEach((f) => f.values > 0 && rows.push([f.field, fieldValuesText(f)]));
-  optional('Values not in the setup', outsideSum(report));
+  optional(t('Values not in the setup'), outsideSum(report));
   blankSums(report).forEach((b) => {
     // A target is named as everywhere on the page, "segmentation" too (N-1).
     // A word listed blank for a morpheme field because it has no morphemes
     // is said beside the field's morphemes, so the row adds up with the
     // list (RPF3-B).
     rows.push([
-      `${b.target} left blank in sentences the job changed`,
-      unitCount(b.left ?? 0, b.unit) +
-        (b.unsegmented > 0 ? ` and ${unitCount(b.unsegmented, 'word')} not segmented` : ''),
+      t('{target} left blank in sentences the job changed', { target: b.target }),
+      b.unsegmented > 0
+        ? t('{places} and {n, plural, one {# word} other {# words}} not segmented', {
+            places: unitCount(b.left ?? 0, b.unit),
+            n: b.unsegmented,
+          })
+        : unitCount(b.left ?? 0, b.unit),
       NOT_WRITTEN,
     ]);
     // Counted, never listed: blank in sentences the job worked and wrote
     // nothing in (RP-3, RP-6).
     if (b.untouched > 0) {
       rows.push([
-        `${b.target} blank in sentences the job did not change`,
+        t('{target} blank in sentences the job did not change', { target: b.target }),
         unitCount(b.untouched, b.unit),
         NOT_WRITTEN,
       ]);
     }
     if (b.notReached > 0) {
       rows.push([
-        `${b.target} blank in sentences not reached`,
+        t('{target} blank in sentences not reached', { target: b.target }),
         unitCount(b.notReached, b.unit),
         NOT_WRITTEN,
       ]);
     }
     if (b.skipped > 0) {
       rows.push([
-        `${b.target} blank in skipped sentences`,
+        t('{target} blank in skipped sentences', { target: b.target }),
         unitCount(b.skipped, b.unit),
         NOT_WRITTEN,
       ]);
     }
   });
-  optional('Lexicon links made', t.links);
-  optional('Entries created', t.entries);
-  optional('Changes proposed', t.proposed, NOT_WRITTEN);
-  optional('Sentences skipped as too long', t.skippedTooLong, NOT_WRITTEN);
-  optional('Sentences skipped as failed', t.skippedFailed, NOT_WRITTEN);
-  optional('Sentences skipped as changed during the job', t.skippedChanged, NOT_WRITTEN);
-  optional('Sentences skipped after an interrupted write', t.skippedInterrupted, NOT_WRITTEN);
-  optional('Sentences skipped with no answer from the assistant', t.skippedNoAnswer, NOT_WRITTEN);
-  optional('Sentences skipped and not listed', t.skippedMore, NOT_WRITTEN);
-  optional('Sentences too long and not listed', t.tooLongMore, NOT_WRITTEN);
-  optional('Changes not written, changed during the job', t.changed, NOT_WRITTEN);
-  optional('Changes left out, sentence written before an interruption', t.repeated, NOT_WRITTEN);
+  optional(t('Lexicon links made'), totals.links);
+  optional(t('Entries created'), totals.entries);
+  optional(t('Changes proposed'), totals.proposed, NOT_WRITTEN);
+  optional(t('Sentences skipped as too long'), totals.skippedTooLong, NOT_WRITTEN);
+  optional(t('Sentences skipped as failed'), totals.skippedFailed, NOT_WRITTEN);
+  optional(t('Sentences skipped as changed during the job'), totals.skippedChanged, NOT_WRITTEN);
+  optional(
+    t('Sentences skipped after an interrupted write'),
+    totals.skippedInterrupted,
+    NOT_WRITTEN,
+  );
+  optional(
+    t('Sentences skipped with no answer from the assistant'),
+    totals.skippedNoAnswer,
+    NOT_WRITTEN,
+  );
+  optional(t('Sentences skipped and not listed'), totals.skippedMore, NOT_WRITTEN);
+  optional(t('Sentences too long and not listed'), totals.tooLongMore, NOT_WRITTEN);
+  optional(t('Changes not written, changed during the job'), totals.changed, NOT_WRITTEN);
+  optional(
+    t('Changes left out, sentence written before an interruption'),
+    totals.repeated,
+    NOT_WRITTEN,
+  );
   return rows.map(([label, n, group = WRITTEN]) => [
     label,
     typeof n === 'string' ? n : (n ?? 0).toLocaleString(),
@@ -217,33 +238,31 @@ export const totalRows = (report) => {
 // How much of each thing the job fills is blank in the sentences of a
 // document the job did not reach, or skipped (`key`): counted, never listed.
 const blankParts = (counts, key) =>
-  (counts?.blank || [])
-    .filter((b) => b[key] > 0)
-    .map((b) => `${b.target} ${unitCount(b[key], b.unit)}`);
+  (counts?.blank || []).filter((b) => b[key] > 0).map((b) => b[key]);
 
 // Each kind of blank a document's Left blank lists counts only, with the
 // words the totals' rows say it in after the target's name ("Translation
 // blank in sentences the job did not change"), REV-RP-3.
 export const BLANK_ELSEWHERE = [
-  ['untouched', 'blank in sentences the job did not change'],
-  ['notReached', 'blank in sentences not reached'],
-  ['skipped', 'blank in skipped sentences'],
+  ['untouched', msg('{target} blank in sentences the job did not change: {places}.')],
+  ['notReached', msg('{target} blank in sentences not reached: {places}.')],
+  ['skipped', msg('{target} blank in skipped sentences: {places}.')],
 ];
 
 // A document's lines of one kind of blank, one per target: "Translation
-// blank in sentences not reached: 3 sentences."
-export const blankLines = (counts, key, label) =>
+// blank in sentences not reached: 3 sentences." `line` is BLANK_ELSEWHERE's.
+export const blankLines = (counts, key, line) =>
   (counts?.blank || [])
     .filter((b) => b[key] > 0)
-    .map((b) => `${b.target} ${label}: ${unitCount(b[key], b.unit)}.`);
+    .map((b) => t(line, { target: b.target, places: unitCount(b[key], b.unit) }));
 
 // Each wait named as the running page names it (RPF3-D1, RP2-1): taking
 // turns with people's chats on the model is not waiting for people.
 export const pausedRows = (report) =>
   [
-    ['Taking turns with people using the model', report.pausedForPeopleS],
-    ['Waiting for people to finish editing', report.pausedForEditsS],
-    ['The model not answering', report.pausedForModelS],
+    [t('Taking turns with people using the model'), report.pausedForPeopleS],
+    [t('Waiting for people to finish editing'), report.pausedForEditsS],
+    [t('The model not answering'), report.pausedForModelS],
   ]
     .filter(([, s]) => s > 0)
     .map(([l, s]) => [l, durationText(s * 1000), NOT_WRITTEN]);

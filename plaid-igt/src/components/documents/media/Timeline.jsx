@@ -20,6 +20,7 @@ import { speakerHue } from '../../../domain/speakerHue.js';
 import { stableKey } from '@ui/domain/pendingIds.js';
 import { keys } from '@/lib/keymap.js';
 import { caretInRow } from './segmentCaret.js';
+import { t } from '@ui/lib/i18n.js';
 
 // A segment's colours: its speaker's hue (speakerHue.js), or the theme's
 // primary colour when it has none.
@@ -218,13 +219,13 @@ const SelectionReadout = ({
               variant="ghost"
               size="icon"
               className="h-6 w-6"
-              aria-label={playing ? 'Pause selection' : 'Play selection'}
+              aria-label={playing ? t('Pause selection') : t('Play selection')}
               onClick={onPlay}
             >
               {playing ? <Pause className="h-3.5 w-3.5" /> : <Play className="h-3.5 w-3.5" />}
             </Button>
           </TooltipTrigger>
-          <TooltipContent>{playing ? 'Pause' : 'Play selection'}</TooltipContent>
+          <TooltipContent>{playing ? t('Pause') : t('Play selection')}</TooltipContent>
         </Tooltip>
         <span className="font-mono text-[11px] tabular-nums text-foreground">
           {formatTime(selection.start)}
@@ -240,7 +241,7 @@ const SelectionReadout = ({
                   variant="ghost"
                   size="icon"
                   className="h-6 w-6"
-                  aria-label="Split segment"
+                  aria-label={t('Split segment')}
                   onMouseDown={() => {
                     caretRef.current = caretInRow(document.activeElement, segmentId);
                   }}
@@ -253,7 +254,9 @@ const SelectionReadout = ({
                   <Scissors className="h-3.5 w-3.5" />
                 </Button>
               </TooltipTrigger>
-              <TooltipContent>Split at playback · {keys.words('media.split')}</TooltipContent>
+              <TooltipContent>
+                {t('Split at playback · {keys}', { keys: keys.words('media.split') })}
+              </TooltipContent>
             </Tooltip>
             <Tooltip>
               <TooltipTrigger asChild>
@@ -261,13 +264,15 @@ const SelectionReadout = ({
                   variant="ghost"
                   size="icon"
                   className="-ml-1 h-6 w-6"
-                  aria-label="Merge with next segment"
+                  aria-label={t('Merge with next segment')}
                   onClick={() => onMerge(segmentId)}
                 >
                   <FoldHorizontal className="h-3.5 w-3.5" />
                 </Button>
               </TooltipTrigger>
-              <TooltipContent>Merge with next · {keys.words('media.merge')}</TooltipContent>
+              <TooltipContent>
+                {t('Merge with next · {keys}', { keys: keys.words('media.merge') })}
+              </TooltipContent>
             </Tooltip>
           </>
         )}
@@ -314,7 +319,8 @@ export const Timeline = ({ mediaOps, readOnly = false }) => {
   const selectedSegment = React.useMemo(() => {
     if (!selection) return null;
     const hits = (doc.alignmentTokens || []).filter(
-      (t) => t.metadata?.timeBegin === selection.start && t.metadata?.timeEnd === selection.end,
+      (tok) =>
+        tok.metadata?.timeBegin === selection.start && tok.metadata?.timeEnd === selection.end,
     );
     return hits.length === 1 ? hits[0] : null;
   }, [selection, doc.alignmentTokens]);
@@ -356,7 +362,10 @@ export const Timeline = ({ mediaOps, readOnly = false }) => {
                   e.stopPropagation();
                   requestSegmentFocus(p.id);
                 }}
-                title={`Proposed segment (${formatTime(p.timeBegin)} - ${formatTime(p.timeEnd)})`}
+                title={t('Proposed segment ({from} - {to})', {
+                  from: formatTime(p.timeBegin),
+                  to: formatTime(p.timeEnd),
+                })}
               />
             )),
     [proposals, drawn, duration, requestSegmentFocus],
@@ -422,10 +431,10 @@ export const Timeline = ({ mediaOps, readOnly = false }) => {
           {/* Timeline Controls */}
           <div className="flex items-center justify-between">
             <div className="flex items-baseline gap-2">
-              <span className="text-sm font-medium">Timeline</span>
+              <span className="text-sm font-medium">{t('Timeline')}</span>
               {!readOnly && (
                 <span className="text-xs text-muted-foreground">
-                  Drag on the timeline to add a segment
+                  {t('Drag on the timeline to add a segment')}
                 </span>
               )}
             </div>
@@ -436,14 +445,14 @@ export const Timeline = ({ mediaOps, readOnly = false }) => {
                     variant="ghost"
                     size="icon"
                     className="h-8 w-8"
-                    aria-label="Zoom out"
+                    aria-label={t('Zoom out')}
                     onClick={() => onPixelsPerSecondChange(clampZoom(pixelsPerSecond / (4 / 3)))}
                     disabled={pixelsPerSecond <= MIN_ZOOM}
                   >
                     <ZoomOut className="h-4 w-4" />
                   </Button>
                 </TooltipTrigger>
-                <TooltipContent>Zoom out</TooltipContent>
+                <TooltipContent>{t('Zoom out')}</TooltipContent>
               </Tooltip>
               <Tooltip>
                 <TooltipTrigger asChild>
@@ -453,10 +462,10 @@ export const Timeline = ({ mediaOps, readOnly = false }) => {
                     className="h-8 px-2 text-sm font-normal text-muted-foreground"
                     onClick={fitToWidth}
                   >
-                    {Math.round(pixelsPerSecond)}px/s
+                    {Math.round(pixelsPerSecond)}px/s{/* i18n-ignore: a unit */}
                   </Button>
                 </TooltipTrigger>
-                <TooltipContent>Fit the recording to the width</TooltipContent>
+                <TooltipContent>{t('Fit the recording to the width')}</TooltipContent>
               </Tooltip>
               <Tooltip>
                 <TooltipTrigger asChild>
@@ -464,14 +473,14 @@ export const Timeline = ({ mediaOps, readOnly = false }) => {
                     variant="ghost"
                     size="icon"
                     className="h-8 w-8"
-                    aria-label="Zoom in"
+                    aria-label={t('Zoom in')}
                     onClick={() => onPixelsPerSecondChange(clampZoom(pixelsPerSecond * (4 / 3)))}
                     disabled={pixelsPerSecond >= MAX_ZOOM}
                   >
                     <ZoomIn className="h-4 w-4" />
                   </Button>
                 </TooltipTrigger>
-                <TooltipContent>Zoom in</TooltipContent>
+                <TooltipContent>{t('Zoom in')}</TooltipContent>
               </Tooltip>
             </div>
           </div>
@@ -558,7 +567,7 @@ export const Timeline = ({ mediaOps, readOnly = false }) => {
                     pointerEvents: 'none',
                   }}
                 >
-                  Loading waveform…
+                  {t('Loading waveform…')}
                 </div>
               )}
 
@@ -703,7 +712,20 @@ export const Timeline = ({ mediaOps, readOnly = false }) => {
                       // it (which selects and, on entry, plays the segment).
                       mediaOps.requestSegmentFocus(token.id);
                     }}
-                    title={`${speaker ? speaker + ': ' : ''}${cpSlice(doc.body || '', token.begin, token.end) || ''} (${formatTime(displayStart)} - ${formatTime(displayEnd)})`}
+                    title={
+                      speaker
+                        ? t('{speaker}: {text} ({from} - {to})', {
+                            speaker,
+                            text: cpSlice(doc.body || '', token.begin, token.end) || '',
+                            from: formatTime(displayStart),
+                            to: formatTime(displayEnd),
+                          })
+                        : t('{text} ({from} - {to})', {
+                            text: cpSlice(doc.body || '', token.begin, token.end) || '',
+                            from: formatTime(displayStart),
+                            to: formatTime(displayEnd),
+                          })
+                    }
                   >
                     {/* Speaker label (diarization) — sits in the corner over the
                       transcription; hidden on very narrow segments where there's

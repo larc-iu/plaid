@@ -16,6 +16,7 @@ import { AdminLogs } from './AdminLogs';
 import { LOG_PARAMS } from './logFilters';
 import { TYPE } from '@ui/lib/typeScale.js';
 import { cn } from '@ui/lib/utils';
+import { t } from '@ui/lib/i18n.js';
 
 // The whole-server view, for whoever runs this instance. Everything a project
 // maintainer needs lives on the project; what is here is the part that spans
@@ -41,7 +42,7 @@ const DETAIL_PARAMS = ['user', 'conversation', ...LOG_PARAMS];
 export const AdminView = () => {
   const { user, client } = useAuth();
   const [tab, setTab, tabHref] = useTabParam(TABS, 'users', { clears: DETAIL_PARAMS });
-  useDocumentTitle('Administration');
+  useDocumentTitle(t('Administration'));
 
   // Not a permission check the server relies on — every endpoint behind this
   // screen is admin-gated on its own. This only keeps a non-admin from
@@ -52,38 +53,38 @@ export const AdminView = () => {
   return (
     // The shell already pads the page and holds it to the list width.
     <div>
-      <h1 className={cn('pb-4', TYPE.page)}>Administration</h1>
+      <h1 className={cn('pb-4', TYPE.page)}>{t('Administration')}</h1>
       <Tabs value={tab} onValueChange={setTab}>
         <TabsList>
           <TabsTrigger value="users" to={tabHref('/admin', 'users')}>
-            Users
+            {t('Users')}
           </TabsTrigger>
           <TabsTrigger value="invites" to={tabHref('/admin', 'invites')}>
-            Invites
+            {t('Invites')}
           </TabsTrigger>
           <TabsTrigger value="activity" to={tabHref('/admin', 'activity')}>
-            Activity
+            {t('Activity')}
           </TabsTrigger>
           <TabsTrigger value="projects" to={tabHref('/admin', 'projects')}>
-            Projects
+            {t('Projects')}
           </TabsTrigger>
           <TabsTrigger value="vocabularies" to={tabHref('/admin', 'vocabularies')}>
-            Vocabularies
+            {t('Vocabularies')}
           </TabsTrigger>
           <TabsTrigger value="services" to={tabHref('/admin', 'services')}>
-            Services
+            {t('Services')}
           </TabsTrigger>
           <TabsTrigger value="jobs" to={tabHref('/admin', 'jobs')}>
-            Jobs
+            {t('Jobs')}
           </TabsTrigger>
           <TabsTrigger value="assistant" to={tabHref('/admin', 'assistant')}>
-            Assistant
+            {t('Assistant')}
           </TabsTrigger>
           <TabsTrigger value="server" to={tabHref('/admin', 'server')}>
-            Server
+            {t('Server')}
           </TabsTrigger>
           <TabsTrigger value="logs" to={tabHref('/admin', 'logs')}>
-            Logs
+            {t('Logs')}
           </TabsTrigger>
         </TabsList>
 

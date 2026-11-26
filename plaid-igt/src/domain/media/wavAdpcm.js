@@ -12,6 +12,8 @@
 // in node. The reference the decoders are tested against is libsndfile's
 // (adpcm-fixtures/make_fixtures.py).
 
+import { t } from '@ui/lib/i18n.js';
+
 const WAV_PCM = 0x0001;
 export const WAV_MS_ADPCM = 0x0002;
 const WAV_FLOAT = 0x0003;
@@ -35,8 +37,8 @@ const CODING_NAMES = {
 /** A name for a WAV coding a person may recognize, for a refusal. */
 export const wavCodingName = (tag, bitsPerSample = null) =>
   tag === WAV_FLOAT && bitsPerSample === 64
-    ? '64-bit float'
-    : (CODING_NAMES[tag] ?? `format 0x${tag.toString(16).padStart(4, '0')}`);
+    ? t('64-bit float')
+    : (CODING_NAMES[tag] ?? t('format {code}', { code: `0x${tag.toString(16).padStart(4, '0')}` }));
 
 const ascii = (bytes, at) =>
   String.fromCharCode(bytes[at], bytes[at + 1], bytes[at + 2], bytes[at + 3]);

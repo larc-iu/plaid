@@ -13,6 +13,7 @@ import { Button } from '../ui/button.jsx';
 import { Input } from '../ui/input.jsx';
 import { cn } from '../../lib/utils.js';
 import { plural } from '../../lib/plural.js';
+import { t } from '../../lib/i18n.js';
 
 // The chrome every browsable list in the app wears: one search box, one count,
 // one pager. Kept together so that a list of documents, of lexicon entries and
@@ -21,7 +22,7 @@ import { plural } from '../../lib/plural.js';
 // A search box with its magnifier and a clear button. `onChange` takes the
 // string, not the event, because no call site wanted the event.
 export const SearchInput = React.forwardRef(
-  ({ value, onChange, placeholder = 'Search…', className, inputClassName, ...props }, ref) => (
+  ({ value, onChange, placeholder = t('Search…'), className, inputClassName, ...props }, ref) => (
     <div className={cn('relative', className)}>
       <SearchIcon className="pointer-events-none absolute left-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
       <Input
@@ -43,7 +44,7 @@ export const SearchInput = React.forwardRef(
         <button
           type="button"
           onClick={() => onChange('')}
-          aria-label="Clear search"
+          aria-label={t('Clear search')}
           className="absolute right-1.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
         >
           <X className="h-3.5 w-3.5" />
@@ -54,15 +55,29 @@ export const SearchInput = React.forwardRef(
 );
 SearchInput.displayName = 'SearchInput';
 
+// A count and its bare noun, the older English-only way.
+const nounCount = (written, total, noun) =>
+  // i18n-ignore: English only, for the callers that still pass a bare noun
+  `${written} ${plural(total, noun)}`;
+
 // How much of the list a search is hiding. Sits beside the search box.
-// `noun` is a singular, or a [singular, plural] pair (see lib/plural.js).
+// `countLabel({ n, total })` names the whole count as one message, `n` the
+// number for the plural and `total` the number as written ("200+"):
+// `{total} {n, plural, one {entry} other {entries}}`, given those two values.
+// `noun`, a singular or a [singular, plural] pair (see lib/plural.js), is the
+// older way, English only, kept for the callers that still pass one.
 // `more` is set while the server holds rows past the `total` loaded, and the
 // total then reads "200+", as ListPager's range does.
-export const ListCount = ({ shown, total, noun = 'item', more = false, className }) => {
-  const all = `${total.toLocaleString()}${more ? '+' : ''} ${plural(total, noun)}`;
+export const ListCount = ({ shown, total, noun, countLabel, more = false, className }) => {
+  const written = `${total.toLocaleString()}${more ? '+' : ''}`;
+  const all = countLabel
+    ? countLabel({ n: total, total: written })
+    : noun
+      ? nounCount(written, total, noun)
+      : t('{total} {n, plural, one {item} other {items}}', { n: total, total: written });
   return (
     <span className={cn('whitespace-nowrap text-xs text-muted-foreground', className)}>
-      {shown === total ? all : `${shown.toLocaleString()} of ${all}`}
+      {shown === total ? all : t('{shown} of {all}', { shown: shown.toLocaleString(), all })}
     </span>
   );
 };
@@ -155,31 +170,34 @@ export const ListPager = ({
       <div className="flex items-center">
         <PagerButton
           icon={ChevronFirst}
-          label="First page"
+          label={t('First page')}
           disabled={atStart}
           onClick={() => onPage(0)}
         />
         <PagerButton
           icon={ChevronLeft}
-          label="Previous page"
+          label={t('Previous page')}
           disabled={atStart}
           onClick={() => onPage(page - 1)}
         />
       </div>
       <span className="tabular-nums">
-        {rangeStart.toLocaleString()}–{rangeEnd.toLocaleString()} of {total.toLocaleString()}
-        {more ? '+' : ''}
+        {t('{start}–{end} of {total}', {
+          start: rangeStart.toLocaleString(),
+          end: rangeEnd.toLocaleString(),
+          total: `${total.toLocaleString()}${more ? '+' : ''}`,
+        })}
       </span>
       <div className="flex items-center">
         <PagerButton
           icon={ChevronRight}
-          label="Next page"
+          label={t('Next page')}
           disabled={more ? more.loading : atEnd}
           onClick={next}
         />
         <PagerButton
           icon={ChevronLast}
-          label="Last page"
+          label={t('Last page')}
           disabled={atEnd}
           onClick={() => onPage(pageCount - 1)}
         />

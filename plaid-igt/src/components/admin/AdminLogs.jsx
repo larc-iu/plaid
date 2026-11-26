@@ -16,6 +16,7 @@ import {
 import { fullTimestamp } from '@ui/lib/formatTime.js';
 import { notifyError, humanizeError } from '@/utils/feedback';
 import { readFilters, withFilters, withoutMalformed } from './logFilters';
+import { t } from '@ui/lib/i18n.js';
 
 // What the server is doing right now, and what went wrong. Requests and
 // events are buffered apart on the server, so a bulk import cannot push the
@@ -44,7 +45,7 @@ const StatusBadge = ({ entry }) => {
   if (entry.error) {
     return (
       <Badge variant="destructive" title={entry.error}>
-        threw
+        {t('threw')}
       </Badge>
     );
   }
@@ -56,7 +57,7 @@ const StatusBadge = ({ entry }) => {
       </Badge>
     );
   if (entry.status) return <span className="text-muted-foreground">{entry.status}</span>;
-  return <span className="text-muted-foreground">no response</span>;
+  return <span className="text-muted-foreground">{t('no response')}</span>;
 };
 
 const LEVEL_STYLE = {
@@ -71,6 +72,7 @@ const LevelBadge = ({ level }) => {
   if (level === 'warn')
     return (
       <Badge variant="outline" className={WARN_BADGE}>
+        {/* i18n-ignore: a log level, as the server names it */}
         warn
       </Badge>
     );
@@ -88,7 +90,7 @@ const Stat = ({ label, value, tone }) =>
   );
 
 const number = (n) => (typeof n === 'number' ? n.toLocaleString() : n);
-const millis = (n) => (typeof n === 'number' ? `${number(n)}ms` : null);
+const millis = (n) => (typeof n === 'number' ? t('{n, number}ms', { n }) : null);
 
 // A stable key per row. Two requests can share a millisecond, a path and a
 // duration, so the position in the buffer (which arrives newest first and is
@@ -133,11 +135,11 @@ export const AdminLogs = ({ client }) => {
   // the address should change.
   useEffect(() => {
     if (query.trim() === search) return undefined;
-    const t = setTimeout(() => {
+    const timer = setTimeout(() => {
       written.current = query.trim();
       setFilters({ q: query.trim() });
     }, 300);
-    return () => clearTimeout(t);
+    return () => clearTimeout(timer);
   }, [query, search, setFilters]);
 
   // A search the address changed under the box (Back, a pasted link) is what
@@ -173,7 +175,7 @@ export const AdminLogs = ({ client }) => {
         });
       } catch (err) {
         if (ticket !== generation.current) return;
-        if (!quiet) notifyError(humanizeError(err), 'Failed to read the log');
+        if (!quiet) notifyError(humanizeError(err), t('Failed to read the log'));
       } finally {
         inFlight.current -= 1;
         if (ticket === generation.current) setLoading(false);
@@ -188,15 +190,15 @@ export const AdminLogs = ({ client }) => {
 
   useEffect(() => {
     if (!live) return undefined;
-    const t = setInterval(() => load({ quiet: true }), LIVE_MS);
-    return () => clearInterval(t);
+    const timer = setInterval(() => load({ quiet: true }), LIVE_MS);
+    return () => clearInterval(timer);
   }, [live, load]);
 
   const loadFile = useCallback(async () => {
     try {
       setFile(await client.admin.logFile({ lines: 500 }));
     } catch (err) {
-      notifyError(humanizeError(err), 'Failed to read the log file');
+      notifyError(humanizeError(err), t('Failed to read the log file'));
     }
   }, [client]);
 
@@ -213,21 +215,21 @@ export const AdminLogs = ({ client }) => {
   const requestColumns = [
     {
       key: 'ts',
-      label: 'Time',
+      label: t('Time'),
       sort: (r) => r.ts,
       className: 'whitespace-nowrap font-mono text-xs',
       render: (r) => <span title={fullTimestamp(r.ts)}>{clockTime(r.ts)}</span>,
     },
     {
       key: 'method',
-      label: 'Method',
+      label: t('Method'),
       sort: (r) => r.method,
       className: 'font-mono text-xs',
       render: (r) => r.method,
     },
     {
       key: 'path',
-      label: 'Path',
+      label: t('Path'),
       sort: (r) => r.path,
       className: 'max-w-[26rem] truncate font-mono text-xs',
       render: (r) => (
@@ -239,23 +241,23 @@ export const AdminLogs = ({ client }) => {
     },
     {
       key: 'status',
-      label: 'Status',
+      label: t('Status'),
       sort: (r) => (r.error ? 599 : r.status),
       headerClassName: 'w-20',
       render: (r) => <StatusBadge entry={r} />,
     },
     {
       key: 'ms',
-      label: 'Time taken',
+      label: t('Time taken'),
       sort: (r) => r.ms,
       align: 'right',
       headerClassName: 'w-24',
       className: 'whitespace-nowrap font-mono text-xs',
-      render: (r) => `${number(r.ms)}ms`,
+      render: (r) => millis(r.ms) ?? '',
     },
     {
       key: 'user',
-      label: 'Account',
+      label: t('Account'),
       sort: (r) => r.user,
       className: 'max-w-[14rem] truncate',
       render: (r) =>
@@ -263,12 +265,12 @@ export const AdminLogs = ({ client }) => {
           <Link
             to={accountHref(r.user)}
             className="text-xs underline decoration-dotted underline-offset-2 hover:text-primary"
-            title={`Show only ${r.user}`}
+            title={t('Show only {user}', { user: r.user })}
           >
             {r.user}
           </Link>
         ) : (
-          <span className="text-xs text-muted-foreground">anonymous</span>
+          <span className="text-xs text-muted-foreground">{t('anonymous')}</span>
         ),
     },
   ];
@@ -276,28 +278,28 @@ export const AdminLogs = ({ client }) => {
   const eventColumns = [
     {
       key: 'ts',
-      label: 'Time',
+      label: t('Time'),
       sort: (e) => e.ts,
       className: 'whitespace-nowrap font-mono text-xs',
       render: (e) => <span title={fullTimestamp(e.ts)}>{clockTime(e.ts)}</span>,
     },
     {
       key: 'level',
-      label: 'Level',
+      label: t('Level'),
       sort: (e) => e.level,
       headerClassName: 'w-24',
       render: (e) => <LevelBadge level={e.level} />,
     },
     {
       key: 'ns',
-      label: 'Source',
+      label: t('Source'),
       sort: (e) => e.ns,
       className: 'max-w-[16rem] truncate font-mono text-xs',
       render: (e) => <span title={e.ns}>{e.ns}</span>,
     },
     {
       key: 'message',
-      label: 'Message',
+      label: t('Message'),
       className: 'max-w-[34rem] truncate',
       render: (e) => <span title={e.message}>{e.message}</span>,
     },
@@ -309,7 +311,7 @@ export const AdminLogs = ({ client }) => {
         <SearchInput
           value={query}
           onChange={setQuery}
-          placeholder="Search the log…"
+          placeholder={t('Search the log…')}
           className="w-64"
         />
         <Select value={status} onValueChange={setStatus}>
@@ -317,11 +319,20 @@ export const AdminLogs = ({ client }) => {
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="all">Any status</SelectItem>
-            <SelectItem value="failures">Failures</SelectItem>
-            <SelectItem value="2xx">2xx</SelectItem>
-            <SelectItem value="4xx">4xx</SelectItem>
-            <SelectItem value="5xx">5xx</SelectItem>
+            <SelectItem value="all">{t('Any status')}</SelectItem>
+            <SelectItem value="failures">{t('Failures')}</SelectItem>
+            <SelectItem value="2xx">
+              {/* i18n-ignore: an HTTP status class */}
+              2xx
+            </SelectItem>
+            <SelectItem value="4xx">
+              {/* i18n-ignore: an HTTP status class */}
+              4xx
+            </SelectItem>
+            <SelectItem value="5xx">
+              {/* i18n-ignore: an HTTP status class */}
+              5xx
+            </SelectItem>
           </SelectContent>
         </Select>
         <Select value={level} onValueChange={setLevel}>
@@ -329,9 +340,9 @@ export const AdminLogs = ({ client }) => {
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="all">Any level</SelectItem>
-            <SelectItem value="warn">Warnings and errors</SelectItem>
-            <SelectItem value="error">Errors</SelectItem>
+            <SelectItem value="all">{t('Any level')}</SelectItem>
+            <SelectItem value="warn">{t('Warnings and errors')}</SelectItem>
+            <SelectItem value="error">{t('Errors')}</SelectItem>
           </SelectContent>
         </Select>
         {user && (
@@ -339,7 +350,7 @@ export const AdminLogs = ({ client }) => {
             {user}
             <button
               type="button"
-              aria-label="Clear account filter"
+              aria-label={t('Clear account filter')}
               onClick={() => setFilters({ account: null })}
             >
               <X className="h-3 w-3" />
@@ -348,44 +359,49 @@ export const AdminLogs = ({ client }) => {
         )}
         <div className="ml-auto flex items-center gap-2">
           <label className="flex items-center gap-1.5 text-sm">
-            <Switch checked={live} onCheckedChange={setLive} aria-label="Live" />
-            Live
+            <Switch checked={live} onCheckedChange={setLive} aria-label={t('Live')} />
+            {t('Live')}
           </label>
           <Button size="sm" variant="outline" onClick={() => load()} disabled={loading}>
             <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
-            Refresh
+            {t('Refresh')}
           </Button>
         </div>
       </div>
 
       <div className="flex flex-wrap gap-2">
         <Stat
-          label="Requests"
+          label={t('Requests')}
           value={
-            requests
-              ? `${number(requests.matched)}${requests.matched < requests.held ? ` of ${number(requests.held)}` : ''}`
-              : null
+            !requests
+              ? null
+              : requests.matched < requests.held
+                ? t('{matched, number} of {held, number}', {
+                    matched: requests.matched,
+                    held: requests.held,
+                  })
+                : number(requests.matched)
           }
         />
-        <Stat label="Per minute" value={stats?.perMinute} />
+        <Stat label={t('Per minute')} value={stats?.perMinute} />
         <Stat
-          label="Failures"
+          label={t('Failures')}
           value={stats ? stats.failures : null}
           tone={stats?.failures > 0 ? 'text-destructive' : ''}
         />
-        <Stat label="Median" value={millis(stats?.p50)} />
-        <Stat label="95th percentile" value={millis(stats?.p95)} />
-        <Stat label="Slowest" value={millis(stats?.max)} />
+        <Stat label={t('Median')} value={millis(stats?.p50)} />
+        <Stat label={t('95th percentile')} value={millis(stats?.p95)} />
+        <Stat label={t('Slowest')} value={millis(stats?.max)} />
         <Stat
-          label="Errors"
+          label={t('Errors')}
           value={events ? (events.byLevel?.error ?? 0) : null}
           tone={events?.byLevel?.error > 0 ? 'text-destructive' : ''}
         />
-        <Stat label="Warnings" value={events ? (events.byLevel?.warn ?? 0) : null} />
+        <Stat label={t('Warnings')} value={events ? (events.byLevel?.warn ?? 0) : null} />
       </div>
 
       <DataTable
-        title="Events"
+        title={t('Events')}
         rows={events?.entries || []}
         columns={eventColumns}
         rowKey={(e) => e.key}
@@ -393,7 +409,7 @@ export const AdminLogs = ({ client }) => {
         defaultSort={{ key: 'ts', dir: 'desc' }}
         pageParam="events"
         noun="event"
-        empty="Nothing logged outside the requests below."
+        empty={t('Nothing logged outside the requests below.')}
         loading={loading}
         expand={(e) => (
           <div className="flex flex-col gap-2">
@@ -408,7 +424,7 @@ export const AdminLogs = ({ client }) => {
       />
 
       <DataTable
-        title="Requests"
+        title={t('Requests')}
         rows={requests?.entries || []}
         columns={requestColumns}
         rowKey={(r) => r.key}
@@ -416,28 +432,28 @@ export const AdminLogs = ({ client }) => {
         defaultSort={{ key: 'ts', dir: 'desc' }}
         pageParam="requests"
         noun="request"
-        empty="No request in the buffer matches."
+        empty={t('No request in the buffer matches.')}
         loading={loading}
         expand={(r) => (
           <dl className="grid grid-cols-[max-content_1fr] gap-x-4 gap-y-1 text-xs">
-            <dt className="text-muted-foreground">Path</dt>
+            <dt className="text-muted-foreground">{t('Path')}</dt>
             <dd className="break-all font-mono">
               {r.path}
               {r.query ? `?${r.query}` : ''}
             </dd>
-            <dt className="text-muted-foreground">Account</dt>
-            <dd className="font-mono">{r.user || 'anonymous'}</dd>
-            <dt className="text-muted-foreground">Address</dt>
-            <dd className="font-mono">{r.ip || 'unknown'}</dd>
+            <dt className="text-muted-foreground">{t('Account')}</dt>
+            <dd className="font-mono">{r.user || t('anonymous')}</dd>
+            <dt className="text-muted-foreground">{t('Address')}</dt>
+            <dd className="font-mono">{r.ip || t('unknown')}</dd>
             {r.token && (
               <>
-                <dt className="text-muted-foreground">API token</dt>
+                <dt className="text-muted-foreground">{t('API token')}</dt>
                 <dd className="font-mono">{r.token}</dd>
               </>
             )}
             {r.error && (
               <>
-                <dt className="text-muted-foreground">Exception</dt>
+                <dt className="text-muted-foreground">{t('Exception')}</dt>
                 <dd className="font-mono text-destructive">{r.error}</dd>
               </>
             )}
@@ -453,7 +469,7 @@ export const AdminLogs = ({ client }) => {
               size="icon"
               className="h-6 w-6"
               aria-expanded={fileOpen}
-              aria-label={fileOpen ? 'Close' : 'Open'}
+              aria-label={fileOpen ? t('Close') : t('Open')}
               onClick={openFile}
             >
               {fileOpen ? (
@@ -462,11 +478,11 @@ export const AdminLogs = ({ client }) => {
                 <ChevronRight className="h-4 w-4" />
               )}
             </Button>
-            <h3 className="text-sm font-semibold">Log file</h3>
+            <h3 className="text-sm font-semibold">{t('Log file')}</h3>
             <span className="truncate font-mono text-xs text-muted-foreground">{log.file}</span>
             {fileOpen && (
               <Button size="sm" variant="ghost" className="ml-auto" onClick={loadFile}>
-                Refresh
+                {t('Refresh')}
               </Button>
             )}
           </div>

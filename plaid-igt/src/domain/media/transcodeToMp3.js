@@ -16,6 +16,7 @@
 // container ourselves (WebCodecs decodes but does not demux) and is a much
 // larger piece of work for a path taken once per recording.
 
+import { t } from '@ui/lib/i18n.js';
 import { decodeTo16kMono, TARGET_RATE } from '../vad/decodeTo16kMono.js';
 
 /** Mono speech at 16 kHz. Enough for transcription, small enough to send. */
@@ -32,10 +33,16 @@ const MP3_MB_PER_HOUR = Math.round((3600 * MP3_BITRATE_KBPS * 1000) / 8 / 1e6);
  * sentence falls back to a rate. `video` says whether there is a picture to
  * lose, since a .wav has none.
  */
-export const conversionNote = ({ bytes = null, video = false } = {}) =>
-  'Mono at 16 kHz, timed exactly as the original: clear enough to transcribe from, too coarse ' +
-  `for phonetic measurement${video ? ', and without the picture' : ''}.` +
-  (bytes ? '' : ` An MP3 is about ${MP3_MB_PER_HOUR} MB an hour.`);
+export const conversionNote = ({ bytes = null, video = false } = {}) => {
+  const note = video
+    ? t(
+        'Mono at 16 kHz, timed exactly as the original: clear enough to transcribe from, too coarse for phonetic measurement, and without the picture.',
+      )
+    : t(
+        'Mono at 16 kHz, timed exactly as the original: clear enough to transcribe from, too coarse for phonetic measurement.',
+      );
+  return bytes ? note : `${note} ${t('An MP3 is about {mb} MB an hour.', { mb: MP3_MB_PER_HOUR })}`;
+};
 
 /**
  * Big enough that sending audio alone is worth offering even when the server
@@ -96,7 +103,8 @@ export async function transcodeToMp3(file, { onProgress, signal } = {}) {
         else if (data.type === 'result') resolve(data.mp3);
         else if (data.type === 'error') reject(new Error(data.message));
       };
-      worker.onerror = (event) => reject(new Error(event.message || 'Converting the file failed.'));
+      worker.onerror = (event) =>
+        reject(new Error(event.message || t('Converting the file failed.')));
 
       // Transferred, not copied: an hour of samples is 230 MB.
       worker.postMessage(

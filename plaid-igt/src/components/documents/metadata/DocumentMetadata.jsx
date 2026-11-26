@@ -3,6 +3,7 @@ import { Label } from '@ui/components/ui/label';
 import { Card, CardContent, CardHeader, CardTitle } from '@ui/components/ui/card';
 import { TagsetField } from '@/components/shared/TagsetField.jsx';
 import { useMetadataOperations } from './useMetadataOperations.js';
+import { t } from '@ui/lib/i18n.js';
 
 // What this project records about a document, on the shared Details page
 // (`@ui/components/shared/DocumentDetailsPage`, its `metadata` slot). Always
@@ -15,7 +16,7 @@ export function DocumentMetadata({ doc, readOnly }) {
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Metadata</CardTitle>
+        <CardTitle>{t('Metadata')}</CardTitle>
       </CardHeader>
       <CardContent className="flex flex-col gap-4">
         {ops.metadataFields.map((field) => (
@@ -38,9 +39,9 @@ export function DocumentMetadata({ doc, readOnly }) {
             className="self-start"
             onClick={ops.handleSave}
             disabled={!ops.dirty || ops.saving || !ops.metadataValid}
-            title={ops.metadataValid ? undefined : 'A field holds a value its tagset refuses'}
+            title={ops.metadataValid ? undefined : t('A field holds a value its tagset refuses')}
           >
-            {ops.saving ? 'Saving…' : 'Save'}
+            {ops.saving ? t('Saving…') : t('Save')}
           </Button>
         )}
       </CardContent>

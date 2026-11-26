@@ -5,6 +5,7 @@ import { isValueAllowed, partAtCaret, replacePartAtCaret } from '@/domain/tagset
 import { anchoredPos, cellByKey } from './shared.js';
 import { keys } from '@/lib/keymap.js';
 import { isEnter } from '@ui/lib/chords.js';
+import { t } from '@ui/lib/i18n.js';
 
 // The alternatives list: Alt+Down on a cell lists every value the project
 // has given that form, and a pick adopts one. On a morpheme's gloss the rows
@@ -310,17 +311,21 @@ export const alternatives = {
     const tag = (it) => {
       const parts = [];
       if (it.count) parts.push(`×${it.count}`);
-      if (it.entry) parts.push(it.entryTrusted ? 'link' : 'unconfirmed link');
+      if (it.entry) parts.push(it.entryTrusted ? t('link') : t('unconfirmed link'));
       // Rounded down, as every confidence is (plaid-ui domain/confidence.js).
       if (it.model)
-        parts.push(it.prob != null ? `machine ${Math.floor(it.prob * 100 + 1e-9)}%` : 'machine');
+        parts.push(
+          it.prob != null
+            ? t('machine {p}%', { p: Math.floor(it.prob * 100 + 1e-9) })
+            : t('machine'),
+        );
       return parts.join(' · ');
     };
     return html`<div
       class="igt-alts"
       style=${posStyle}
       role="listbox"
-      aria-label=${pairs ? 'Senses and values' : 'Values seen for this form'}
+      aria-label=${pairs ? t('Senses and values') : t('Values seen for this form')}
       @click=${(e) => e.stopPropagation()}
       @mousedown=${(e) => e.preventDefault()}
     >
@@ -343,7 +348,7 @@ export const alternatives = {
                       <span class="igt-alts__tag">${tag(it)}</span>`}
               </div>`,
           )
-        : html`<div class="igt-alts__empty">No matching values</div>`}
+        : html`<div class="igt-alts__empty">${t('No matching values')}</div>`}
     </div>`;
   },
 

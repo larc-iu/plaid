@@ -14,6 +14,7 @@ import { uuidv7 } from '@larc-iu/plaid-client';
 import { IGT_NAMESPACE, fieldConfigCells, readScope } from './igtConfig.js';
 import { getIgtLayerInfo } from './layerInfo.js';
 import { findDoubles } from './doubles.js';
+import { t } from '../../../plaid-ui/src/lib/i18n.js';
 import { MODES, readTagsetName, resolveTagset } from './tagsets.js';
 import { violationCountOf, violationsOf } from '../../../plaid-client-js/src/constraints.js';
 import { joinSpansOn, valueSetsAllow } from '../../../plaid-ui/src/domain/mergeRules.js';
@@ -283,7 +284,7 @@ export const declareIgtRules = async (
   if (!wanted.length) return { changed: false, notInForce: [] };
   const fields = new Map(igtFields(info).map((sl) => [sl.id, sl]));
   const names = new Map();
-  for (const tl of (project?.textLayers || []).flatMap((t) => t.tokenLayers || [])) {
+  for (const tl of (project?.textLayers || []).flatMap((tok) => tok.tokenLayers || [])) {
     names.set(tl.id, tl.name);
     for (const sl of tl.spanLayers || []) names.set(sl.id, sl.name);
   }
@@ -315,7 +316,9 @@ export const declareIgtRules = async (
     const named = notInForce.find((n) => n.layerId === p.layerId);
     // A rule with a remedy the declaration itself was refused for (a double
     // written after the check) needs the same as one the check found.
-    const refusedFixable = repair ? [] : (p.constraints || []).filter((t) => t === 'single-span');
+    const refusedFixable = repair
+      ? []
+      : (p.constraints || []).filter((tok) => tok === 'single-span');
     const fixable = p.repair?.length ? p.repair : refusedFixable;
     // Units on tokens Analyze shows no fields for are not counted
     // (`findDoubles`), as Validation counts them.
@@ -385,7 +388,10 @@ export const tagsetRefusal = (error) => {
   const fields = [...new Set(vs.map((v) => v.layerName).filter(Boolean))];
   const values = [...new Set(vs.map((v) => v.value).filter((v) => typeof v === 'string'))];
   const shown = values.slice(0, 5).join(', ') + (values.length > 5 ? ', …' : '');
-  return `${n} ${n === 1 ? 'value' : 'values'} in ${fields.join(', ')} ${n === 1 ? 'is' : 'are'} not in the tagset: ${shown}.`;
+  return t(
+    '{n, plural, one {{n} value in {fields} is not in the tagset: {values}.} other {{n} values in {fields} are not in the tagset: {values}.}}',
+    { n, fields: fields.join(', '), values: shown },
+  );
 };
 
 // The server's single-span join, mirrored for every app (plaid-ui mergeRules.js).

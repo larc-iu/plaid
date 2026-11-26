@@ -14,6 +14,7 @@ import { formatElapsed } from '@ui/hooks/useRunProgress.js';
 import { useConfirm } from '@ui/components/shared/ConfirmProvider';
 import { readInitialized } from '../../domain/igtConfig';
 import { projectTarget } from './projectTarget';
+import { t, msg } from '@ui/lib/i18n.js';
 
 // What the server is doing and what it is sitting on. Read-only except for
 // three buttons, each of which only ever unblocks something.
@@ -55,17 +56,20 @@ const BACKUP_STALE_MS = 26 * 3600 * 1000;
 // its start plus its uptime, so a browser's wrong clock cannot raise it.
 const backupProblem = (backup, jvm) => {
   if (!backup.enabled) return null;
-  if (backup.lastRun && !backup.lastRun.ok) return 'The last backup failed.';
+  if (backup.lastRun && !backup.lastRun.ok) return t('The last backup failed.');
   const serverNow = Date.parse(jvm.startedAt) + jvm.uptimeMs;
   const newest = backup.backups?.[0] ? Date.parse(backup.backups[0].modified) : -Infinity;
   if (jvm.uptimeMs > BACKUP_STALE_MS && serverNow - newest > BACKUP_STALE_MS) {
-    return 'No backup in the last 26 hours.';
+    return t('No backup in the last 26 hours.');
   }
   return null;
 };
 
-const lastRunText = ({ at, ok, scheduled }) =>
-  `${timeAgo(at)}, ${ok ? 'Succeeded' : 'Failed'}${scheduled ? '' : ', by hand'}`;
+const lastRunText = ({ at, ok, scheduled }) => {
+  const when = timeAgo(at);
+  if (scheduled) return ok ? t('{when}, Succeeded', { when }) : t('{when}, Failed', { when });
+  return ok ? t('{when}, Succeeded, by hand', { when }) : t('{when}, Failed, by hand', { when });
+};
 
 // Where an open document's project and the document itself lead. A project
 // this app owns opens through the router, another app's project in that app
@@ -89,9 +93,9 @@ const duration = (ms) => {
   const d = Math.floor(s / 86400);
   const h = Math.floor((s % 86400) / 3600);
   const m = Math.floor((s % 3600) / 60);
-  if (d) return `${d}d ${h}h`;
-  if (h) return `${h}h ${m}m`;
-  return `${m}m`;
+  if (d) return t('{d}d {h}h', { d, h });
+  if (h) return t('{h}h {m}m', { h, m });
+  return t('{m}m', { m });
 };
 
 export const AdminServer = ({ client }) => {
@@ -137,7 +141,7 @@ export const AdminServer = ({ client }) => {
       setRateLimits(rl);
     } catch (err) {
       console.error('Error loading server report:', err);
-      notifyError(humanizeError(err), 'Failed to load the server report');
+      notifyError(humanizeError(err), t('Failed to load the server report'));
     } finally {
       setLoading(false);
     }
@@ -176,7 +180,10 @@ export const AdminServer = ({ client }) => {
   // block and ok: false, and its reason is only in the log.
   const runBackup = async () => {
     const notWritten = () =>
-      notifyError('The server could not write the backup. Check the log.', 'Failed to back up');
+      notifyError(
+        t('The server could not write the backup. Check the log.'),
+        t('Failed to back up'),
+      );
     const known = new Set((report?.backup?.backups || []).map((b) => b.name));
     setBackingUpSince(Date.now());
     try {
@@ -187,17 +194,20 @@ export const AdminServer = ({ client }) => {
         const running = statusOf(err) === 409;
         if (!running && !isUnknownOutcome(err) && !isUnreachable(err)) throw err;
         if (running)
-          notifyWarning('Its file shows here when it is written.', 'Backup already running');
+          notifyWarning(t('Its file shows here when it is written.'), t('Backup already running'));
         const fresh = await waitForNewBackup(known);
-        if (fresh) notifySuccess(fresh.name, 'Backup complete');
+        if (fresh) notifySuccess(fresh.name, t('Backup complete'));
         else if (shown.current) {
-          notifyWarning('No new backup on disk. Check the server log.', 'Backup not confirmed');
+          notifyWarning(
+            t('No new backup on disk. Check the server log.'),
+            t('Backup not confirmed'),
+          );
         }
         return;
       }
       setReport((r) => (r ? { ...r, backup: result } : r));
       if (result.ok) {
-        notifySuccess(result.backups?.[0]?.name || 'Backup written', 'Backup complete');
+        notifySuccess(result.backups?.[0]?.name || t('Backup written'), t('Backup complete'));
       } else {
         notWritten();
       }
@@ -205,7 +215,7 @@ export const AdminServer = ({ client }) => {
       if (statusOf(err) === 500 && err.responseData?.ok === false) {
         setReport((r) => (r ? { ...r, backup: err.responseData } : r));
         notWritten();
-      } else notifyError(humanizeError(err), 'Failed to back up');
+      } else notifyError(humanizeError(err), t('Failed to back up'));
     } finally {
       if (shown.current) setBackingUpSince(null);
     }
@@ -213,18 +223,20 @@ export const AdminServer = ({ client }) => {
 
   const breakLock = async (lock) => {
     const ok = await confirm({
-      title: 'Release this lock?',
-      description: `Held by ${lock.userName || lock.userId}. Releasing lets anyone write to the document again.`,
-      confirmLabel: 'Release',
+      title: t('Release this lock?'),
+      description: t('Held by {name}. Releasing lets anyone write to the document again.', {
+        name: lock.userName || lock.userId,
+      }),
+      confirmLabel: t('Release'),
       destructive: true,
     });
     if (!ok) return;
     try {
       await client.admin.releaseLock(lock.documentId);
       setLocks((ls) => ls.filter((l) => l.documentId !== lock.documentId));
-      notifySuccess('Lock released');
+      notifySuccess(t('Lock released'));
     } catch (err) {
-      notifyError(humanizeError(err), 'Failed to release the lock');
+      notifyError(humanizeError(err), t('Failed to release the lock'));
     }
   };
 
@@ -236,20 +248,20 @@ export const AdminServer = ({ client }) => {
       // `clear-buckets!`), so its toast names them. An address clears all.
       if (userId) {
         notifySuccess(
-          `Also cleared: Address and Invite failures from ${ip}.`,
-          `${userId} at ${ip} cleared`,
+          t('Also cleared: Address and Invite failures from {ip}.', { ip }),
+          t('{user} at {ip} cleared', { user: userId, ip }),
         );
-      } else notifySuccess(ip ? `${ip} cleared` : 'Every address cleared');
+      } else notifySuccess(ip ? t('{ip} cleared', { ip }) : t('Every address cleared'));
     } catch (err) {
-      notifyError(humanizeError(err), 'Failed to clear');
+      notifyError(humanizeError(err), t('Failed to clear'));
     }
   };
 
   const buckets = useMemo(
     () => [
-      ...(rateLimits?.logins || []).map((b) => ({ ...b, kind: 'Sign-in' })),
-      ...(rateLimits?.ips || []).map((b) => ({ ...b, kind: 'Address' })),
-      ...(rateLimits?.invites || []).map((b) => ({ ...b, kind: 'Invite' })),
+      ...(rateLimits?.logins || []).map((b) => ({ ...b, kind: msg('Sign-in') })),
+      ...(rateLimits?.ips || []).map((b) => ({ ...b, kind: msg('Address') })),
+      ...(rateLimits?.invites || []).map((b) => ({ ...b, kind: msg('Invite') })),
     ],
     [rateLimits],
   );
@@ -262,17 +274,17 @@ export const AdminServer = ({ client }) => {
     <div className="flex flex-col gap-4">
       <div className="flex justify-end">
         <Button variant="outline" size="sm" onClick={load} disabled={loading}>
-          <RefreshCw className="h-4 w-4" /> Refresh
+          <RefreshCw className="h-4 w-4" /> {t('Refresh')}
         </Button>
       </div>
       {problem && <Notice tone="error">{problem}</Notice>}
 
       <div className="grid gap-4 md:grid-cols-2">
-        <Section title="Server">
+        <Section title={t('Server')}>
           <Facts
             rows={[
               [
-                'Version',
+                t('Version'),
                 report.commit ? (
                   <>
                     {report.version} (<span title={report.commit}>{report.commit.slice(0, 9)}</span>
@@ -283,50 +295,80 @@ export const AdminServer = ({ client }) => {
                 ),
               ],
               [
-                'Migrations',
+                t('Migrations'),
                 database.migrations
-                  ? `${database.migrations.applied} applied, latest ${database.migrations.latest}`
+                  ? t('{applied} applied, latest {latest}', {
+                      applied: database.migrations.applied,
+                      latest: database.migrations.latest,
+                    })
                   : null,
               ],
-              ['Uptime', `${duration(jvm.uptimeMs)} (since ${fullTimestamp(jvm.startedAt)})`],
-              ['Java', jvm.java],
-              ['Heap', `${formatBytes(jvm.heapUsed)} of ${formatBytes(jvm.heapMax)}`],
-              ['Port', settings.port],
-              ['Log level', settings.logLevel],
-              ['Session lifetime', `${Math.round((settings.jwtTtlSeconds || 0) / 86400)} days`],
-              ['Editing lock', `${Math.round(settings.effectiveLockExpirationMs / 1000)}s`],
-              ['OpenAPI', settings.openapiExposed ? 'Exposed' : 'Hidden'],
               [
-                'Upload limit',
-                `${settings.mediaMaxFileMb} MB media, ${settings.maxJsonBodyMb} MB JSON`,
+                t('Uptime'),
+                t('{uptime} (since {time})', {
+                  uptime: duration(jvm.uptimeMs),
+                  time: fullTimestamp(jvm.startedAt),
+                }),
+              ],
+              ['Java', jvm.java],
+              [
+                t('Heap'),
+                t('{used} of {max}', {
+                  used: formatBytes(jvm.heapUsed),
+                  max: formatBytes(jvm.heapMax),
+                }),
+              ],
+              [t('Port'), settings.port],
+              [t('Log level'), settings.logLevel],
+              [
+                t('Session lifetime'),
+                t('{n} days', { n: Math.round((settings.jwtTtlSeconds || 0) / 86400) }),
               ],
               [
-                'Private data limit',
+                t('Editing lock'),
+                t('{n}s', { n: Math.round(settings.effectiveLockExpirationMs / 1000) }),
+              ],
+              ['OpenAPI', settings.openapiExposed ? t('Exposed') : t('Hidden')],
+              [
+                t('Upload limit'),
+                t('{media} MB media, {json} MB JSON', {
+                  media: settings.mediaMaxFileMb,
+                  json: settings.maxJsonBodyMb,
+                }),
+              ],
+              [
+                t('Private data limit'),
                 // In the unit of `[user_data] max_value_mb`, the setting
                 // that raises it, and of the upload limits above.
                 settings.userDataValueBytes
-                  ? `${Math.round((settings.userDataValueBytes / 1048576) * 10) / 10} MB per value`
+                  ? t('{n} MB per value', {
+                      n: Math.round((settings.userDataValueBytes / 1048576) * 10) / 10,
+                    })
                   : null,
               ],
-              ['CORS origins', (settings.corsAllowedOrigins || []).join(', ') || 'None'],
+              [t('CORS origins'), (settings.corsAllowedOrigins || []).join(', ') || t('None')],
             ]}
           />
         </Section>
 
-        <Section title="Database">
+        <Section title={t('Database')}>
           <Facts
             rows={[
-              ['File', database.path],
-              ['Size', formatBytes(database.bytes)],
-              ['Write-ahead log', formatBytes(database.walBytes)],
-              ['Journal', database.journalMode],
+              [t('File'), database.path],
+              [t('Size'), formatBytes(database.bytes)],
+              [t('Write-ahead log'), formatBytes(database.walBytes)],
+              [t('Journal'), database.journalMode],
               [
-                'Connections',
+                t('Connections'),
                 database.pool
-                  ? `${database.pool.active} active, ${database.pool.idle} idle, ${database.pool.max} max`
+                  ? t('{active} active, {idle} idle, {max} max', {
+                      active: database.pool.active,
+                      idle: database.pool.idle,
+                      max: database.pool.max,
+                    })
                   : null,
               ],
-              ['Waiting', database.pool?.awaiting],
+              [t('Waiting'), database.pool?.awaiting],
             ]}
           />
           <table className="mt-3 w-full text-sm">
@@ -344,7 +386,7 @@ export const AdminServer = ({ client }) => {
         </Section>
 
         <Section
-          title="Backups"
+          title={t('Backups')}
           action={
             <div className="flex items-center gap-2">
               {backingUp && (
@@ -353,24 +395,27 @@ export const AdminServer = ({ client }) => {
                 </span>
               )}
               <Button size="sm" variant="outline" onClick={runBackup} disabled={backingUp}>
-                {backingUp ? 'Backing up…' : 'Back up now'}
+                {backingUp ? t('Backing up…') : t('Back up now')}
               </Button>
             </div>
           }
         >
           <Facts
             rows={[
-              ['Schedule', backup.enabled ? `Daily at ${backup.time}` : 'Off'],
               [
-                'Last run',
+                t('Schedule'),
+                backup.enabled ? t('Daily at {time}', { time: backup.time }) : t('Off'),
+              ],
+              [
+                t('Last run'),
                 backup.lastRun ? (
                   <span title={fullTimestamp(backup.lastRun.at)}>
                     {lastRunText(backup.lastRun)}
                   </span>
                 ) : null,
               ],
-              ['Keep', `${backup.retention} most recent`],
-              ['Directory', backup.directory],
+              [t('Keep'), t('{n} most recent', { n: backup.retention })],
+              [t('Directory'), backup.directory],
             ]}
           />
           {backup.backups?.length ? (
@@ -393,32 +438,35 @@ export const AdminServer = ({ client }) => {
               </tbody>
             </table>
           ) : (
-            <p className="mt-3 text-sm text-muted-foreground">No backups on disk.</p>
+            <p className="mt-3 text-sm text-muted-foreground">{t('No backups on disk.')}</p>
           )}
         </Section>
 
-        <Section title="Media">
+        <Section title={t('Media')}>
           <Facts
             rows={[
-              ['Directory', media.directory],
-              ['Files', `${media.files.toLocaleString()}, ${formatBytes(media.bytes)}`],
+              [t('Directory'), media.directory],
+              [t('Files'), `${media.files.toLocaleString()}, ${formatBytes(media.bytes)}`],
               [
-                'Unreferenced',
+                t('Unreferenced'),
                 media.orphans
-                  ? `${media.orphans} files, ${formatBytes(media.orphanBytes)}, collected at next restart`
-                  : 'None',
+                  ? t('{n} files, {size}, collected at next restart', {
+                      n: media.orphans,
+                      size: formatBytes(media.orphanBytes),
+                    })
+                  : t('None'),
               ],
             ]}
           />
         </Section>
 
         <DataTable
-          title="Open documents"
+          title={t('Open documents')}
           rows={locks}
           columns={[
             {
               key: 'document',
-              label: 'Document',
+              label: t('Document'),
               sort: (l) => (l.documentName || '').toLowerCase(),
               render: (l) => {
                 const to = lockLinks(l, projects).document;
@@ -434,7 +482,7 @@ export const AdminServer = ({ client }) => {
             },
             {
               key: 'project',
-              label: 'Project',
+              label: t('Project'),
               sort: (l) => (l.projectName || '').toLowerCase(),
               render: (l) => {
                 if (!l.projectId) return null;
@@ -453,13 +501,13 @@ export const AdminServer = ({ client }) => {
             },
             {
               key: 'user',
-              label: 'Held by',
+              label: t('Held by'),
               sort: (l) => (l.userName || l.userId).toLowerCase(),
               render: (l) => <span title={l.userId}>{l.userName || l.userId}</span>,
             },
             {
               key: 'expires',
-              label: 'Expires',
+              label: t('Expires'),
               sort: (l) => l.expiresAt,
               className: 'text-xs text-muted-foreground',
               render: (l) => <span title={fullTimestamp(l.expiresAt)}>{timeAgo(l.expiresAt)}</span>,
@@ -471,7 +519,7 @@ export const AdminServer = ({ client }) => {
               align: 'right',
               render: (l) => (
                 <Button size="sm" variant="ghost" onClick={() => breakLock(l)}>
-                  Release
+                  {t('Release')}
                 </Button>
               ),
             },
@@ -480,46 +528,47 @@ export const AdminServer = ({ client }) => {
           id="admin-locks"
           defaultSort={{ key: 'user', dir: 'asc' }}
           noun="document"
-          empty="Nobody is holding a document."
+          empty={t('Nobody is holding a document.')}
         />
 
         <DataTable
-          title="Failed attempts"
+          title={t('Failed attempts')}
           rows={buckets}
           columns={[
             {
               key: 'kind',
-              label: 'Kind',
+              label: t('Kind'),
               sort: (b) => b.kind,
               className: 'text-muted-foreground',
-              render: (b) => b.kind,
+              render: (b) => t(b.kind),
             },
             {
               key: 'ip',
-              label: 'Address',
+              label: t('Address'),
               sort: (b) => b.ip,
               className: 'font-mono text-xs',
               render: (b) => b.ip,
             },
             {
               key: 'user',
-              label: 'Account',
+              label: t('Account'),
               sort: (b) => b.userId || '',
               render: (b) => b.userId || '',
             },
             {
               key: 'failures',
-              label: 'Failures',
+              label: t('Failures'),
               sort: (b) => b.failures,
               align: 'right',
               className: 'tabular-nums',
-              render: (b) => `${b.failures} of ${b.limit}`,
+              render: (b) => t('{failures} of {limit}', { failures: b.failures, limit: b.limit }),
             },
             {
               key: 'blocked',
-              label: 'Blocked',
+              label: t('Blocked'),
               sort: (b) => (b.blocked ? 0 : 1),
-              render: (b) => (b.blocked ? <Badge variant="destructive">Blocked</Badge> : null),
+              render: (b) =>
+                b.blocked ? <Badge variant="destructive">{t('Blocked')}</Badge> : null,
             },
             {
               key: 'actions',
@@ -528,7 +577,7 @@ export const AdminServer = ({ client }) => {
               align: 'right',
               render: (b) => (
                 <Button size="sm" variant="ghost" onClick={() => clearBucket(b.ip, b.userId)}>
-                  Clear
+                  {t('Clear')}
                 </Button>
               ),
             },
@@ -537,11 +586,11 @@ export const AdminServer = ({ client }) => {
           id="admin-rate-limits"
           defaultSort={{ key: 'failures', dir: 'desc' }}
           noun={['address', 'addresses']}
-          empty="Nothing recorded in the last 15 minutes."
+          empty={t('Nothing recorded in the last 15 minutes.')}
           actions={
             buckets.length > 0 && (
               <Button size="sm" variant="ghost" onClick={() => clearBucket(undefined, undefined)}>
-                Clear all
+                {t('Clear all')}
               </Button>
             )
           }

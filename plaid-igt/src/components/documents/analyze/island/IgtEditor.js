@@ -55,6 +55,7 @@ import { keys } from '@/lib/keymap.js';
 import { onOnlineChange } from '@ui/lib/retrying.js';
 import { saveStateOf } from '@ui/lib/saveState.js';
 import { analyzeFocus } from '../../hooks/focusHandoff.js';
+import { t } from '@ui/lib/i18n.js';
 
 export class IgtEditor {
   constructor(
@@ -369,7 +370,7 @@ export class IgtEditor {
       if (typeof req.begin === 'number') {
         const sentence = this.doc.sentences[idx];
         const word = (sentence?.tokens || []).find(
-          (t) => t.begin <= req.begin && req.begin < t.end,
+          (tok) => tok.begin <= req.begin && req.begin < tok.end,
         );
         const q = (sel) => this.container.querySelector(sel);
         const cell =
@@ -705,6 +706,20 @@ export class IgtEditor {
     }
   }
 
+  // A cell's tooltip when Alt+Down has more than one value to offer: what it
+  // says of itself, then the key that lists them.
+  _altsTitle(title, altRows, n) {
+    const key = keys.words('analyze.alternatives');
+    if (altRows[0]?.pair) {
+      return title
+        ? t('{title}. {key} to list senses and values', { title, key })
+        : t('{key} to list senses and values', { key });
+    }
+    return title
+      ? t('{title}. {key} to list {n} values seen for this form', { title, key, n })
+      : t('{key} to list {n} values seen for this form', { key, n });
+  }
+
   _field({
     key,
     value,
@@ -825,7 +840,15 @@ export class IgtEditor {
     const nAlts = altRows ? altRows.length : 0;
     const basis = g ? this._guessBasis(g) : null;
     const baseTitle = g
-      ? `Guess: ${g.value}${basis ? `, ${basis}` : ''}. Enter to accept it, ${keys.words('analyze.accept')} to accept the whole word, type to replace`
+      ? basis
+        ? t(
+            'Guess: {value}, {basis}. Enter to accept it, {key} to accept the whole word, type to replace',
+            { value: g.value, basis, key: keys.words('analyze.accept') },
+          )
+        : t('Guess: {value}. Enter to accept it, {key} to accept the whole word, type to replace', {
+            value: g.value,
+            key: keys.words('analyze.accept'),
+          })
       : p
         ? this._cellTitle(v, p, origin, confidence?.note)
         : filled
@@ -833,9 +856,7 @@ export class IgtEditor {
           : (ariaLabel ?? null);
     const title =
       violationTitle ??
-      (nAlts > 1
-        ? `${baseTitle ? `${baseTitle}. ` : ''}${keys.words('analyze.alternatives')} to list ${altRows[0]?.pair ? 'senses and values' : `${nAlts} values seen for this form`}`
-        : (baseTitle ?? nothing));
+      (nAlts > 1 ? this._altsTitle(baseTitle, altRows, nAlts) : (baseTitle ?? nothing));
     // A suggestion out of the lexicon wears the faint teal of a linked
     // morpheme chip, which already means "lexically identified" here. The wash
     // says where the suggestion came from; how far to trust it is the link

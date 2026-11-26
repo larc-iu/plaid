@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react';
 import { cn } from '../../lib/utils.js';
 import { flattenOptions } from '../shared/comboboxOptions.js';
+import { t } from '../../lib/i18n.js';
 
 // What `@` offers, over the composer it is being typed into.
 //
@@ -25,7 +26,7 @@ export const MentionList = ({ groups, activeId, onPick, onHover, loading }) => {
   if (loading && !items.length)
     return (
       <div className="absolute inset-x-0 bottom-full z-20 mb-1 rounded-lg border bg-popover p-2 text-xs text-muted-foreground shadow-md">
-        Looking…
+        {t('Looking…')}
       </div>
     );
   // Nothing matched: the list closes rather than saying so. `@` is a typeahead

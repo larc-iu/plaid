@@ -18,44 +18,59 @@ import {
   SelectItem,
   SelectLabel,
 } from '@ui/components/ui/select';
-import { NAMED_ROLES, nodeLabel, ROLES } from '@/import/elan/schema';
+import { NAMED_ROLES, ROLES } from '@/import/elan/schema';
 import { Panel } from '../ImportPanels.jsx';
 import { ElanSection } from './ElanSection.jsx';
-import { countOf } from '@ui/lib/plural.js';
+import { msg, t, tx } from '@ui/lib/i18n.js';
+import { shownNodeLabel } from './shownNodeLabel.js';
 
 // What a tier can become, grouped the way the document is built: first the
 // text and the pieces it divides into, then the values that hang off those
 // pieces. The names are the project's own (a sentence, a word, a morpheme, an
-// annotation field), not ELAN's.
+// annotation field), not ELAN's. Each label is a message: the place that
+// shows it calls t().
 const ROLE_GROUPS = [
   [
-    'Text',
+    msg('Text'),
     [
-      [ROLES.UTTERANCE, 'Sentences'],
-      [ROLES.WORD, 'Words'],
-      [ROLES.MORPHEME, 'Morphemes'],
-      [ROLES.MORPH_TYPE, 'Morpheme type'],
-      [ROLES.ALIGNMENT, 'Time alignment'],
-      [ROLES.ORTHOGRAPHY, 'Orthography'],
+      [ROLES.UTTERANCE, msg('Sentences')],
+      [ROLES.WORD, msg('Words')],
+      [ROLES.MORPHEME, msg('Morphemes')],
+      [ROLES.MORPH_TYPE, msg('Morpheme type')],
+      [ROLES.ALIGNMENT, msg('Time alignment')],
+      [ROLES.ORTHOGRAPHY, msg('Orthography')],
     ],
   ],
   [
-    'Annotation fields',
+    msg('Annotation fields'),
     [
-      [ROLES.SENTENCE_FIELD, 'Sentence field'],
-      [ROLES.WORD_FIELD, 'Word field'],
-      [ROLES.MORPH_FIELD, 'Morpheme field'],
+      [ROLES.SENTENCE_FIELD, msg('Sentence field')],
+      [ROLES.WORD_FIELD, msg('Word field')],
+      [ROLES.MORPH_FIELD, msg('Morpheme field')],
     ],
   ],
 ];
 
+// The schema's names for how two tier names differ (differenceKind), as
+// tokens a select can take.
+const DIFFERS_BY = {
+  'invisible characters': 'invisibleCharacters',
+  'Unicode spelling': 'unicodeSpelling', // i18n-ignore: a key the schema returns
+  capitalization: 'capitalization',
+  spacing: 'spacing',
+  'capitalization and spacing': 'capitalizationAndSpacing',
+};
+
 const ROLE_LABEL = Object.fromEntries(ROLE_GROUPS.flatMap(([, options]) => options));
+const roleLabel = (role) => (ROLE_LABEL[role] ? t(ROLE_LABEL[role]) : role);
 
 const fileList = (files) =>
-  files.slice(0, 3).join(', ') + (files.length > 3 ? `, +${files.length - 3} more` : '');
+  files.length > 3
+    ? t('{files}, +{n} more', { files: files.slice(0, 3).join(', '), n: files.length - 3 })
+    : files.join(', ');
 
 /** A row's name, with the other names its tier goes by in some files. */
-const rowLabel = (node) => [nodeLabel(node), ...(node.aliases ?? [])].join(' / ');
+const rowLabel = (node) => [shownNodeLabel(node), ...(node.aliases ?? [])].join(' / ');
 
 export const SchemaMismatch = ({ batch, onReset }) => (
   <>
@@ -68,25 +83,27 @@ export const SchemaMismatch = ({ batch, onReset }) => (
         onChoose={batch.chooseNearMiss}
       />
     )}
-    <Panel tone="error" title="These files disagree about what a tier is">
-      <p className="mt-1 text-xs">Import them separately, or make the tiers match in ELAN first.</p>
+    <Panel tone="error" title={t('These files disagree about what a tier is')}>
+      <p className="mt-1 text-xs">
+        {t('Import them separately, or make the tiers match in ELAN first.')}
+      </p>
       <ul className="mt-2 flex flex-col gap-2 text-xs">
         {batch.comparison.differences.map((d, i) => (
           <li key={i}>
-            <span className="font-medium">{d.tier ?? ROLE_LABEL[d.role]}</span>:{' '}
+            <span className="font-medium">{d.tier ?? roleLabel(d.role)}</span>:{' '}
             {d.variants
               .map((v) =>
                 d.tier
-                  ? `${ROLE_LABEL[v.role]} in ${fileList(v.files)}`
-                  : `“${v.name}” in ${fileList(v.files)}`,
+                  ? t('{role} in {files}', { role: roleLabel(v.role), files: fileList(v.files) })
+                  : t('“{name}” in {files}', { name: v.name, files: fileList(v.files) }),
               )
               .join(' · ')}
-            {d.nearMiss && '. The names differ only in spelling.'}
+            {d.nearMiss && `. ${t('The names differ only in spelling.')}`}
           </li>
         ))}
       </ul>
       <Button variant="outline" size="sm" className="mt-3" onClick={onReset}>
-        Choose different files
+        {t('Choose different files')}
       </Button>
     </Panel>
   </>
@@ -95,23 +112,32 @@ export const SchemaMismatch = ({ batch, onReset }) => (
 const NearMisses = ({ groups, choices, undecided, editable, onChoose }) => (
   <Panel
     tone={undecided.length ? 'error' : 'warning'}
-    title={`${countOf(groups.length, 'pair')} of tier names read alike`}
+    title={t('{n, plural, one {# pair} other {# pairs}} of tier names read alike', {
+      n: groups.length,
+    })}
   >
     <p className="mt-1 text-xs">
-      Tiers are matched by exact name. These read alike, which usually means a typo.
+      {t('Tiers are matched by exact name. These read alike, which usually means a typo.')}
     </p>
     <div className="mt-2 flex flex-col gap-2">
       {groups.map((g) => (
         <div key={g.fold} className="flex flex-wrap items-center gap-2 text-xs">
           <span className="font-medium">{g.names.join(' / ')}</span>
           <span className="text-muted-foreground">
-            differ only in {g.differsBy}
-            {!g.mergeable &&
-              (g.mergeFirst
-                ? ', but their parent tiers differ. Merge those first.'
-                : g.parentsDiffer
-                  ? ', but their parent tiers differ, so they cannot be merged'
-                  : ', but ELAN gives them different types, so they cannot be merged')}
+            {t(
+              'differ only in {kind, select, invisibleCharacters {invisible characters} unicodeSpelling {Unicode spelling} capitalization {capitalization} spacing {spacing} capitalizationAndSpacing {capitalization and spacing} other {{by}}}{why, select, mergeFirst {, but their parent tiers differ. Merge those first.} parents {, but their parent tiers differ, so they cannot be merged} types {, but ELAN gives them different types, so they cannot be merged} other {}}',
+              {
+                kind: DIFFERS_BY[g.differsBy] ?? 'other',
+                by: g.differsBy,
+                why: g.mergeable
+                  ? 'none'
+                  : g.mergeFirst
+                    ? 'mergeFirst'
+                    : g.parentsDiffer
+                      ? 'parents'
+                      : 'types',
+              },
+            )}
           </span>
           <Select
             value={choices[g.fold] ?? ''}
@@ -119,14 +145,14 @@ const NearMisses = ({ groups, choices, undecided, editable, onChoose }) => (
             disabled={!editable}
           >
             <SelectTrigger className="h-7 w-56 text-xs">
-              <SelectValue placeholder="Decide…" />
+              <SelectValue placeholder={t('Decide…')} />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="separate">Different tiers, keep both</SelectItem>
+              <SelectItem value="separate">{t('Different tiers, keep both')}</SelectItem>
               {g.mergeable &&
                 g.names.map((n) => (
                   <SelectItem key={n} value={n}>
-                    Same tier, merge as “{n}”
+                    {t('Same tier, merge as “{name}”', { name: n })}
                   </SelectItem>
                 ))}
             </SelectContent>
@@ -135,7 +161,7 @@ const NearMisses = ({ groups, choices, undecided, editable, onChoose }) => (
       ))}
     </div>
     {undecided.length > 0 && (
-      <p className="mt-2 text-xs font-medium">Decide each pair to continue.</p>
+      <p className="mt-2 text-xs font-medium">{t('Decide each pair to continue.')}</p>
     )}
   </Panel>
 );
@@ -179,20 +205,26 @@ export const ElanTierReview = ({
 
       <ElanSection
         step={step}
-        title="Tiers"
+        title={t('Tiers')}
         note={
           files.length === 1
-            ? `One file, ${countOf(nodes.length, 'tier')}.`
+            ? t('One file, {n, plural, one {# tier} other {# tiers}}.', { n: nodes.length })
             : nodes.every((n) => (n.fileCount ?? files.length) === files.length)
-              ? `${files.length} files with the same ${countOf(nodes.length, 'tier')}.`
-              : `${files.length} files, ${countOf(nodes.length, 'tier')}. Not every file has every tier.`
+              ? t('{files} files with the same {n, plural, one {# tier} other {# tiers}}.', {
+                  files: files.length,
+                  n: nodes.length,
+                })
+              : t(
+                  '{files} files, {n, plural, one {# tier} other {# tiers}}. Not every file has every tier.',
+                  { files: files.length, n: nodes.length },
+                )
         }
         aside={
           <Button
             variant="ghost"
             size="icon"
             className="h-7 w-7"
-            aria-label="About tier roles"
+            aria-label={t('About tier roles')}
             aria-expanded={showHelp}
             onClick={() => setShowHelp((v) => !v)}
           >
@@ -202,13 +234,12 @@ export const ElanTierReview = ({
       >
         {showHelp && (
           <p className="rounded-md border bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
-            The tier mapped to <span className="font-medium">Sentences</span> carries the
-            transcription: each of its annotations becomes one sentence, and their text becomes the
-            document&rsquo;s text. Words and morphemes divide that text further, time alignment
-            gives the Media tab its segments, and a field holds one value per sentence, word or
-            morpheme.
+            {tx(
+              'The tier mapped to <b>Sentences</b> carries the transcription: each of its annotations becomes one sentence, and their text becomes the document’s text. Words and morphemes divide that text further, time alignment gives the Media tab its segments, and a field holds one value per sentence, word or morpheme.',
+              { b: (c) => <span className="font-medium">{c}</span> },
+            )}
             {files.length > 1 &&
-              ' Tiers are matched across files by name and by what they become, wherever they sit in the tree. Speaker suffixes are ignored.'}
+              ` ${t('Tiers are matched across files by name and by what they become, wherever they sit in the tree. Speaker suffixes are ignored.')}`}
           </p>
         )}
         <div className="flex flex-col gap-2">
@@ -220,16 +251,20 @@ export const ElanTierReview = ({
                   style={{ paddingLeft: `${node.depth * 16}px` }}
                   title={[
                     node.tierIds.join(', '),
-                    `type ${node.typeRef}`,
-                    node.stereotype ?? 'top level',
+                    t('type {type}', { type: node.typeRef }),
+                    node.stereotype ?? t('top level'),
                   ].join(' · ')}
                 >
                   <span className="font-medium">{rowLabel(node)}</span>
                   <span className="ml-2 text-xs text-muted-foreground">
-                    {countOf(node.annotationCount, 'annotation')}
-                    {node.participants.length > 1 ? ` · ${node.participants.length} speakers` : ''}
+                    {t('{n, plural, one {# annotation} other {# annotations}}', {
+                      n: node.annotationCount,
+                    })}
+                    {node.participants.length > 1
+                      ? ` · ${t('{n} speakers', { n: node.participants.length })}`
+                      : ''}
                     {node.fileCount < files.length
-                      ? ` · in ${node.fileCount} of ${files.length} files`
+                      ? ` · ${t('in {n} of {total} files', { n: node.fileCount, total: files.length })}`
                       : ''}
                   </span>
                 </div>
@@ -238,7 +273,7 @@ export const ElanTierReview = ({
                     renderFieldControl(node)
                   ) : (
                     <Input
-                      aria-label={`Name for ${nodeLabel(node)}`}
+                      aria-label={t('Name for {name}', { name: shownNodeLabel(node) })}
                       value={fieldNames[node.key] ?? ''}
                       disabled={!editable}
                       onChange={(e) => batch.setName(node.key, e.target.value)}
@@ -254,13 +289,13 @@ export const ElanTierReview = ({
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value={ROLES.OFF}>Don’t import</SelectItem>
+                    <SelectItem value={ROLES.OFF}>{t('Don’t import')}</SelectItem>
                     {ROLE_GROUPS.map(([group, options]) => (
                       <SelectGroup key={group}>
-                        <SelectLabel>{group}</SelectLabel>
+                        <SelectLabel>{t(group)}</SelectLabel>
                         {options.map(([value, label]) => (
                           <SelectItem key={value} value={value}>
-                            {label}
+                            {t(label)}
                           </SelectItem>
                         ))}
                       </SelectGroup>
@@ -288,7 +323,13 @@ export const ElanTierReview = ({
               onClick={() => setShowEmpty((v) => !v)}
               className="self-start text-xs text-muted-foreground hover:text-foreground hover:underline"
             >
-              {showEmpty ? 'Hide' : 'Show'} {countOf(emptyCount, 'tier')} with no annotations
+              {showEmpty
+                ? t('Hide {n, plural, one {# tier} other {# tiers}} with no annotations', {
+                    n: emptyCount,
+                  })
+                : t('Show {n, plural, one {# tier} other {# tiers}} with no annotations', {
+                    n: emptyCount,
+                  })}
             </button>
           )}
         </div>
@@ -303,7 +344,7 @@ export const ElanProblems = ({ batch }) => {
   return (
     <>
       {problems.length > 0 && (
-        <Panel tone="warning" title="Finish the mapping">
+        <Panel tone="warning" title={t('Finish the mapping')}>
           <ul className="mt-1 list-inside list-disc text-xs">
             {problems.map((p) => (
               <li key={p}>{p}</li>
@@ -313,7 +354,10 @@ export const ElanProblems = ({ batch }) => {
       )}
 
       {build && build.warnings.length > 0 && (
-        <Panel tone="warning" title={`${countOf(build.warnings.length, 'warning')}`}>
+        <Panel
+          tone="warning"
+          title={t('{n, plural, one {# warning} other {# warnings}}', { n: build.warnings.length })}
+        >
           <ul className="mt-1 list-inside list-disc text-xs">
             {build.warnings.map((w) => (
               <li key={w}>{w}</li>
@@ -328,14 +372,20 @@ export const ElanProblems = ({ batch }) => {
           title={(() => {
             const values = build.stats.skipped.reduce((n, s) => n + s.values, 0);
             const tiers = build.stats.skipped.length;
-            return `Not imported: ${countOf(values, 'annotation')} on ${countOf(tiers, 'tier')}`;
+            return t(
+              'Not imported: {values, plural, one {# annotation} other {# annotations}} on {tiers, plural, one {# tier} other {# tiers}}',
+              { values, tiers },
+            );
           })()}
         >
-          <p className="mt-1 text-xs">Set to “Don’t import” in Tiers.</p>
+          <p className="mt-1 text-xs">{t('Set to “Don’t import” in Tiers.')}</p>
           <ul className="mt-2 list-inside list-disc text-xs text-muted-foreground">
             {build.stats.skipped.map((sk) => (
               <li key={sk.label}>
-                {sk.tiers.join(', ')}: {countOf(sk.values, 'annotation')}
+                {t('{tiers}: {n, plural, one {# annotation} other {# annotations}}', {
+                  tiers: sk.tiers.join(', '),
+                  n: sk.values,
+                })}
               </li>
             ))}
           </ul>

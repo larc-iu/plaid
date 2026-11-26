@@ -3,6 +3,7 @@ import { Check, Copy, Download } from 'lucide-react';
 import { Button } from '../ui/button';
 import { copyText, saveBlob, sanitizeFilename } from '../../lib/download.js';
 import { TYPE } from '../../lib/typeScale.js';
+import { t } from '../../lib/i18n.js';
 
 /**
  * A document's Export tab in plaid-ud and plaid-umr: the document in one
@@ -31,7 +32,7 @@ export const DocumentFileExport = ({
   const handleCopy = async () => {
     const ok = await copyText(
       content,
-      'The clipboard is not available here. Download the file instead.',
+      t('The clipboard is not available here. Download the file instead.'),
     );
     if (!ok) return;
     setCopied(true);
@@ -53,11 +54,11 @@ export const DocumentFileExport = ({
       <div className="flex flex-wrap gap-2">
         <Button onClick={handleCopy} disabled={refused}>
           {copied ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
-          {copied ? 'Copied' : 'Copy'}
+          {copied ? t('Copied') : t('Copy')}
         </Button>
         <Button variant="outline" onClick={handleDownload} disabled={refused}>
           <Download className="h-4 w-4" />
-          Download
+          {t('Download')}
         </Button>
       </div>
 

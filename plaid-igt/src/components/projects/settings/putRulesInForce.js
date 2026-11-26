@@ -1,5 +1,6 @@
 import { declareIgtRules } from '@/domain/igtConstraints';
 import { humanizeError, notifyError, notifyWarning } from '@/utils/feedback';
+import { t } from '@ui/lib/i18n.js';
 import { NOT_IN_FORCE_TITLE, notInForceText } from './refusedValues.js';
 
 /**
@@ -31,10 +32,10 @@ export const putRulesInForce = async (
     }));
   } catch (err) {
     console.error('Could not put the field rules in force:', err);
-    notifyError(humanizeError(err), 'Failed to put the rules in force');
+    notifyError(humanizeError(err), t('Failed to put the rules in force'));
     return null;
   }
   const all = [...named, ...notInForce];
-  if (!quiet && all.length) notifyWarning(notInForceText(all, { here }), NOT_IN_FORCE_TITLE);
+  if (!quiet && all.length) notifyWarning(notInForceText(all, { here }), t(NOT_IN_FORCE_TITLE));
   return all;
 };

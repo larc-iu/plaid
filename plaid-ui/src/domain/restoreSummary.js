@@ -8,25 +8,38 @@
 // the project gave it (with the role of its token layer when two fields share
 // that name: "word Gloss"), and a relation layer by its name.
 //
-// Dependency-free on purpose. plaid-ud's `node --test` suite loads this by real
-// relative path, and neither the `@ui` alias nor the package's own dependencies
-// resolve there, so the two things only the client knows are ARGUMENTS: an app
-// hands over `readRole` and the words it calls each role by (see the app's own
-// domain/restoreSummary.js).
+// Light on purpose. plaid-ud's `node --test` suite loads this by real
+// relative path, where the `@ui` alias does not resolve, so the two things
+// only the client knows are ARGUMENTS: an app hands over `readRole` and the
+// words it calls each role by (see the app's own domain/restoreSummary.js).
+//
+// THE WORDS FOR A ROLE OR A LAYER are `{ count, scope }`: `count(n)` the
+// counted phrase whole ("3 words", as t() makes it) and `scope` the word that
+// tells two fields of one name apart ("word" in "word Gloss"). The older
+// `[singular, plural]` pair still works, and reads right in English only.
 
 import { humanizeError } from '../lib/errors.js';
 import { fullTimestamp } from '../lib/formatTime.js';
-import { countOf } from '../lib/plural.js';
+import { msg, t } from '../lib/i18n.js';
 
 const changed = (c) => (c?.inserted ?? 0) + (c?.updated ?? 0) + (c?.deleted ?? 0);
 
-const SKIPPED_WORDS = {
-  text: ['text', 'texts'],
-  token: ['token', 'tokens'],
-  span: ['annotation', 'annotations'],
-  relation: ['relation', 'relations'],
-  'vocab-link': ['vocabulary link', 'vocabulary links'],
+// `n` of what `words` names, and the word for a scope.
+const counted = (words, n) =>
+  Array.isArray(words)
+    ? t('{n, plural, one {# {one}} other {# {other}}}', { n, one: words[0], other: words[1] })
+    : words.count(n);
+const scopeWord = (words) => (Array.isArray(words) ? words[0] : words?.scope);
+
+const SKIPPED = {
+  text: (n) => t('{n, plural, one {# text} other {# texts}} cannot come back.', { n }),
+  token: (n) => t('{n, plural, one {# token} other {# tokens}} cannot come back.', { n }),
+  span: (n) => t('{n, plural, one {# annotation} other {# annotations}} cannot come back.', { n }),
+  relation: (n) => t('{n, plural, one {# relation} other {# relations}} cannot come back.', { n }),
+  'vocab-link': (n) =>
+    t('{n, plural, one {# vocabulary link} other {# vocabulary links}} cannot come back.', { n }),
 };
+const skippedItems = (n) => t('{n, plural, one {# item} other {# items}} cannot come back.', { n });
 
 // Every layer of the raw document by id, with what to call it. Token layers
 // carry their role so the lines can use the app's words for them; a layer from
@@ -34,7 +47,7 @@ const SKIPPED_WORDS = {
 // to its own name.
 //
 // `layerWords`, for an app with words of its own for its own layers, takes a
-// layer's config to its [singular, plural], or to null to leave the layer out
+// layer's config to its words (above), or to null to leave the layer out
 // of the list, or to undefined for the general words. UMR counts a node once,
 // as a node, and not again by the token that anchors it.
 export const indexLayers = (raw, readRole, layerWords) => {
@@ -66,16 +79,16 @@ export const indexLayers = (raw, readRole, layerWords) => {
 };
 
 // One line per kind of change, in the order the document is built.
-// `roleWords` maps a token layer's role to its [singular, plural].
+// `roleWords` maps a token layer's role to its words (above).
 export const changeLines = (summary, layers = {}, roleWords = {}) => {
   if (!summary) return [];
   const lines = [];
-  if (summary.name) lines.push('The document name');
+  if (summary.name) lines.push(t('The document name'));
   // Not just "The text": a word is a slice of the body, so restoring the text
   // changes what the words read while their own rows are untouched and counted
   // nowhere below. An equal-length respell is the whole of such a restore, and
   // this line was all a reader got for ten words coming back.
-  if (changed(summary.texts)) lines.push('The text, and the words read from it');
+  if (changed(summary.texts)) lines.push(t('The text, and the words read from it'));
   for (const e of summary.tokens?.byLayer || []) {
     const n = changed(e);
     const layer = layers[e.layerId];
@@ -83,19 +96,32 @@ export const changeLines = (summary, layers = {}, roleWords = {}) => {
     const words = layer?.words || roleWords[layer?.role];
     lines.push(
       words
-        ? countOf(n, ...words)
-        : `${countOf(n, 'token')}${layer?.name ? ` in ${layer.name}` : ''}`,
+        ? counted(words, n)
+        : layer?.name
+          ? t('{n, plural, one {# token} other {# tokens}} in {name}', { n, name: layer.name })
+          : t('{n, plural, one {# token} other {# tokens}}', { n }),
     );
   }
   for (const e of summary.spans?.byLayer || []) {
     const n = changed(e);
     const layer = layers[e.layerId];
     if (!n || layer?.words === null) continue;
-    const scope = roleWords[layer?.scope]?.[0];
+    const scope = scopeWord(roleWords[layer?.scope]);
     lines.push(
       layer?.words
-        ? countOf(n, ...layer.words)
-        : `${countOf(n, 'annotation')} in ${layer?.name ? `${scope ? `${scope} ` : ''}${layer.name}` : 'a field'}`,
+        ? counted(layer.words, n)
+        : !layer?.name
+          ? t('{n, plural, one {# annotation} other {# annotations}} in a field', { n })
+          : scope
+            ? t('{n, plural, one {# annotation} other {# annotations}} in {scope} {name}', {
+                n,
+                scope,
+                name: layer.name,
+              })
+            : t('{n, plural, one {# annotation} other {# annotations}} in {name}', {
+                n,
+                name: layer.name,
+              }),
     );
   }
   for (const e of summary.relations?.byLayer || []) {
@@ -104,14 +130,23 @@ export const changeLines = (summary, layers = {}, roleWords = {}) => {
     if (!n || layer?.words === null) continue;
     lines.push(
       layer?.words
-        ? countOf(n, ...layer.words)
-        : `${countOf(n, 'relation')}${layer?.name ? ` in ${layer.name}` : ''}`,
+        ? counted(layer.words, n)
+        : layer?.name
+          ? t('{n, plural, one {# relation} other {# relations}} in {name}', {
+              n,
+              name: layer.name,
+            })
+          : t('{n, plural, one {# relation} other {# relations}}', { n }),
     );
   }
   if (changed(summary.vocabLinks)) {
-    lines.push(countOf(changed(summary.vocabLinks), 'vocabulary link'));
+    lines.push(
+      t('{n, plural, one {# vocabulary link} other {# vocabulary links}}', {
+        n: changed(summary.vocabLinks),
+      }),
+    );
   }
-  if (summary.documentMetadata) lines.push('Metadata');
+  if (summary.documentMetadata) lines.push(t('Metadata'));
   return lines;
 };
 
@@ -121,9 +156,9 @@ export const changeLines = (summary, layers = {}, roleWords = {}) => {
 // tokens away or put 24 back. Only the groups with lines are returned, as
 // `[{ heading, lines }]`.
 const GROUPS = [
-  ['deleted', 'Removed'],
-  ['inserted', 'Brought back'],
-  ['updated', 'Changed back'],
+  ['deleted', msg('Removed')],
+  ['inserted', msg('Brought back')],
+  ['updated', msg('Changed back')],
 ];
 
 const onlyKind = (summary, kind) => {
@@ -146,7 +181,7 @@ const onlyKind = (summary, kind) => {
 export const changeGroups = (summary, layers = {}, roleWords = {}) =>
   summary
     ? GROUPS.map(([kind, heading]) => ({
-        heading,
+        heading: t(heading),
         lines: changeLines(onlyKind(summary, kind), layers, roleWords),
       })).filter((g) => g.lines.length > 0)
     : [];
@@ -166,16 +201,14 @@ export const recordingNote = (entries, asOf, hasRecording) => {
   );
   if (!since) return null;
   return hasRecording
-    ? { note: 'The recording is not changed.' }
-    : { gap: 'The deleted recording cannot come back.' };
+    ? { note: t('The recording is not changed.') }
+    : { gap: t('The deleted recording cannot come back.') };
 };
 
 // What the restore cannot bring back: its layer is gone, or a vocabulary entry
 // it pointed at no longer exists.
 export const skippedLines = (skipped) =>
-  (skipped || []).map(
-    (k) => `${countOf(k.count, ...(SKIPPED_WORDS[k.kind] || ['item', 'items']))} cannot come back.`,
-  );
+  (skipped || []).map((k) => (SKIPPED[k.kind] ?? skippedItems)(k.count));
 
 // What the restore leaves as it is now although its state then cannot come
 // back: a link whose entry of that time no longer exists, while a link lives
@@ -184,25 +217,29 @@ export const skippedLines = (skipped) =>
 export const keptLines = (kept) =>
   (kept || [])
     .filter((k) => k.kind === 'vocab-link' && k.count > 0)
-    .map(
-      (k) =>
-        `Kept: ${countOf(k.count, 'vocabulary link')}. ${
-          k.count === 1
-            ? 'The entry it had then no longer exists.'
-            : 'The entries they had then no longer exist.'
-        }`,
+    .map((k) =>
+      t(
+        '{n, plural, one {Kept: # vocabulary link. The entry it had then no longer exists.} other {Kept: # vocabulary links. The entries they had then no longer exist.}}',
+        { n: k.count },
+      ),
     );
 
 // A restore keeps the document's current name when the name it had then
 // belongs to another document now. Core says which (`nameKept`).
 export const nameKeptLine = (summary) => {
   const k = summary?.nameKept;
-  return k ? `The name stays “${k.name}”: another document has “${k.taken}”.` : null;
+  return k
+    ? t('The name stays “{name}”: another document has “{taken}”.', {
+        name: k.name,
+        taken: k.taken,
+      })
+    : null;
 };
 
 // The audit message a restore is written under.
+// In English, as every audit label is.
 export const historyMessage = (asOf, label) =>
-  `Restore to ${fullTimestamp(asOf)}` + (label ? ` (after “${label}”)` : '');
+  `Restore to ${fullTimestamp(asOf)}` + (label ? ` (after “${label}”)` : ''); // i18n-ignore: an audit label
 
 // A 409 from the restore is the server saying the old state no longer fits a
 // layer as it is now, and it says which one, so it passes through verbatim.

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { humanizeError, statusOf } from '@ui/lib/errors.js';
 import { notifyError } from '@/utils/feedback';
 import { OPS_SHOWN } from '@ui/hooks/useDocumentHistory.js';
+import { t } from '@ui/lib/i18n.js';
 
 // A vocabulary's history rail and the past state it shows: the entries of the
 // vocabulary as they were after the history entry the reader picked, read-only.
@@ -93,7 +94,7 @@ export function useVocabHistory({ client, vocabularyId, onExpired }) {
     } catch (err) {
       if (mine !== readRef.current || expired(err)) return;
       console.error('Error reading the vocabulary history:', err);
-      setError(humanizeError(err, 'The history could not be read.'));
+      setError(humanizeError(err, t('The history could not be read.')));
     } finally {
       if (mine === readRef.current) setLoading(false);
     }
@@ -126,7 +127,7 @@ export function useVocabHistory({ client, vocabularyId, onExpired }) {
       );
     } catch (err) {
       if (expired(err)) return;
-      notifyError(err, 'Failed to load more actions');
+      notifyError(err, t('Failed to load more actions'));
     } finally {
       setLoadingMore(null);
     }
@@ -181,7 +182,7 @@ export function useVocabHistory({ client, vocabularyId, onExpired }) {
     } catch (err) {
       if (mine !== pickRef.current || expired(err)) return;
       console.error('Error reading the vocabulary at a past time:', err);
-      notifyError(err, 'Failed to load that state');
+      notifyError(err, t('Failed to load that state'));
       setSelected(shownRef.current);
     } finally {
       if (mine === pickRef.current) setLoadingPast(false);

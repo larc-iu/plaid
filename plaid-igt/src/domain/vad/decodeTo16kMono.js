@@ -12,6 +12,8 @@
 // channel is listened to channel by channel, and the rest of the time the
 // average is all anything needs.
 
+import { t } from '@ui/lib/i18n.js';
+
 const OfflineCtx = () =>
   typeof window !== 'undefined' && (window.OfflineAudioContext || window.webkitOfflineAudioContext);
 
@@ -56,7 +58,7 @@ const resampleMono = async (samples, fromRate, toRate) => {
  */
 export async function decodeTo16k(blob, { perChannel = false, signal } = {}) {
   const Ctx = OfflineCtx();
-  if (!Ctx) throw new Error('This browser has no OfflineAudioContext.');
+  if (!Ctx) throw new Error(t('This browser has no OfflineAudioContext.'));
   // `arrayBuffer()` hands back a fresh copy each call, and decodeAudioData
   // detaches what it is given, so this never disturbs another decode of the
   // same blob.

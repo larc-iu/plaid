@@ -11,6 +11,7 @@ import { itemTime } from './itemTime.js';
 import { assistantsAmong } from './useAssistantAvailable.js';
 import { uuidv4 } from '../../../../plaid-client-js/src/ids.js';
 import { signalTurnEnded, turnEnding } from './turnSignal.js';
+import { msg, t } from '../../lib/i18n.js';
 
 // The assistant's conversations and the runs behind them: what is stored
 // where, the page-independent job registry, and asking the service for
@@ -31,11 +32,13 @@ const ASK_TIMEOUT_MS = 60 * 1000;
 // Said when the page gives up waiting on a request the service is still
 // running. The conversation record is where the answer lands, so it is there
 // to be picked up.
-const LOST_CONTACT =
-  'Lost contact with the assistant. It is still working. Reload to pick it back up.';
+const LOST_CONTACT = msg(
+  'Lost contact with the assistant. It is still working. Reload to pick it back up.',
+);
 
 // Said where a conversation that was deleted elsewhere was asked for.
-export const DELETED = 'This conversation was deleted.';
+// A message: the place that shows it calls t() on it.
+export const DELETED = msg('This conversation was deleted.');
 
 // The record keys carry the app's tag, the same one the service writes
 // (plaid_agent/core/conversation.py), so one user's ud: and igt: records
@@ -185,7 +188,8 @@ export const ask = (store, service, convId, op, fields = {}, { tab = null } = {}
     )
     .catch(async (refused) => {
       const e = await whyRefused(client, projectId, refused);
-      if (noteGone(projectId, e)) throw Object.assign(new Error(WENT_OFFLINE), { notLive: true });
+      if (noteGone(projectId, e))
+        throw Object.assign(new Error(t(WENT_OFFLINE)), { notLive: true });
       throw e;
     });
 };
@@ -305,8 +309,8 @@ const noteGone = (projectId, e) => {
   for (const fn of [...goneListeners]) fn(projectId);
   return true;
 };
-const WENT_OFFLINE = 'The assistant went offline.';
-const NOT_TAKEN = 'The assistant did not take the request. Try again in a moment.';
+const WENT_OFFLINE = msg('The assistant went offline.');
+const NOT_TAKEN = msg('The assistant did not take the request. Try again in a moment.');
 
 // A 503 is the assistant gone only when discovery no longer finds it: the
 // server can answer 503 for a moment while it is still there. Answers the
@@ -316,7 +320,7 @@ const whyRefused = async (client, projectId, e) => {
   const found = await client.messages.discoverServices(projectId).catch(() => null);
   const there = (found || []).some((s) => s?.serviceId === e.serviceId && s.online !== false);
   if (!there) return e;
-  return Object.assign(new Error(NOT_TAKEN), { status: 503, serviceId: e.serviceId });
+  return Object.assign(new Error(t(NOT_TAKEN)), { status: 503, serviceId: e.serviceId });
 };
 
 // Run a request stream to its end, recording how it ended on the job.
@@ -365,7 +369,8 @@ const finishJob = async (j, store) => {
     j.why = refused.message;
     j.gone = refused.why === 'gone';
   }
-  if (j.error?.pending === true && j.kind === 'turn') notifyWarning(LOST_CONTACT, 'Assistant');
+  if (j.error?.pending === true && j.kind === 'turn')
+    notifyWarning(t(LOST_CONTACT), t('Assistant'));
   let result;
   try {
     result = await readConv(store, j.id);
@@ -377,7 +382,7 @@ const finishJob = async (j, store) => {
       result = { conv: { id: j.id, messages: [], display: [], draft: true }, meta: null };
     } else if (e?.status === 404 || j.gone) {
       j.gone = true;
-      j.why = DELETED;
+      j.why = t(DELETED);
       // The conversation as it was shown, without the message that was not
       // taken.
       const shown = j.conv;
@@ -499,7 +504,7 @@ export const startTurn = ({
     tab,
     create,
     unsent: retry ? null : text,
-    progress: 'Thinking…',
+    progress: t('Thinking…'),
   });
   // A retry is drawn from the record once the service has rewound it.
   if (retry) {
@@ -557,9 +562,9 @@ export const startTurn = ({
     );
     // An error the service wrote into the record is shown from there. One
     // that ended the request before the message was taken says why here.
-    if (j.error?.notLive) notifyError(`${WENT_OFFLINE} Nothing was sent.`);
+    if (j.error?.notLive) notifyError(t('The assistant went offline. Nothing was sent.'));
     else if (j.error && !j.recorded && j.error.status !== 404 && !j.error.pending) {
-      notifyError(refusalSaid(j.error) || humanizeError(j.error, 'The message was not sent.'));
+      notifyError(refusalSaid(j.error) || humanizeError(j.error, t('The message was not sent.')));
     }
     return finishJob(j, store);
   })();
@@ -611,27 +616,30 @@ export const planOperation = (convId, plan, serviceId) => {
   };
 };
 
-export const WROTE_GONE =
-  'The settings were written. The conversation was deleted, so the approval was not recorded.';
+// Messages: the toast calls t() on them.
+export const WROTE_GONE = msg(
+  'The settings were written. The conversation was deleted, so the approval was not recorded.',
+);
 
-export const WROTE_FIRST =
-  'The settings were written, but the approval was not recorded. Approve again to record it.';
+export const WROTE_FIRST = msg(
+  'The settings were written, but the approval was not recorded. Approve again to record it.',
+);
 
 export const applyToasts = (j, summary, { docked = false } = {}) => {
   // The app wrote its part (settings) and the approval that records it did
   // not go through: what stands is written, and approving again records it.
   if (j.wroteFirst && (j.error || j.outcome?.kind === 'refused') && !j.error?.pending) {
-    notifyError(WROTE_FIRST, 'Not recorded', { duration: Infinity });
+    notifyError(t(WROTE_FIRST), t('Not recorded'), { duration: Infinity });
     return;
   }
   // We stopped waiting, the service did not stop working. Nothing has failed
   // and nothing needs approving again, so say what actually happened.
   if (j.error?.pending) {
-    notifyWarning(LOST_CONTACT, 'Assistant');
+    notifyWarning(t(LOST_CONTACT), t('Assistant'));
   } else if (j.outcome?.kind === 'refused') {
-    notifyWarning(j.outcome.message, 'Not applied');
+    notifyWarning(j.outcome.message, t('Not applied'));
   } else if (j.error?.notLive) {
-    notifyError(`${WENT_OFFLINE} Nothing was written.`, 'Not applied');
+    notifyError(t('The assistant went offline. Nothing was written.'), t('Not applied'));
   } else if (j.error && j.error.status !== 404) {
     // The reason says what to do next (apply again in a minute, ask for a new
     // plan), so it stays until the reader closes it.
@@ -640,21 +648,25 @@ export const applyToasts = (j, summary, { docked = false } = {}) => {
       const item = j.conv?.display?.find((d) => d.plan?.id === planId);
       applyErrorToasts.set(planId, verdictOf(item));
     }
-    notifyError(humanizeError(j.error, 'Failed to apply the changes.'), 'Not applied', {
+    notifyError(humanizeError(j.error, t('Failed to apply the changes.')), t('Not applied'), {
       duration: Infinity,
       ...(planId ? { id: applyToastId(planId) } : {}),
     });
   } else if (j.outcome?.partial) {
     // The card says it too, but a plan that stopped partway is not something
     // to leave to a glance at the card.
-    notifyWarning(j.outcome.message, 'Partly applied');
+    notifyWarning(j.outcome.message, t('Partly applied'));
   } else if (j.outcome?.duplicate) {
-    notifyWarning(j.outcome.message, 'Already applied');
+    notifyWarning(j.outcome.message, t('Already applied'));
   } else if (j.outcome && !docked && j.outcome.applied === 0) {
     // Approved, but what it asked for was already so (settings in force).
-    notifyInfo(j.outcome.message, 'Nothing written');
+    notifyInfo(j.outcome.message, t('Nothing written'));
   } else if (j.outcome && !docked) {
-    notifySuccess(j.outcome.message || `Applied ${summary}.`, 'Changes applied');
+    notifySuccess(
+      j.outcome.message ||
+        (summary ? t('Applied {summary}.', { summary }) : t('Applied the changes.')),
+      t('Changes applied'),
+    );
   }
 };
 
@@ -699,7 +711,7 @@ export const startApply = ({
     planId: plan.id,
     conv,
     tab,
-    progress: 'Applying changes…',
+    progress: t('Applying changes…'),
   });
   jobs.set(conv.id, j);
   j.promise = (async () => {
@@ -778,7 +790,7 @@ export const startApply = ({
       applyToasts(j, plan.summary, { docked });
     } else if (j.wroteFirst) {
       // Deleted between the page's write and its approval: what it wrote stands.
-      notifyWarning(WROTE_GONE, 'Not recorded');
+      notifyWarning(t(WROTE_GONE), t('Not recorded'));
     }
     return finishJob(j, store);
   })();
@@ -805,7 +817,7 @@ export const attachJob = ({ store, conv, meta, docked = false, tab = null }) => 
     conv,
     recorded: true,
     tab,
-    progress: p.kind === 'apply' ? 'Applying changes…' : 'Thinking…',
+    progress: p.kind === 'apply' ? t('Applying changes…') : t('Thinking…'),
     startedAt: Date.parse(p.startedAt) || Date.now(),
   });
   jobs.set(conv.id, j);
@@ -824,7 +836,7 @@ export const attachJob = ({ store, conv, meta, docked = false, tab = null }) => 
     // its stale request after a reload raises nothing.
     const item = conv.display.find((d) => d.plan?.id === j.planId);
     if (j.kind === 'apply' && j.error?.status !== 404 && verdictOf(item) == null) {
-      applyToasts(j, item?.plan?.summary || 'the changes', { docked });
+      applyToasts(j, item?.plan?.summary || null, { docked });
     }
     return finishJob(j, store);
   })();
@@ -836,7 +848,7 @@ export const attachJob = ({ store, conv, meta, docked = false, tab = null }) => 
 export const stopJob = async (client, projectId, j) => {
   if (!j || j.kind !== 'turn' || j.stopping || j.done) return;
   j.stopping = true;
-  j.progress = 'Stopping…';
+  j.progress = t('Stopping…');
   notifyJob(j);
   try {
     await client.messages.cancelServiceRequest(projectId, j.requestId);

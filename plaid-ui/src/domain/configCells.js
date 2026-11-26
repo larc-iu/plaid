@@ -1,4 +1,5 @@
 import { statusOf } from '../lib/errors.js';
+import { msg } from '../lib/i18n.js';
 
 // Settings pages write config one cell at a time: one `namespace/key` on a
 // project or a layer. Each write names the value the page read for that cell
@@ -31,8 +32,9 @@ export const isConfigConflict = (error) => statusOf(error) === 409;
 
 /** What a form says of such a refusal when it shows what is stored now with
  * the person's own edits on it. */
-export const CHANGED_ELSEWHERE =
-  'Changed elsewhere. Now showing the latest version with your edit. Save again.';
+export const CHANGED_ELSEWHERE = msg(
+  'Changed elsewhere. Now showing the latest version with your edit. Save again.',
+);
 
 // JSON with every object's keys in order, which is how the server compares
 // two config values.

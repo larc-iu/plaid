@@ -31,12 +31,14 @@ import { MATCH_TYPES } from '../search/searchQueries.js';
 import { MarkedText } from '@ui/components/shared/MarkedText.jsx';
 import { hitTo, rememberCaret } from '../search/hitLinks.js';
 import { groupByDoc } from './bulkPlan.js';
-import { countOf } from './bulkShared.js';
+import { t, tx } from '@ui/lib/i18n.js';
 import { isEnter } from '@ui/lib/chords.js';
 
 // The chrome every Bulk Edit panel is built from: the tick box, the grouped
 // match list, the selection summary, the apply bar, the find/replace fields,
 // the progress line, and the before/after grid.
+const strong = (c) => <strong>{c}</strong>;
+
 export const Checkbox = ({ checked, onChange, indeterminate = false, ...rest }) => (
   <input
     type="checkbox"
@@ -115,12 +117,15 @@ export const MatchGroups = ({
                     indeterminate={on > 0 && on < ids.length}
                     onChange={(v) => toggleMany(ids, v)}
                     disabled={ids.length === 0}
-                    aria-label={`Select all in ${g.docName}`}
+                    aria-label={t('Select all in {name}', { name: g.docName })}
                   />
                   <FileText className="h-4 w-4 text-muted-foreground" />
                   <span className="text-sm font-medium">{g.docName}</span>
                   <span className="text-xs text-muted-foreground">
-                    {on} of {countOf(g.rows.length, 'match', 'matches')} selected
+                    {t('{on} of {n, plural, one {# match} other {# matches}} selected', {
+                      on,
+                      n: g.rows.length,
+                    })}
                   </span>
                 </div>
               )}
@@ -140,7 +145,7 @@ export const MatchGroups = ({
                       to={hitTo(projectId, r.docId, r.sentenceId)}
                       onClick={(e) => rememberCaret(e, r.docId, r.sentenceId, r.hitBegin ?? null)}
                       className="mt-0.5 block text-sm text-muted-foreground hover:text-foreground"
-                      title="Open in Analyze"
+                      title={t('Open in Analyze')}
                     >
                       <span className="mr-2 text-xs">#{r.sentenceIndex + 1}</span>
                       <MarkedText text={r.text} marks={r.marks} />
@@ -172,8 +177,15 @@ export const SelectionSummary = ({
   return (
     <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm">
       <span>
-        <strong>{countOf(rows.length, 'match', 'matches')}</strong>
-        {docs > 0 && <> in {countOf(docs, 'document')}</>}, <strong>{on}</strong> selected
+        {docs > 0
+          ? tx(
+              '<strong>{n, plural, one {# match} other {# matches}}</strong> in {docs, plural, one {# document} other {# documents}}, <strong>{on}</strong> selected',
+              { n: rows.length, docs, on, strong },
+            )
+          : tx(
+              '<strong>{n, plural, one {# match} other {# matches}}</strong>, <strong>{on}</strong> selected',
+              { n: rows.length, on, strong },
+            )}
         {extra}
       </span>
       <button
@@ -181,14 +193,14 @@ export const SelectionSummary = ({
         className="text-xs text-primary underline-offset-2 hover:underline"
         onClick={() => setSelected(new Set(ids))}
       >
-        select all
+        {t('select all')}
       </button>
       <button
         type="button"
         className="text-xs text-primary underline-offset-2 hover:underline"
         onClick={() => setSelected(new Set())}
       >
-        select none
+        {t('select none')}
       </button>
     </div>
   );
@@ -202,32 +214,36 @@ export const ApplyBar = ({ count, busy, summary, onApply, focusRef, children }) 
       ref={focusRef}
       tabIndex={-1}
       role="group"
-      aria-label="Preview"
+      aria-label={t('Preview')}
       className="flex flex-wrap items-center gap-3 rounded-lg border bg-card p-3 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
     >
       {children}
       <div className="ml-auto flex items-center gap-2">
         <Button onClick={() => setOpen(true)} disabled={busy || count === 0}>
-          {busy ? 'Applying…' : `Apply ${countOf(count, 'change')}`}
+          {busy
+            ? t('Applying…')
+            : t('Apply {n, plural, one {# change} other {# changes}}', { n: count })}
         </Button>
       </div>
       <AlertDialog open={open} onOpenChange={setOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Apply {countOf(count, 'change')}?</AlertDialogTitle>
+            <AlertDialogTitle>
+              {t('Apply {n, plural, one {# change} other {# changes}}?', { n: count })}
+            </AlertDialogTitle>
             <AlertDialogDescription>
-              {summary} It lands as one entry in each document’s History.
+              {summary} {t('It lands as one entry in each document’s History.')}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogCancel>{t('Cancel')}</AlertDialogCancel>
             <AlertDialogAction
               onClick={() => {
                 setOpen(false);
                 onApply();
               }}
             >
-              Apply
+              {t('Apply')}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
@@ -249,7 +265,7 @@ export const SubstitutionFields = ({
 }) => (
   <div className="flex flex-wrap items-end gap-2">
     <div className="flex min-w-48 flex-1 flex-col gap-1">
-      <Label htmlFor="bulk-find">Find</Label>
+      <Label htmlFor="bulk-find">{t('Find')}</Label>
       <Input
         id="bulk-find"
         compose={matchType !== 'regex'}
@@ -257,12 +273,12 @@ export const SubstitutionFields = ({
         value={find}
         onChange={(e) => setFind(e.target.value)}
         onKeyDown={(e) => isEnter(e) && onEnter()}
-        placeholder={matchType === 'regex' ? 'pattern, e.g. ([aeiou])h' : 'text'}
+        placeholder={matchType === 'regex' ? t('pattern, e.g. ([aeiou])h') : t('text')}
         spellCheck={false}
       />
     </div>
     <div className="flex flex-col gap-1">
-      <Label>Match</Label>
+      <Label>{t('Match')}</Label>
       <Select value={matchType} onValueChange={setMatchType}>
         <SelectTrigger className="w-[240px]">
           <SelectValue />
@@ -270,14 +286,14 @@ export const SubstitutionFields = ({
         <SelectContent>
           {MATCH_TYPES.map((m) => (
             <SelectItem key={m.id} value={m.id}>
-              {m.label}
+              {t(m.label)}
             </SelectItem>
           ))}
         </SelectContent>
       </Select>
     </div>
     <div className="flex min-w-48 flex-1 flex-col gap-1">
-      <Label htmlFor="bulk-repl">Replace with</Label>
+      <Label htmlFor="bulk-repl">{t('Replace with')}</Label>
       <Input
         id="bulk-repl"
         compose={matchType !== 'regex'}
@@ -285,7 +301,7 @@ export const SubstitutionFields = ({
         value={repl}
         onChange={(e) => setRepl(e.target.value)}
         onKeyDown={(e) => isEnter(e) && onEnter()}
-        placeholder={matchType === 'regex' ? 'replacement, $1 for groups' : 'replacement'}
+        placeholder={matchType === 'regex' ? t('replacement, $1 for groups') : t('replacement')}
         spellCheck={false}
       />
     </div>

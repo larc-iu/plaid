@@ -9,6 +9,7 @@ import { findBaselineTextLayer, readInitialized } from '../../domain/igtConfig';
 import { compareNames, textIncludes } from '@ui/domain/collation.js';
 import { ProjectLink } from './ProjectLink';
 import { projectRole } from '@larc-iu/plaid-client';
+import { t } from '@ui/lib/i18n.js';
 
 // Every project on the server, including the ones this admin has no role in.
 // An admin's project list already returns all of them; what is missing
@@ -24,7 +25,7 @@ const shapeOf = (project) => {
   if (readInitialized(project.config)) return 'IGT';
   const owner = ownerOf(project);
   if (owner) return owner.shape;
-  return findBaselineTextLayer(project.textLayers || []) ? 'Other app' : 'Not set up';
+  return findBaselineTextLayer(project.textLayers || []) ? t('Other app') : t('Not set up');
 };
 
 const memberCount = (p) =>
@@ -43,7 +44,7 @@ export const AdminProjects = ({ client, currentUser }) => {
       setProjects((await client.projects.list()) || []);
     } catch (err) {
       console.error('Error loading projects:', err);
-      notifyError(humanizeError(err), 'Failed to load the projects');
+      notifyError(humanizeError(err), t('Failed to load the projects'));
     } finally {
       setLoading(false);
     }
@@ -56,10 +57,10 @@ export const AdminProjects = ({ client, currentUser }) => {
   const joinAsMaintainer = async (project) => {
     try {
       await client.projects.addMaintainer(project.id, currentUser.id);
-      notifySuccess(`You are a maintainer of ${project.name}`);
+      notifySuccess(t('You are a maintainer of {project}', { project: project.name }));
       await load();
     } catch (err) {
-      notifyError(humanizeError(err), 'Failed to add you to the project');
+      notifyError(humanizeError(err), t('Failed to add you to the project'));
     }
   };
 
@@ -70,7 +71,7 @@ export const AdminProjects = ({ client, currentUser }) => {
   const columns = [
     {
       key: 'name',
-      label: 'Name',
+      label: t('Name'),
       sort: (p) => p.name,
       compare: compareNames,
       // A project's name is its way in, and it leads to the app that owns it.
@@ -78,7 +79,7 @@ export const AdminProjects = ({ client, currentUser }) => {
     },
     {
       key: 'shape',
-      label: 'Shape',
+      label: t('Shape'),
       sort: (p) => shapeOf(p),
       render: (p) => {
         const shape = shapeOf(p);
@@ -87,7 +88,7 @@ export const AdminProjects = ({ client, currentUser }) => {
     },
     {
       key: 'members',
-      label: 'People',
+      label: t('People'),
       sort: memberCount,
       align: 'right',
       className: 'tabular-nums',
@@ -95,7 +96,7 @@ export const AdminProjects = ({ client, currentUser }) => {
     },
     {
       key: 'documents',
-      label: 'Documents',
+      label: t('Documents'),
       sort: (p) => p.documentCount ?? null,
       align: 'right',
       className: 'tabular-nums',
@@ -103,12 +104,12 @@ export const AdminProjects = ({ client, currentUser }) => {
     },
     {
       key: 'updated',
-      label: 'Last document change',
+      label: t('Last document change'),
       sort: (p) => (p.lastModified ? new Date(p.lastModified).getTime() : null),
       className: 'text-muted-foreground',
       render: (p) => (
         <span title={fullTimestamp(p.lastModified)}>
-          {p.lastModified ? timeAgo(p.lastModified) : 'Never'}
+          {p.lastModified ? timeAgo(p.lastModified) : t('Never')}
         </span>
       ),
     },
@@ -120,7 +121,7 @@ export const AdminProjects = ({ client, currentUser }) => {
       render: (p) =>
         isMember(p) ? null : (
           <Button size="sm" variant="ghost" onClick={() => joinAsMaintainer(p)}>
-            Join
+            {t('Join')}
           </Button>
         ),
     },
@@ -134,11 +135,12 @@ export const AdminProjects = ({ client, currentUser }) => {
       id="admin-projects"
       defaultSort={{ key: 'updated', dir: 'desc' }}
       search={{
-        placeholder: 'Search projects…',
+        placeholder: t('Search projects…'),
         match: (p, q) => textIncludes(p.name, q),
       }}
       noun="project"
-      empty="No projects."
+      empty={t('No projects.')}
+      noMatch={t('No projects match.')}
       loading={loading}
     />
   );

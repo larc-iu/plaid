@@ -4,6 +4,7 @@ import { X } from 'lucide-react';
 import { cn } from '../../lib/utils.js';
 import { useFocusReturn } from '../../lib/focusReturn.js';
 import { TYPE } from '../../lib/typeScale.js';
+import { t } from '../../lib/i18n.js';
 
 const Dialog = DialogPrimitive.Root;
 const DialogTrigger = DialogPrimitive.Trigger;
@@ -23,7 +24,7 @@ const DialogOverlay = React.forwardRef(({ className, ...props }, ref) => (
 DialogOverlay.displayName = DialogPrimitive.Overlay.displayName;
 
 const DialogContent = React.forwardRef(
-  ({ className, children, onCloseAutoFocus, closeLabel = 'Close', ...props }, ref) => {
+  ({ className, children, onCloseAutoFocus, closeLabel = t('Close'), ...props }, ref) => {
     // Most dialogs have no Trigger to go back to (focusReturn.js).
     const back = useFocusReturn(ref);
     return (

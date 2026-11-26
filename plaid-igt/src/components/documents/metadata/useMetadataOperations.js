@@ -4,6 +4,7 @@ import { useUnsavedDraft } from '@ui/hooks/useUnsavedDraft.js';
 import { useDocumentModel } from '@ui/domain/useDocumentModel.js';
 import { readDocumentMetadata } from '@/domain/igtConfig';
 import { readTagsets, changedValuesAllowed } from '@/domain/tagsets';
+import { t } from '@ui/lib/i18n.js';
 
 // The project's document fields on the Details tab (Date, Speakers, and
 // whatever else a maintainer declared), backed by the shared IgtDocument. The
@@ -38,7 +39,7 @@ export const useMetadataOperations = (doc) => {
     metadataFields.map((field) => [field.name, edited[field.name] ?? stored[field.name] ?? '']),
   );
   const dirty = metadataFields.some((field) => values[field.name] !== (stored[field.name] ?? ''));
-  useUnsavedDraft(dirty ? 'What you have typed here' : null);
+  useUnsavedDraft(dirty ? t('What you have typed here') : null);
 
   const updateValue = (name, value) => setEdited((prev) => ({ ...prev, [name]: value }));
 

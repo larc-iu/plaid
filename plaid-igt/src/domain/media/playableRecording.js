@@ -8,6 +8,7 @@
 // of the same rate and channels (the same length, so no time in the document
 // moves), and any other coding is refused by name. Anything else is asked of a media element.
 
+import { t } from '@ui/lib/i18n.js';
 import { adpcmWavToPcm, readWavInfo, wavCodingName, wavVerdict } from './wavAdpcm.js';
 import { bareMediaType, mediaTypeForName } from './mediaTypes.js';
 
@@ -88,7 +89,7 @@ export async function prepareRecording(file, { canPlay = browserCanPlay, onConve
   if (info) {
     // A WAV of no frames stores and then only fails to play (H2-3-3).
     if (!(info.dataSize >= Math.max(1, info.blockAlign)))
-      return { refused: `${name} has no audio.` };
+      return { refused: t('{name} has no audio.', { name }) };
     const verdict = wavVerdict(info);
     if (verdict === 'play') return { file, convertedFrom: null };
     if (verdict === 'convert') {
@@ -108,15 +109,18 @@ export async function prepareRecording(file, { canPlay = browserCanPlay, onConve
         };
       } catch (error) {
         console.error('Converting a recording failed:', error);
-        return { refused: `${name} could not be converted to PCM WAV.` };
+        return { refused: t('{name} could not be converted to PCM WAV.', { name }) };
       }
     }
     return {
-      refused: `${name} cannot be played in a browser (${wavCodingName(info.tag, info.bitsPerSample)} WAV).`,
+      refused: t('{name} cannot be played in a browser ({coding} WAV).', {
+        name,
+        coding: wavCodingName(info.tag, info.bitsPerSample),
+      }),
     };
   }
   if (await canPlay(file)) return { file, convertedFrom: null };
-  return { refused: `${name} cannot be played in this browser.` };
+  return { refused: t('{name} cannot be played in this browser.', { name }) };
 }
 
 /**
@@ -143,7 +147,10 @@ export async function prepareRecordings(files, options) {
 export function convertedNote(converted) {
   if (!converted.length) return null;
   if (converted.length === 1) {
-    return `Converted ${converted[0].name} from ${converted[0].from} to PCM WAV.`;
+    return t('Converted {name} from {from} to PCM WAV.', {
+      name: converted[0].name,
+      from: converted[0].from,
+    });
   }
-  return `Converted ${converted.length} recordings to PCM WAV.`;
+  return t('Converted {n} recordings to PCM WAV.', { n: converted.length });
 }

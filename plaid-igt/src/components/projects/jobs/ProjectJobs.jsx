@@ -5,6 +5,7 @@ import { LoadError } from '@ui/components/shared/LoadError.jsx';
 import { SectionHeader } from '@ui/components/shared/SectionHeader.jsx';
 import { fullTimestamp, timeAgo } from '@ui/lib/formatTime.js';
 import { JOB_POLL_MS, isJobActive, jobStateText } from '@ui/domain/jobs.js';
+import { t } from '@ui/lib/i18n.js';
 import { jobPath } from './jobText.js';
 
 /**
@@ -18,9 +19,9 @@ import { jobPath } from './jobText.js';
  */
 const setUpLine = (assistant) =>
   assistant === true
-    ? 'A job is set up by asking the assistant.'
+    ? t('A job is set up by asking the assistant.')
     : assistant === false
-      ? 'No assistant is online.'
+      ? t('No assistant is online.')
       : null;
 
 export const ProjectJobs = ({ projectId, client, actions = null, assistant = null }) => {
@@ -65,7 +66,7 @@ export const ProjectJobs = ({ projectId, client, actions = null, assistant = nul
   const columns = [
     {
       key: 'state',
-      label: 'State',
+      label: t('State'),
       // A job that stands undone says so beside its state, muted.
       render: (j) =>
         cell(
@@ -75,7 +76,7 @@ export const ProjectJobs = ({ projectId, client, actions = null, assistant = nul
             {j.undone && ' '}
             {j.undone && (
               <span data-undone className="text-muted-foreground">
-                Undone
+                {t('Undone')}
               </span>
             )}
           </>,
@@ -84,33 +85,33 @@ export const ProjectJobs = ({ projectId, client, actions = null, assistant = nul
     },
     {
       key: 'instructions',
-      label: 'Instructions',
+      label: t('Instructions'),
       render: (j) => cell(j, <span className="line-clamp-1">{j.instructions}</span>),
       sort: (j) => j.instructions || '',
     },
     {
       key: 'documents',
-      label: 'Documents',
+      label: t('Documents'),
       align: 'right',
       render: (j) => cell(j, j.documentCount.toLocaleString()),
       sort: (j) => j.documentCount,
     },
     {
       key: 'startedBy',
-      label: 'Started by',
+      label: t('Started by'),
       render: (j) => cell(j, j.startedByName),
       sort: (j) => j.startedByName,
     },
     // When the job joined the queue: a waiting job has not started (RPF-P5).
     {
       key: 'createdAt',
-      label: 'Queued',
+      label: t('Queued'),
       render: (j) => when(j, j.createdAt),
       sort: (j) => j.createdAt,
     },
     {
       key: 'finishedAt',
-      label: 'Ended',
+      label: t('Ended'),
       render: (j) => when(j, j.finishedAt),
       sort: (j) => j.finishedAt,
     },
@@ -119,12 +120,14 @@ export const ProjectJobs = ({ projectId, client, actions = null, assistant = nul
   return (
     <div>
       <SectionHeader
-        title="Jobs"
+        title={t('Jobs')}
         description={actions ? setUpLine(assistant) : null}
         actions={actions}
       />
       {error ? (
-        <LoadError onRetry={() => setAttempt((n) => n + 1)}>Failed to list the jobs</LoadError>
+        <LoadError onRetry={() => setAttempt((n) => n + 1)}>
+          {t('Failed to list the jobs')}
+        </LoadError>
       ) : (
         <DataTable
           id="project-jobs"
@@ -134,8 +137,8 @@ export const ProjectJobs = ({ projectId, client, actions = null, assistant = nul
           rowKey={(j) => j.id}
           columns={columns}
           defaultSort={{ key: 'createdAt', dir: 'desc' }}
-          noun="job"
-          empty="No jobs."
+          countLabel={(v) => t('{total} {n, plural, one {job} other {jobs}}', v)}
+          empty={t('No jobs.')}
         />
       )}
     </div>

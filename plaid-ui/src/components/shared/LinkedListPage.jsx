@@ -53,6 +53,10 @@ export const TimeCell = ({ at }) =>
  * `className` is added to the page's outer wrapper. The app shell already pads
  * the page and holds it to the list width, so it takes no width of its own.
  *
+ * `countLabel` and `noMatch` are DataTable's: the count as one message, and
+ * what a search that matches nothing says. `noun` is DataTable's older,
+ * English-only way to say both.
+ *
  * `error` says the list could not be read, and `onRetry` reads it again. A
  * list that could not be read is not an empty one, so the empty card waits
  * for a read that worked.
@@ -70,6 +74,8 @@ export const LinkedListPage = ({
   empty,
   tableId,
   noun,
+  countLabel,
+  noMatch,
   defaultSort,
   search,
 }) => {
@@ -130,6 +136,8 @@ export const LinkedListPage = ({
             defaultSort={defaultSort}
             search={search}
             noun={noun}
+            countLabel={countLabel}
+            noMatch={noMatch}
           />
         </TooltipProvider>
       )}

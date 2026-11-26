@@ -9,6 +9,7 @@ import { readableDescription, operationKindLabel } from '../../lib/auditText.js'
 import { IsolatedLabel } from './IsolatedLabel.jsx';
 import { KindChip } from './HistoryDrawer.jsx';
 import { compareNames, textIncludes } from '../../domain/collation.js';
+import { t } from '../../lib/i18n.js';
 
 // A paged audit feed. `fetchPage({cursor, limit})` returns the server's
 // `{entries, nextCursor}` newest-first, and this holds what has been loaded so
@@ -29,7 +30,7 @@ const WHERE_DOCS = 3;
 const entryLabel = (entry) => {
   if (entry.message) return entry.message;
   const head = entry.ops?.[0];
-  return readableDescription(head?.description) || head?.type || 'Change';
+  return readableDescription(head?.description) || head?.type || t('Change');
 };
 
 // How many writes an entry has. A feed reads each entry with only its first
@@ -72,7 +73,7 @@ export const AuditFeed = ({
   fetchPage,
   showUser = false,
   title,
-  empty = 'Nothing yet.',
+  empty = t('Nothing yet.'),
   resetKey,
   id,
   scope,
@@ -109,7 +110,7 @@ export const AuditFeed = ({
     } catch (err) {
       if (!isCurrent()) return;
       console.error('Error loading the audit feed:', err);
-      notifyError(humanizeError(err), 'Failed to load the recent changes');
+      notifyError(humanizeError(err), t('Failed to load the recent changes'));
       setEntries([]);
       setCursor(null);
     } finally {
@@ -138,7 +139,7 @@ export const AuditFeed = ({
       return true;
     } catch (err) {
       if (!isCurrent()) return false;
-      notifyError(humanizeError(err), 'Failed to load the older changes');
+      notifyError(humanizeError(err), t('Failed to load the older changes'));
       return false;
     } finally {
       if (isCurrent()) setLoadingMore(false);
@@ -148,7 +149,7 @@ export const AuditFeed = ({
   const columns = [
     {
       key: 'time',
-      label: 'When',
+      label: t('When'),
       sort: (e) => (e.time ? new Date(e.time).getTime() : null),
       className: 'whitespace-nowrap text-muted-foreground',
       render: (e) => <span title={fullTimestamp(e.time)}>{timeAgo(e.time)}</span>,
@@ -157,7 +158,7 @@ export const AuditFeed = ({
       ? [
           {
             key: 'user',
-            label: 'Person',
+            label: t('Person'),
             // A name reads as one unit: the Change and Where columns wrap first.
             className: 'whitespace-nowrap',
             sort: (e) => (e.user?.displayName || e.user?.id || '').toLowerCase(),
@@ -167,7 +168,7 @@ export const AuditFeed = ({
       : []),
     {
       key: 'change',
-      label: 'Change',
+      label: t('Change'),
       sort: (e) => entryLabel(e).toLowerCase(),
       render: (e) => (
         <>
@@ -178,7 +179,7 @@ export const AuditFeed = ({
     },
     {
       key: 'where',
-      label: 'Where',
+      label: t('Where'),
       // A document's or a project's name, in number order (compareNames).
       sort: (e) => placeOf(e)?.name || '',
       compare: compareNames,
@@ -204,7 +205,7 @@ export const AuditFeed = ({
                   </Fragment>
                 );
               })}
-              {rest > 0 && ` +${rest} more`}
+              {rest > 0 && ` ${t('+{n} more', { n: rest })}`}
             </span>
           );
         }
@@ -223,7 +224,9 @@ export const AuditFeed = ({
       render: (e) => (
         <>
           {e.apiToken ? e.apiToken.name : ''}
-          {writes(e) > 1 ? ` ${writes(e).toLocaleString()} writes` : ''}
+          {writes(e) > 1
+            ? ` ${t('{n, plural, one {# write} other {# writes}}', { n: writes(e) })}`
+            : ''}
         </>
       ),
     },
@@ -240,7 +243,7 @@ export const AuditFeed = ({
         scope={scope}
         defaultSort={{ key: 'time', dir: 'desc' }}
         search={{
-          placeholder: 'Search changes…',
+          placeholder: t('Search changes…'),
           match: (e, q) =>
             [
               entryLabel(e),
@@ -251,7 +254,8 @@ export const AuditFeed = ({
               ...(e.projects || []).map((p) => p.name),
             ].some((v) => v && textIncludes(v, q)),
         }}
-        noun="change"
+        countLabel={(v) => t('{total} {n, plural, one {change} other {changes}}', v)}
+        noMatch={t('No changes match.')}
         empty={empty}
         loading={loading}
         more={cursor && !loading ? { load: loadOlder, loading: loadingMore } : undefined}

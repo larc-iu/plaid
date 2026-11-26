@@ -9,10 +9,12 @@ import {
   provState,
 } from '../../../plaid-client-js/src/provenance.js';
 import { confidenceNote } from './confidence.js';
+import { t } from '../lib/i18n.js';
 
-/** The word for an origin (`provOrigin`'s value): a machine's or a contributor's. */
-export const originWord = (origin) =>
-  origin === PROV.CONTRIBUTED ? 'contributed' : 'machine-made';
+/** The word for an origin (`provOrigin`'s value): a machine's or a contributor's.
+ * A caller that puts it in a sentence of its own words the sentence by
+ * `origin` instead, as another language needs. */
+const originWord = (origin) => (origin === PROV.CONTRIBUTED ? t('contributed') : t('machine-made'));
 
 /**
  * `{state, origin, word, note}`: the provenance state, the origin

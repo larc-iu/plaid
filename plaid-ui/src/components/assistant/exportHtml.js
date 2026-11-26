@@ -27,7 +27,7 @@ import { readStoredFile } from './attachments.js';
 import { closedTurns } from './projectReach.js';
 import { roundPrefix, roundsInHand } from './rounds.js';
 import { usedCss } from './exportCss.js';
-import { countOf } from '../../lib/plural.js';
+import { msg, t } from '../../lib/i18n.js';
 import { parseDelimited } from '../../lib/delimited.js';
 
 const TOOL_OUTPUT_CHARS = 4000;
@@ -35,8 +35,8 @@ const TOOL_OUTPUT_TOTAL = 1_000_000;
 const TABLE_BYTES = 200_000;
 const TABLE_ROWS = 500;
 
-const OTHER = 'Another project';
-const NOT_INCLUDED = '(not included)';
+const OTHER = msg('Another project');
+const NOT_INCLUDED = msg('(not included)');
 
 // The conversation as the page draws it, with what the exporter cannot open
 // taken out, and a count of what was. `stored` is the conversation's rounds
@@ -49,7 +49,7 @@ export const prepareExport = (conv, { projectId, readable, stored = new Map() })
   // then shows its step labels only, as the admin viewer draws it.
   const homeOpen = !readable || readable.has(projectId);
   const opens = (id) => !id || (id === projectId ? homeOpen : !readable || readable.has(id));
-  const rename = (projects) => projects.map((p) => (opens(p.id) ? p : { ...p, name: OTHER }));
+  const rename = (projects) => projects.map((p) => (opens(p.id) ? p : { ...p, name: t(OTHER) }));
   const results = new Map();
   const shown = new Map();
   // A round as the page holds it: its reasoning only where it was let in.
@@ -106,14 +106,14 @@ export const prepareExport = (conv, { projectId, readable, stored = new Map() })
       if (!s.id || !call) continue;
       let text = String(call.result ?? '');
       if (closed) {
-        callOut(s, NOT_INCLUDED, true);
+        callOut(s, t(NOT_INCLUDED), true);
         left.inputs += 1;
         continue;
       }
       const long = text.length > TOOL_OUTPUT_CHARS;
       if (long) text = `${text.slice(0, TOOL_OUTPUT_CHARS)}\n…`;
       if (text.length > budget) {
-        callOut(s, NOT_INCLUDED);
+        callOut(s, t(NOT_INCLUDED));
         left.results += 1;
         continue;
       }
@@ -212,7 +212,7 @@ const span = (display, meta) => {
   const first = day(times[0] || meta?.createdAt);
   const last = day(times.at(-1) || meta?.updatedAt);
   if (!first) return last;
-  return !last || last === first ? first : `${first} to ${last}`;
+  return !last || last === first ? first : t('{first} to {last}', { first, last });
 };
 
 const models = (display, meta) => {
@@ -224,24 +224,39 @@ const models = (display, meta) => {
 export const leftOutLine = (left, notShown) => {
   const parts = [];
   if (left.citations)
-    parts.push(`${countOf(left.citations, 'cited example', 'cited examples')} from other projects`);
+    parts.push(
+      t('{n, plural, one {# cited example} other {# cited examples}} from other projects', {
+        n: left.citations,
+      }),
+    );
   if (left.inputs)
-    parts.push(countOf(left.inputs, 'tool input and output', 'tool inputs and outputs'));
-  if (left.results) parts.push(countOf(left.results, 'tool output', 'tool outputs'));
-  if (left.thinking) parts.push(countOf(left.thinking, 'Thinking section', 'Thinking sections'));
-  if (notShown.length) parts.push(`the content of ${notShown.join(', ')}`);
-  const out = parts.length ? [`Not included: ${parts.join(', ')}.`] : [];
+    parts.push(
+      t('{n, plural, one {# tool input and output} other {# tool inputs and outputs}}', {
+        n: left.inputs,
+      }),
+    );
+  if (left.results)
+    parts.push(t('{n, plural, one {# tool output} other {# tool outputs}}', { n: left.results }));
+  if (left.thinking)
+    parts.push(
+      t('{n, plural, one {# Thinking section} other {# Thinking sections}}', { n: left.thinking }),
+    );
+  // File names, listed as they are written.
+  if (notShown.length) parts.push(t('the content of {names}', { names: notShown.join(', ') }));
+  const out = parts.length ? [t('Not included: {parts}.', { parts: parts.join(', ') })] : [];
   if (left.shortened)
     out.push(
-      left.shortened === 1
-        ? '1 long tool output is shortened.'
-        : `${left.shortened} long tool outputs are shortened.`,
+      t(
+        '{n, plural, one {{n} long tool output is shortened.} other {{n} long tool outputs are shortened.}}',
+        { n: left.shortened },
+      ),
     );
   if (left.thinkingShortened)
     out.push(
-      left.thinkingShortened === 1
-        ? '1 long Thinking section is shortened.'
-        : `${left.thinkingShortened} long Thinking sections are shortened.`,
+      t(
+        '{n, plural, one {{n} long Thinking section is shortened.} other {{n} long Thinking sections are shortened.}}',
+        { n: left.thinkingShortened },
+      ),
     );
   return out.join(' ') || null;
 };
@@ -345,14 +360,17 @@ export const conversationToHtml = async (
     stored,
   });
   const { tables, notShown } = await readTables(display, store, conv?.id, closedFiles);
-  const title = meta?.title || 'Conversation';
+  const title = meta?.title || t('Conversation');
   const ran = models(display, meta);
   const facts = [
     appLabel,
-    projectName && `Project: ${projectName}`,
+    projectName && t('Project: {name}', { name: projectName }),
     span(display, meta),
-    ran.length && `Assistant: ${ran.join(', ')}`,
-    `Exported${exporter ? ` by ${exporter}` : ''} on ${day(now.toISOString())}`,
+    // Model ids, listed as they are written.
+    ran.length && t('Assistant: {names}', { names: ran.join(', ') }),
+    exporter
+      ? t('Exported by {name} on {date}', { name: exporter, date: day(now.toISOString()) })
+      : t('Exported on {date}', { date: day(now.toISOString()) }),
   ].filter(Boolean);
   const body = markupOf(
     createElement(ExportPage, {

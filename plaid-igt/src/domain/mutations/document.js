@@ -18,6 +18,7 @@ import {
 } from '@larc-iu/plaid-client';
 import { lineSentenceRanges } from '../../utils/tokenizationUtils.js';
 import { notSetUp } from '@ui/domain/setupGuard.js';
+import { t, msg } from '@ui/lib/i18n.js';
 import { isTextChanged, isUnknownOutcome, isUnreachable, statusOf } from '@ui/lib/errors.js';
 import { makeTextPlan, planOn, sendTextPlan, sendingPlan } from '@ui/lib/textSave.js';
 import { pendingId } from '@ui/domain/pendingIds.js';
@@ -40,16 +41,16 @@ const sentenceSeed = (tokenLayerId, text, body) =>
   lineSentenceRanges(body).map(({ begin, end }) => ({ tokenLayerId, text, begin, end }));
 
 // What a save whose draft cannot be put onto the stored text is refused with.
-const BASELINE_CONFLICT = 'The same passage was changed elsewhere. Cancel and redo the edit.';
+const BASELINE_CONFLICT = msg('The same passage was changed elsewhere. Cancel and redo the edit.');
 
 // What a Baseline save says when its edit landed and the sentences after it
 // did not.
-const SENTENCES_NOT_MADE = 'The text is saved. Its sentences were not made.';
-const SENTENCES_NOT_CUT = 'The text is saved. Its sentences were not split at line breaks.';
+const SENTENCES_NOT_MADE = msg('The text is saved. Its sentences were not made.');
+const SENTENCES_NOT_CUT = msg('The text is saved. Its sentences were not split at line breaks.');
 
 // What a save is refused with when the server gives no digest for the text:
 // an edit never goes without one.
-const NO_DIGEST = 'The saved text could not be read. Reload the page and save again.';
+const NO_DIGEST = msg('The saved text could not be read. Reload the page and save again.');
 
 // The word layer a text save of `info` (layer info, getIgtLayerInfo) names
 // for "Tokenize new text", whose words the server makes for the text the save
@@ -133,7 +134,7 @@ export const documentMutations = {
       return false;
     }
 
-    const label = 'Failed to save baseline text';
+    const label = msg('Failed to save baseline text');
     if (!this._canWrite(label)) return false;
     // Minted outside the send, so a resend of it names the same rows.
     const newTextId = pendingId();
@@ -220,14 +221,14 @@ export const documentMutations = {
       forms: null,
     };
     Object.assign(outcome, { landed: false, conflict: false });
-    return this._queueWrite('Failed to save baseline text', async () => {
+    return this._queueWrite(msg('Failed to save baseline text'), async () => {
       Object.assign(outcome, { landed: false, conflict: false });
       try {
         await this._saveBaselineEdit(textId, plan);
       } catch (err) {
         outcome.landed = plan.landed;
         outcome.conflict =
-          !plan.landed && (err?.message === BASELINE_CONFLICT || isTextChanged(err));
+          !plan.landed && (err?.message === t(BASELINE_CONFLICT) || isTextChanged(err));
         throw err;
       }
     });
@@ -247,7 +248,7 @@ export const documentMutations = {
     const sentencesAfter = sentenceLayer?.tokens || [];
     if (cpLength(body) > 0 && sentencesAfter.length === 0) {
       // A text whose sentences were never made gets them, one per line.
-      await this._afterBaselineEdit(SENTENCES_NOT_MADE, () =>
+      await this._afterBaselineEdit(t(SENTENCES_NOT_MADE), () =>
         this._client.tokens.bulkCreate(sentenceSeed(sentenceLayer.id, textId, body)),
       );
     } else if (
@@ -264,7 +265,7 @@ export const documentMutations = {
         .map((s) => s.begin)
         .reverse();
       if (cuts.length) {
-        await this._afterBaselineEdit(SENTENCES_NOT_CUT, () =>
+        await this._afterBaselineEdit(t(SENTENCES_NOT_CUT), () =>
           this._client.batched(async (b) => {
             for (const at of cuts) b.tokens.split(sentencesAfter[0].id, at);
           }),
@@ -382,7 +383,7 @@ export const documentMutations = {
         plan.keys = null;
         await this._planBaselineEdit(plan, stored);
       },
-      conflict: BASELINE_CONFLICT,
+      conflict: t(BASELINE_CONFLICT),
     });
     if ('stored' in result) {
       plan.landed = true;
@@ -421,8 +422,8 @@ export const documentMutations = {
     const ready = await planOn(plan, stored, {
       read: () => this._readStoredText(),
       keySeed: () => this._client.keySeed?.(),
-      conflict: BASELINE_CONFLICT,
-      unread: NO_DIGEST,
+      conflict: t(BASELINE_CONFLICT),
+      unread: t(NO_DIGEST),
     });
     const after = applyTextOps(plan.base, gapsToOps(plan.gaps));
     plan.seed =
@@ -435,7 +436,7 @@ export const documentMutations = {
   // Edit the document's metadata with path ops that name only the keys being
   // changed, so a key another tab or a service wrote since this copy was
   // loaded survives. The local copy takes the same ops the server applies.
-  async patchMetadata(ops, label = 'Failed to save metadata') {
+  async patchMetadata(ops, label = msg('Failed to save metadata')) {
     if (!this._canWrite(label)) return false;
     if (!ops.length) return true;
     this._applyRawPatch((next) => {
@@ -455,7 +456,7 @@ export const documentMutations = {
   // writes it (`_planRename`): trimmed, and never blank. A field left as it
   // was is not written, so a value someone else saved to it meanwhile stays.
   async saveNameAndMetadata(name, metadataPartial) {
-    const label = 'Failed to save document';
+    const label = msg('Failed to save document');
     if (!this._canWrite(label)) return false;
     const current = this._raw?.metadata || {};
     // `plaid` and the provenance keys are Plaid's own, never a field's value.
@@ -494,7 +495,7 @@ export const documentMutations = {
   // whatever the size.
   async uploadMedia(file, { onProgress, channelSpeakers = null, signal } = {}) {
     if (!file) return false;
-    const label = 'Failed to upload media';
+    const label = msg('Failed to upload media');
     let sends = 0;
     return this._queueWrite(
       label,
@@ -527,7 +528,7 @@ export const documentMutations = {
             // refusal is said as what it is: the recording is uploaded.
             if (isUnknownOutcome(err) || statusOf(err) === 423) throw err;
             this._writeFailed(
-              channelSpeakers ? 'Speakers per channel not saved' : 'Failed to save metadata',
+              channelSpeakers ? t('Speakers per channel not saved') : t('Failed to save metadata'),
               err,
             );
           }
@@ -545,7 +546,7 @@ export const documentMutations = {
   // else since is refused rather than deleted, and the refetch after the
   // refusal shows the current one.
   async deleteMedia() {
-    const label = 'Failed to delete media';
+    const label = msg('Failed to delete media');
     if (!this._canWrite(label)) return false;
     const mediaVersion = mediaVersionOf(this._raw?.mediaUrl);
     const gone = Object.fromEntries(
@@ -581,7 +582,7 @@ function mediaVersionOf(mediaUrl) {
 // and shows the current recording, which is what the message says.
 function recordingReplaced(err) {
   if (statusOf(err) !== 409 || !err?.responseData?.['media-changed']) return null;
-  return Object.assign(new Error('Replaced elsewhere. Showing the current recording.'), {
+  return Object.assign(new Error(t('Replaced elsewhere. Showing the current recording.')), {
     cause: err,
     mediaChanged: true,
   });

@@ -2,6 +2,7 @@ import { useContext, useEffect, useState } from 'react';
 import { Link, useInRouterContext } from 'react-router-dom';
 import { AuthContext } from '@ui/contexts/useAuth.js';
 import { jobStateText, workerSeen } from '@ui/domain/jobs.js';
+import { t, tx } from '@ui/lib/i18n.js';
 import { instructionsLength, jobPath } from './jobText.js';
 
 // The lines Start job says wherever a job is started: the Start job dialog and
@@ -17,7 +18,7 @@ export const AppLink = ({ to, ...rest }) =>
 export const NoWorkerLine = ({ worker }) =>
   worker && !workerSeen(worker) ? (
     <p className="text-sm text-muted-foreground">
-      No job worker is running. The job waits until one starts.
+      {t('No job worker is running. The job waits until one starts.')}
     </p>
   ) : null;
 
@@ -38,18 +39,28 @@ export const JobActiveLine = ({ projectId, jobId, onOpen, client = null }) => {
       live = false;
     };
   }, [client, jobId]);
-  const who = job && (user?.id && job.startedBy === user.id ? 'you' : job.startedByName);
+  const who = job && (user?.id && job.startedBy === user.id ? t('you') : job.startedByName);
   // The state in the job page's own words, in brackets, so its ellipsis
   // ("Stopping…") is never followed by the sentence's full stop.
   const state = job && jobStateText(job.state);
+  const a = (c) => (
+    <AppLink className="underline" to={jobPath(projectId, jobId)} onClick={onOpen}>
+      {c}
+    </AppLink>
+  );
   return (
     <p role="alert" className="text-sm text-destructive">
-      This project already has a job
-      {state ? ` (${state})` : ''}
-      {who ? `, started by ${who}` : ''}.{' '}
-      <AppLink className="underline" to={jobPath(projectId, jobId)} onClick={onOpen}>
-        Open it
-      </AppLink>
+      {state && who
+        ? tx('This project already has a job ({state}), started by {who}. <a>Open it</a>', {
+            state,
+            who,
+            a,
+          })
+        : state
+          ? tx('This project already has a job ({state}). <a>Open it</a>', { state, a })
+          : who
+            ? tx('This project already has a job, started by {who}. <a>Open it</a>', { who, a })
+            : tx('This project already has a job. <a>Open it</a>', { a })}
     </p>
   );
 };
@@ -62,8 +73,14 @@ export const FillsNames = ({ fills, none, gone = [] }) =>
     ? fills.map((f, i) => (
         <span key={`${f.id}:${i}`}>
           {i > 0 && ', '}
-          <bdi>{f.name || f.id}</bdi>
-          {gone.includes(f.id) && ' (deleted)'}
+          {gone.includes(f.id) ? (
+            tx('<bdi>{name}</bdi> (deleted)', {
+              name: f.name || f.id,
+              bdi: (c) => <bdi>{c}</bdi>,
+            })
+          ) : (
+            <bdi>{f.name || f.id}</bdi>
+          )}
         </span>
       ))
     : none;

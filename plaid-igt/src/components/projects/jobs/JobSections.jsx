@@ -2,6 +2,7 @@ import { Link } from 'react-router-dom';
 import { ListPager } from '@ui/components/shared/list-search.jsx';
 import { TYPE } from '@ui/lib/typeScale.js';
 import { TALL_LIST_PAGE_SIZE, usePagedList } from '@ui/hooks/usePagedList.js';
+import { t } from '@ui/lib/i18n.js';
 import {
   AssistantSummary,
   BlankDocument,
@@ -68,7 +69,11 @@ const ConsistentSection = ({ report }) => (
       {(list) => <HarmonizeChanged list={list} />}
     </Paged>
     {/* Once, under the pages (REV-RP-10). */}
-    <More n={report.harmonize?.changedMore ?? 0} noun="form" />
+    <More n={report.harmonize?.changedMore ?? 0}>
+      {t('And {n, plural, one {# more form} other {# more forms}}.', {
+        n: report.harmonize?.changedMore ?? 0,
+      })}
+    </More>
   </>
 );
 
@@ -78,7 +83,11 @@ const InconsistentSection = ({ report }) => (
     <Paged items={report.harmonize?.left || []} className="">
       {(list) => <HarmonizeLeft list={list} />}
     </Paged>
-    <More n={report.harmonize?.leftMore ?? 0} noun="form" />
+    <More n={report.harmonize?.leftMore ?? 0}>
+      {t('And {n, plural, one {# more form} other {# more forms}}.', {
+        n: report.harmonize?.leftMore ?? 0,
+      })}
+    </More>
   </>
 );
 
@@ -100,7 +109,7 @@ export const ReportSection = ({ view, report, projectId, vocabs }) => {
   const Body = SECTION_BODIES[view];
   if (!Body) return null;
   return (
-    <section aria-label="Report" className="[&>h3:first-child]:mt-0">
+    <section aria-label={t('Report')} className="[&>h3:first-child]:mt-0">
       <Body report={report} projectId={projectId} vocabs={vocabs} />
     </section>
   );
@@ -110,7 +119,7 @@ export const ReportSection = ({ view, report, projectId, vocabs }) => {
 // section that lists it. "Nothing." when nothing does.
 const ToCheck = ({ rows, sectionHref, sections }) => (
   <>
-    <h3 className={`${TYPE.card} mb-2 mt-6`}>To check</h3>
+    <h3 className={`${TYPE.card} mb-2 mt-6`}>{t('To check')}</h3>
     {rows.length ? (
       <ul
         className="max-w-3xl divide-y rounded-md border bg-card text-sm"
@@ -126,16 +135,16 @@ const ToCheck = ({ rows, sectionHref, sections }) => (
               <Link
                 to={sectionHref(r.view, r.filter)}
                 className="shrink-0 text-primary hover:underline"
-                aria-label={`Show: ${r.text}`}
+                aria-label={t('Show: {item}', { item: r.text })}
               >
-                Show
+                {t('Show')}
               </Link>
             )}
           </li>
         ))}
       </ul>
     ) : (
-      <p className="text-sm text-muted-foreground">Nothing.</p>
+      <p className="text-sm text-muted-foreground">{t('Nothing.')}</p>
     )}
   </>
 );
@@ -153,7 +162,7 @@ export const ReportOverview = ({ job, sectionHref, sections }) => {
   // 2026-11-18).
   const rows = job.undone ? toCheckRows(job).filter((r) => r.key === 'proposed') : toCheckRows(job);
   return (
-    <section aria-label="Report" className="mt-6">
+    <section aria-label={t('Report')} className="mt-6">
       <p className="max-w-3xl text-base font-medium" data-testid="job-headline">
         {jobHeadline(job)}
       </p>

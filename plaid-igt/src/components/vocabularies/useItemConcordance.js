@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { planItemConcordance, loadConcordanceGroups } from './vocabConcordance';
+import { t } from '@ui/lib/i18n.js';
 
 // How many documents' sentences one batch of the concordance brings in.
 const CONC_BATCH = 8;
@@ -65,7 +66,7 @@ export function useItemConcordance({ client, vocabularyId, selectedId, skipId, l
       .catch((err) => {
         if (concReq.current !== my) return;
         console.error('Concordance failed:', err);
-        setConcError('Failed to load the usage examples.');
+        setConcError(t('Failed to load the usage examples.'));
         setConcLoading(false);
       });
     // Runs once per selection; the client is read fresh.

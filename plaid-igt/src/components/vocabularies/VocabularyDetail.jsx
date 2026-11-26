@@ -33,7 +33,7 @@ import {
 import { entryMorphTypesOf } from '@/domain/vocabLookup';
 import { planKeptTypes, queueKeptTypes, busyLinkedDocument } from '@/domain/keptMorphType';
 import { refusalSaid, statusOf } from '@ui/lib/errors.js';
-import { countOf, plural } from '@ui/lib/plural.js';
+import { msg, t, tx } from '@ui/lib/i18n.js';
 import {
   normalizeVocabFields,
   newVocabField,
@@ -122,6 +122,8 @@ import { TYPE } from '@ui/lib/typeScale.js';
 import { cn } from '@ui/lib/utils';
 import { isEnter } from '@ui/lib/chords.js';
 
+const strong = (c) => <strong>{c}</strong>;
+
 // A tab the past state does not reach. The trigger is an anchor, which the
 // `disabled:` variant does not match, so it keys on Radix's data attribute.
 const PAST_DISABLED = 'data-[disabled]:pointer-events-none data-[disabled]:opacity-50';
@@ -135,14 +137,17 @@ const NO_ROLE = '__none__';
 // list of entries. `many` only means anything with the item type, so the two
 // travel as one choice.
 const TYPE_CHOICES = [
-  { key: 'text', label: 'Text', type: FIELD_TYPES.TEXT, many: false },
-  { key: 'item', label: 'Entry', type: FIELD_TYPES.ITEM, many: false },
-  { key: 'items', label: 'Entries', type: FIELD_TYPES.ITEM, many: true },
+  { key: 'text', label: msg('Text'), type: FIELD_TYPES.TEXT, many: false },
+  { key: 'item', label: msg('Entry'), type: FIELD_TYPES.ITEM, many: false },
+  { key: 'items', label: msg('Entries'), type: FIELD_TYPES.ITEM, many: true },
 ];
 const typeChoiceOf = (field) =>
   field.type === FIELD_TYPES.ITEM ? (field.many ? 'items' : 'item') : 'text';
 const typeLabelOf = (field) => TYPE_CHOICES.find((c) => c.key === typeChoiceOf(field)).label;
-const SCOPE_LABELS = { [FIELD_SCOPES.SENSE]: 'Every sense', [FIELD_SCOPES.ENTRY]: 'Headword only' };
+const SCOPE_LABELS = {
+  [FIELD_SCOPES.SENSE]: msg('Every sense'),
+  [FIELD_SCOPES.ENTRY]: msg('Headword only'),
+};
 
 // Core refuses to delete a vocabulary while another project uses it (409),
 // for everyone, and counts them as `other-projects`, naming none. The count,
@@ -150,10 +155,7 @@ const SCOPE_LABELS = { [FIELD_SCOPES.SENSE]: 'Every sense', [FIELD_SCOPES.ENTRY]
 const otherProjectsOf = (err) =>
   statusOf(err) === 409 ? Number(err?.responseData?.['other-projects']) || null : null;
 const otherProjectsSaid = (n) =>
-  `${countOf(n, 'other project')} ${n === 1 ? 'uses' : 'use'} this vocabulary.`;
-
-// A name inside a line built as a string (a confirm's title or body).
-const quoted = (name) => `“${isolate(name)}”`;
+  t('{n, plural, one {# other project uses} other {# other projects use}} this vocabulary.', { n });
 
 // The line the Entries screen shows a person who reads the vocabulary and may
 // not change its entries. `role` is their role in its project
@@ -164,12 +166,11 @@ const quoted = (name) => `“${isolate(name)}”`;
 const entriesReadOnlyNote = (role, homeName) => {
   if (role === 'maintainer' || role === 'writer') return null;
   if (role === 'reader' && homeName)
-    return (
-      <>
-        Read only: you have reader access to “<span dir="auto">{homeName}</span>”.
-      </>
-    );
-  return 'Read only: this vocabulary belongs to another project.';
+    return tx('Read only: you have reader access to “<name>{project}</name>”.', {
+      project: homeName,
+      name: (c) => <span dir="auto">{c}</span>,
+    });
+  return t('Read only: this vocabulary belongs to another project.');
 };
 
 export const VocabularyDetail = () => {
@@ -188,7 +189,7 @@ export const VocabularyDetail = () => {
 
   const [vocabulary, setVocabulary] = useState(null);
   // New vocab: a fixed label; existing: the loaded name (null while loading).
-  useDocumentTitle(isNewVocabulary ? 'New vocabulary' : vocabulary?.name);
+  useDocumentTitle(isNewVocabulary ? t('New vocabulary') : vocabulary?.name);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [isEditing, setIsEditing] = useState(false);
@@ -280,7 +281,7 @@ export const VocabularyDetail = () => {
     setVocabulary({ ...before, config: { ...before.config, [IGT_NAMESPACE]: igt } });
     if (!(await unmarkVocab(client, before.id))) {
       setVocabulary((v) => (v?.id === before.id ? before : v));
-      notifyError('Could not detach the vocabulary from the import.');
+      notifyError(t('Could not detach the vocabulary from the import.'));
     }
   };
   // Normalized field inventory: [{name, inline, immutable}], morphType always present.
@@ -412,7 +413,7 @@ export const VocabularyDetail = () => {
         logout('expired');
         return;
       }
-      setError('Failed to load vocabulary');
+      setError(t('Failed to load vocabulary'));
       console.error('Error fetching vocabulary:', err);
     } finally {
       if (!token.cancelled) setLoading(false);
@@ -483,7 +484,7 @@ export const VocabularyDetail = () => {
       try {
         const page = await client.vocabLayers.auditPage(vocabularyId, { entryId: id, opsLimit: 1 });
         const entry = page?.entries?.[0];
-        if (!entry) throw new Error('This vocabulary has no such history entry.');
+        if (!entry) throw new Error(t('This vocabulary has no such history entry.'));
         history.select({
           id: entry.id,
           time: entry.endTime || entry.time,
@@ -497,7 +498,7 @@ export const VocabularyDetail = () => {
           logout('expired');
           return;
         }
-        notifyError(err, 'Failed to open that history entry');
+        notifyError(err, t('Failed to open that history entry'));
         historyParam.clear();
       }
     },
@@ -552,7 +553,7 @@ export const VocabularyDetail = () => {
     } catch (err) {
       if (inTurn) throw err;
       console.error('Error updating vocabulary:', err);
-      notifyError(err, 'Failed to load the vocabulary');
+      notifyError(err, t('Failed to load the vocabulary'));
     }
   };
   // A refused schema write's refetch, which puts back what the screen showed.
@@ -574,7 +575,7 @@ export const VocabularyDetail = () => {
 
   const handleSave = async () => {
     if (!editedName.trim()) {
-      notifyError('Vocabulary name cannot be empty', 'Invalid name');
+      notifyError(t('Vocabulary name cannot be empty'), t('Invalid name'));
       return;
     }
     if (isNewVocabulary && !newProject) return;
@@ -628,7 +629,7 @@ export const VocabularyDetail = () => {
         });
 
         navigate(`/vocabularies/${savedVocabulary.id}`, { replace: true });
-        notifySuccess('Vocabulary created');
+        notifySuccess(t('Vocabulary created'));
       } else {
         // A new name shows at once and takes its turn in the schema queue. A
         // refused one reloads the vocabulary, which puts the old name back,
@@ -645,7 +646,7 @@ export const VocabularyDetail = () => {
             {
               refused: (err) => {
                 console.error('Error renaming vocabulary:', err);
-                notifyError(err, 'Failed to rename the vocabulary');
+                notifyError(err, t('Failed to rename the vocabulary'));
               },
               resync: resyncSchema,
             },
@@ -656,7 +657,7 @@ export const VocabularyDetail = () => {
       setIsEditing(false);
     } catch (err) {
       console.error('Error saving vocabulary:', err);
-      notifyError(err, 'Failed to save the vocabulary');
+      notifyError(err, t('Failed to save the vocabulary'));
     } finally {
       setSaving(false);
     }
@@ -670,9 +671,15 @@ export const VocabularyDetail = () => {
     const target = moveTargets.find((p) => p.id === targetId);
     if (!target || !vocabulary) return;
     const ok = await confirm({
-      title: `Move ${quoted(vocabulary.name)} to ${quoted(target.name)}?`,
-      description: `${quoted(target.name)} becomes its project. ${quoted(home?.name)} keeps it linked.`,
-      confirmLabel: 'Move',
+      title: t('Move “{vocabulary}” to “{project}”?', {
+        vocabulary: isolate(vocabulary.name),
+        project: isolate(target.name),
+      }),
+      description: t('“{project}” becomes its project. “{home}” keeps it linked.', {
+        project: isolate(target.name),
+        home: isolate(home?.name),
+      }),
+      confirmLabel: t('Move'),
     });
     if (!ok) return;
     setHomeState({ id: target.id, project: target });
@@ -690,7 +697,7 @@ export const VocabularyDetail = () => {
         // again: a role taken away meanwhile drops one from the Move list.
         refused: (err) => {
           console.error('Error moving vocabulary:', err);
-          notifyError(refusalSaid(err) ?? err, 'Failed to move the vocabulary');
+          notifyError(refusalSaid(err) ?? err, t('Failed to move the vocabulary'));
           readProjects();
         },
         resync: resyncSchema,
@@ -704,21 +711,21 @@ export const VocabularyDetail = () => {
   const handleAddField = async () => {
     const trimmedName = newFieldName.trim();
     if (!trimmedName) {
-      notifyError('Field name cannot be empty', 'Invalid field name');
+      notifyError(t('Field name cannot be empty'), t('Invalid field name'));
       return;
     }
 
     // Check for reserved name
     if (isReservedFieldName(trimmedName)) {
       notifyError(
-        `Field name "${trimmedName}" is reserved and cannot be used`,
-        'Reserved field name',
+        t('Field name "{name}" is reserved and cannot be used', { name: trimmedName }),
+        t('Reserved field name'),
       );
       return;
     }
 
     if (fields.some((f) => sameNameIgnoringCase(f.name, trimmedName))) {
-      notifyError('A field with this name already exists', 'Duplicate field name');
+      notifyError(t('A field with this name already exists'), t('Duplicate field name'));
       return;
     }
 
@@ -820,7 +827,7 @@ export const VocabularyDetail = () => {
       {
         refused: (err) => {
           console.error('Error saving custom fields:', err);
-          notifyError(err, 'Failed to save the fields');
+          notifyError(err, t('Failed to save the fields'));
         },
         resync: resyncSchema,
       },
@@ -845,7 +852,7 @@ export const VocabularyDetail = () => {
       tagsetsBefore: tagsets,
       tagsetsAfter: tagsets,
     });
-    if (refused) notifyError(reservedStatusMessage(refused), 'Reserved value');
+    if (refused) notifyError(reservedStatusMessage(refused), t('Reserved value'));
     return !!refused;
   };
 
@@ -932,7 +939,7 @@ export const VocabularyDetail = () => {
         cost = await countTypeChangeLoss(fieldName, next);
       } catch (err) {
         console.error('Error reading entries before a field type change:', err);
-        notifyError('The entries could not be read.', 'Not changed');
+        notifyError(t('The entries could not be read.'), t('Not changed'));
         return;
       }
       const label = fieldLabel(before ?? { name: fieldName });
@@ -942,22 +949,33 @@ export const VocabularyDetail = () => {
       // is why they go.
       if (cost.cleared && choice.type === FIELD_TYPES.ITEM)
         lines.push(
-          `${cost.cleared} ${cost.cleared === 1 ? 'entry holds a value' : 'entries hold values'} in ${label} that ${choice.label} cannot hold.`,
+          t(
+            '{n, plural, one {{n} entry holds a value} other {{n} entries hold values}} in {field} that {type} cannot hold.',
+            { n: cost.cleared, field: label, type: t(choice.label) },
+          ),
         );
       if (cost.cleared && choice.type !== FIELD_TYPES.ITEM)
         lines.push(
-          `${cost.cleared} ${cost.cleared === 1 ? 'entry holds a reference' : 'entries hold references'} in ${label}. Changing the type to ${choice.label} clears ${cost.cleared === 1 ? 'it' : 'them'}.`,
+          t(
+            '{n, plural, one {{n} entry holds a reference in {field}. Changing the type to {type} clears it.} other {{n} entries hold references in {field}. Changing the type to {type} clears them.}}',
+            { n: cost.cleared, field: label, type: t(choice.label) },
+          ),
         );
       if (cost.trimmed)
         lines.push(
-          `${cost.trimmed} ${cost.trimmed === 1 ? 'entry holds' : 'entries hold'} more than one reference in ${label}. Only the first is kept.`,
+          t(
+            '{n, plural, one {{n} entry holds} other {{n} entries hold}} more than one reference in {field}. Only the first is kept.',
+            { n: cost.trimmed, field: label },
+          ),
         );
       if (
         lines.length &&
         !(await confirm({
-          title: cost.cleared ? `Change ${label}?` : `Keep one reference each?`,
+          title: cost.cleared
+            ? t('Change {field}?', { field: label })
+            : t('Keep one reference each?'),
           description: lines.join(' '),
-          confirmLabel: 'Change type',
+          confirmLabel: t('Change type'),
           destructive: true,
         }))
       ) {
@@ -981,8 +999,8 @@ export const VocabularyDetail = () => {
         // field until the type is changed again.
         notifyError(
           choice.type === FIELD_TYPES.ITEM
-            ? 'Some entries still hold their old value. Open the entries to finish.'
-            : 'Some entries still hold their references. Change the type again to finish.',
+            ? t('Some entries still hold their old value. Open the entries to finish.')
+            : t('Some entries still hold their references. Change the type again to finish.'),
           label,
         );
       }
@@ -1024,7 +1042,7 @@ export const VocabularyDetail = () => {
       tagsetsAfter: next,
     });
     if (dropped) {
-      notifyError(reservedStatusMessage(dropped), 'Reserved value');
+      notifyError(reservedStatusMessage(dropped), t('Reserved value'));
       throw new Error(reservedStatusMessage(dropped));
     }
     setDraftTagsets(next);
@@ -1056,7 +1074,7 @@ export const VocabularyDetail = () => {
       {
         refused: (err) => {
           console.error('Failed to save tagsets:', err);
-          notifyError(err, 'Failed to save the tagsets');
+          notifyError(err, t('Failed to save the tagsets'));
           setDraftTagsets(null);
         },
         resync: resyncSchema,
@@ -1095,7 +1113,10 @@ export const VocabularyDetail = () => {
 
   const handleDelete = async () => {
     if (!sameName(confirmDeleteName, vocabulary.name)) {
-      notifyError('The entered name does not match the vocabulary name', 'Name does not match');
+      notifyError(
+        t('The entered name does not match the vocabulary name'),
+        t('Name does not match'),
+      );
       return;
     }
 
@@ -1113,16 +1134,16 @@ export const VocabularyDetail = () => {
       });
       closeDeleteModal();
       navigate('/vocabularies');
-      notifySuccess('Vocabulary deleted');
+      notifySuccess(t('Vocabulary deleted'));
     } catch (err) {
       console.error('Error deleting vocabulary:', err);
       const n = otherProjectsOf(err);
       if (n) {
         setDeleteCheck({ otherProjects: n });
-        notifyError(otherProjectsSaid(n), 'Failed to delete the vocabulary');
+        notifyError(otherProjectsSaid(n), t('Failed to delete the vocabulary'));
         return;
       }
-      notifyError(busyLinkedDocument(err) ?? err, 'Failed to delete the vocabulary');
+      notifyError(busyLinkedDocument(err) ?? err, t('Failed to delete the vocabulary'));
     }
   };
 
@@ -1138,13 +1159,15 @@ export const VocabularyDetail = () => {
             <thead>
               {/* The same header as every other table here. */}
               <tr className="bg-muted/50">
-                <th className="px-3 py-2 text-left font-medium">Field</th>
-                <th className="px-3 py-2 text-left font-medium">Inline</th>
-                <th className="px-3 py-2 text-left font-medium">Type</th>
-                <th className="px-3 py-2 text-left font-medium">Shown on</th>
-                <th className="px-3 py-2 text-left font-medium">Language</th>
-                <th className="px-3 py-2 text-left font-medium">Role</th>
-                {showTagsetCol && <th className="px-3 py-2 text-left font-medium">Tagset</th>}
+                <th className="px-3 py-2 text-left font-medium">{t('Field')}</th>
+                <th className="px-3 py-2 text-left font-medium">{t('Inline')}</th>
+                <th className="px-3 py-2 text-left font-medium">{t('Type')}</th>
+                <th className="px-3 py-2 text-left font-medium">{t('Shown on')}</th>
+                <th className="px-3 py-2 text-left font-medium">{t('Language')}</th>
+                <th className="px-3 py-2 text-left font-medium">{t('Role')}</th>
+                {showTagsetCol && (
+                  <th className="px-3 py-2 text-left font-medium">{t('Tagset')}</th>
+                )}
                 <th className="w-24 px-3 py-2" />
               </tr>
             </thead>
@@ -1162,11 +1185,11 @@ export const VocabularyDetail = () => {
                         <span>{fieldLabel(field)}</span>
                         {field.immutable || field.name === statusKey ? (
                           <span className="rounded-sm bg-muted px-1.5 py-0.5 text-[11px] font-medium text-muted-foreground">
-                            Required
+                            {t('Required')}
                           </span>
                         ) : isBuiltInField(field.name) ? (
                           <span className="rounded-sm bg-muted px-1.5 py-0.5 text-[11px] font-medium text-muted-foreground">
-                            Built in
+                            {t('Built in')}
                           </span>
                         ) : null}
                       </span>
@@ -1174,7 +1197,7 @@ export const VocabularyDetail = () => {
                     <td className="px-3 py-1.5">
                       <Switch
                         id={`inline-${field.name}`}
-                        aria-label={`Show ${fieldLabel(field)} inline`}
+                        aria-label={t('Show {field} inline', { field: fieldLabel(field) })}
                         checked={field.inline}
                         onCheckedChange={() => handleToggleInline(field.name)}
                       />
@@ -1182,7 +1205,9 @@ export const VocabularyDetail = () => {
                     <td className="px-3 py-1.5">
                       {/* Morph type and the Status field keep their type. */}
                       {field.immutable || field.name === statusKey ? (
-                        <span className="text-xs text-muted-foreground">{typeLabelOf(field)}</span>
+                        <span className="text-xs text-muted-foreground">
+                          {t(typeLabelOf(field))}
+                        </span>
                       ) : (
                         <Select
                           value={typeChoiceOf(field)}
@@ -1190,7 +1215,7 @@ export const VocabularyDetail = () => {
                         >
                           <SelectTrigger
                             id={`type-${field.name}`}
-                            aria-label={`Type of ${fieldLabel(field)}`}
+                            aria-label={t('Type of {field}', { field: fieldLabel(field) })}
                             className="h-7 w-24 text-xs"
                           >
                             <SelectValue />
@@ -1198,7 +1223,7 @@ export const VocabularyDetail = () => {
                           <SelectContent>
                             {TYPE_CHOICES.map((c) => (
                               <SelectItem key={c.key} value={c.key}>
-                                {c.label}
+                                {t(c.label)}
                               </SelectItem>
                             ))}
                           </SelectContent>
@@ -1208,7 +1233,7 @@ export const VocabularyDetail = () => {
                     <td className="px-3 py-1.5">
                       {field.immutable || field.name === statusKey ? (
                         <span className="text-xs text-muted-foreground">
-                          {SCOPE_LABELS[field.scope]}
+                          {t(SCOPE_LABELS[field.scope])}
                         </span>
                       ) : (
                         <Select
@@ -1217,14 +1242,14 @@ export const VocabularyDetail = () => {
                         >
                           <SelectTrigger
                             id={`scope-${field.name}`}
-                            aria-label={`Where ${fieldLabel(field)} is shown`}
+                            aria-label={t('Where {field} is shown', { field: fieldLabel(field) })}
                             className="h-7 w-36 text-xs"
                           >
                             <SelectValue />
                           </SelectTrigger>
                           <SelectContent>
-                            <SelectItem value={FIELD_SCOPES.SENSE}>Every sense</SelectItem>
-                            <SelectItem value={FIELD_SCOPES.ENTRY}>Headword only</SelectItem>
+                            <SelectItem value={FIELD_SCOPES.SENSE}>{t('Every sense')}</SelectItem>
+                            <SelectItem value={FIELD_SCOPES.ENTRY}>{t('Headword only')}</SelectItem>
                           </SelectContent>
                         </Select>
                       )}
@@ -1237,7 +1262,7 @@ export const VocabularyDetail = () => {
                       {field.name !== 'morphType' && !isRef && (
                         <Input
                           value={langDrafts[field.name] ?? field.lang ?? ''}
-                          aria-label={`Language of ${fieldLabel(field)}`}
+                          aria-label={t('Language of {field}', { field: fieldLabel(field) })}
                           className="h-7 w-20 text-xs"
                           onChange={(e) =>
                             setLangDrafts((d) => ({ ...d, [field.name]: e.target.value }))
@@ -1254,7 +1279,7 @@ export const VocabularyDetail = () => {
                           and a reference field take no role, as they take no
                           tagset (`takesTagset`). */}
                       {field.name === statusKey ? (
-                        <span className="text-xs text-muted-foreground">Status</span>
+                        <span className="text-xs text-muted-foreground">{t('Status')}</span>
                       ) : takesTagset ? (
                         <Select
                           value={field.role ?? NO_ROLE}
@@ -1262,16 +1287,16 @@ export const VocabularyDetail = () => {
                         >
                           <SelectTrigger
                             id={`role-${field.name}`}
-                            aria-label={`Role of ${fieldLabel(field)}`}
+                            aria-label={t('Role of {field}', { field: fieldLabel(field) })}
                             className="h-7 w-36 text-xs"
                           >
                             <SelectValue />
                           </SelectTrigger>
                           <SelectContent>
-                            <SelectItem value={NO_ROLE}>None</SelectItem>
+                            <SelectItem value={NO_ROLE}>{t('None')}</SelectItem>
                             {roleChoices.map((c) => (
                               <SelectItem key={c.role} value={c.role}>
-                                {c.label}
+                                {t(c.label)}
                               </SelectItem>
                             ))}
                           </SelectContent>
@@ -1294,13 +1319,13 @@ export const VocabularyDetail = () => {
                           >
                             <SelectTrigger
                               id={`tagset-${field.name}`}
-                              aria-label={`Tagset of ${fieldLabel(field)}`}
+                              aria-label={t('Tagset of {field}', { field: fieldLabel(field) })}
                               className="h-7 w-36 text-xs"
                             >
                               <SelectValue />
                             </SelectTrigger>
                             <SelectContent>
-                              <SelectItem value={NO_TAGSET}>None</SelectItem>
+                              <SelectItem value={NO_TAGSET}>{t('None')}</SelectItem>
                               {tagsetNames.map((n) => (
                                 <SelectItem key={n} value={n}>
                                   {n}
@@ -1308,7 +1333,7 @@ export const VocabularyDetail = () => {
                               ))}
                               {field.tagset && !tagsetNames.includes(field.tagset) && (
                                 <SelectItem value={field.tagset}>
-                                  {field.tagset} (missing)
+                                  {t('{tagset} (missing)', { tagset: field.tagset })}
                                 </SelectItem>
                               )}
                             </SelectContent>
@@ -1341,7 +1366,7 @@ export const VocabularyDetail = () => {
 
       <div className="flex items-center gap-2">
         <Input
-          placeholder="New field name"
+          placeholder={t('New field name')}
           value={newFieldName}
           onChange={(event) => setNewFieldName(event.target.value)}
           className="max-w-md flex-1"
@@ -1352,20 +1377,20 @@ export const VocabularyDetail = () => {
           }}
         />
         <Button onClick={handleAddField} disabled={!newFieldName.trim()}>
-          <Plus className="h-4 w-4" /> Add field
+          <Plus className="h-4 w-4" /> {t('Add field')}
         </Button>
       </div>
     </>
   );
 
   if (loading) {
-    return <Loading label="Loading vocabulary…" />;
+    return <Loading label={t('Loading vocabulary…')} />;
   }
 
   if (error) {
     return (
       <Notice tone="error">
-        <p className="font-medium">Failed to load the vocabulary</p>
+        <p className="font-medium">{t('Failed to load the vocabulary')}</p>
         <p>{error}</p>
       </Notice>
     );
@@ -1374,7 +1399,7 @@ export const VocabularyDetail = () => {
   if (!vocabulary && !isNewVocabulary) {
     return (
       <Notice tone="error">
-        <p className="font-medium">Vocabulary not found</p>
+        <p className="font-medium">{t('Vocabulary not found')}</p>
       </Notice>
     );
   }
@@ -1386,16 +1411,16 @@ export const VocabularyDetail = () => {
     const unreadable = markState === 'unreadable';
     return (
       <Notice role="status" icon={null}>
-        <p>This vocabulary belongs to an import that did not finish.</p>
+        <p>{t('This vocabulary belongs to an import that did not finish.')}</p>
         {projectId && !unreadable && (
           <Link className="underline" to={`/projects/${projectId}`}>
-            Open its project
+            {t('Open its project')}
           </Link>
         )}
-        {unreadable && <p>Its project cannot be opened.</p>}
+        {unreadable && <p>{t('Its project cannot be opened.')}</p>}
         {unreadable && canManage && (
           <Button size="sm" className="mt-2" onClick={detachFromImport}>
-            Detach from import
+            {t('Detach from import')}
           </Button>
         )}
       </Notice>
@@ -1432,7 +1457,7 @@ export const VocabularyDetail = () => {
         loadingMoreOps={history.loadingMore}
       />
       <div className="flex flex-col gap-6">
-        <Breadcrumb items={[{ label: 'Vocabularies', to: '/vocabularies', fixed: true }]} />
+        <Breadcrumb items={[{ label: t('Vocabularies'), to: '/vocabularies', fixed: true }]} />
 
         {!isNewVocabulary && (
           <div className="flex flex-col gap-4">
@@ -1453,19 +1478,25 @@ export const VocabularyDetail = () => {
                   }
                   aria-expanded={history.open && !history.itemId}
                 >
-                  <History className="h-4 w-4" /> History
+                  <History className="h-4 w-4" /> {t('History')}
                 </Button>
               </div>
             </div>
             <p className="-mt-2 text-sm text-muted-foreground">
-              Project:{' '}
-              {home ? (
-                <Link to={`/projects/${home.id}`} dir="auto" className="font-text hover:underline">
-                  {home.name}
-                </Link>
-              ) : (
-                'another project'
-              )}
+              {home
+                ? tx('Project: <link>{name}</link>', {
+                    name: home.name,
+                    link: (c) => (
+                      <Link
+                        to={`/projects/${home.id}`}
+                        dir="auto"
+                        className="font-text hover:underline"
+                      >
+                        {c}
+                      </Link>
+                    ),
+                  })
+                : t('Project: another project')}
             </p>
             {viewingPast && (
               <Notice tone="info" icon={Info}>
@@ -1474,17 +1505,21 @@ export const VocabularyDetail = () => {
                     {showChanges
                       ? changesMadeText(history.selected)
                       : history.loadingPast
-                        ? `Loading the vocabulary as of ${fullTimestamp(history.selected.time)}…`
-                        : `Read-only. This is the vocabulary as of ${fullTimestamp(history.past?.time ?? history.selected.time)}.`}
+                        ? t('Loading the vocabulary as of {time}…', {
+                            time: fullTimestamp(history.selected.time),
+                          })
+                        : t('Read-only. This is the vocabulary as of {time}.', {
+                            time: fullTimestamp(history.past?.time ?? history.selected.time),
+                          })}
                   </span>
                   {changesShown && (
                     <SegmentedControl
-                      label="View"
+                      label={t('View')}
                       value={historyParam.view}
                       onChange={historyParam.setView}
                       options={[
-                        { value: 'changes', label: 'Changes' },
-                        { value: 'document', label: 'Vocabulary' },
+                        { value: 'changes', label: t('Changes') },
+                        { value: 'document', label: t('Vocabulary') },
                       ]}
                     />
                   )}
@@ -1514,7 +1549,7 @@ export const VocabularyDetail = () => {
           <Tabs value={activeTab} onValueChange={setActiveTab} guard={guardLeavingTab}>
             <TabsList>
               <TabsTrigger value="items" to={tabHref(vocabPath, 'items')}>
-                <BookText className="h-4 w-4" /> Entries
+                <BookText className="h-4 w-4" /> {t('Entries')}
               </TabsTrigger>
               <TabsTrigger
                 value="comments"
@@ -1522,7 +1557,7 @@ export const VocabularyDetail = () => {
                 disabled={viewingPast}
                 className={PAST_DISABLED}
               >
-                <MessageSquare className="h-4 w-4" /> Comments
+                <MessageSquare className="h-4 w-4" /> {t('Comments')}
                 {(comments?.count ?? 0) > 0 && (
                   <span className="ml-1 rounded-full bg-muted px-1.5 text-[10px] leading-4 tabular-nums">
                     {comments.count}
@@ -1536,7 +1571,7 @@ export const VocabularyDetail = () => {
                   disabled={viewingPast}
                   className={PAST_DISABLED}
                 >
-                  <Settings className="h-4 w-4" /> Settings
+                  <Settings className="h-4 w-4" /> {t('Settings')}
                 </TabsTrigger>
               )}
             </TabsList>
@@ -1582,21 +1617,20 @@ export const VocabularyDetail = () => {
                     declared at all, and only found the control by opening the
                     other app. Say where it is. */}
                   <p className="text-sm text-muted-foreground">
-                    Entries here are listed in your language’s default order. A vocabulary’s own
-                    alphabet files letters like ẹ and n-graphs like ch where the language puts them.
-                    Set one in the dictionary reader, on its Set up page. That order applies to the
-                    published dictionary.
+                    {t(
+                      'Entries here are listed in your language’s default order. A vocabulary’s own alphabet files letters like ẹ and n-graphs like ch where the language puts them. Set one in the dictionary reader, on its Set up page. That order applies to the published dictionary.',
+                    )}
                   </p>
                   <div className="rounded-lg border bg-card p-4">
                     <div className="flex flex-col gap-4">
-                      <h3 className="text-base font-semibold">Settings</h3>
+                      <h3 className="text-base font-semibold">{t('Settings')}</h3>
 
                       <div className="flex items-end gap-2">
                         <div className="flex flex-1 flex-col gap-1.5">
-                          <Label htmlFor="vocabulary-rename">Vocabulary name</Label>
+                          <Label htmlFor="vocabulary-rename">{t('Vocabulary name')}</Label>
                           <Input
                             id="vocabulary-rename"
-                            placeholder="Enter vocabulary name"
+                            placeholder={t('Enter vocabulary name')}
                             value={editedName}
                             onChange={(event) => setEditedName(event.target.value)}
                           />
@@ -1605,16 +1639,16 @@ export const VocabularyDetail = () => {
                           onClick={handleSave}
                           disabled={!editedName.trim() || editedName === vocabulary?.name}
                         >
-                          Save
+                          {t('Save')}
                         </Button>
                       </div>
                       {moveTargets.length > 0 && (
                         <div className="flex flex-col gap-1.5">
-                          <Label htmlFor="vocabulary-move">Move to project</Label>
+                          <Label htmlFor="vocabulary-move">{t('Move to project')}</Label>
                           {/* Holds no choice: picking a project asks, then moves. */}
                           <Select value="" onValueChange={handleMove}>
                             <SelectTrigger id="vocabulary-move" className="max-w-md">
-                              <SelectValue placeholder="Choose a project" />
+                              <SelectValue placeholder={t('Choose a project')} />
                             </SelectTrigger>
                             <SelectContent>
                               {moveTargets.map((p) => (
@@ -1631,13 +1665,12 @@ export const VocabularyDetail = () => {
 
                   <div className="rounded-lg border bg-card p-4">
                     <div className="flex flex-col gap-4">
-                      <h3 className="text-base font-semibold">Fields</h3>
+                      <h3 className="text-base font-semibold">{t('Fields')}</h3>
                       <p className="text-sm text-muted-foreground">
-                        Every entry has these fields. <strong>Inline</strong> puts a field in the
-                        interlinear view as well. A tagset, defined below, holds a field to a list.
-                        An <strong>Entry</strong> or <strong>Entries</strong> field refers to other
-                        entries, senses included. <strong>Headword only</strong> shows a field on a
-                        headword, not on its senses.
+                        {tx(
+                          'Every entry has these fields. <strong>Inline</strong> puts a field in the interlinear view as well. A tagset, defined below, holds a field to a list. An <strong>Entry</strong> or <strong>Entries</strong> field refers to other entries, senses included. <strong>Headword only</strong> shows a field on a headword, not on its senses.',
+                          { strong },
+                        )}
                       </p>
 
                       {renderCustomFieldsEditor()}
@@ -1646,12 +1679,11 @@ export const VocabularyDetail = () => {
 
                   <div className="rounded-lg border bg-card p-4">
                     <div className="flex flex-col gap-4">
-                      <h3 className="text-base font-semibold">Tagsets</h3>
+                      <h3 className="text-base font-semibold">{t('Tagsets')}</h3>
                       <p className="text-sm text-muted-foreground">
-                        A tagset is the list of values a field may hold, such as the part of speech
-                        inventory. Assign it to a field above. A closed tagset keeps every entry to
-                        the list, in the editor and in Bulk Add, and marks the entries already
-                        outside it.
+                        {t(
+                          'A tagset is the list of values a field may hold, such as the part of speech inventory. Assign it to a field above. A closed tagset keeps every entry to the list, in the editor and in Bulk Add, and marks the entries already outside it.',
+                        )}
                       </p>
                       <TagsetsManager
                         tagsets={tagsets}
@@ -1664,10 +1696,12 @@ export const VocabularyDetail = () => {
                         reservedMessage={reservedStatusMessage}
                         onSaveChanges={handleSaveTagsets}
                         onLoadAttested={handleLoadAttested}
-                        emptyHint="No tagsets yet. Add one, then assign it to a field above."
-                        seedLabel="Add values used in this vocabulary"
-                        valuesNoun="entries"
-                        enforceNote="Closed lists apply to what you type here and to Bulk Add. Values from an import or a service are not checked. The entry list marks them."
+                        emptyHint={t('No tagsets yet. Add one, then assign it to a field above.')}
+                        seedLabel={t('Add values used in this vocabulary')}
+                        keptNote={t('No entries are changed.')}
+                        enforceNote={t(
+                          'Closed lists apply to what you type here and to Bulk Add. Values from an import or a service are not checked. The entry list marks them.',
+                        )}
                       />
                     </div>
                   </div>
@@ -1685,9 +1719,9 @@ export const VocabularyDetail = () => {
 
                   <div className="rounded-lg border border-destructive/40 p-4">
                     <div className="flex flex-col gap-4">
-                      <h3 className="text-base font-semibold">Danger zone</h3>
+                      <h3 className="text-base font-semibold">{t('Danger zone')}</h3>
                       <p className="text-sm text-muted-foreground">
-                        Delete this vocabulary permanently. This action cannot be undone.
+                        {t('Delete this vocabulary permanently. This action cannot be undone.')}
                       </p>
                       <div>
                         <Button
@@ -1695,7 +1729,7 @@ export const VocabularyDetail = () => {
                           className={DELETE_BUTTON_CLASS}
                           onClick={openDeleteModal}
                         >
-                          <Trash2 className="h-4 w-4" /> Delete vocabulary
+                          <Trash2 className="h-4 w-4" /> {t('Delete vocabulary')}
                         </Button>
                       </div>
                     </div>
@@ -1708,30 +1742,30 @@ export const VocabularyDetail = () => {
 
         {isNewVocabulary && (
           <div className="flex flex-col gap-6">
-            <h1 className={TYPE.page}>New vocabulary</h1>
+            <h1 className={TYPE.page}>{t('New vocabulary')}</h1>
 
             <div className="rounded-lg border bg-card p-4">
               <div className="flex flex-col gap-1.5">
                 <Label htmlFor="vocabulary-new-name">
-                  Vocabulary name <span className="text-destructive">*</span>
+                  {t('Vocabulary name')} <span className="text-destructive">*</span>
                 </Label>
                 <Input
                   id="vocabulary-new-name"
-                  placeholder="Enter vocabulary name"
+                  placeholder={t('Enter vocabulary name')}
                   value={editedName}
                   onChange={(event) => setEditedName(event.target.value)}
                   autoFocus
                 />
                 <p className="text-xs text-muted-foreground">
-                  Choose a descriptive name for your vocabulary
+                  {t('Choose a descriptive name for your vocabulary')}
                 </p>
                 {editedName && !editedName.trim() && (
-                  <p className="text-xs text-destructive">Name cannot be empty</p>
+                  <p className="text-xs text-destructive">{t('Name cannot be empty')}</p>
                 )}
               </div>
               <div className="mt-4 flex flex-col gap-1.5">
                 <Label htmlFor="vocabulary-new-project">
-                  Project <span className="text-destructive">*</span>
+                  {t('Project')} <span className="text-destructive">*</span>
                 </Label>
                 <Select value={newProject ? newProject.id : ''} onValueChange={setNewProjectId}>
                   <SelectTrigger
@@ -1742,8 +1776,8 @@ export const VocabularyDetail = () => {
                     <SelectValue
                       placeholder={
                         projects && !maintainedProjects.length
-                          ? 'No project you maintain.'
-                          : 'Choose a project'
+                          ? t('No project you maintain.')
+                          : t('Choose a project')
                       }
                     />
                   </SelectTrigger>
@@ -1760,12 +1794,12 @@ export const VocabularyDetail = () => {
 
             <div className="rounded-lg border bg-card p-4">
               <div className="flex flex-col gap-4">
-                <h3 className="text-base font-semibold">Fields</h3>
+                <h3 className="text-base font-semibold">{t('Fields')}</h3>
                 <p className="text-sm text-muted-foreground">
-                  Every entry has these fields. <strong>Inline</strong> puts a field in the
-                  interlinear view as well. An <strong>Entry</strong> or <strong>Entries</strong>{' '}
-                  field refers to other entries, senses included. <strong>Headword only</strong>{' '}
-                  shows a field on a headword, not on its senses.
+                  {tx(
+                    'Every entry has these fields. <strong>Inline</strong> puts a field in the interlinear view as well. An <strong>Entry</strong> or <strong>Entries</strong> field refers to other entries, senses included. <strong>Headword only</strong> shows a field on a headword, not on its senses.',
+                    { strong },
+                  )}
                 </p>
 
                 {renderCustomFieldsEditor()}
@@ -1774,10 +1808,10 @@ export const VocabularyDetail = () => {
 
             <div className="flex justify-end gap-2">
               <Button variant="secondary" onClick={() => navigate('/vocabularies')}>
-                Cancel
+                {t('Cancel')}
               </Button>
               <Button onClick={handleSave} disabled={!editedName.trim() || !newProject || saving}>
-                Create vocabulary
+                {t('Create vocabulary')}
               </Button>
             </div>
           </div>
@@ -1793,7 +1827,7 @@ export const VocabularyDetail = () => {
       >
         <DialogContent className="max-w-md">
           <DialogHeader>
-            <DialogTitle>Delete vocabulary?</DialogTitle>
+            <DialogTitle>{t('Delete vocabulary?')}</DialogTitle>
           </DialogHeader>
 
           <div className="flex flex-col gap-4">
@@ -1801,9 +1835,10 @@ export const VocabularyDetail = () => {
               // Only a maintainer of its project opens this, and they end
               // each borrowing on this tab.
               <p className="text-sm">
-                {otherProjectsSaid(deleteCheck.otherProjects)} Unlink it from{' '}
-                {deleteCheck.otherProjects === 1 ? 'that project' : 'them'} under Used by other
-                projects first.
+                {t(
+                  '{n, plural, one {# other project uses this vocabulary. Unlink it from that project under Used by other projects first.} other {# other projects use this vocabulary. Unlink it from them under Used by other projects first.}}',
+                  { n: deleteCheck.otherProjects },
+                )}
               </p>
             ) : (
               <>
@@ -1812,17 +1847,17 @@ export const VocabularyDetail = () => {
                     <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-destructive" />
                     <div className="text-sm">
                       <p className="text-muted-foreground">
-                        Deletes <strong>“{vocabulary?.name}”</strong> with all its entries and their
-                        links. This cannot be undone.
+                        {tx(
+                          'Deletes <strong>“{name}”</strong> with all its entries and their links. This cannot be undone.',
+                          { name: vocabulary?.name ?? '', strong },
+                        )}
                       </p>
                       {deleteCheck?.links > 0 && (
                         <p className="mt-1 text-muted-foreground">
-                          Its entries are linked to{' '}
-                          <strong>
-                            {countOf(deleteCheck.links, 'word')}/
-                            {plural(deleteCheck.links, 'morpheme')}
-                          </strong>
-                          . Those links will be removed.
+                          {tx(
+                            'Its entries are linked to <strong>{n, plural, one {# word/morpheme} other {# words/morphemes}}</strong>. Those links will be removed.',
+                            { n: deleteCheck.links, strong },
+                          )}
                         </p>
                       )}
                     </div>
@@ -1831,11 +1866,11 @@ export const VocabularyDetail = () => {
 
                 <div className="flex flex-col gap-1.5">
                   <Label htmlFor="vocabulary-delete-confirm">
-                    Type “{vocabulary?.name}” to confirm
+                    {t('Type “{name}” to confirm', { name: vocabulary?.name ?? '' })}
                   </Label>
                   <Input
                     id="vocabulary-delete-confirm"
-                    placeholder="Enter vocabulary name"
+                    placeholder={t('Enter vocabulary name')}
                     value={confirmDeleteName}
                     onChange={(event) => setConfirmDeleteName(event.target.value)}
                   />
@@ -1852,7 +1887,7 @@ export const VocabularyDetail = () => {
                 setConfirmDeleteName('');
               }}
             >
-              Cancel
+              {t('Cancel')}
             </Button>
             {!deleteCheck?.otherProjects && (
               <Button
@@ -1862,7 +1897,7 @@ export const VocabularyDetail = () => {
                   deleteCheck === undefined || !sameName(confirmDeleteName, vocabulary?.name)
                 }
               >
-                <Trash2 className="h-4 w-4" /> Delete vocabulary
+                <Trash2 className="h-4 w-4" /> {t('Delete vocabulary')}
               </Button>
             )}
           </DialogFooter>

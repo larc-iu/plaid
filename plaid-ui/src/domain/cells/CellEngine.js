@@ -1,6 +1,7 @@
 import { namesPendingId, settleKey } from '../pendingIds.js';
 import { setUnsavedDraft } from '../../hooks/useUnsavedDraft.js';
 import { isConstraintViolation, isGone } from '../../lib/errors.js';
+import { msg, t } from '../../lib/i18n.js';
 
 // What becomes of a grid cell's edit that the server refused, one copy for
 // every app's grid (Luke's ruling Q1, 2026-09-29). The engine holds the
@@ -36,8 +37,14 @@ import { isConstraintViolation, isGone } from '../../lib/errors.js';
 // (plaid-ui WriteQueue), so it comes back as landed. `landedUnheard` is for a
 // refusal whose read-back holds the typed value: someone stored the same.
 
-const WHAT = 'An annotation you have typed';
-const SEVERAL = 'annotations you have typed';
+// Messages: read through t() when a draft is set.
+const WHAT = msg('An annotation you have typed');
+const SEVERAL = msg('annotations you have typed');
+// The leave question's sentences for a cell the app has no name for.
+const said = () => ({
+  one: t('An annotation you have typed is not saved. Leaving loses it.'),
+  several: (n) => t('{n} annotations you have typed are not saved. Leaving loses them.', { n }),
+});
 
 // Refusals that sending the value again cannot mend: no longer a writer, or
 // what it names is gone.
@@ -227,7 +234,9 @@ export class CellEngine {
     const token = prior?.token ?? {};
     const what = entry.what ?? prior?.what ?? this._describe?.(key) ?? null;
     this._unsent.set(k, { ...entry, key, what, token });
-    setUnsavedDraft(token, what ?? WHAT, SEVERAL);
+    // A name the app gave (`describe`) is put into the question's sentence
+    // by the leave question itself, in English only.
+    setUnsavedDraft(token, what ?? t(WHAT), t(SEVERAL), what ? null : said());
   }
 
   /**

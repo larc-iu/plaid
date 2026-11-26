@@ -17,6 +17,7 @@
 // editor, its list and its sense tree.
 
 import { NOT_IN_UMR_CONCEPT, isUmrProject } from '../../../plaid-ui/src/domain/umrProject.js';
+import { t } from '../../../plaid-ui/src/lib/i18n.js';
 
 const UMR_NAMESPACE = 'umr';
 
@@ -61,8 +62,10 @@ const ARG_KEY = /^ARG\d+$/i;
 /** Why `key` is not a usable argument name, or null when it is. */
 export const argKeyProblem = (key) => {
   const k = String(key ?? '').trim();
-  if (!k) return 'An argument needs a name.';
-  return ARG_KEY.test(k) ? null : `An argument is named ARG0, ARG1 and so on: ${k}`;
+  if (!k) return t('An argument needs a name.');
+  return ARG_KEY.test(k)
+    ? null
+    : t('An argument is named ARG0, ARG1 and so on: {name}', { name: k });
 };
 
 /**
@@ -75,7 +78,7 @@ export const argRowProblems = (rows) => {
     const bad = argKeyProblem(row.key);
     if (bad) return bad;
     const key = String(row.key).trim().toUpperCase();
-    if (seen.has(key)) return `${key} is named twice.`;
+    if (seen.has(key)) return t('{name} is named twice.', { name: key });
     seen.add(key);
     return null;
   });

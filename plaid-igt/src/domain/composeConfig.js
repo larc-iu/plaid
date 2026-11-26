@@ -16,6 +16,7 @@
 import { COMPOSE_TABLE } from './composeTable.js';
 import { CODE_LENGTH } from './compose.js';
 import { readCompose } from './igtConfig.js';
+import { t, msg } from '@ui/lib/i18n.js';
 
 /** The codes as shipped, before a project changes anything. */
 export const BUILT_IN_TABLE = COMPOSE_TABLE;
@@ -129,8 +130,11 @@ export function rowsToConfig(rows) {
   return { codes, removed };
 }
 
-/** The problem a row has when another listed row has its code. */
-export const DUPLICATE_CODE = 'This code already exists.';
+/**
+ * The problem a row has when another listed row has its code. A message:
+ * validateCode gives it translated, `t(DUPLICATE_CODE)`.
+ */
+export const DUPLICATE_CODE = msg('This code already exists.');
 
 /**
  * What is wrong with one row, as a list of reasons the settings screen can
@@ -141,13 +145,13 @@ export function validateCode(row, others = []) {
   const code = row?.code ?? '';
   if (row?.origin === 'removed') return problems;
   if ([...code].length !== CODE_LENGTH) {
-    problems.push(`A code is ${CODE_LENGTH} characters.`);
+    problems.push(t('A code is {n} characters.', { n: CODE_LENGTH }));
   }
-  if (/\s/.test(code)) problems.push('A code cannot contain a space.');
-  if (code.includes('\\')) problems.push('A code cannot contain a backslash.');
-  if (!isFilledString(row?.char)) problems.push('Enter a character.');
+  if (/\s/.test(code)) problems.push(t('A code cannot contain a space.'));
+  if (code.includes('\\')) problems.push(t('A code cannot contain a backslash.'));
+  if (!isFilledString(row?.char)) problems.push(t('Enter a character.'));
   if (others.some((o) => o !== row && o.code === code && o.origin !== 'removed' && code !== '')) {
-    problems.push(DUPLICATE_CODE);
+    problems.push(t(DUPLICATE_CODE));
   }
   return problems;
 }

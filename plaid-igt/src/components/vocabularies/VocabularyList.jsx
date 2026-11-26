@@ -16,12 +16,13 @@ import { useDocumentTitle } from '@ui/hooks/useDocumentTitle.js';
 import { loadEntryCounts } from '@/domain/vocabEntryCounts.js';
 import { compareText, textIncludes } from '@ui/domain/collation.js';
 import { vocabImporting, withLiveMarks } from '@/domain/igtConfig';
+import { t } from '@ui/lib/i18n.js';
 
 // The vocabularies this person can read, grouped by the project each belongs
 // to: a heading per project they can read, then "Other projects" for those
 // whose project they cannot (a project of theirs links it).
 export const VocabularyList = () => {
-  useDocumentTitle('Vocabularies');
+  useDocumentTitle(t('Vocabularies'));
   const [vocabularies, setVocabularies] = useState([]);
   // The projects this person can read, for the group headings.
   const [projects, setProjects] = useState([]);
@@ -49,7 +50,7 @@ export const VocabularyList = () => {
         logout('expired');
         return;
       }
-      setError('Failed to load vocabularies');
+      setError(t('Failed to load vocabularies'));
       console.error('Error fetching vocabularies:', err);
     } finally {
       setLoading(false);
@@ -81,8 +82,8 @@ export const VocabularyList = () => {
           setItemCounts({}); // leave counts unknown -> "—"
           if (!isPermissionError(err)) {
             notifyWarning(
-              'Entry counts could not be loaded for the vocabulary list.',
-              'Entry counts unavailable',
+              t('Entry counts could not be loaded for the vocabulary list.'),
+              t('Entry counts unavailable'),
             );
           }
         }
@@ -123,14 +124,14 @@ export const VocabularyList = () => {
         ),
         rows,
       }));
-    if (others.length) list.push({ key: 'others', title: 'Other projects', rows: others });
+    if (others.length) list.push({ key: 'others', title: t('Other projects'), rows: others });
     return list;
   }, [vocabularies, projects, query]);
 
   const columns = [
     {
       key: 'name',
-      label: 'Vocabulary',
+      label: t('Vocabulary'),
       fill: true,
       sort: (v) => v.name?.toLowerCase() ?? '',
       cell: (v) => (
@@ -139,14 +140,16 @@ export const VocabularyList = () => {
             {v.name}
           </div>
           {vocabImporting(v.config) && (
-            <span className="shrink-0 text-xs text-muted-foreground">Import did not finish</span>
+            <span className="shrink-0 text-xs text-muted-foreground">
+              {t('Import did not finish')}
+            </span>
           )}
         </div>
       ),
     },
     {
       key: 'items',
-      label: 'Entries',
+      label: t('Entries'),
       // A vocabulary whose count could not be read counts as the smallest,
       // the way it did when the comparator gave it -1.
       sort: (v) => itemCounts[v.id] ?? null,
@@ -156,7 +159,7 @@ export const VocabularyList = () => {
     },
     {
       key: 'updated',
-      label: 'Updated',
+      label: t('Updated'),
       sort: (v) => (v.timeModified ? new Date(v.timeModified).getTime() : null),
       align: 'right',
       nowrap: true,
@@ -191,9 +194,9 @@ export const VocabularyList = () => {
   return (
     <div>
       <div className="mb-6 flex items-center justify-between">
-        <h1 className={TYPE.page}>Vocabularies</h1>
+        <h1 className={TYPE.page}>{t('Vocabularies')}</h1>
         <NewLinkButton to="/vocabularies/new">
-          <Plus className="h-4 w-4" /> New vocabulary
+          <Plus className="h-4 w-4" /> {t('New vocabulary')}
         </NewLinkButton>
       </div>
 
@@ -207,18 +210,21 @@ export const VocabularyList = () => {
         <Loading />
       ) : vocabularies.length === 0 && error ? null : vocabularies.length === 0 ? (
         <Card>
-          <EmptyState title="No vocabularies found" hint="Create one with New vocabulary." />
+          <EmptyState
+            title={t('No vocabularies found')}
+            hint={t('Create one with New vocabulary.')}
+          />
         </Card>
       ) : (
         <TooltipProvider>
           <SearchInput
             value={query}
             onChange={setQuery}
-            placeholder="Search vocabularies…"
+            placeholder={t('Search vocabularies…')}
             className="mb-4 max-w-[16rem]"
           />
           {groups.length === 0 ? (
-            <p className="text-sm text-muted-foreground">No vocabularies match.</p>
+            <p className="text-sm text-muted-foreground">{t('No vocabularies match.')}</p>
           ) : (
             <div className="flex flex-col gap-6">
               {groups.map((g) => (
@@ -230,7 +236,10 @@ export const VocabularyList = () => {
                     rowKey={(row) => row.id}
                     id="vocabularies"
                     defaultSort={{ key: 'name', dir: 'asc' }}
-                    noun="vocabulary"
+                    countLabel={(v) =>
+                      t('{total} {n, plural, one {vocabulary} other {vocabularies}}', v)
+                    }
+                    noMatch={t('No vocabularies match.')}
                   />
                 </section>
               ))}

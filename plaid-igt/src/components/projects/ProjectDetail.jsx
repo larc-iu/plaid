@@ -30,6 +30,7 @@ import { IGT_ASSISTANT } from './assistant/adapter.js';
 import { UnfinishedImport } from './UnfinishedImport.jsx';
 import { StartWithoutAssistant } from './jobs/StartJobDialog.jsx';
 import { AssistantButton } from './assistant/AssistantButton.jsx';
+import { t, msg } from '@ui/lib/i18n.js';
 
 // The tabs a visit rarely opens ride in their own chunks: Bulk Edit,
 // Validation, Activity, the Assistant (and its markdown), and Export (and the
@@ -56,11 +57,11 @@ const JobPage = lazyNamed(() => import('./jobs/JobPage.jsx'), 'JobPage');
 // URL means deep links and the back button still land on the right section.
 // Title-bar labels for them, as ProjectSettingsPanel names them.
 const SECTION_TITLES = {
-  general: 'General',
-  'text-and-vocab': 'Text and vocab',
-  annotation: 'Annotation',
-  access: 'Access',
-  services: 'Services',
+  general: msg('General'),
+  'text-and-vocab': msg('Text and vocab'),
+  annotation: msg('Annotation'),
+  access: msg('Access'),
+  services: msg('Services'),
 };
 
 // The project screen: plaid-ui's project page (ProjectTabPage), which reads the
@@ -77,7 +78,9 @@ export const ProjectDetail = () => {
   // "<Project> · Plaid IGT".
   return (
     <ProjectTabPage
-      title={onExport ? 'Export' : onJob ? 'Job' : section ? SECTION_TITLES[section] : null}
+      title={
+        onExport ? t('Export') : onJob ? t('Job') : section ? t(SECTION_TITLES[section]) : null
+      }
       tabs={ProjectTabs}
       withDocuments
     >
@@ -133,27 +136,27 @@ const ProjectTabs = ({ projectId, project }) => {
   const assistantAvailable = useAssistantAvailable(client, projectId, IGT_ASSISTANT.app);
   const at = `/projects/${projectId}`;
   const tabs = [
-    { value: 'documents', label: 'Documents', to: tabHref(at, 'documents') },
-    { value: 'search', label: 'Search', to: tabHref(at, 'search') },
-    { value: 'guidelines', label: 'Guidelines', to: tabHref(at, 'guidelines') },
+    { value: 'documents', label: t('Documents'), to: tabHref(at, 'documents') },
+    { value: 'search', label: t('Search'), to: tabHref(at, 'search') },
+    { value: 'guidelines', label: t('Guidelines'), to: tabHref(at, 'guidelines') },
     // Offered only when an assistant is online. The tab itself still renders
     // when it is the active one, so a link to a past conversation opens
     // whether or not one is running: this hides the invitation, not the
     // conversations.
     {
       value: 'assistant',
-      label: 'Assistant',
+      label: t('Assistant'),
       to: tabHref(at, 'assistant'),
       show: assistantAvailable,
       alsoWhenActive: true,
     },
-    { value: 'jobs', label: 'Jobs', to: tabHref(at, 'jobs') },
-    { value: 'bulk', label: 'Bulk Edit', to: tabHref(at, 'bulk'), show: canManage },
-    { value: 'validate', label: 'Validation', to: tabHref(at, 'validate'), show: canManage },
-    { value: 'activity', label: 'Activity', to: tabHref(at, 'activity'), show: canManage },
-    { value: 'export', label: 'Export', to: `${at}/export` },
+    { value: 'jobs', label: t('Jobs'), to: tabHref(at, 'jobs') },
+    { value: 'bulk', label: t('Bulk Edit'), to: tabHref(at, 'bulk'), show: canManage },
+    { value: 'validate', label: t('Validation'), to: tabHref(at, 'validate'), show: canManage },
+    { value: 'activity', label: t('Activity'), to: tabHref(at, 'activity'), show: canManage },
+    { value: 'export', label: t('Export'), to: `${at}/export` },
     // Entered at its first section. The path drives the panel.
-    { value: 'settings', label: 'Settings', to: `${at}/general`, show: canManage },
+    { value: 'settings', label: t('Settings'), to: `${at}/general`, show: canManage },
   ];
   return (
     <ProjectTabStrip
@@ -253,7 +256,9 @@ const ProjectBody = ({ project, projectId, client, documents, reload }) => {
   }
 
   if (!initialized && !canManage) {
-    return notice(<>This project is not set up for IGT. A project maintainer can set it up.</>);
+    return notice(
+      <>{t('This project is not set up for IGT. A project maintainer can set it up.')}</>,
+    );
   }
 
   // Only the active tab's body is mounted, as the tab widget's own panels did.
@@ -289,14 +294,14 @@ const ProjectBody = ({ project, projectId, client, documents, reload }) => {
   } else if (active === 'search') {
     body = (
       <>
-        <SectionHeader title="Search" />
+        <SectionHeader title={t('Search')} />
         <ProjectSearch project={project} projectId={projectId} client={client} />
       </>
     );
   } else if (active === 'bulk' && canManage) {
     body = (
       <>
-        <SectionHeader title="Bulk Edit" />
+        <SectionHeader title={t('Bulk Edit')} />
         <ProjectBulkEdit project={project} projectId={projectId} client={client} />
       </>
     );
@@ -315,7 +320,7 @@ const ProjectBody = ({ project, projectId, client, documents, reload }) => {
   } else if (active === 'activity' && canManage) {
     body = (
       <>
-        <SectionHeader title="Activity" />
+        <SectionHeader title={t('Activity')} />
         <ProjectActivity client={client} project={project} projectId={projectId} />
       </>
     );
@@ -333,7 +338,7 @@ const ProjectBody = ({ project, projectId, client, documents, reload }) => {
   } else if (active === 'guidelines') {
     body = (
       <>
-        <SectionHeader title="Guidelines" />
+        <SectionHeader title={t('Guidelines')} />
         <GuidelinesTab
           client={client}
           projectId={projectId}
@@ -360,7 +365,7 @@ const ProjectBody = ({ project, projectId, client, documents, reload }) => {
   } else if (active === 'settings' && canManage) {
     body = (
       <>
-        <SectionHeader title="Settings" />
+        <SectionHeader title={t('Settings')} />
         <ProjectSettingsPanel
           project={project}
           projectId={projectId}

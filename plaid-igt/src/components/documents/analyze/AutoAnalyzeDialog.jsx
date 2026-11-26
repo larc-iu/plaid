@@ -12,7 +12,7 @@ import { resolveAutoAnalysis } from '@/domain/igtConfig';
 import { fieldIdsOf, fieldNamesOf, fieldRolesOf } from '@/domain/fieldInventory';
 import { writeRunRecord, clearRunRecord } from '@ui/domain/runRecord.js';
 import { reloadAfterRun } from '@ui/lib/runReload.js';
-import { countOf, plural } from '@ui/lib/plural.js';
+import { t } from '@ui/lib/i18n.js';
 import { useDocumentCtx } from '../contexts/DocumentContext.jsx';
 import { runHeldNotice } from '@ui/components/services/runHeld.js';
 import { analyzeParts, partsNotice, translateParts } from './analyzeNotice.js';
@@ -20,10 +20,6 @@ import { analyzeParts, partsNotice, translateParts } from './analyzeNotice.js';
 const STEPS_STORAGE_KEY = 'plaid_igt_auto_analyze_steps';
 // A whole-document model pass can take a few minutes on a large document.
 const ANALYZE_TIMEOUT_MS = 20 * 60 * 1000;
-
-const LINK_BUILTINS = [
-  { name: BUILTIN_LINK_PRECEDENT, label: 'Built-in (precedent and unique matches)' },
-];
 
 // Auto-analyze: one dialog, four ordered steps, each toggleable, one Run.
 //   1. translate — a service advertising the `translate` task fills the
@@ -89,11 +85,16 @@ export const AutoAnalyzeDialog = ({ open, onOpenChange, doc }) => {
     fieldRoles,
     fieldIds,
   });
+  // The built-in method's label is shown as given, so it is said here, once.
+  const linkBuiltins = useMemo(
+    () => [{ name: BUILTIN_LINK_PRECEDENT, label: t('Built-in (precedent and unique matches)') }],
+    [],
+  );
   const linkSpot = useServiceSpot({
     task: TASKS.LINK_VOCAB,
     project,
     services: availableServices,
-    builtins: LINK_BUILTINS,
+    builtins: linkBuiltins,
     storageId: 'link_vocab',
   });
 
@@ -141,10 +142,10 @@ export const AutoAnalyzeDialog = ({ open, onOpenChange, doc }) => {
   // ticks through, so what is promised and what is reported cannot drift.
   const plan = useMemo(() => {
     const out = [];
-    if (translateOn) out.push({ key: 'translate', label: 'Propose translations' });
-    if (steps.copy) out.push({ key: 'copy', label: 'Copy previous analyses' });
-    if (analyzeOn) out.push({ key: 'analyze', label: 'Propose segmentation and glosses' });
-    if (linkOn) out.push({ key: 'link', label: 'Link to the lexicon' });
+    if (translateOn) out.push({ key: 'translate', label: t('Propose translations') });
+    if (steps.copy) out.push({ key: 'copy', label: t('Copy previous analyses') });
+    if (analyzeOn) out.push({ key: 'analyze', label: t('Propose segmentation and glosses') });
+    if (linkOn) out.push({ key: 'link', label: t('Link to the lexicon') });
     return out;
   }, [translateOn, steps.copy, analyzeOn, linkOn]);
 
@@ -159,10 +160,12 @@ export const AutoAnalyzeDialog = ({ open, onOpenChange, doc }) => {
   const run = async () => {
     if (!doc || nothingToRun) return;
     if (blockingErrors.length) {
-      notifyError(blockingErrors[0], 'Missing required option');
+      notifyError(blockingErrors[0], t('Missing required option'));
       return;
     }
     stopRef.current = false;
+    // The run's name, on its lock, its banner and its record.
+    const runLabel = t('Auto-analyze');
     // Set when the document is left inside the app (its page unmounts). The
     // run then stops after the step in flight (Luke, 2026-11-12): a built-in
     // step at its next checkpoint, a service step left to finish on the
@@ -180,12 +183,12 @@ export const AutoAnalyzeDialog = ({ open, onOpenChange, doc }) => {
     const notRunFrom = (from) => {
       const stepsAfter = plan.slice(from).map((p) => p.label);
       if (!stepsAfter.length) return clearRunRecord(doc.id);
-      writeRunRecord(doc.id, { projectId: project.id, label: 'Auto-analyze', stepsAfter });
+      writeRunRecord(doc.id, { projectId: project.id, label: runLabel, stepsAfter });
     };
     // Held for the whole run: four steps of writes with a reload after each.
     // The banner over the document shows the run: its steps, the one it is
     // on and what the worker says.
-    const lock = acquireWriteLock('Auto-analyze', {
+    const lock = acquireWriteLock(runLabel, {
       onCancel: stopRun,
       onLeave: () => {
         left = true;
@@ -217,7 +220,7 @@ export const AutoAnalyzeDialog = ({ open, onOpenChange, doc }) => {
       writeRunRecord(doc.id, {
         requestId,
         projectId: project.id,
-        label: 'Auto-analyze',
+        label: runLabel,
         task,
         step: plan.find((p) => p.key === key).label,
         stepsAfter: plan.slice(plan.findIndex((p) => p.key === key) + 1).map((p) => p.label),
@@ -262,12 +265,12 @@ export const AutoAnalyzeDialog = ({ open, onOpenChange, doc }) => {
     // run stopped by leaving is said by the page that comes back.
     const halt = () => {
       if (left) return;
-      notifyInfo('Stopped partway. What ran before the stop is in the document.', 'Auto-analyze');
+      notifyInfo(t('Stopped partway. What ran before the stop is in the document.'), runLabel);
     };
     // A reload after each service step costs seconds on a large document and
     // shows nothing while it runs, so it gets its own line rather than a pause.
     const reload = async () => {
-      onProgress({ percent: null, message: 'Loading results…' });
+      onProgress({ percent: null, message: t('Loading results…') });
       await reloadAfterRun(() => doc.reload());
       // The step is done and collected; nothing left for a reload to rejoin.
       // Left meanwhile, the record says what did not run (onLeave).
@@ -284,11 +287,11 @@ export const AutoAnalyzeDialog = ({ open, onOpenChange, doc }) => {
           service.serviceId,
           { ...translateSpot.params.coerced(), ...identifiers },
           {
-            successTitle: 'Translation complete',
-            successMessage: `${service.serviceName} finished.`,
-            errorTitle: 'Failed to translate',
-            errorMessage: `${service.serviceName} reported an error.`,
-            stoppedTitle: 'Auto-analyze',
+            successTitle: t('Translation complete'),
+            successMessage: t('{name} finished.', { name: service.serviceName }),
+            errorTitle: t('Failed to translate'),
+            errorMessage: t('{name} reported an error.', { name: service.serviceName }),
+            stoppedTitle: runLabel,
             onRequestId: recordStep('translate', TASKS.TRANSLATE),
             quiet,
             onProgress,
@@ -334,7 +337,11 @@ export const AutoAnalyzeDialog = ({ open, onOpenChange, doc }) => {
         if (!left) clearRunRecord(doc.id);
         copiedWordIds = ids || [];
         if (copied) {
-          parts.push(`copied previous analyses onto ${countOf(copied, 'word')}`);
+          parts.push(
+            t('copied previous analyses onto {n, plural, one {# word} other {# words}}', {
+              n: copied,
+            }),
+          );
           wrote = true;
         }
       }
@@ -354,11 +361,11 @@ export const AutoAnalyzeDialog = ({ open, onOpenChange, doc }) => {
             ...(copiedWordIds.length ? { skipWordIds: copiedWordIds } : {}),
           },
           {
-            successTitle: 'Analysis complete',
-            successMessage: `${service.serviceName} finished.`,
-            errorTitle: 'Failed to analyze',
-            errorMessage: `${service.serviceName} reported an error.`,
-            stoppedTitle: 'Auto-analyze',
+            successTitle: t('Analysis complete'),
+            successMessage: t('{name} finished.', { name: service.serviceName }),
+            errorTitle: t('Failed to analyze'),
+            errorMessage: t('{name} reported an error.', { name: service.serviceName }),
+            stoppedTitle: runLabel,
             onRequestId: recordStep('analyze', TASKS.ANALYZE),
             quiet,
             onProgress,
@@ -394,12 +401,19 @@ export const AutoAnalyzeDialog = ({ open, onOpenChange, doc }) => {
           if (!ok) return;
           if (wasStopped) return halt();
           if (linked) {
-            parts.push(`linked ${countOf(linked, 'word')}/${plural(linked, 'morpheme')}`);
+            parts.push(
+              t('linked {n, plural, one {# word/morpheme} other {# words/morphemes}}', {
+                n: linked,
+              }),
+            );
             wrote = true;
           }
           if (unranked) {
             parts.push(
-              `did not link ${countOf(unranked, 'word')}/${plural(unranked, 'morpheme')} whose form has several entries: too many links in the project to count`,
+              t(
+                'did not link {n, plural, one {# word/morpheme} other {# words/morphemes}} whose form has several entries: too many links in the project to count',
+                { n: unranked },
+              ),
             );
           }
         } else {
@@ -415,11 +429,11 @@ export const AutoAnalyzeDialog = ({ open, onOpenChange, doc }) => {
               vocabIds: Object.keys(doc.vocabularies || {}),
             },
             {
-              successTitle: 'Linking complete',
-              successMessage: `${service.serviceName} finished.`,
-              errorTitle: 'Failed to link',
-              errorMessage: `${service.serviceName} reported an error.`,
-              stoppedTitle: 'Auto-analyze',
+              successTitle: t('Linking complete'),
+              successMessage: t('{name} finished.', { name: service.serviceName }),
+              errorTitle: t('Failed to link'),
+              errorMessage: t('{name} reported an error.', { name: service.serviceName }),
+              stoppedTitle: runLabel,
               onRequestId: recordStep('link', TASKS.LINK_VOCAB),
               quiet,
               onProgress,
@@ -428,7 +442,7 @@ export const AutoAnalyzeDialog = ({ open, onOpenChange, doc }) => {
           if (left) return;
           if (stopped(result)) return await reload();
           await reload();
-          parts.push('ran the linking service');
+          parts.push(t('ran the linking service'));
           wrote = true;
         }
       }
@@ -456,7 +470,7 @@ export const AutoAnalyzeDialog = ({ open, onOpenChange, doc }) => {
       // `isProcessing`, which the closure fixes at false for the whole run, so
       // every service failure was toasted twice: once by its own name, and
       // again as "Auto-analyze failed".
-      if (!err?.reported && !left) notifyError('Try again.', 'Failed to run Auto-analyze');
+      if (!err?.reported && !left) notifyError(t('Try again.'), t('Failed to run Auto-analyze'));
     } finally {
       // A record a left run keeps is for the page that comes back.
       if (!stillOut && !left) clearRunRecord(doc.id);
@@ -465,15 +479,15 @@ export const AutoAnalyzeDialog = ({ open, onOpenChange, doc }) => {
   };
 
   const serviceHint = (spot, absent) =>
-    spot.service ? null : isDiscovering ? 'Discovering services…' : absent;
+    spot.service ? null : isDiscovering ? t('Discovering services…') : absent;
 
   return (
     <ServiceRunDialog
       open={open}
       onOpenChange={onOpenChange}
-      title="Auto-analyze"
+      title={t('Auto-analyze')}
       icon={Sparkles}
-      runLabel="Run"
+      runLabel={t('Run')}
       onRun={run}
       notice={runHeldNotice(writeLock)}
       runDisabled={nothingToRun || blockingErrors.length > 0 || !!writeLock}
@@ -481,13 +495,15 @@ export const AutoAnalyzeDialog = ({ open, onOpenChange, doc }) => {
       <Step
         n={1}
         stepKey="translate"
-        label="Propose translations"
+        label={t('Propose translations')}
         on={translateOn}
         disabled={!translateSpot.service}
         onToggle={toggleStep}
         hint={
-          serviceHint(translateSpot, 'No translation service is online.') ??
-          'A model drafts a free translation for every sentence, from the words and any glosses. Translations a person wrote are left alone. Earlier machine drafts are refreshed.'
+          serviceHint(translateSpot, t('No translation service is online.')) ??
+          t(
+            'A model drafts a free translation for every sentence, from the words and any glosses. Translations a person wrote are left alone. Earlier machine drafts are refreshed.',
+          )
         }
       >
         {steps.translate && translateSpot.service && <ServiceMethodRow spot={translateSpot} />}
@@ -496,22 +512,26 @@ export const AutoAnalyzeDialog = ({ open, onOpenChange, doc }) => {
       <Step
         n={2}
         stepKey="copy"
-        label="Copy previous analyses"
+        label={t('Copy previous analyses')}
         on={steps.copy}
         onToggle={toggleStep}
-        hint="Words with an uncontested analysis elsewhere in the project get it copied: segmentation, links, and field values. Only words with no analysis at all are touched."
+        hint={t(
+          'Words with an uncontested analysis elsewhere in the project get it copied: segmentation, links, and field values. Only words with no analysis at all are touched.',
+        )}
       />
 
       <Step
         n={3}
         stepKey="analyze"
-        label="Propose segmentation and glosses"
+        label={t('Propose segmentation and glosses')}
         on={analyzeOn}
         disabled={!analyzeSpot.service}
         onToggle={toggleStep}
         hint={
-          serviceHint(analyzeSpot, 'No analysis service is online.') ??
-          'A model analyzes every sentence. Words a person analyzed are left alone. Earlier machine proposals are refreshed.'
+          serviceHint(analyzeSpot, t('No analysis service is online.')) ??
+          t(
+            'A model analyzes every sentence. Words a person analyzed are left alone. Earlier machine proposals are refreshed.',
+          )
         }
       >
         {steps.analyze && analyzeSpot.service && <ServiceMethodRow spot={analyzeSpot} />}
@@ -520,14 +540,16 @@ export const AutoAnalyzeDialog = ({ open, onOpenChange, doc }) => {
       <Step
         n={4}
         stepKey="link"
-        label="Link to the lexicon"
+        label={t('Link to the lexicon')}
         on={linkOn}
         disabled={!hasVocabs}
         onToggle={toggleStep}
         hint={
           hasVocabs
-            ? 'Links words and morphemes to lexicon entries. Replaces only its own unconfirmed links.'
-            : 'This project has no lexicon.'
+            ? t(
+                'Links words and morphemes to lexicon entries. Replaces only its own unconfirmed links.',
+              )
+            : t('This project has no lexicon.')
         }
       >
         {steps.link && hasVocabs && <ServiceMethodRow spot={linkSpot} />}

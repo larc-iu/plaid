@@ -11,6 +11,7 @@ import { useUnsavedGuard } from '../../hooks/useUnsavedDraft.js';
 import { useProjectFavicon } from '../../hooks/useProjectFavicon.js';
 import { TYPE } from '../../lib/typeScale.js';
 import { cn } from '../../lib/utils.js';
+import { t } from '../../lib/i18n.js';
 
 /**
  * The breadcrumb and tab row every project-level screen wears, mirroring the
@@ -68,21 +69,21 @@ export const ProjectTabStrip = ({
   const p = location.pathname;
   const active =
     activeValue ??
-    tabs.find((t) => (t.match ? t.match.test(p) : p.endsWith(`/${t.value}`)))?.value ??
+    tabs.find((tab) => (tab.match ? tab.match.test(p) : p.endsWith(`/${tab.value}`)))?.value ??
     defaultValue;
   // A tab that carries `show` is offered only once it is TRUE: null is "not
   // known yet" (whether an assistant is online, say), and drawing the tab and
   // then withdrawing it is a flicker, or a tab that opens onto nothing.
   const shown = tabs.filter(
-    (t) => !('show' in t) || t.show === true || (t.alsoWhenActive && active === t.value),
+    (tab) => !('show' in tab) || tab.show === true || (tab.alsoWhenActive && active === tab.value),
   );
-  const to = Object.fromEntries(tabs.map((t) => [t.value, t.to]));
+  const to = Object.fromEntries(tabs.map((tab) => [tab.value, tab.to]));
 
   return (
     <div className="mb-6">
       <Breadcrumb
         className="mb-2"
-        items={[{ label: 'Projects', to: appRoutes().projects, fixed: true }]}
+        items={[{ label: t('Projects'), to: appRoutes().projects, fixed: true }]}
       />
       {/* The name is data in any script, so it takes its own direction inside
           a heading that stays with the chrome: an Arabic name reads right to
@@ -101,9 +102,9 @@ export const ProjectTabStrip = ({
           fire. */}
       <Tabs value={active} onValueChange={(v) => navigate(to[v])} guard={guard}>
         <TabsList>
-          {shown.map((t) => (
-            <TabsTrigger key={t.value} value={t.value} to={t.to}>
-              {t.label}
+          {shown.map((tab) => (
+            <TabsTrigger key={tab.value} value={tab.value} to={tab.to}>
+              {tab.label}
             </TabsTrigger>
           ))}
         </TabsList>

@@ -25,8 +25,12 @@ import { ElanOptions } from '@/components/export/ElanOptions.jsx';
 import { TextGridOptions } from '@/components/export/TextGridOptions.jsx';
 import { NativeOptions } from '@/components/export/NativeOptions.jsx';
 import { LatexOptions } from '@/components/export/LatexOptions.jsx';
+import { t } from '@ui/lib/i18n.js';
 
-const formatLabel = (id) => EXPORT_FORMATS.find((f) => f.id === id)?.label ?? id;
+const formatLabel = (id) => {
+  const label = EXPORT_FORMATS.find((f) => f.id === id)?.label;
+  return label ? t(label) : id;
+};
 
 // Each format's options editor. A format with no entry edits plain text's.
 const OPTIONS_EDITORS = {
@@ -91,10 +95,10 @@ export const ExportPresetEditor = ({ projectId, client, presetId, onProjectUpdat
         setProject(p);
         setPresets(list);
         setDraft(found ? JSON.parse(JSON.stringify(found)) : null);
-        setError(found ? '' : 'This export preset no longer exists.');
+        setError(found ? '' : t('This export preset no longer exists.'));
       } catch (err) {
         console.error('Failed to load export preset:', err);
-        if (!cancelled) setError('Failed to load the export preset.');
+        if (!cancelled) setError(t('Failed to load the export preset.'));
       }
     })();
     return () => {
@@ -123,11 +127,11 @@ export const ExportPresetEditor = ({ projectId, client, presetId, onProjectUpdat
         (list) => {
           const now = list.find((p) => p.id === presetId);
           if (!sameConfig(now, saved)) {
-            throw Object.assign(new Error('Changed elsewhere'), { status: 409 });
+            throw Object.assign(new Error(t('Changed elsewhere')), { status: 409 });
           }
           return list.map((p) => (p.id === presetId ? edited : p));
         },
-        `Edit export preset “${edited.name}”`,
+        `Edit export preset “${edited.name}”`, // i18n-ignore: an audit label, stored on the server
       );
       setPresets(stored.presets);
       setDraft(stored.presets.find((p) => p.id === presetId));
@@ -137,10 +141,10 @@ export const ExportPresetEditor = ({ projectId, client, presetId, onProjectUpdat
       setProject(stored.project);
       // See ExportPresetsSettings: the containing page holds one as well.
       onProjectUpdate?.();
-      notifySuccess(`Preset “${draft.name.trim()}” saved`);
+      notifySuccess(t('Preset “{name}” saved', { name: draft.name.trim() }));
     } catch (err) {
       console.error('Failed to save export preset:', err);
-      notifyError(err, 'Failed to save the preset');
+      notifyError(err, t('Failed to save the preset'));
       // This preset changed or went meanwhile: show it as it is stored now.
       if (isConfigConflict(err)) setReloads((n) => n + 1);
     } finally {
@@ -152,9 +156,9 @@ export const ExportPresetEditor = ({ projectId, client, presetId, onProjectUpdat
     if (
       dirty &&
       !(await confirm({
-        title: 'Discard changes?',
-        description: 'This preset has unsaved changes.',
-        confirmLabel: 'Discard',
+        title: t('Discard changes?'),
+        description: t('This preset has unsaved changes.'),
+        confirmLabel: t('Discard'),
         destructive: true,
       }))
     ) {
@@ -165,7 +169,7 @@ export const ExportPresetEditor = ({ projectId, client, presetId, onProjectUpdat
 
   const backButton = (
     <Button variant="ghost" size="sm" className="-ml-2" onClick={back}>
-      <ArrowLeft className="h-4 w-4" /> Back to export presets
+      <ArrowLeft className="h-4 w-4" /> {t('Back to export presets')}
     </Button>
   );
 
@@ -197,17 +201,17 @@ export const ExportPresetEditor = ({ projectId, client, presetId, onProjectUpdat
           </div>
           <div className="flex items-center gap-2">
             <Button variant="outline" onClick={back}>
-              {dirty ? 'Cancel' : 'Done'}
+              {dirty ? t('Cancel') : t('Done')}
             </Button>
             <Button onClick={save} disabled={!dirty || saving || !draft.name.trim()}>
-              {saving ? 'Saving…' : 'Save'}
+              {saving ? t('Saving…') : t('Save')}
             </Button>
           </div>
         </div>
       </div>
 
       <div className="flex flex-col gap-1.5">
-        <Label htmlFor="preset-name">Name</Label>
+        <Label htmlFor="preset-name">{t('Name')}</Label>
         <Input
           id="preset-name"
           value={draft.name}
@@ -218,8 +222,10 @@ export const ExportPresetEditor = ({ projectId, client, presetId, onProjectUpdat
 
       <div className="flex flex-col gap-4 border-t pt-4">
         <div>
-          <h3 className="text-lg font-semibold">Contents</h3>
-          <p className="text-sm text-muted-foreground">What this preset includes when it runs.</p>
+          <h3 className="text-lg font-semibold">{t('Contents')}</h3>
+          <p className="text-sm text-muted-foreground">
+            {t('What this preset includes when it runs.')}
+          </p>
         </div>
         {(OPTIONS_EDITORS[draft.format] ?? OPTIONS_EDITORS.plaintext)({
           options: draft.options || {},
@@ -231,9 +237,9 @@ export const ExportPresetEditor = ({ projectId, client, presetId, onProjectUpdat
         {exportFormat(draft.format).vocabularyTsvs && hasVocabularies && (
           <label className="flex cursor-pointer items-center justify-between gap-2 border-t pt-3 text-sm">
             <span>
-              <span className="font-medium">Include vocabularies as TSV files</span>
+              <span className="font-medium">{t('Include vocabularies as TSV files')}</span>
               <span className="block text-xs text-muted-foreground">
-                Added to the .zip that a project-wide or multi-document export produces.
+                {t('Added to the .zip that a project-wide or multi-document export produces.')}
               </span>
             </span>
             <Switch
@@ -246,7 +252,7 @@ export const ExportPresetEditor = ({ projectId, client, presetId, onProjectUpdat
 
       <div className="rounded-md border bg-muted/20 p-4">
         {dirty ? (
-          <p className="text-sm text-muted-foreground">Save to run this preset.</p>
+          <p className="text-sm text-muted-foreground">{t('Save to run this preset.')}</p>
         ) : (
           <ExportRunner
             client={client}

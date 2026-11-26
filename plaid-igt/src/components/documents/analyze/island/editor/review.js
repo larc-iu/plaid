@@ -1,4 +1,5 @@
 import { notifyError, notifyInfo } from '@/utils/feedback';
+import { t } from '@ui/lib/i18n.js';
 import { keys } from '@/lib/keymap.js';
 import { tagsetEnforces, validateValue } from '@/domain/tagsets';
 import {
@@ -99,15 +100,19 @@ export const review = {
     const adoptions = this._wordGuessAdoptions(wordId);
     if (!adoptions.length && !this._wordHasUnverified(wordId)) {
       notifyInfo(
-        'Everything here was made by a person already. Enter to accept a guess in one cell.',
-        'Nothing to accept on this word',
+        t('Everything here was made by a person already. Enter to accept a guess in one cell.'),
+        t('Nothing to accept on this word'),
       );
       return true;
     }
     // A value a closed list refuses would sink the whole accept (it is one
     // write), so say which cell holds it and stay there instead of moving on.
     if (
-      this._refuseOffList(this._wordReviewCells(wordId), 'Nothing accepted on this word', e.target)
+      this._refuseOffList(
+        this._wordReviewCells(wordId),
+        t('Nothing accepted on this word'),
+        e.target,
+      )
     )
       return true;
     // Each guess taken is recorded once the write lands, and only a guess the
@@ -252,8 +257,10 @@ export const review = {
     // suppressed commit used to leave the cell showing text nobody saved.
     if (!this._wordHasUnverified(wordId)) {
       notifyInfo(
-        'Everything here was made by a person already. Only unverified proposals can be discarded this way.',
-        'Nothing to discard on this word',
+        t(
+          'Everything here was made by a person already. Only unverified proposals can be discarded this way.',
+        ),
+        t('Nothing to discard on this word'),
       );
       return true;
     }

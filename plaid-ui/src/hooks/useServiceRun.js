@@ -3,6 +3,7 @@ import { useServiceSpot } from './useServiceSpot.js';
 import { writeRunRecord, clearRunRecord } from '../domain/runRecord.js';
 import { reloadAfterRun } from '../lib/runReload.js';
 import { notifyError } from '../lib/notify.js';
+import { t } from '../lib/i18n.js';
 
 /**
  * One integration spot and its run, start to finish: the service a maintainer
@@ -52,13 +53,13 @@ export const useServiceRun = ({
     async (extra = {}) => {
       const missing = Object.values(spot.params.errors);
       if (missing.length) {
-        notifyError(missing[0], 'Missing required option');
+        notifyError(missing[0], t('Missing required option'));
         return;
       }
       if (!spot.service) return;
       const lock = acquireWriteLock(label, { onCancel: cancelRequest });
       if (!lock) return;
-      lock.report({ message: 'Starting the service…' });
+      lock.report({ message: t('Starting the service…') });
       let stillOut = false; // the request survived our giving up on it
       try {
         await requestService(
@@ -83,7 +84,7 @@ export const useServiceRun = ({
         );
         // Re-reading a large document is seconds of work, so it is named rather
         // than left as dead air.
-        lock.report({ percent: null, message: 'Loading results…' });
+        lock.report({ percent: null, message: t('Loading results…') });
         await reloadAfterRun(() => doc.reload());
       } catch (error) {
         // requestService has already said it out loud; log so a failed run does

@@ -11,6 +11,7 @@ import {
   AlertDialogCancel,
 } from '../ui/alert-dialog.jsx';
 import { CONFIRM_DELETE_CLASS } from '../../lib/destructive.js';
+import { t } from '../../lib/i18n.js';
 
 // App-wide imperative confirmation modal. Replaces native window.confirm()
 // so every "are you sure?" in the app uses one consistent shadcn AlertDialog
@@ -32,19 +33,20 @@ import { CONFIRM_DELETE_CLASS } from '../../lib/destructive.js';
 
 const ConfirmContext = createContext(null);
 
-const EMPTY = {
-  title: 'Are you sure?',
+// A function, so the words are read in the interface's language when asked.
+const empty = () => ({
+  title: t('Are you sure?'),
   description: '',
-  confirmLabel: 'Confirm',
-  cancelLabel: 'Cancel',
+  confirmLabel: t('Confirm'),
+  cancelLabel: t('Cancel'),
   destructive: false,
   checkbox: null,
   returnFocus: true,
-};
+});
 
 export function ConfirmProvider({ children }) {
   const [open, setOpen] = useState(false);
-  const [opts, setOpts] = useState(EMPTY);
+  const [opts, setOpts] = useState(empty);
   const [checked, setChecked] = useState(false);
   const resolverRef = useRef(null);
 
@@ -59,7 +61,7 @@ export function ConfirmProvider({ children }) {
     // A second confirm() while one is open cancels the first (last wins),
     // so we never strand a promise.
     if (resolverRef.current) resolverRef.current(false);
-    setOpts({ ...EMPTY, ...options });
+    setOpts({ ...empty(), ...options });
     setChecked(!!options.checkbox?.defaultChecked);
     setOpen(true);
     return new Promise((resolve) => {

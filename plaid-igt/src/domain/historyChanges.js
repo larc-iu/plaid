@@ -28,17 +28,13 @@
 import { PROVENANCE_KEYS, PROV_STATES, provState } from '@larc-iu/plaid-client';
 import { deriveSentences } from './derive.js';
 import { getIgtLayerInfo } from './layerInfo.js';
+import { t } from '@ui/lib/i18n.js';
+import { fieldDisplayLabel, fieldDisplayName } from './vocabFieldLabels.js';
 import { morphFormOf, wordCells } from './igtExport.js';
 import { equalsBefore, joinerBetween } from './affixMarkers.js';
 import { readOrthographies, readVocabFields } from './igtConfig.js';
 import { entryName, itemsById } from './vocabLookup.js';
-import {
-  FIELD_TYPES,
-  RESERVED_ITEM_KEYS,
-  fieldLabel,
-  humanizeFieldName,
-  normalizeVocabFields,
-} from './vocabFields.js';
+import { FIELD_TYPES, RESERVED_ITEM_KEYS, normalizeVocabFields } from './vocabFields.js';
 
 // ---------------------------------------------------------------------------
 // Whose a value was
@@ -195,10 +191,10 @@ const rowsOf = (fields) => [
   { key: 'surface', label: '', kind: 'surface' },
   ...fields.orthographies.map((n) => ({ key: `orth:${n}`, label: n, kind: 'orth' })),
   ...fields.wordFields.map((n) => ({ key: `word:${n}`, label: n, kind: 'word' })),
-  ...(fields.hasMorphemes ? [{ key: 'morphemes', label: 'Morphemes', kind: 'morphemes' }] : []),
+  ...(fields.hasMorphemes ? [{ key: 'morphemes', label: t('Morphemes'), kind: 'morphemes' }] : []),
   ...fields.morphFields.map((n) => ({ key: `morph:${n}`, label: n, kind: 'morph' })),
-  ...(fields.hasMorphemes ? [{ key: 'entry', label: 'Entry', kind: 'entry' }] : []),
-  { key: 'wordEntry', label: 'Word entry', kind: 'wordEntry' },
+  ...(fields.hasMorphemes ? [{ key: 'entry', label: t('Entry'), kind: 'entry' }] : []),
+  { key: 'wordEntry', label: t('Word entry'), kind: 'wordEntry' },
 ];
 
 const filled = (v) => (v ?? '') !== '';
@@ -238,27 +234,27 @@ const morphemeValues = (m, fields, vocabularies) => {
   return out;
 };
 
-const wordModel = (t, fields, vocabularies) => {
-  const c = wordCells(t, fields);
+const wordModel = (tok, fields, vocabularies) => {
+  const c = wordCells(tok, fields);
   const values = {
-    surface: cellValue(c.surface, provState(t.metadata)),
+    surface: cellValue(c.surface, provState(tok.metadata)),
     wordEntry: cellValue(
-      linkLabel(vocabularies, t.vocabItem),
-      t.vocabItem?.prov ?? null,
-      t.vocabItem?.linkId,
+      linkLabel(vocabularies, tok.vocabItem),
+      tok.vocabItem?.prov ?? null,
+      tok.vocabItem?.linkId,
     ),
   };
   fields.orthographies.forEach((n, i) => {
-    values[`orth:${n}`] = cellValue(c.orthLines[i], provState(t.metadata), t.id);
+    values[`orth:${n}`] = cellValue(c.orthLines[i], provState(tok.metadata), tok.id);
   });
   fields.wordFields.forEach((n, i) => {
     values[`word:${n}`] = cellValue(
       c.wordLines[i],
-      spanProv(t.annotations?.[n]),
-      t.annotations?.[n]?.id,
+      spanProv(tok.annotations?.[n]),
+      tok.annotations?.[n]?.id,
     );
   });
-  const morphemes = (t.morphemes || [])
+  const morphemes = (tok.morphemes || [])
     .filter((m) => !m.virtual)
     .map((m) => ({
       id: m.id,
@@ -266,13 +262,13 @@ const wordModel = (t, fields, vocabularies) => {
       equalsBefore: equalsBefore(m.metadata),
       values: morphemeValues(m, fields, vocabularies),
     }));
-  return { id: t.id, begin: t.begin, values, morphemes };
+  return { id: tok.id, begin: tok.begin, values, morphemes };
 };
 
 const sentenceModel = (s, fields, vocabularies) => ({
   id: s.id,
   text: (s.pieces || []).map((p) => p.content ?? '').join(''),
-  words: (s.tokens || []).map((t) => wordModel(t, fields, vocabularies)),
+  words: (s.tokens || []).map((tok) => wordModel(tok, fields, vocabularies)),
   fields: Object.fromEntries(
     fields.sentFields.map((n) => [
       n,
@@ -489,8 +485,8 @@ const tokenPlaces = (raws) => {
   for (const raw of raws) {
     for (const tl of raw?.textLayers || []) {
       for (const tkl of tl.tokenLayers || []) {
-        for (const t of tkl.tokens || [])
-          if (!out.has(t.id)) out.set(t.id, { ...t, layer: tkl.id });
+        for (const tok of tkl.tokens || [])
+          if (!out.has(tok.id)) out.set(tok.id, { ...tok, layer: tkl.id });
       }
     }
   }
@@ -548,10 +544,10 @@ const placeRows = (rows, sides, info) => {
         out.add(id);
         continue;
       }
-      const t = places.get(id);
-      if (!t) return null;
-      if (!wordLayers.has(t.layer)) return false;
-      at(t, out);
+      const tok = places.get(id);
+      if (!tok) return null;
+      if (!wordLayers.has(tok.layer)) return false;
+      at(tok, out);
     }
     return out;
   };
@@ -671,7 +667,7 @@ export function documentRowChanges(rows) {
   if (!r) return [];
   const out = [];
   if ((r.before.name ?? '') !== (r.after.name ?? '')) {
-    out.push({ label: 'Name', before: r.before.name ?? '', after: r.after.name ?? '' });
+    out.push({ label: t('Name'), before: r.before.name ?? '', after: r.after.name ?? '' });
   }
   const b = r.before.metadata || {};
   const a = r.after.metadata || {};
@@ -747,11 +743,12 @@ export function entryChanges(rows, vocabularies) {
     ];
     const fields = [];
     if ((r.before?.form ?? '') !== (r.after?.form ?? '')) {
-      fields.push({ label: 'Form', before: r.before?.form ?? '', after: r.after?.form ?? '' });
+      fields.push({ label: t('Form'), before: r.before?.form ?? '', after: r.after?.form ?? '' });
     }
     for (const k of keys) {
       const f = byName.get(k) ?? (k === 'parent' ? { type: FIELD_TYPES.ITEM } : null);
-      const label = k === 'parent' ? 'Parent entry' : f ? fieldLabel(f) : humanizeFieldName(k);
+      const label =
+        k === 'parent' ? t('Parent entry') : f ? fieldDisplayLabel(f) : fieldDisplayName(k);
       const was = entryFieldValue(f, b[k], name);
       const now = entryFieldValue(f, a[k], name);
       if (was !== now) fields.push({ label, before: was, after: now });

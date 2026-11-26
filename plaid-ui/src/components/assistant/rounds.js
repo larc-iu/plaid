@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { countOf } from '../../lib/plural.js';
+import { t } from '../../lib/i18n.js';
 
 // What the assistant was sent back and wrote, one model call (a "round") at a
 // time, stored by the service beside the conversation
@@ -180,8 +180,11 @@ export const runLabel = (run) => {
     }
   const sentences = seen.size + loose;
   return sentences
-    ? `Read ${countOf(sentences, 'sentence', 'sentences')} in ${countOf(docs, 'document', 'documents')}`
-    : `Read ${countOf(docs, 'document', 'documents')}`;
+    ? t(
+        'Read {sentences, plural, one {# sentence} other {# sentences}} in {docs, plural, one {# document} other {# documents}}',
+        { sentences, docs },
+      )
+    : t('Read {docs, plural, one {# document} other {# documents}}', { docs });
 };
 
 // A tool call's arguments as the reader is shown them: `{code}` for code the

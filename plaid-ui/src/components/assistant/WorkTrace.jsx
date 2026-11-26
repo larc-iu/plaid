@@ -6,6 +6,7 @@ import { AssistantMarkdown } from './AssistantMarkdown.jsx';
 import { useExport } from './exportContext.js';
 import { callInput, callOf, foldReads, runLabel } from './rounds.js';
 import { thinkingFor } from './roundClock.js';
+import { msg, t } from '../../lib/i18n.js';
 
 // What the assistant did for one turn, in the order it happened: the text it
 // wrote between its tool calls, and each call, which opens to what it was
@@ -33,9 +34,10 @@ const MUTED = 'text-xs text-muted-foreground';
 const PRE =
   'max-h-[min(18rem,40vh)] min-w-0 max-w-full overflow-auto whitespace-pre rounded bg-muted p-2 font-mono text-[11px] leading-4 text-foreground';
 
-const CUT_LINE = 'Cut at 12,000 characters.';
-const NOT_STORED = 'Not stored.';
-const GONE = 'This conversation was deleted.';
+// Messages: each place that shows one calls t() on it.
+const CUT_LINE = msg('Cut at 12,000 characters.');
+const NOT_STORED = msg('Not stored.');
+const GONE = msg('This conversation was deleted.');
 
 // A disclosure: a button that says whether it is open and which region it
 // opens, and the region under it.
@@ -89,8 +91,8 @@ const CopyButton = ({ text }) => {
   const [done, setDone] = useState(false);
   useEffect(() => {
     if (!done) return undefined;
-    const t = setTimeout(() => setDone(false), 1500);
-    return () => clearTimeout(t);
+    const timer = setTimeout(() => setDone(false), 1500);
+    return () => clearTimeout(timer);
   }, [done]);
   return (
     <button
@@ -104,7 +106,7 @@ const CopyButton = ({ text }) => {
       className="flex items-center gap-1 rounded px-1 py-0.5 hover:bg-muted hover:text-foreground"
     >
       {done ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />}
-      Copy
+      {t('Copy')}
     </button>
   );
 };
@@ -178,16 +180,16 @@ const InputBlock = ({ call, exported }) => {
   const input = callInput(call.name, call.arguments);
   const lines = (input.lines || []).map(([k, v]) => `${k}: ${v}`).join('\n');
   if (input.raw !== undefined)
-    return <Block heading="Input" text={input.raw} exported={exported} />;
+    return <Block heading={t('Input')} text={input.raw} exported={exported} />;
   const main = input.code ?? input.query;
   if (main !== undefined)
     return (
       <>
-        <Block heading="Input" text={main} exported={exported} />
+        <Block heading={t('Input')} text={main} exported={exported} />
         {lines && <pre className={PRE}>{lineByLine(lines)}</pre>}
       </>
     );
-  return lines ? <Block heading="Input" text={lines} exported={exported} /> : null;
+  return lines ? <Block heading={t('Input')} text={lines} exported={exported} /> : null;
 };
 
 // One call's input and output, once its round is read.
@@ -195,9 +197,9 @@ const CallDetail = ({ call, exported }) => (
   <div className="mb-1 ml-4 flex min-w-0 flex-col">
     <InputBlock call={call} exported={exported} />
     <Block
-      heading="Output"
+      heading={t('Output')}
       text={call.result ?? ''}
-      after={call.cut ? CUT_LINE : null}
+      after={call.cut ? t(CUT_LINE) : null}
       exported={exported}
     />
   </div>
@@ -213,8 +215,8 @@ const useRound = (rounds, id, gone) => {
     if (!id || !rounds || state.round) return undefined;
     let live = true;
     rounds.round(id).then(
-      (round) => live && setState(round ? { round } : { missing: gone ? GONE : NOT_STORED }),
-      () => live && setState({ missing: NOT_STORED }),
+      (round) => live && setState(round ? { round } : { missing: t(gone ? GONE : NOT_STORED) }),
+      () => live && setState({ missing: t(NOT_STORED) }),
     );
     return () => {
       live = false;
@@ -231,7 +233,7 @@ const StepDetail = ({ step, rounds, gone }) => {
   const state = useRound(rounds, step.round, gone);
   const call = callOf(state.round, step);
   if (!state.round) return <RoundStatus state={state} />;
-  if (!call) return <p className="mb-1 ml-4">{NOT_STORED}</p>;
+  if (!call) return <p className="mb-1 ml-4">{t(NOT_STORED)}</p>;
   return <CallDetail call={call} />;
 };
 
@@ -245,7 +247,7 @@ const stepLabel = (step) =>
     <>
       <CircleX
         className="mr-1 inline h-3 w-3 align-[-2px]"
-        aria-label="Failed"
+        aria-label={t('Failed')}
         role="img"
         data-step-failed
       />
@@ -271,7 +273,7 @@ const StepRow = ({ step, rounds, live, gone, exported }) => {
     return (
       <div
         className={cn('px-1 py-0.5 pl-5 [overflow-wrap:anywhere]', className)}
-        title={step.unstored ? NOT_STORED : undefined}
+        title={step.unstored ? t(NOT_STORED) : undefined}
       >
         {label}
       </div>
@@ -312,19 +314,19 @@ const Thinking = ({ id, rounds, live, gone, exported, stored = true, unstored = 
     const text = rounds?.peek?.(id)?.thinking;
     if (!text) return null;
     return (
-      <Details label="Thinking">
+      <Details label={t('Thinking')}>
         <ThinkingText text={text} />
       </Details>
     );
   }
   if (!rounds || !id || unstored || (live && !stored))
     return (
-      <div className="px-1 py-0.5 pl-5" title={unstored ? NOT_STORED : undefined}>
-        Thinking
+      <div className="px-1 py-0.5 pl-5" title={unstored ? t(NOT_STORED) : undefined}>
+        {t('Thinking')}
       </div>
     );
   return (
-    <Disclosure label="Thinking">
+    <Disclosure label={t('Thinking')}>
       <ThinkingOf rounds={rounds} id={id} gone={gone} />
     </Disclosure>
   );
@@ -347,7 +349,7 @@ const useThinkingFor = (since) => {
 const LiveThinking = ({ text, since }) => {
   const label = useThinkingFor(since);
   return (
-    <Disclosure label={label ?? 'Thinking'} open>
+    <Disclosure label={label ?? t('Thinking')} open>
       <ThinkingText text={text} follow />
     </Disclosure>
   );
@@ -368,10 +370,10 @@ const Said = ({ text }) => (
 // each read when it is opened.
 const Received = ({ rounds, id, gone }) => (
   <>
-    <Disclosure label="Message as received">
+    <Disclosure label={t('Message as received')}>
       <Asked rounds={rounds} id={id} gone={gone} />
     </Disclosure>
-    <Disclosure label="Instructions">
+    <Disclosure label={t('Instructions')}>
       <PromptOf rounds={rounds} id={id} gone={gone} />
     </Disclosure>
   </>
@@ -390,7 +392,7 @@ const Asked = ({ rounds, id, gone }) => {
 const PromptOf = ({ rounds, id, gone }) => {
   const state = useRound(rounds, id, gone);
   if (!state.round) return <RoundStatus state={state} />;
-  if (!state.round.prompt) return <p className="mb-1 ml-4">{NOT_STORED}</p>;
+  if (!state.round.prompt) return <p className="mb-1 ml-4">{t(NOT_STORED)}</p>;
   return <Instructions rounds={rounds} hash={state.round.prompt} gone={gone} />;
 };
 
@@ -403,8 +405,8 @@ const Instructions = ({ rounds, hash, gone }) => {
     if (state.prompt) return undefined;
     let live = true;
     rounds.prompt(hash).then(
-      (prompt) => live && setState(prompt ? { prompt } : { missing: gone ? GONE : NOT_STORED }),
-      () => live && setState({ missing: NOT_STORED }),
+      (prompt) => live && setState(prompt ? { prompt } : { missing: t(gone ? GONE : NOT_STORED) }),
+      () => live && setState({ missing: t(NOT_STORED) }),
     );
     return () => {
       live = false;
@@ -414,8 +416,8 @@ const Instructions = ({ rounds, hash, gone }) => {
   if (!state.prompt) return <RoundStatus state={state} />;
   return (
     <div className="mb-1 ml-4 flex flex-col">
-      <Block heading="System prompt" text={state.prompt.system ?? ''} />
-      <Block heading="Tools" text={state.prompt.tools ?? ''} />
+      <Block heading={t('System prompt')} text={state.prompt.system ?? ''} />
+      <Block heading={t('Tools')} text={state.prompt.tools ?? ''} />
     </div>
   );
 };

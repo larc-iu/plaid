@@ -64,6 +64,7 @@ import { getIgtLayerInfo } from '../layerInfo.js';
 import { isTokenIgnored, readIgnoredTokens } from '../igtConfig.js';
 import { MIN_SEGMENT, overlapProblem, rangeProblem } from '../alignmentTimes.js';
 import { notSetUp } from '@ui/domain/setupGuard.js';
+import { t, msg } from '@ui/lib/i18n.js';
 import {
   countSplitLoss,
   countTextDeleteLoss,
@@ -85,12 +86,12 @@ import { reparentSpans, reparentVocabLinks } from './reparent.js';
 // segment, which are named apart.
 const personsWorkOn = (info) => {
   const held = new Set([info.sentenceTokenLayer?.id, info.alignmentTokenLayer?.id].filter(Boolean));
-  return (t, layerId) => !held.has(layerId) && holdsPersonsWork(t);
+  return (tok, layerId) => !held.has(layerId) && holdsPersonsWork(tok);
 };
 
 // Two ranges [a, b) and [c, d) overlap iff a < d && b > c.
 const findOverlappingAlignment = (tokens, begin, end, excludeId = null) =>
-  (tokens || []).find((t) => t.id !== excludeId && t.begin < end && t.end > begin) || null;
+  (tokens || []).find((tok) => tok.id !== excludeId && tok.begin < end && tok.end > begin) || null;
 
 const sortByBegin = (a, b) => a.begin - b.begin;
 
@@ -164,14 +165,14 @@ const bodyOf = (info) => info.primaryTextLayer?.text?.body ?? '';
 const pushMadeWords = (infoNext, textId, answer) => {
   const layer = infoNext.primaryTokenLayer;
   if (!layer) return;
-  const have = new Set((layer.tokens || []).map((t) => t.id));
+  const have = new Set((layer.tokens || []).map((tok) => tok.id));
   const made = (answer?.reshape?.tokens ?? []).filter(
-    (t) => t.layer === layer.id && !have.has(t.id),
+    (tok) => tok.layer === layer.id && !have.has(tok.id),
   );
   if (!made.length) return;
   if (!Array.isArray(layer.tokens)) layer.tokens = [];
-  for (const t of made) {
-    layer.tokens.push({ id: t.id, text: textId, begin: t.begin, end: t.end, metadata: {} });
+  for (const tok of made) {
+    layer.tokens.push({ id: tok.id, text: textId, begin: tok.begin, end: tok.end, metadata: {} });
   }
   layer.tokens.sort(sortByBegin);
 };
@@ -216,8 +217,9 @@ const planCreate = (info, trimmed, timeBegin) => {
 
   if (temporalInversion) {
     return {
-      error:
+      error: t(
         'Cannot add a segment here: it would be out of time order with an existing segment. Delete that segment first.',
+      ),
     };
   }
   // Overlap must be checked in POST-insert coordinates: the server's text-edit
@@ -226,11 +228,13 @@ const planCreate = (info, trimmed, timeBegin) => {
   // temporal neighbor that the cascade moves clear (bug bash 2026-06-06: a
   // mid-insert between two single-space-separated alignments always tripped it).
   const shiftLen = cpLength(insertedText);
-  const projectedTokens = alignmentTokens.map((t) =>
-    t.begin >= insertBegin ? { ...t, begin: t.begin + shiftLen, end: t.end + shiftLen } : t,
+  const projectedTokens = alignmentTokens.map((tok) =>
+    tok.begin >= insertBegin
+      ? { ...tok, begin: tok.begin + shiftLen, end: tok.end + shiftLen }
+      : tok,
   );
   if (findOverlappingAlignment(projectedTokens, tokenBegin, tokenEnd)) {
-    return { error: 'The new segment overlaps an existing segment.' };
+    return { error: t('The new segment overlaps an existing segment.') };
   }
 
   const newTextLength = cpLength(existingText) + cpLength(insertedText);
@@ -310,7 +314,10 @@ const planEdit = (info, segment, gaps, next, timeBegin) => {
   const inversion = findTemporalInversion(alignmentTokens, tokenBegin, timeBegin, segment.id);
   if (inversion) {
     return {
-      error: `The new time range would put this segment out of order with the ${inversion} segment.`,
+      error: t(
+        '{side, select, previous {The new time range would put this segment out of order with the previous segment.} other {The new time range would put this segment out of order with the next segment.}}',
+        { side: inversion },
+      ),
     };
   }
 
@@ -318,13 +325,13 @@ const planEdit = (info, segment, gaps, next, timeBegin) => {
   // by (newLen - oldLen). Without projecting, growing the text past the next
   // token reads as a false overlap.
   const editDelta = cpLength(next) - (tokenEnd - tokenBegin);
-  const projectedTokens = alignmentTokens.map((t) =>
-    t.id !== segment.id && t.begin >= tokenEnd
-      ? { ...t, begin: t.begin + editDelta, end: t.end + editDelta }
-      : t,
+  const projectedTokens = alignmentTokens.map((tok) =>
+    tok.id !== segment.id && tok.begin >= tokenEnd
+      ? { ...tok, begin: tok.begin + editDelta, end: tok.end + editDelta }
+      : tok,
   );
   if (findOverlappingAlignment(projectedTokens, tokenBegin, newAlignmentEnd, segment.id)) {
-    return { error: 'The edited segment would overlap an existing segment.' };
+    return { error: t('The edited segment would overlap an existing segment.') };
   }
 
   const sentences = info.sentenceTokenLayer.tokens || [];
@@ -382,14 +389,15 @@ const planDeleteText = (body, segment) => {
 
 // The ids of the segments `info` holds, settled.
 const segmentIds = (info) =>
-  new Set((info.alignmentTokenLayer?.tokens || []).map((t) => settledId(t.id)));
+  new Set((info.alignmentTokenLayer?.tokens || []).map((tok) => settledId(tok.id)));
 
 // The segment a write names, as the document `info` holds it now: by its id,
 // settled, since the write may have been made while it was pending. Null when
 // it is gone. A segment someone else made is never taken for it, whatever its
 // speaker and times: a write goes only onto the segment it was made on.
 const segmentNow = (info, id) =>
-  (info.alignmentTokenLayer?.tokens || []).find((t) => settledId(t.id) === settledId(id)) ?? null;
+  (info.alignmentTokenLayer?.tokens || []).find((tok) => settledId(tok.id) === settledId(id)) ??
+  null;
 
 // The entity rule for a write over one segment's text, on the document as
 // read after a refusal: the segment is still there and still holds `over`,
@@ -502,6 +510,32 @@ export const segmentCuts = (body, segment, words = []) => {
 // planned, provenance follows tokenReshape.js.
 const MERGE_SETTLED = new Set(['timeBegin', 'timeEnd', 'speaker', ...PROVENANCE_KEYS]);
 
+// What a write refused because the recording changed says, by what it left
+// unsaved (`what`, as `_recordingRefusal` names it): the recording replaced,
+// then deleted.
+const NOT_SAVED = {
+  Segment: [
+    msg('Replaced elsewhere. Segment not saved.'),
+    msg('Deleted elsewhere. Segment not saved.'),
+  ],
+  'Segment edit': [
+    msg('Replaced elsewhere. Segment edit not saved.'),
+    msg('Deleted elsewhere. Segment edit not saved.'),
+  ],
+  'Segment times': [
+    msg('Replaced elsewhere. Segment times not saved.'),
+    msg('Deleted elsewhere. Segment times not saved.'),
+  ],
+  'Segment split': [
+    msg('Replaced elsewhere. Segment split not saved.'),
+    msg('Deleted elsewhere. Segment split not saved.'),
+  ],
+  'Segment merge': [
+    msg('Replaced elsewhere. Segment merge not saved.'),
+    msg('Deleted elsewhere. Segment merge not saved.'),
+  ],
+};
+
 export const alignmentMutations = {
   // Create a new alignment by inserting `text` into the body at a position
   // chosen to preserve temporal ordering, then creating the alignment token
@@ -510,11 +544,11 @@ export const alignmentMutations = {
     // composed, as the server stores it, so the segment is measured on it
     const trimmed = composeText((text || '').trim()).text;
     if (!trimmed) {
-      this.refuse('Segment text is required');
+      this.refuse(t('Segment text is required'));
       return false;
     }
     if (timeEnd < timeBegin) {
-      this.refuse('Invalid time range: end must be at or after start');
+      this.refuse(t('Invalid time range: end must be at or after start'));
       return false;
     }
     const info = this.layerInfo;
@@ -556,7 +590,7 @@ export const alignmentMutations = {
       const again = planCreate(fresh, trimmed, timeBegin);
       return again.error ? { conflict: null } : { plan: again };
     };
-    return this._showSegmentWrite('Failed to create alignment', {
+    return this._showSegmentWrite(msg('Failed to create alignment'), {
       textId,
       newText,
       ...plan,
@@ -585,11 +619,11 @@ export const alignmentMutations = {
     // composed, as the server stores it, so the segment is measured on it
     const trimmed = composeText((text || '').trim()).text;
     if (!trimmed) {
-      this.refuse('Segment text is required');
+      this.refuse(t('Segment text is required'));
       return false;
     }
     if (timeEnd < timeBegin) {
-      this.refuse('Invalid time range: end must be at or after start');
+      this.refuse(t('Invalid time range: end must be at or after start'));
       return false;
     }
     const info = this.layerInfo;
@@ -606,9 +640,9 @@ export const alignmentMutations = {
       return false;
     }
     const alignmentTokens = alignmentTokenLayer.tokens || [];
-    const existingAlignment = alignmentTokens.find((t) => t.id === existingAlignmentId);
+    const existingAlignment = alignmentTokens.find((tok) => tok.id === existingAlignmentId);
     if (!existingAlignment) {
-      this.refuse('Segment not found');
+      this.refuse(t('Segment not found'));
       return false;
     }
 
@@ -674,7 +708,7 @@ export const alignmentMutations = {
         : { plan: { ...again, patch } };
     };
 
-    return this._showRowEdit('Failed to edit alignment', {
+    return this._showRowEdit(msg('Failed to edit alignment'), {
       textId,
       segmentId: existingAlignmentId,
       ...plan,
@@ -697,7 +731,7 @@ export const alignmentMutations = {
   // and may not overlap another segment.
   async alignBaseline({ begin, end, timeBegin, timeEnd, speaker }) {
     if (timeEnd < timeBegin) {
-      this.refuse('Invalid time range: end must be at or after start');
+      this.refuse(t('Invalid time range: end must be at or after start'));
       return false;
     }
     const info = this.layerInfo;
@@ -723,7 +757,7 @@ export const alignmentMutations = {
       begin < end &&
       end <= bodyLength;
     if (!inRange || !cpSlice(fullText, begin, end).trim()) {
-      this.refuse('Select the text this segment covers.');
+      this.refuse(t('Select the text this segment covers.'));
       return false;
     }
 
@@ -731,12 +765,14 @@ export const alignmentMutations = {
     const { leftBoundary, rightBoundary } = alignableRange(alignmentTokens, bodyLength, timeBegin);
     if (begin < leftBoundary || end > rightBoundary) {
       this.refuse(
-        'The selected text lies outside what this time range can cover: a neighboring segment would fall out of time order. Adjust the time range or the neighboring segments.',
+        t(
+          'The selected text lies outside what this time range can cover: a neighboring segment would fall out of time order. Adjust the time range or the neighboring segments.',
+        ),
       );
       return false;
     }
     if (findOverlappingAlignment(alignmentTokens, begin, end)) {
-      this.refuse('The selected text overlaps an existing segment.');
+      this.refuse(t('The selected text overlaps an existing segment.'));
       return false;
     }
     const overlap = crossTalkProblem(info, { timeBegin, timeEnd, speaker });
@@ -746,7 +782,7 @@ export const alignmentMutations = {
     }
 
     const meta = { ...alignmentMeta(timeBegin, timeEnd, speaker), ...(this.createStamp || {}) };
-    return this._showSegmentWrite('Failed to align baseline text', {
+    return this._showSegmentWrite(msg('Failed to align baseline text'), {
       textId,
       textOps: [],
       token: { begin, end },
@@ -764,7 +800,7 @@ export const alignmentMutations = {
   // go and is not counted. `{annotations, links, shortened}`.
   // `info`, the layers it is counted on: the page's, or a document just read.
   segmentDeleteLoss(alignmentId, info = this.layerInfo) {
-    const segment = (info.alignmentTokenLayer?.tokens || []).find((t) => t.id === alignmentId);
+    const segment = (info.alignmentTokenLayer?.tokens || []).find((tok) => tok.id === alignmentId);
     if (!segment) return { annotations: 0, links: 0, shortened: { annotations: 0, links: 0 } };
     const body = bodyOf(info);
     const ranges = planDeleteText(body, segment).map((op) => [op.index, op.index + op.value]);
@@ -785,7 +821,7 @@ export const alignmentMutations = {
   segmentEditLoss(alignmentId, { text, edits = null }, info = this.layerInfo) {
     const none = { annotations: 0, links: 0, shortened: { annotations: 0, links: 0 } };
     const body = bodyOf(info);
-    const segment = (info.alignmentTokenLayer?.tokens || []).find((t) => t.id === alignmentId);
+    const segment = (info.alignmentTokenLayer?.tokens || []).find((tok) => tok.id === alignmentId);
     const trimmed = composeText((text || '').trim()).text;
     if (!segment || !trimmed) return { stretches: [], loss: none };
     const over = cpSlice(body, segment.begin, segment.end);
@@ -794,7 +830,7 @@ export const alignmentMutations = {
       start: g.start + segment.begin,
       end: g.end + segment.begin,
     }));
-    const words = (info.primaryTokenLayer?.tokens || []).map((t) => [t.begin, t.end]);
+    const words = (info.primaryTokenLayer?.tokens || []).map((tok) => [tok.begin, tok.end]);
     const stretches = removedStretches(body, gaps, words);
     if (!stretches.length) return { stretches, loss: none };
     const loss = countTextDeleteLoss(
@@ -833,13 +869,15 @@ export const alignmentMutations = {
       this.refuse(notSetUp('Text layer not found'));
       return false;
     }
-    const existingAlignment = (alignmentTokenLayer.tokens || []).find((t) => t.id === alignmentId);
+    const existingAlignment = (alignmentTokenLayer.tokens || []).find(
+      (tok) => tok.id === alignmentId,
+    );
     if (!existingAlignment) {
-      this.refuse('Segment not found');
+      this.refuse(t('Segment not found'));
       return false;
     }
 
-    const label = 'Failed to delete segment';
+    const label = msg('Failed to delete segment');
     if (!this._canWrite(label)) return false;
     if (!deleteText) {
       this._applyRawPatch((next, infoNext, vocabs) => {
@@ -921,10 +959,10 @@ export const alignmentMutations = {
   async deleteAlignments(ids) {
     const info = this.layerInfo;
     const textId = info.primaryTextLayer?.text?.id;
-    const have = new Set((info.alignmentTokenLayer?.tokens || []).map((t) => t.id));
+    const have = new Set((info.alignmentTokenLayer?.tokens || []).map((tok) => tok.id));
     const wanted = [...new Set(ids)].filter((id) => have.has(id));
     if (!textId || !wanted.length) return false;
-    const label = 'Failed to delete segments';
+    const label = msg('Failed to delete segments');
     if (!this._canWrite(label)) return false;
     this._applyRawPatch((next, infoNext, vocabs) => {
       removeTokensLocally(next, textId, wanted, vocabs);
@@ -937,9 +975,9 @@ export const alignmentMutations = {
   async updateAlignmentBounds(alignmentId, { timeBegin, timeEnd }) {
     const info = this.layerInfo;
     const alignmentTokenLayer = info.alignmentTokenLayer;
-    const token = (alignmentTokenLayer?.tokens || []).find((t) => t.id === alignmentId);
+    const token = (alignmentTokenLayer?.tokens || []).find((tok) => tok.id === alignmentId);
     if (!token) {
-      this.refuse('Segment not found');
+      this.refuse(t('Segment not found'));
       return false;
     }
     // The times it has: no write, so no edit stamp confirms a machine segment.
@@ -948,7 +986,7 @@ export const alignmentMutations = {
       return true;
     }
     if (timeEnd < timeBegin) {
-      this.refuse('Invalid time range: end must be at or after start');
+      this.refuse(t('Invalid time range: end must be at or after start'));
       return false;
     }
     // Bounds are metadata-only with no _reload, so a temporal/positional
@@ -961,7 +999,10 @@ export const alignmentMutations = {
     );
     if (inversion) {
       this.refuse(
-        `The new time range would put this segment out of order with the ${inversion} segment.`,
+        t(
+          '{side, select, previous {The new time range would put this segment out of order with the previous segment.} other {The new time range would put this segment out of order with the next segment.}}',
+          { side: inversion },
+        ),
       );
       return false;
     }
@@ -983,7 +1024,7 @@ export const alignmentMutations = {
       return false;
     }
 
-    const label = 'Failed to update alignment boundaries';
+    const label = msg('Failed to update alignment boundaries');
     if (!this._canWrite(label)) return false;
     // PATCH (shallow-merge), not setMetadata (full replace): a manual boundary
     // drag must preserve the segment's provenance (prov/provSource/provDetail),
@@ -994,8 +1035,8 @@ export const alignmentMutations = {
     const patch = { timeBegin, timeEnd, ...(this.editStamp(token.metadata) || {}) };
     const recheck = this._sameRecording(recordingOf(this._raw), 'Segment times');
     this._applyRawPatch((next, infoNext) => {
-      const t = (infoNext.alignmentTokenLayer?.tokens || []).find((x) => x.id === alignmentId);
-      if (t) t.metadata = mergeMetadata(t.metadata, patch);
+      const tok = (infoNext.alignmentTokenLayer?.tokens || []).find((x) => x.id === alignmentId);
+      if (tok) tok.metadata = mergeMetadata(tok.metadata, patch);
     });
     return this._queueWrite(
       label,
@@ -1011,9 +1052,9 @@ export const alignmentMutations = {
   // never changes the token id. A blank value clears the label (a delete op).
   async updateAlignmentSpeaker(alignmentId, speaker) {
     const info = this.layerInfo;
-    const token = (info.alignmentTokenLayer?.tokens || []).find((t) => t.id === alignmentId);
+    const token = (info.alignmentTokenLayer?.tokens || []).find((tok) => tok.id === alignmentId);
     if (!token) {
-      this.refuse('Segment not found');
+      this.refuse(t('Segment not found'));
       return false;
     }
     const value = (speaker || '').trim();
@@ -1026,14 +1067,14 @@ export const alignmentMutations = {
       this.refuse(overlap);
       return false;
     }
-    const label = 'Failed to update speaker';
+    const label = msg('Failed to update speaker');
     if (!this._canWrite(label)) return false;
     // A person's edit carries the writer's stamp (write-contract rule 3), and
     // choosing a segment's speaker is one. A blank clears it (a delete op).
     const patch = { speaker: value || null, ...(this.editStamp(token.metadata) || {}) };
     this._applyRawPatch((next, infoNext) => {
-      const t = (infoNext.alignmentTokenLayer?.tokens || []).find((x) => x.id === alignmentId);
-      if (t) t.metadata = mergeMetadata(t.metadata, patch);
+      const tok = (infoNext.alignmentTokenLayer?.tokens || []).find((x) => x.id === alignmentId);
+      if (tok) tok.metadata = mergeMetadata(tok.metadata, patch);
     });
     return this._queueWrite(label, async () => {
       await this._client.tokens.patchMetadata(settledId(alignmentId), metadataOps(patch));
@@ -1064,15 +1105,15 @@ export const alignmentMutations = {
    */
   segmentSplitPlan(alignmentId, { time, at = null } = {}) {
     const info = this.layerInfo;
-    const segment = (info.alignmentTokenLayer?.tokens || []).find((t) => t.id === alignmentId);
-    if (!segment) return { error: 'Segment not found' };
+    const segment = (info.alignmentTokenLayer?.tokens || []).find((tok) => tok.id === alignmentId);
+    if (!segment) return { error: t('Segment not found') };
     const timeBegin = segment.metadata?.timeBegin ?? 0;
     const timeEnd = segment.metadata?.timeEnd ?? timeBegin;
     if (!Number.isFinite(time) || time < timeBegin || time > timeEnd) {
-      return { error: 'Playback must be inside the segment.' };
+      return { error: t('Playback must be inside the segment.') };
     }
     if (time < timeBegin + MIN_SEGMENT || time > timeEnd - MIN_SEGMENT) {
-      return { error: 'Playback is too close to the edge of the segment.' };
+      return { error: t('Playback is too close to the edge of the segment.') };
     }
     // Words only: a token the ignored-tokens rule excludes is text, so a split
     // offers the same cuts with and without ud's punctuation tokens.
@@ -1084,7 +1125,7 @@ export const alignmentMutations = {
         !isTokenIgnored(cpSlice(this.body, w.begin, w.end), ignored),
     );
     const cuts = segmentCuts(this.body, segment, words);
-    if (!cuts.length) return { error: 'This segment has one word.' };
+    if (!cuts.length) return { error: t('This segment has one word.') };
     const wanted = Number.isFinite(at)
       ? at
       : segment.begin +
@@ -1104,8 +1145,9 @@ export const alignmentMutations = {
       segment.id,
     );
     if (inversion === 'previous')
-      return { error: 'Playback is past the start of the next segment.' };
-    if (inversion) return { error: 'The second half would be out of order with another segment.' };
+      return { error: t('Playback is past the start of the next segment.') };
+    if (inversion)
+      return { error: t('The second half would be out of order with another segment.') };
     const loss = countSplitLoss(info.primaryTextLayer?.tokenLayers || [], segment.id, cut.at);
     return { segment, time, at: cut.at, leftEnd: cut.leftEnd, loss };
   },
@@ -1125,7 +1167,7 @@ export const alignmentMutations = {
       this.refuse(notSetUp('Text layer not found'));
       return false;
     }
-    const label = 'Failed to split segment';
+    const label = msg('Failed to split segment');
     if (!this._canWrite(label)) return false;
     const { segment, leftEnd } = plan;
     const cutAt = plan.at;
@@ -1143,7 +1185,9 @@ export const alignmentMutations = {
       // leave this copy with it, as a sentence split's do.
       const layers = infoNext.primaryTextLayer?.tokenLayers || [];
       dropRelations(layers, countSplitLoss(layers, segment.id, cutAt).relationIds);
-      const left = (infoNext.alignmentTokenLayer?.tokens || []).find((t) => t.id === segment.id);
+      const left = (infoNext.alignmentTokenLayer?.tokens || []).find(
+        (tok) => tok.id === segment.id,
+      );
       if (left) {
         left.end = leftEnd;
         left.metadata = mergeMetadata(left.metadata || {}, leftPatch);
@@ -1186,30 +1230,30 @@ export const alignmentMutations = {
   segmentMergePlan(alignmentId) {
     const info = this.layerInfo;
     const tokens = [...(info.alignmentTokenLayer?.tokens || [])].sort(sortByBegin);
-    const i = tokens.findIndex((t) => t.id === alignmentId);
-    if (i < 0) return { error: 'Segment not found' };
+    const i = tokens.findIndex((tok) => tok.id === alignmentId);
+    if (i < 0) return { error: t('Segment not found') };
     const segment = tokens[i];
     const next = tokens[i + 1];
-    if (!next) return { error: 'This is the last segment.' };
+    if (!next) return { error: t('This is the last segment.') };
     // A segment across a sentence break belongs to no sentence in an ELAN
     // export, and merging sentences is the Tokenize tab's.
     const sentenceBreak = (info.sentenceTokenLayer?.tokens || []).some(
       (s) => s.begin > segment.begin && s.begin < next.end,
     );
-    if (sentenceBreak) return { error: 'The two segments are in different sentences.' };
+    if (sentenceBreak) return { error: t('The two segments are in different sentences.') };
     const a = segment.metadata || {};
     const b = next.metadata || {};
     const aBegin = a.timeBegin ?? 0;
     const aEnd = a.timeEnd ?? aBegin;
     const bBegin = b.timeBegin ?? 0;
     const bEnd = b.timeEnd ?? bBegin;
-    if (bBegin < aEnd && bEnd > aBegin) return { error: 'The next segment overlaps this one.' };
+    if (bBegin < aEnd && bEnd > aBegin) return { error: t('The next segment overlaps this one.') };
     const own = (a.speaker || '').trim();
     const theirs = (b.speaker || '').trim();
     const speaker = own || theirs;
     const times = { timeBegin: Math.min(aBegin, bBegin), timeEnd: Math.max(aEnd, bEnd) };
     const problem = overlapProblem(
-      tokens.filter((t) => t.id !== next.id),
+      tokens.filter((tok) => tok.id !== next.id),
       { id: segment.id, metadata: alignmentMeta(times.timeBegin, times.timeEnd, speaker) },
       { format: seconds },
     );
@@ -1236,7 +1280,7 @@ export const alignmentMutations = {
       this.refuse(plan.error);
       return false;
     }
-    const label = 'Failed to merge segments';
+    const label = msg('Failed to merge segments');
     if (!this._canWrite(label)) return false;
     const { segment, next, times, speaker } = plan;
     const was = segment.metadata || {};
@@ -1251,12 +1295,12 @@ export const alignmentMutations = {
     this._applyRawPatch((n, infoNext, vocabs) => {
       const layer = infoNext.alignmentTokenLayer;
       if (!Array.isArray(layer?.tokens)) return;
-      const survivor = layer.tokens.find((t) => t.id === segment.id);
+      const survivor = layer.tokens.find((tok) => tok.id === segment.id);
       if (survivor) {
         survivor.end = Math.max(survivor.end, next.end);
         survivor.metadata = mergeMetadata(survivor.metadata || {}, patch);
       }
-      layer.tokens = layer.tokens.filter((t) => !gone.has(t.id));
+      layer.tokens = layer.tokens.filter((tok) => !gone.has(tok.id));
       // The server moves the later segment's spans and links onto the
       // survivor (token.clj merge-tokens): mirrored here.
       reparentSpans(layer.spanLayers, gone, segment.id);
@@ -1284,9 +1328,9 @@ export const alignmentMutations = {
     const textId = info.primaryTextLayer?.text?.id;
     const alignmentTokens = info.alignmentTokenLayer?.tokens || [];
     if (alignmentTokens.length === 0) return false;
-    const label = 'Failed to clear alignments';
+    const label = msg('Failed to clear alignments');
     if (!this._canWrite(label)) return false;
-    const ids = alignmentTokens.map((t) => t.id);
+    const ids = alignmentTokens.map((tok) => tok.id);
     this._applyRawPatch((next, infoNext, vocabs) => removeTokensLocally(next, textId, ids, vocabs));
     return this._queueWrite(label, () => this._client.tokens.bulkDelete(ids.map(settledId)));
   },
@@ -1489,7 +1533,7 @@ export const alignmentMutations = {
     const show = (m) => (next, infoNext) => {
       m.changed = applyGapsLocally(next, textId, m.gaps);
       const segment = (infoNext.alignmentTokenLayer?.tokens || []).find(
-        (t) => settledId(t.id) === settledId(segmentId),
+        (tok) => settledId(tok.id) === settledId(segmentId),
       );
       if (segment) {
         segment.begin = m.extent.begin;
@@ -1592,7 +1636,8 @@ export const alignmentMutations = {
   // The refusal of a write whose times were chosen on the recording `seen`
   // (`recordingOf` the document when it was made), when the document as
   // stored, `raw`, holds another recording or none. Null when it holds that
-  // one, or there was none. `what` is what goes unsaved ("Segment").
+  // one, or there was none. `what` is what goes unsaved ("Segment"), a key of
+  // NOT_SAVED, and the name the Media tab is given (`takeRecordingRefusal`).
   //
   // The refusal is always said once, as the Media tab's notice of the change
   // says it ("Recording replaced / Replaced elsewhere. Segment not saved."),
@@ -1604,12 +1649,13 @@ export const alignmentMutations = {
   _recordingRefusal(seen, raw, what) {
     const now = recordingOf(raw);
     if (!seen || seen === now) return null;
-    const message = `${now ? 'Replaced' : 'Deleted'} elsewhere. ${what} not saved.`;
+    const [replaced, deleted] = NOT_SAVED[what];
+    const message = t(now ? replaced : deleted);
     const refused = {
       url: now,
       what,
       message,
-      title: now ? 'Recording replaced' : 'Recording deleted',
+      title: now ? t('Recording replaced') : t('Recording deleted'),
     };
     if (this._recordingWatchers > 0 && recordingOf(this._raw) === seen) {
       this._recordingRefused = refused;
@@ -1676,7 +1722,7 @@ export const alignmentMutations = {
     const reshape = answer?.reshape;
     const text = this.layerInfo.primaryTextLayer?.text;
     const named = new Set([
-      ...(reshape?.tokens ?? []).map((t) => t.id),
+      ...(reshape?.tokens ?? []).map((tok) => tok.id),
       ...(reshape?.deleted?.tokens ?? []),
       settledId(segmentId),
     ]);
@@ -1689,7 +1735,7 @@ export const alignmentMutations = {
       Object.assign(next, applyReshape(next, textId, answer));
       reshapeVocabLinks(vocabs, reshape);
       const segment = (getIgtLayerInfo(next).alignmentTokenLayer?.tokens || []).find(
-        (t) => settledId(t.id) === settledId(segmentId),
+        (tok) => settledId(tok.id) === settledId(segmentId),
       );
       if (segment) {
         segment.begin = sent.extent.begin;

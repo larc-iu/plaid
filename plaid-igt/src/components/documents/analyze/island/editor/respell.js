@@ -2,6 +2,7 @@ import { html, nothing } from 'lit-html';
 import { RESPELL_UNCHANGED, respellIgnoredRule, respellRefusal } from '@/domain/respell.js';
 import { keys } from '@/lib/keymap.js';
 import { isEnter, isImeKey } from '@ui/lib/chords.js';
+import { t } from '@ui/lib/i18n.js';
 
 // Respell one word in place (R51): the word's popover's Respell row, or the
 // respell key on any of the word's cells and chips, opens a small box over the
@@ -115,9 +116,9 @@ export const respell = {
         dir="auto"
         spellcheck="false"
         autocomplete="off"
-        aria-label=${`Respell ${open.old}`}
+        aria-label=${t('Respell {word}', { word: open.old })}
         aria-invalid=${open.error ? 'true' : 'false'}
-        title="Enter to save, Esc to cancel"
+        title=${t('Enter to save, Esc to cancel')}
         size=${Math.max(4, [...open.old].length + 2)}
         @keydown=${(e) => this._respellKeydown(e)}
         @blur=${() => {

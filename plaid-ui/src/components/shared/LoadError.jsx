@@ -1,6 +1,7 @@
 import { Button } from '../ui/button';
 import { Notice } from './Notice.jsx';
 import { useRetryWhenBack } from '../../hooks/useRetryWhenBack.js';
+import { t } from '../../lib/i18n.js';
 
 /**
  * A page's read failed: what failed, and Retry. The read is also tried again
@@ -15,7 +16,7 @@ export const LoadError = ({ children, onRetry, className }) => {
         <span>{children}</span>
         {onRetry && (
           <Button size="sm" variant="outline" onClick={() => onRetry()}>
-            Retry
+            {t('Retry')}
           </Button>
         )}
       </div>

@@ -5,19 +5,20 @@ import { canManageProject } from '../domain/permissions.js';
 import { useProject } from './useProject.js';
 import { notifyError } from '../lib/notify.js';
 import { appRoutes } from '../lib/uiConfig.js';
+import { msg, t } from '../lib/i18n.js';
 
 // Loader and guard for the manager-only project screens (Activity, Validation,
 // the settings sections): fetch the project, expose a refetch for after a save,
 // and bounce anyone who may not manage it back to the project list, saying why
 // (ruling umr-collab-validation-writers): a page met by URL that quietly turns
 // into the project list reads as a broken link.
-export const NOT_A_MAINTAINER = "Only a project's maintainers can open this page.";
+export const NOT_A_MAINTAINER = msg("Only a project's maintainers can open this page.");
 
 // The toast itself, for a screen that guards a maintainers-only page of its
 // own (igt's ProjectDetail). One toast however often an effect runs it
 // (StrictMode runs effects twice).
 export const notifyNotAMaintainer = () =>
-  notifyError(NOT_A_MAINTAINER, undefined, { id: 'not-a-maintainer' });
+  notifyError(t(NOT_A_MAINTAINER), undefined, { id: 'not-a-maintainer' });
 
 export const useManagedProject = () => {
   const navigate = useNavigate();
@@ -30,7 +31,7 @@ export const useManagedProject = () => {
   const { projectId, project, loading, error, reload } = useProject();
 
   useEffect(() => {
-    if (error) notifyError('Failed to load the project');
+    if (error) notifyError(t('Failed to load the project'));
   }, [error]);
 
   const canConfigure = canManageProject(project, user);

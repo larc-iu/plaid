@@ -12,6 +12,7 @@ import { MentionList } from './MentionList.jsx';
 import { gauge } from './usage.js';
 import { chipRemoveLabels } from './projectReach.js';
 import { useMentions } from './useMentions.js';
+import { t, tx } from '../../lib/i18n.js';
 
 // The foot of the chat: what has to be read before the next message is typed,
 // the box it is typed into, and the `@` list over it.
@@ -140,8 +141,13 @@ export const AssistantComposer = ({
       {choice.wentOffline && service && (
         <div className="mx-auto mb-2 flex max-w-3xl flex-wrap items-center gap-2 text-xs text-muted-foreground">
           <span>
-            The assistant this conversation started with is offline. Replies now come from{' '}
-            <span className="font-medium text-foreground">{service.serviceName}</span>.
+            {tx(
+              'The assistant this conversation started with is offline. Replies now come from <span>{name}</span>.',
+              {
+                name: service.serviceName,
+                span: (c) => <span className="font-medium text-foreground">{c}</span>,
+              },
+            )}
           </span>
           {choice.canChoose && (
             <AssistantPicker
@@ -165,10 +171,10 @@ export const AssistantComposer = ({
           role="status"
           className="mx-auto mb-2 flex max-w-3xl flex-wrap items-center gap-2 text-xs text-muted-foreground"
         >
-          <span>Open in another tab.</span>
+          <span>{t('Open in another tab.')}</span>
           {onContinueHere && (
             <Button type="button" size="sm" variant="outline" onClick={onContinueHere}>
-              Continue here
+              {t('Continue here')}
             </Button>
           )}
         </div>
@@ -180,27 +186,31 @@ export const AssistantComposer = ({
           <span>{notice}</span>
           {offerNew && onStartNew && (
             <Button type="button" size="sm" variant="outline" onClick={onStartNew}>
-              New conversation
+              {t('New conversation')}
             </Button>
           )}
         </div>
       ) : full ? (
         <div className="mx-auto mb-2 flex max-w-3xl flex-wrap items-center gap-2 text-xs text-warning-foreground">
-          <span>This conversation is full.</span>
+          <span>{t('This conversation is full.')}</span>
           {onStartNew && (
             <Button type="button" size="sm" variant="outline" onClick={onStartNew}>
-              New conversation
+              {t('New conversation')}
             </Button>
           )}
         </div>
       ) : g.nearlyFull && g.which === 'storage' ? (
         <p className="mx-auto mb-2 max-w-3xl text-xs text-warning-foreground">
-          This conversation&apos;s storage is {Math.round(g.share * 100)}% full. Start a new
-          conversation to keep going.
+          {t(
+            "This conversation's storage is {pct}% full. Start a new conversation to keep going.",
+            { pct: Math.round(g.share * 100) },
+          )}
         </p>
       ) : g.nearlyFull ? (
         <p className="mx-auto mb-2 max-w-3xl text-xs text-warning-foreground">
-          This conversation is {Math.round(g.share * 100)}% full. Start a new one.
+          {t('This conversation is {pct}% full. Start a new one.', {
+            pct: Math.round(g.share * 100),
+          })}
         </p>
       ) : null}
       {focus && (
@@ -211,7 +221,7 @@ export const AssistantComposer = ({
             <button
               type="button"
               onClick={() => onClearFocus?.()}
-              title="Remove"
+              title={t('Remove')}
               className="rounded-full p-0.5 text-muted-foreground hover:bg-muted hover:text-foreground"
             >
               <X className="h-3 w-3" />
@@ -273,16 +283,16 @@ export const AssistantComposer = ({
           }}
           placeholder={
             !service
-              ? 'No assistant online'
+              ? t('No assistant online')
               : held
-                ? 'Read-only in this tab'
+                ? t('Read-only in this tab')
                 : pendingPlan
                   ? full
-                    ? 'Approve or discard the plan above'
-                    : 'Approve or discard the plan above, or keep talking'
-                  : 'Message the assistant… (Shift+Enter for a new line)'
+                    ? t('Approve or discard the plan above')
+                    : t('Approve or discard the plan above, or keep talking')
+                  : t('Message the assistant… (Shift+Enter for a new line)')
           }
-          aria-label="Message"
+          aria-label={t('Message')}
           // Read-only rather than disabled while a turn runs: a disabled box
           // loses the keyboard focus, and the reader would have to find it
           // again after every answer.
@@ -311,8 +321,8 @@ export const AssistantComposer = ({
               variant="ghost"
               onClick={() => fileInput.current?.click()}
               disabled={!canAttach}
-              title="Attach"
-              aria-label="Attach a file"
+              title={t('Attach')}
+              aria-label={t('Attach a file')}
             >
               <Paperclip className="h-4 w-4" />
             </Button>
@@ -335,7 +345,7 @@ export const AssistantComposer = ({
           size="sm"
           onClick={() => onSend()}
           disabled={!canSend || !text.trim() || attaching || full || offerNew || held}
-          title="Send"
+          title={t('Send')}
         >
           <Send className="h-4 w-4" />
         </Button>

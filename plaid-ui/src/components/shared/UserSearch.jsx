@@ -3,6 +3,7 @@ import { SearchInput, ListHint } from './list-search';
 import { UserAvatar } from './UserAvatar';
 import { Loading } from './Loading.jsx';
 import { USER_SEARCH_LIMIT } from '../../hooks/useUserSearch.js';
+import { t } from '../../lib/i18n.js';
 
 // The search box and its results wherever someone is picked out of the user
 // directory to be added. `search` is a useUserSearch, and `renderAction(u)`
@@ -13,7 +14,7 @@ export const UserSearch = ({ client, search, renderAction }) => {
     <div className="flex flex-col gap-2">
       <SearchInput
         ref={search.inputRef}
-        placeholder="Search users by name…"
+        placeholder={t('Search users by name…')}
         value={query}
         onChange={setQuery}
         onFocus={activate}
@@ -21,8 +22,9 @@ export const UserSearch = ({ client, search, renderAction }) => {
 
       {denied ? (
         <p className="py-1 text-sm text-muted-foreground">
-          You cannot browse the user directory. Only an administrator or a project maintainer can
-          add users here.
+          {t(
+            'You cannot browse the user directory. Only an administrator or a project maintainer can add users here.',
+          )}
         </p>
       ) : (
         active &&
@@ -32,7 +34,7 @@ export const UserSearch = ({ client, search, renderAction }) => {
           <Loading className="px-0 py-1" />
         ) : results.length === 0 ? (
           <p className="py-1 text-sm text-muted-foreground">
-            {debounced ? 'No matching users.' : 'No other users to add.'}
+            {debounced ? t('No matching users.') : t('No other users to add.')}
           </p>
         ) : (
           <div className="flex flex-col">
@@ -52,7 +54,7 @@ export const UserSearch = ({ client, search, renderAction }) => {
                   <div className="min-w-0">
                     <div className="flex items-center gap-2">
                       <span className="truncate font-medium">{u.displayName}</span>
-                      {u.isAdmin && <Badge variant="secondary">Admin</Badge>}
+                      {u.isAdmin && <Badge variant="secondary">{t('Admin')}</Badge>}
                     </div>
                     <span className="block truncate text-xs text-muted-foreground">{u.id}</span>
                   </div>
@@ -69,7 +71,9 @@ export const UserSearch = ({ client, search, renderAction }) => {
           and that is the case most in need of saying the list was cut. */}
       {!denied && active && !loading && capped && (
         <ListHint className="pt-2">
-          Showing the first {USER_SEARCH_LIMIT} matches. Keep typing to narrow the list.
+          {t('Showing the first {n} matches. Keep typing to narrow the list.', {
+            n: USER_SEARCH_LIMIT,
+          })}
         </ListHint>
       )}
     </div>

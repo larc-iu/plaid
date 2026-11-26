@@ -6,10 +6,13 @@
 // beside the live document. What a document MEANS (its layers, rows, and every
 // mutation) is the subclass's.
 //
-// Imports siblings with no imports but each other's, lib/errors.js, which has
-// none, and plaid-client's provenance.js and metadataOps.js by path, which
-// import only each other and roles.js, which imports nothing, and nothing else: plaid-ud's node suite reaches this file by relative path,
-// where no alias and no package resolves. Errors leave through `onError`.
+// Imports siblings with no imports but each other's, lib/errors.js,
+// plaid-client's provenance.js and metadataOps.js by path, which import only
+// each other and roles.js, which imports nothing, and lib/i18n.js, the
+// language, which imports i18next and React by name. plaid-ud's node suite
+// reaches this file by relative path, where no alias resolves, so those
+// packages are found from the app as plaid-igt/e2e/live/aliasHooks.mjs finds
+// them. Errors leave through `onError`.
 
 import {
   isChangedElsewhere,
@@ -19,6 +22,7 @@ import {
   statusOf,
 } from '../lib/errors.js';
 import { nameTakenMessage } from '../lib/documentNames.js';
+import { msg, t } from '../lib/i18n.js';
 import {
   AUTO,
   LTR,
@@ -89,10 +93,10 @@ const cloneRaw = (value) => {
 
 // The audit label every heal write of a reconcile pass folds under, until the
 // pass names what it changed (see `describeReconcile`).
-const RECONCILE_LABEL = 'Repair on open';
+const RECONCILE_LABEL = 'Repair on open'; // i18n-ignore: an audit label, sent to the server
 // The label a pass that failed partway ends with: what it wrote is only part
 // of any repair a fuller label would name.
-const RECONCILE_INTERRUPTED_LABEL = 'Repair on open (interrupted)';
+const RECONCILE_INTERRUPTED_LABEL = 'Repair on open (interrupted)'; // i18n-ignore: an audit label
 
 // What an edit planned on an out-of-date document is refused with, unsent: the
 // conflict the edit before it met, so every screen words it the same way.
@@ -115,8 +119,8 @@ const dependencyError = () =>
 // What every edit is refused with once the document is known to be deleted
 // (`_documentGone`), unsent. `deleted` lets the screen tell it from a refusal
 // the server made.
-const DELETED = 'This document was deleted.';
-const deletedError = () => Object.assign(new Error(DELETED), { deleted: true });
+const DELETED = msg('This document was deleted.');
+const deletedError = () => Object.assign(new Error(t(DELETED)), { deleted: true });
 
 // Whether a read of the document was refused because it is gone: 404, or the
 // core's 403 for an id it cannot place in a project (`unresolved`, the
@@ -132,6 +136,12 @@ const KEEP_BASES = 16;
 
 // "Failed to create relation" is the error label; "Create relation" is the
 // operation the audit log shows for it, unless the screen named it (`labelled`).
+//
+// So a write's label is the English message, marked msg() where it is
+// written: the audit log is told the English, and the screen is shown its
+// translation (`shown`).
+const shown = (label) => t(label);
+
 function operationLabel(errorLabel) {
   const s = String(errorLabel).replace(/^Failed to\s+/i, '');
   return s.charAt(0).toUpperCase() + s.slice(1);
@@ -140,8 +150,10 @@ function operationLabel(errorLabel) {
 // What the document says while an edit waits for someone else's lock on it
 // to go (WriteQueue `resendWhileLocked`). Not "try again": it goes again
 // by itself.
-export const LOCKED_WAITING =
-  'This document is being edited right now (by another user or a service). Saving once it is free.';
+// A message: the place that shows it calls t().
+export const LOCKED_WAITING = msg(
+  'This document is being edited right now (by another user or a service). Saving once it is free.',
+);
 
 // A refusal for someone else's lock on the document, which goes again by
 // itself. Not the client's own lock lapsing (DocumentLockLost).
@@ -246,9 +258,9 @@ export class DocumentModel {
       // screen that draws `error` with its data (igt's grid) draws only then.
       onLockedChange: (locked) => {
         if (locked) {
-          this._error = LOCKED_WAITING;
+          this._error = t(LOCKED_WAITING);
           this._errorCause = null;
-        } else if (this._error === LOCKED_WAITING) {
+        } else if (this._error === t(LOCKED_WAITING)) {
           this._dropError();
         }
         this._lockChanges++;
@@ -400,7 +412,7 @@ export class DocumentModel {
   async setTextDirection(value) {
     const next = value === LTR || value === RTL ? value : AUTO;
     if (this.textDirectionSetting === next) return false;
-    const label = 'Failed to save the text direction';
+    const label = msg('Failed to save the text direction');
     if (!this._canWrite(label)) return false;
     this._applyRawPatch((raw) => {
       raw.metadata = withTextDirection(raw.metadata, next);
@@ -408,7 +420,7 @@ export class DocumentModel {
     return this._queueWrite(
       label,
       () => this._client.documents.patchMetadata(this.id, textDirectionOps(next)),
-      'Set text direction',
+      'Set text direction', // i18n-ignore: an audit label, sent to the server
     );
   }
 
@@ -425,7 +437,7 @@ export class DocumentModel {
   async rename(name) {
     const next = this._planRename(name);
     if (!next) return false;
-    const label = 'Failed to rename document';
+    const label = msg('Failed to rename document');
     if (!this._canWrite(label)) return false;
     this._applyRawPatch((raw) => {
       raw.name = next;
@@ -466,7 +478,7 @@ export class DocumentModel {
     const next = typed || this.name;
     let created = null;
     const ok = await this._queueWrite(
-      'Failed to copy document',
+      msg('Failed to copy document'),
       async () => {
         try {
           created = typed
@@ -496,7 +508,7 @@ export class DocumentModel {
     if (this.raw?.mediaUrl && !copy.mediaError) {
       try {
         const read = await this._client.documents.get(copy.id);
-        if (!read?.mediaUrl) copy.mediaError = 'The recording was not copied.';
+        if (!read?.mediaUrl) copy.mediaError = t('The recording was not copied.');
       } catch {
         // Unknown either way: the copy is made, and nothing is said of its recording.
       }
@@ -731,11 +743,11 @@ export class DocumentModel {
   // Operation and validation errors go to the screen's `onError`. `_error` is
   // still tracked so callers can branch on outcome and the same sticky message
   // is not reported twice.
-  setError(msg) {
-    if (this._error === msg) return;
-    this._error = msg;
+  setError(message) {
+    if (this._error === message) return;
+    this._error = message;
     this._errorCause = null;
-    if (msg && this.onError) this.onError(msg);
+    if (message && this.onError) this.onError(message);
     this._emit();
   }
 
@@ -912,10 +924,10 @@ export class DocumentModel {
     if (!this._asOf && !this._deleted) return true;
     const err = this._deleted
       ? deletedError()
-      : new Error('An earlier state of the document cannot be edited.');
-    this._error = `${label}: ${err.message}`;
+      : new Error(t('An earlier state of the document cannot be edited.'));
+    this._error = t('{label}: {error}', { label: shown(label), error: err.message });
     this._errorCause = err;
-    if (this.onError) this.onError(this._error, err, label);
+    if (this.onError) this.onError(this._error, err, shown(label));
     this._emit();
     return false;
   }
@@ -942,15 +954,18 @@ export class DocumentModel {
     if (err?.notice === true) {
       this._dropError();
       this._handledCause = err;
-      if (this.onError) this.onError(err.message, err, label);
+      if (this.onError) this.onError(err.message, err, shown(label));
       return;
     }
     this._handledCause = null;
-    this._error = `${label}: ${err.message || 'Unknown error'}`;
+    this._error = t('{label}: {error}', {
+      label: shown(label),
+      error: err.message || t('Unknown error'),
+    });
     this._errorCause = err;
     // The raw error rides along so the screen can word it (statuses, network
     // failures) while keeping the "Failed to ..." label as the title.
-    if (this.onError) this.onError(this._error, err, label);
+    if (this.onError) this.onError(this._error, err, shown(label));
   }
 
   // A refetch was given up (WriteQueue's `onOutOfStep`): the server failed it
@@ -958,7 +973,8 @@ export class DocumentModel {
   // shows what was typed, and may show what the server does not have.
   _reportOutOfStep(err) {
     console.error('The document could not be refetched:', err);
-    if (this.onError) this.onError('Reload the page to see what is saved.', null, 'Out of date');
+    if (this.onError)
+      this.onError(t('Reload the page to see what is saved.'), null, t('Out of date'));
   }
 
   // An optimistic write in two halves. The caller has already shown the edit
@@ -1624,7 +1640,7 @@ export class DocumentModel {
     // removed. The notice says what.
     this._dropError();
     if (!this._takeProject(this._project)) this._emit();
-    if (this.onError) this.onError(DELETED, null, 'Read-only');
+    if (this.onError) this.onError(t(DELETED), null, t('Read-only'));
   }
 
   // A row an edit made under the id this page minted, and that the edit was

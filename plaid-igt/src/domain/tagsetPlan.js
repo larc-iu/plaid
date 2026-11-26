@@ -28,9 +28,10 @@ import {
 import { getIgtLayerInfo } from './layerInfo.js';
 import { queueStated, tagsetsChangedError } from './tagsetsSave.js';
 import { CORE_VOCAB_FIELDS } from './vocabFields.js';
-import { dropsReservedStatus, reservedStatusMessage } from './vocabDictionary.js';
+import { dropsReservedStatus } from './vocabDictionary.js';
 import { refusedMetadataBySave } from './refusedMetadata.js';
 import { refusedValuesText } from '../components/projects/settings/refusedValues.js';
+import { t } from '@ui/lib/i18n.js';
 
 const SETTINGS_KINDS = Object.freeze(['set_tagset', 'assign_tagset']);
 const PROJECT = 'project';
@@ -65,13 +66,13 @@ const same = (a, b) =>
 
 // A tagset as the plan compares it: value records by value and description
 // only, since the record recased any other key a value carries.
-const comparable = (t) =>
-  t == null
+const comparable = (tok) =>
+  tok == null
     ? null
     : {
-        delimiters: t.delimiters ?? '',
-        mode: t.mode,
-        values: (t.values || []).map((v) => ({
+        delimiters: tok.delimiters ?? '',
+        mode: tok.mode,
+        values: (tok.values || []).map((v) => ({
           value: v.value,
           ...(v.description != null ? { description: v.description } : {}),
         })),
@@ -316,7 +317,9 @@ export const writeTagsetPlan = async (
   );
   if (states.some((s) => s === 'moved')) {
     throw new Error(
-      'The tagset settings this plan changes were changed since it was made, so nothing was written. Ask the assistant to plan it again.',
+      t(
+        'The tagset settings this plan changes were changed since it was made, so nothing was written. Ask the assistant to plan it again.',
+      ),
     );
   }
   if (states.every((s) => s === 'after')) return false;
@@ -350,7 +353,14 @@ export const writeTagsetPlan = async (
       }
     }
     const dropped = dropsReservedStatus({ fieldsBefore, fieldsAfter, tagsetsBefore, tagsetsAfter });
-    if (dropped) throw new Error(`${reservedStatusMessage(dropped)}. Nothing was written.`);
+    if (dropped) {
+      throw new Error(
+        t(
+          '“{value}” is a reserved Status value and cannot be renamed or removed. Nothing was written.',
+          { value: dropped },
+        ),
+      );
+    }
   }
   // A closed list over document values not in it is not written: core holds
   // no rule on metadata, so it is asked here, of the project's settings as
@@ -379,7 +389,9 @@ export const writeTagsetPlan = async (
     );
     const after = { ...live.config, [IGT_NAMESPACE]: igt };
     const refused = await refusedMetadataBySave(client, projectId, after, live.config);
-    if (refused.length) throw new Error(`${refusedValuesText(refused)} Nothing was written.`);
+    if (refused.length) {
+      throw new Error(t('{reason} Nothing was written.', { reason: refusedValuesText(refused) }));
+    }
   }
   // `client` is one of the page's own (plaid-ui `authService.clientApart`),
   // so the operation neither joins one open on the shared client nor is
@@ -420,7 +432,8 @@ export const writeTagsetPlan = async (
       return true;
     }
     const words = tagsetRefusal(error);
-    if (words) throw new Error(`${words} Nothing was written.`, { cause: error });
+    if (words)
+      throw new Error(t('{reason} Nothing was written.', { reason: words }), { cause: error });
     // A 409 for tagsets changed since they were read here says so.
     throw await tagsetsChangedError(
       error,

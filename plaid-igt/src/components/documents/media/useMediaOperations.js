@@ -16,10 +16,11 @@ import { useServiceSpot } from '@ui/hooks/useServiceSpot.js';
 import { useRunProgress, useMirroredProgress } from '@ui/hooks/useRunProgress.js';
 import { transcodeToMp3 } from '../../../domain/media/transcodeToMp3.js';
 import { useConfirm } from '@ui/components/shared/ConfirmProvider';
-import { hasLoss, lossPhrase } from '@ui/domain/annotationLoss.js';
+import { hasLoss } from '@ui/domain/annotationLoss.js';
+import { t } from '@ui/lib/i18n.js';
 import { shownOrRefused } from './shownOrRefused.js';
 import { useVadProposals, VAD_METADATA_KEY } from './useVadProposals.js';
-import { DETECT_SPEECH_BUILTIN } from './detectSpeechBuiltin.js';
+import { DETECT_SPEECH_BUILTIN, detectSpeechBuiltin } from './detectSpeechBuiltin.js';
 import { writeRunRecord, clearRunRecord } from '@ui/domain/runRecord.js';
 import { reloadAfterRun } from '@ui/lib/runReload.js';
 import { keys } from '@/lib/keymap.js';
@@ -45,16 +46,35 @@ import { readWavInfo } from '../../../domain/media/wavAdpcm.js';
 // (always mounted, on every tab), are text boxes like any other. A box that
 // exists to be selected in (aria-readonly) keeps its keys even under the root.
 const TAGS_TO_IGNORE = ['INPUT', 'TEXTAREA', 'SELECT'];
-const isTextTarget = (t) => TAGS_TO_IGNORE.includes(t?.tagName) || !!t?.isContentEditable;
-const takesMediaKeys = (t) =>
-  !!t?.closest?.('[data-media-keys]') && t.getAttribute('aria-readonly') !== 'true';
+const isTextTarget = (target) =>
+  TAGS_TO_IGNORE.includes(target?.tagName) || !!target?.isContentEditable;
+const takesMediaKeys = (target) =>
+  !!target?.closest?.('[data-media-keys]') && target.getAttribute('aria-readonly') !== 'true';
 // Space on a focused button, link or toggle is that control's own activation.
-const isActivatable = (t) =>
-  !!t?.closest?.(
+const isActivatable = (target) =>
+  !!target?.closest?.(
     'button, a, [role="button"], [role="checkbox"], [role="switch"], [role="tab"], [role="menuitem"], [role="option"]',
   );
 
-const DETECT_BUILTINS = [DETECT_SPEECH_BUILTIN];
+// What a split deletes, by count: "Deletes 2 annotations that cross the
+// split."
+const splitLossSentence = ({ annotations = 0, links = 0 }) => {
+  if (annotations && links) {
+    return t(
+      'Deletes {annotations, plural, one {# annotation} other {# annotations}} and {links, plural, one {# vocabulary link} other {# vocabulary links}} that cross the split.',
+      { annotations, links },
+    );
+  }
+  return links
+    ? t(
+        'Deletes {links, plural, one {# vocabulary link} other {# vocabulary links}} that cross the split.',
+        { links },
+      )
+    : t(
+        'Deletes {annotations, plural, one {# annotation} other {# annotations}} that cross the split.',
+        { annotations },
+      );
+};
 
 // MediaError.MEDIA_ERR_DECODE, named here since jsdom has no MediaError.
 const MEDIA_ERR_DECODE = 3;
@@ -224,11 +244,13 @@ export const useMediaOperations = () => {
     services: availableServices,
     storageId: 'transcribe',
   });
+  // In the interface's language, which holds for the page's life.
+  const detectBuiltins = useMemo(() => [detectSpeechBuiltin()], []);
   const detectSpot = useServiceSpot({
     task: TASKS.DETECT_SPEECH,
     project,
     services: availableServices,
-    builtins: DETECT_BUILTINS,
+    builtins: detectBuiltins,
     storageId: 'detect_speech',
   });
 
@@ -322,7 +344,7 @@ export const useMediaOperations = () => {
         if (cancelled) return;
         readWholeRef.current = readWhole;
         console.error('Failed to load media:', error);
-        setMediaLoadError(humanizeError(error, 'The media could not be loaded.'));
+        setMediaLoadError(humanizeError(error, t('The media could not be loaded.')));
       } finally {
         if (!cancelled) setIsLoadingMedia(false);
       }
@@ -363,7 +385,7 @@ export const useMediaOperations = () => {
         .catch((error) => {
           if (relinkRef.current.key !== key) return;
           console.error('Failed to load media:', error);
-          setMediaLoadError(humanizeError(error, 'The media could not be loaded.'));
+          setMediaLoadError(humanizeError(error, t('The media could not be loaded.')));
         });
       return true;
     },
@@ -495,9 +517,9 @@ export const useMediaOperations = () => {
   const removeChannelSpeakers = useCallback(async () => {
     if (
       !(await confirm({
-        title: 'Remove speakers per channel?',
-        description: 'Removes the speaker from every channel. This cannot be undone.',
-        confirmLabel: 'Remove',
+        title: t('Remove speakers per channel?'),
+        description: t('Removes the speaker from every channel. This cannot be undone.'),
+        confirmLabel: t('Remove'),
         destructive: true,
       }))
     ) {
@@ -564,15 +586,29 @@ export const useMediaOperations = () => {
     alignmentTokens,
     params: detectSpot.params.coercedValues,
     methodKey: detectSpot.selection,
-    methodName: detectSpot.options.find((o) => o.value === detectSpot.selection)?.label ?? null,
+    // Kept on the document, so the built-in's name goes in English, as data.
+    methodName: (() => {
+      const chosen = detectSpot.options.find((o) => o.value === detectSpot.selection);
+      return chosen?.builtin ? DETECT_SPEECH_BUILTIN.label : (chosen?.label ?? null);
+    })(),
     saved: doc.storedMetadata[VAD_METADATA_KEY] ?? null,
     onPersist: canWrite ? persistCuts : null,
   });
   useMirroredProgress(detectRun, {
     percent: vad.progress > 0 ? vad.progress * 100 : null,
-    message: vad.step
-      ? `Detecting speech, ${vad.step.speaker || `channel ${vad.step.index + 1}`} (${vad.step.index + 1} of ${vad.step.total})…`
-      : 'Detecting speech…',
+    message: !vad.step
+      ? t('Detecting speech…')
+      : vad.step.speaker
+        ? t('Detecting speech, {name} ({i} of {total})…', {
+            name: vad.step.speaker,
+            i: vad.step.index + 1,
+            total: vad.step.total,
+          })
+        : t('Detecting speech, channel {n} ({i} of {total})…', {
+            n: vad.step.index + 1,
+            i: vad.step.index + 1,
+            total: vad.step.total,
+          }),
     active: detectRun.running && !detectSpot.service,
   });
 
@@ -790,11 +826,11 @@ export const useMediaOperations = () => {
       const el = playableElement();
       if (!el) return;
       const max = Number.isFinite(el.duration) && el.duration > 0 ? el.duration : duration;
-      const t = Math.max(0, Math.min(max || 0, el.currentTime + delta));
-      el.currentTime = t;
-      setCurrentTime(t);
+      const at = Math.max(0, Math.min(max || 0, el.currentTime + delta));
+      el.currentTime = at;
+      setCurrentTime(at);
       setPlayingSelection(null);
-      if (autoScrollToTimeRef.current) autoScrollToTimeRef.current(t);
+      if (autoScrollToTimeRef.current) autoScrollToTimeRef.current(at);
     },
     [duration, playableElement, setCurrentTime],
   );
@@ -862,8 +898,8 @@ export const useMediaOperations = () => {
           console.error('Converting the recording failed:', error);
           if (ours()) setUpload(doc, null);
           notifyError(
-            error?.message || 'This file could not be converted. Upload it as it is.',
-            'Failed to convert',
+            error?.message || t('This file could not be converted. Upload it as it is.'),
+            t('Failed to convert'),
           );
           return;
         }
@@ -891,7 +927,7 @@ export const useMediaOperations = () => {
           },
         });
         if (ok) {
-          notifySuccess('Media file uploaded');
+          notifySuccess(t('Media file uploaded'));
         }
       } finally {
         if (ours()) setUpload(doc, null);
@@ -912,9 +948,9 @@ export const useMediaOperations = () => {
 
     if (
       !(await confirm({
-        title: 'Delete media file?',
-        description: 'Removes the recording from this document. This cannot be undone.',
-        confirmLabel: 'Delete',
+        title: t('Delete media file?'),
+        description: t('Removes the recording from this document. This cannot be undone.'),
+        confirmLabel: t('Delete'),
         destructive: true,
       }))
     ) {
@@ -926,7 +962,7 @@ export const useMediaOperations = () => {
       ownDeleteRef.current = false;
     });
     if (ok) {
-      notifySuccess('Media file deleted');
+      notifySuccess(t('Media file deleted'));
     }
   }, [doc, confirm]);
 
@@ -952,13 +988,13 @@ export const useMediaOperations = () => {
       const service = transcribeSpot.service;
       if (!service) return;
       const runs = channels?.length ? channels : [null];
-      const nameOf = (run) => run?.speaker || `Channel ${(run?.channel ?? 0) + 1}`;
+      const nameOf = (run) => run?.speaker || t('Channel {n}', { n: (run?.channel ?? 0) + 1 });
 
       const serviceId = service.serviceId;
       const documentId = doc.document.id;
 
       if (!documentId) {
-        notifyError('This document could not be found.', 'Failed to transcribe');
+        notifyError(t('This document could not be found.'), t('Failed to transcribe'));
         return;
       }
 
@@ -968,14 +1004,14 @@ export const useMediaOperations = () => {
       // by a service is the run this one can collide with: it takes no write
       // lock, so the lock is not what keeps the two apart.
       if (isProcessing) {
-        notifyError('Another service run is in progress.', 'Transcribe');
+        notifyError(t('Another service run is in progress.'), t('Transcribe'));
         return;
       }
 
       // Block on unmet required service arguments before doing any work.
       const missing = Object.values(transcribeSpot.params.errors);
       if (missing.length) {
-        notifyError(missing[0], 'Missing required option');
+        notifyError(missing[0], t('Missing required option'));
         return;
       }
 
@@ -991,7 +1027,7 @@ export const useMediaOperations = () => {
 
       // Held for the whole run: the service writes into the document.
       // The banner over the document shows the run, a step per channel.
-      const lock = acquireWriteLock('Transcribe', {
+      const lock = acquireWriteLock(t('Transcribe'), {
         onCancel: stopTranscribe,
         steps: runs.length > 1 ? runs.map(nameOf) : null,
       });
@@ -1013,6 +1049,7 @@ export const useMediaOperations = () => {
         // request.
         // It is a service run naming the service, which the service's writes
         // keep when they join it.
+        // i18n-ignore: the audit label, sent to the server
         const label = `Transcribe audio (${service.serviceName || serviceId})`;
         // The client holds one open operation, and an edit still saving holds
         // one: opened now, this run's would join it and be recorded as that
@@ -1020,14 +1057,14 @@ export const useMediaOperations = () => {
         // made.
         await Promise.race([doc.whenSaved(), stopping]);
         if (stopped) {
-          notifyInfo('Stopped. The transcript is unchanged.', 'Transcribe');
+          notifyInfo(t('Stopped. The transcript is unchanged.'), t('Transcribe'));
           return;
         }
         await doc.client.withOperation(
           label,
           async () => {
             if (stopped) return;
-            lock.report({ message: 'Starting the service…' });
+            lock.report({ message: t('Starting the service…') });
             asked = true;
 
             for (const [i, run] of runs.entries()) {
@@ -1037,7 +1074,12 @@ export const useMediaOperations = () => {
               // run of its own and says its own counts.
               const notice = (result) => {
                 const said = transcribeNotice(result);
-                return said && run ? { ...said, message: `${nameOf(run)}: ${said.message}` } : said;
+                return said && run
+                  ? {
+                      ...said,
+                      message: t('{name}: {message}', { name: nameOf(run), message: said.message }),
+                    }
+                  : said;
               };
               const result = await requestService(
                 project.id,
@@ -1054,16 +1096,16 @@ export const useMediaOperations = () => {
                   ...(run ? { channel: run.channel, speaker: run.speaker || '' } : {}),
                 },
                 {
-                  successMessage: 'Transcription complete',
+                  successMessage: t('Transcription complete'),
                   notice,
-                  errorTitle: 'Failed to transcribe',
-                  stoppedTitle: 'Transcribe',
+                  errorTitle: t('Failed to transcribe'),
+                  stoppedTitle: t('Transcribe'),
                   // Written down before submitting, so a reload can still find it.
                   onRequestId: (requestId) =>
                     writeRunRecord(documentId, {
                       requestId,
                       projectId: project.id,
-                      label: 'Transcribe',
+                      label: t('Transcribe'),
                       task: TASKS.TRANSCRIBE,
                     }),
                   timeout: TRANSCRIBE_TIMEOUT_MS,
@@ -1079,14 +1121,14 @@ export const useMediaOperations = () => {
           { kind: 'service-run', ref: serviceSource(serviceId) },
         );
         if (!asked) {
-          notifyInfo('Stopped. The transcript is unchanged.', 'Transcribe');
+          notifyInfo(t('Stopped. The transcript is unchanged.'), t('Transcribe'));
           return;
         }
 
         // A full reload of a freshly transcribed document is seconds of work
         // with nothing else on screen to show for it, so it is named like any
         // other step rather than left as dead air.
-        lock.report({ percent: null, message: 'Loading the transcript…' });
+        lock.report({ percent: null, message: t('Loading the transcript…') });
         await reloadAfterRun(() => doc.reload());
       } catch (error) {
         console.error('Transcription failed:', error);
@@ -1117,7 +1159,7 @@ export const useMediaOperations = () => {
     async ({ channels = null } = {}) => {
       const service = detectSpot.service;
       if (!service) {
-        detectRun.start(['Detect speech']);
+        detectRun.start([t('Detect speech')]);
         try {
           await vad.detect({ channels });
         } finally {
@@ -1130,20 +1172,20 @@ export const useMediaOperations = () => {
       // "running", `requestService` refused and returned nothing, and the run
       // ended a beat later saying nothing at all.
       if (isProcessing) {
-        notifyError('Another service run is in progress.', 'Detect speech');
+        notifyError(t('Another service run is in progress.'), t('Detect speech'));
         return;
       }
 
       const missing = Object.values(detectSpot.params.errors);
       if (missing.length) {
-        notifyError(missing[0], 'Missing required option');
+        notifyError(missing[0], t('Missing required option'));
         return;
       }
       const runs = channels?.length ? channels : [null];
       detectRun.start(
         runs.length > 1
-          ? runs.map((c) => c.speaker || `Channel ${c.channel + 1}`)
-          : ['Detect speech'],
+          ? runs.map((c) => c.speaker || t('Channel {n}', { n: c.channel + 1 }))
+          : [t('Detect speech')],
       );
       vad.beginServiceRun();
       try {
@@ -1161,16 +1203,16 @@ export const useMediaOperations = () => {
               ...(run ? { channel: run.channel, speaker: run.speaker || '' } : {}),
             },
             {
-              successTitle: 'Speech detection complete',
-              successMessage: `${service.serviceName} finished.`,
-              errorTitle: 'Failed to detect speech',
-              errorMessage: `${service.serviceName} reported an error.`,
-              stoppedTitle: 'Speech detection',
+              successTitle: t('Speech detection complete'),
+              successMessage: t('{name} finished.', { name: service.serviceName }),
+              errorTitle: t('Failed to detect speech'),
+              errorMessage: t('{name} reported an error.', { name: service.serviceName }),
+              stoppedTitle: t('Speech detection'),
               // Detection writes nothing: a segment is a stretch of the baseline
               // and cannot exist without text, so there is nothing to have kept.
-              stoppedMessage: 'Stopped. The proposals on the document are unchanged.',
+              stoppedMessage: t('Stopped. The proposals on the document are unchanged.'),
               // And it writes down no run, so a reload would find nothing to rejoin.
-              lostMessage: 'Lost contact with the service.',
+              lostMessage: t('Lost contact with the service.'),
             },
           );
           // A stopped run carries no regions, and a refused one is not a result at
@@ -1214,7 +1256,7 @@ export const useMediaOperations = () => {
   const handleDeleteAlignment = useCallback(
     async (alignmentId, { deleteText = true, asked = null } = {}) => {
       const ok = await doc.deleteAlignment(alignmentId, { deleteText, asked });
-      if (ok && deleteText) notifySuccess('Segment and its text deleted', 'Deleted');
+      if (ok && deleteText) notifySuccess(t('Segment and its text deleted'), t('Deleted'));
       return ok;
     },
     [doc],
@@ -1226,19 +1268,19 @@ export const useMediaOperations = () => {
   // playback is in. Null when there is none to take.
   const underPlayback = useCallback(() => {
     const at = getCurrentTime() ?? currentTime;
-    return (doc.alignmentTokens || []).filter((t) => {
-      const b = t.metadata?.timeBegin ?? 0;
-      const e = t.metadata?.timeEnd ?? 0;
+    return (doc.alignmentTokens || []).filter((tok) => {
+      const b = tok.metadata?.timeBegin ?? 0;
+      const e = tok.metadata?.timeEnd ?? 0;
       return b <= at && at < e;
     });
   }, [doc, getCurrentTime, currentTime]);
   const segmentAtHand = useCallback(
     (which) => {
       const tokens = doc.alignmentTokens || [];
-      const isSelected = (t) =>
+      const isSelected = (tok) =>
         !!selection &&
-        (t.metadata?.timeBegin ?? 0) === selection.start &&
-        (t.metadata?.timeEnd ?? 0) === selection.end;
+        (tok.metadata?.timeBegin ?? 0) === selection.start &&
+        (tok.metadata?.timeEnd ?? 0) === selection.end;
       const under = underPlayback();
       const selected = (which === 'split' ? under : tokens).find(isSelected);
       if (selected) return selected.id;
@@ -1258,27 +1300,27 @@ export const useMediaOperations = () => {
       if (!target) {
         notifyError(
           underPlayback().length > 1
-            ? 'Playback is in two segments. Select one.'
-            : 'Playback must be inside a segment.',
-          'Not split',
+            ? t('Playback is in two segments. Select one.')
+            : t('Playback must be inside a segment.'),
+          t('Not split'),
         );
         return false;
       }
       const time = getCurrentTime() ?? currentTime;
-      const token = (doc.alignmentTokens || []).find((t) => t.id === target);
+      const token = (doc.alignmentTokens || []).find((tok) => tok.id === target);
       const length = token ? token.end - token.begin : 0;
       const at = token && offset > 0 && offset < length ? token.begin + offset : null;
       const plan = doc.segmentSplitPlan(target, { time, at });
       if (plan.error) {
-        notifyError(plan.error, 'Not split');
+        notifyError(plan.error, t('Not split'));
         return false;
       }
       if (
         hasLoss(plan.loss) &&
         !(await confirm({
-          title: 'Split segment?',
-          description: `Deletes ${lossPhrase(plan.loss)} that cross the split.`,
-          confirmLabel: 'Split',
+          title: t('Split segment?'),
+          description: splitLossSentence(plan.loss),
+          confirmLabel: t('Split'),
           destructive: true,
         }))
       ) {
@@ -1310,26 +1352,32 @@ export const useMediaOperations = () => {
     async (id = null) => {
       const target = id ?? segmentAtHand('merge');
       if (!target) {
-        notifyError('Select a segment.', 'Not merged');
+        notifyError(t('Select a segment.'), t('Not merged'));
         return false;
       }
       const plan = doc.segmentMergePlan(target);
       if (plan.error) {
-        notifyError(plan.error, 'Not merged');
+        notifyError(plan.error, t('Not merged'));
         return false;
       }
       const { speaker, keys: dropped } = plan.loss;
       const lost = [
-        speaker && `Removes speaker ${speaker}. The merged segment is ${plan.speaker}'s.`,
+        speaker &&
+          t("Removes speaker {name}. The merged segment is {kept}'s.", {
+            name: speaker,
+            kept: plan.speaker,
+          }),
         dropped.length &&
-          `Removes ${dropped.length === 1 ? '1 value' : `${dropped.length} values`} of the next segment.`,
+          t('Removes {n, plural, one {# value} other {# values}} of the next segment.', {
+            n: dropped.length,
+          }),
       ].filter(Boolean);
       if (
         lost.length &&
         !(await confirm({
-          title: 'Merge segments?',
+          title: t('Merge segments?'),
           description: lost.join(' '),
-          confirmLabel: 'Merge',
+          confirmLabel: t('Merge'),
           destructive: true,
         }))
       ) {

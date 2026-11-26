@@ -3,10 +3,11 @@ import { fullTimestamp } from '../../lib/formatTime.js';
 import { changesMadeText } from '../../lib/auditText.js';
 import { Notice } from './Notice.jsx';
 import { SegmentedControl } from './SegmentedControl.jsx';
+import { t, msg } from '../../lib/i18n.js';
 
 const VIEWS = [
-  { value: 'changes', label: 'Changes' },
-  { value: 'document', label: 'Document' },
+  { value: 'changes', label: msg('Changes') },
+  { value: 'document', label: msg('Document') },
 ];
 
 // The line over a document shown at a past state. Keyed on the entry the reader
@@ -27,13 +28,20 @@ export const HistoricalBanner = ({ entry, loading, view, onView, className = '' 
   const text = changes
     ? changesMadeText(entry)
     : loading
-      ? `Loading the document as of ${when}…`
-      : `Read-only. This is the document as of ${when}.`;
+      ? t('Loading the document as of {when}…', { when })
+      : t('Read-only. This is the document as of {when}.', { when });
   return (
     <Notice tone="info" icon={Info} className={className}>
       <div className="flex flex-wrap items-center justify-between gap-2">
         <span>{text}</span>
-        {onView && <SegmentedControl label="View" value={view} onChange={onView} options={VIEWS} />}
+        {onView && (
+          <SegmentedControl
+            label={t('View')}
+            value={view}
+            onChange={onView}
+            options={VIEWS.map((v) => ({ ...v, label: t(v.label) }))}
+          />
+        )}
       </div>
     </Notice>
   );

@@ -2,8 +2,10 @@
 // documents: the heading a change is filed under is its document, linked by
 // the app's `changeHref(projectId, { kind: 'document', documentId })`.
 // Changes with no location share one untitled group.
+import { t } from '../../lib/i18n.js';
+
 export const documentGroupOf = (changeHref) => (projectId, where) => {
-  if (!where) return { key: 'other', title: 'Other changes', href: null };
+  if (!where) return { key: 'other', title: t('Other changes'), href: null };
   return {
     key: `doc:${where.documentId}`,
     title: where.documentName || where.documentId,

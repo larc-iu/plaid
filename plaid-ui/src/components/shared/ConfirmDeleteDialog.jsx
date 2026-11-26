@@ -10,6 +10,7 @@ import {
   AlertDialogCancel,
 } from '../ui/alert-dialog.jsx';
 import { CONFIRM_DELETE_CLASS } from '../../lib/destructive.js';
+import { t } from '../../lib/i18n.js';
 
 /**
  * The "are you sure" before a delete or a clear, for a body that is more than
@@ -39,7 +40,7 @@ export function ConfirmDeleteDialog({
   open,
   onOpenChange,
   title,
-  confirmLabel = 'Delete',
+  confirmLabel = t('Delete'),
   confirmDisabled = false,
   busy = false,
   onConfirm,
@@ -72,7 +73,7 @@ export function ConfirmDeleteDialog({
           <div className="flex flex-col gap-2 text-sm text-muted-foreground">{children}</div>
         )}
         <AlertDialogFooter>
-          <AlertDialogCancel disabled={busy}>Cancel</AlertDialogCancel>
+          <AlertDialogCancel disabled={busy}>{t('Cancel')}</AlertDialogCancel>
           {!cancelOnly && (
             <AlertDialogAction
               className={CONFIRM_DELETE_CLASS}

@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { notifyError } from '../lib/notify.js';
+import { t } from '../lib/i18n.js';
 import { isExpiredSession, useDocumentHistory } from './useDocumentHistory.js';
 
 // Time travel on a document editor: the history rail, the entry being viewed,
@@ -85,7 +86,7 @@ export function useHistoryView({ documentId, client, doc, reload, onExpired }) {
       console.error('Failed to load snapshot:', err);
       // Keep showing what is on screen, and put the rail back where the view
       // actually is.
-      notifyError(err, 'Failed to load that snapshot');
+      notifyError(err, t('Failed to load that snapshot'));
       setSelectedEntry(shown.current);
     } finally {
       if (mine === selection.current) setLoadingSnapshot(false);

@@ -42,7 +42,7 @@ import {
   computeMweProposals,
 } from './autoLink.js';
 import { linkPrecedentQueries, createTally, foldLinkRows } from './precedent.js';
-import { countOf } from '@ui/lib/plural.js';
+import { t } from '@ui/lib/i18n.js';
 import { builtinDetail, builtinRun } from './builtinVersion.js';
 import { BUILTIN_ANALYSIS_COPY, BUILTIN_LINK_PRECEDENT } from './serviceDefaults.js';
 
@@ -132,8 +132,8 @@ async function runCopyPhase(doc, copyContents, onProgress, shouldStop = () => fa
 
   const forms = new Set();
   for (const s of doc.sentences) {
-    for (const t of s.tokens) {
-      if (isUnanalyzedWord(t, ignoredCfg) && t.content) forms.add(t.content);
+    for (const token of s.tokens) {
+      if (isUnanalyzedWord(token, ignoredCfg) && token.content) forms.add(token.content);
     }
   }
   if (!forms.size) return none;
@@ -151,7 +151,10 @@ async function runCopyPhase(doc, copyContents, onProgress, shouldStop = () => fa
   if (!proposals.length) return none;
   // Last chance: the write below is one operation and is not interrupted.
   checkpoint(shouldStop);
-  onProgress({ percent: null, message: `Copying onto ${countOf(proposals.length, 'word')}…` });
+  onProgress({
+    percent: null,
+    message: t('Copying onto {n, plural, one {# word} other {# words}}…', { n: proposals.length }),
+  });
   // A service run naming the rule, whose pieces name the rule and its version.
   const detail = await builtinDetail(BUILTIN_ANALYSIS_COPY);
   const n = await doc.bulkApplyAnalyses(proposals, ANALYSIS_COPY_SOURCE, {
@@ -175,7 +178,7 @@ async function remoteTalliesFor(
   onProgress = () => {},
   shouldStop = () => false,
 ) {
-  onProgress({ percent: null, message: 'Looking for previous analyses…' });
+  onProgress({ percent: null, message: t('Looking for previous analyses…') });
   const index = await doc.client.query(wordFormDocIndexQuery(wordLayerId));
   checkpoint(shouldStop);
   const { docIds, truncated } = rankSourceDocs(index, forms, {
@@ -219,11 +222,17 @@ async function remoteTalliesFor(
       done++;
       onProgress({
         percent: (done / docIds.length) * 100,
-        message: `Read ${done} of ${countOf(docIds.length, 'document')}…`,
+        message: t('Read {done} of {n, plural, one {# document} other {# documents}}…', {
+          done,
+          n: docIds.length,
+        }),
       });
     }
   };
-  onProgress({ percent: null, message: `Reading ${countOf(docIds.length, 'document')}…` });
+  onProgress({
+    percent: null,
+    message: t('Reading {n, plural, one {# document} other {# documents}}…', { n: docIds.length }),
+  });
   await Promise.all(
     Array.from({ length: Math.min(SOURCE_FETCHES_IN_FLIGHT, docIds.length) }, worker),
   );
@@ -278,7 +287,7 @@ async function linkPhase(
 ) {
   const vocabIds = Object.keys(doc.vocabularies || {});
   if (!vocabIds.length) return { linked: 0, cut: false, unranked: 0 };
-  onProgress({ percent: null, message: 'Reading the lexicon…' });
+  onProgress({ percent: null, message: t('Reading the lexicon…') });
   const ignoredCfg = readIgnoredTokens(doc.layerInfo.primaryTokenLayer?.config);
   const precedent = await linkPrecedentFor(doc, vocabIds, ignoredCfg);
   const unranked = new Set();
@@ -295,7 +304,10 @@ async function linkPhase(
   let linked = 0;
   if (proposals.length) {
     checkpoint(shouldStop);
-    onProgress({ percent: null, message: `Linking ${countOf(proposals.length, 'word')}…` });
+    onProgress({
+      percent: null,
+      message: t('Linking {n, plural, one {# word} other {# words}}…', { n: proposals.length }),
+    });
     const n = await doc.bulkLinkVocab(proposals, AUTO_LINK_SOURCE, stamp);
     if (n === false) return false;
     linked += n;
@@ -309,7 +321,7 @@ async function linkPhase(
   });
   if (mweProposals.length) {
     checkpoint(shouldStop);
-    onProgress({ percent: null, message: 'Linking multi-word expressions…' });
+    onProgress({ percent: null, message: t('Linking multi-word expressions…') });
     const n = await doc.bulkLinkMwes(mweProposals, MWE_LINK_SOURCE, stamp);
     if (n === false) return false;
     linked += n;

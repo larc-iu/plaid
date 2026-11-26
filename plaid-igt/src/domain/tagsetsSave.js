@@ -6,6 +6,7 @@ import { IGT_NAMESPACE, readDocumentMetadata } from './igtConfig.js';
 import { getIgtLayerInfo } from './layerInfo.js';
 import { governedFields, readTagsetName, readTagsets } from './tagsets.js';
 import { igtFields, queueFieldDeclarations } from './igtConstraints.js';
+import { t, msg } from '../../../plaid-ui/src/lib/i18n.js';
 import {
   expectStored,
   isConfigConflict,
@@ -14,8 +15,8 @@ import {
   withStoredConfig,
 } from '../../../plaid-ui/src/domain/configCells.js';
 
-/** What a save that read the tagsets says when they changed before it landed. */
-export const TAGSETS_CHANGED = 'Tagsets changed elsewhere. Reload and redo your change.';
+/** What a save that read the tagsets says when they changed before it landed (a message). */
+export const TAGSETS_CHANGED = msg('Tagsets changed elsewhere. Reload and redo your change.');
 
 /**
  * Queue on `api` (a batch's `projects`, `spanLayers` or `vocabLayers`) a
@@ -44,7 +45,7 @@ export const tagsetsChangedError = async (error, read, readNow) => {
     return error;
   }
   if (sameConfig(now ?? null, read ?? null)) return error;
-  return Object.assign(new Error(TAGSETS_CHANGED, { cause: error }), { tagsetsChanged: true });
+  return Object.assign(new Error(t(TAGSETS_CHANGED), { cause: error }), { tagsetsChanged: true });
 };
 
 /**
@@ -186,11 +187,11 @@ export const queueTagsetsSave = (
  */
 export const tagsetsWithValues = (live, tagsetName, parts) => {
   const tagsets = readTagsets(live?.config);
-  const t = tagsets[tagsetName];
-  if (!t) throw new Error(`Tagset "${tagsetName}" no longer exists`);
-  const have = new Set(t.values.map((v) => v.value));
+  const tagset = tagsets[tagsetName];
+  if (!tagset) throw new Error(t('Tagset "{name}" no longer exists', { name: tagsetName }));
+  const have = new Set(tagset.values.map((v) => v.value));
   const fresh = parts.filter((v) => v && !have.has(v)).map((value) => ({ value }));
-  const next = { ...tagsets, [tagsetName]: { ...t, values: [...t.values, ...fresh] } };
+  const next = { ...tagsets, [tagsetName]: { ...tagset, values: [...tagset.values, ...fresh] } };
   return { fresh, next };
 };
 

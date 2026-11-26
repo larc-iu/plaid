@@ -1,8 +1,14 @@
 import { Link } from 'react-router-dom';
 import { historyHref } from '@ui/hooks/useHistoryParam.js';
+import { t, tx, msg } from '@ui/lib/i18n.js';
 import { ChangeValue } from './ChangeValue.jsx';
 
-const STATE_WORDS = { added: 'Added', changed: 'Changed', deleted: 'Deleted', merged: 'Merged' };
+const STATE_WORDS = {
+  added: msg('Added'),
+  changed: msg('Changed'),
+  deleted: msg('Deleted'),
+  merged: msg('Merged'),
+};
 
 // A value of an entry, which carries no provenance of its own here.
 const plain = (f) => ({
@@ -31,25 +37,26 @@ export const EntryChangeList = ({ entries, entryId }) => (
         <li key={e.id} data-entry={e.id} className="rounded-lg border bg-card px-3 py-2 text-sm">
           <div className="flex flex-wrap items-baseline gap-x-2">
             <Link to={to} className="font-text font-medium hover:underline" dir="auto">
-              {e.name || 'Entry'}
+              {e.name || t('Entry')}
             </Link>
             <span className="text-xs text-muted-foreground">
-              {STATE_WORDS[e.state]}
-              {e.into && (
-                <>
-                  {' into '}
-                  <Link
-                    to={`/vocabularies/${e.vocabId}?item=${encodeURIComponent(e.into.id)}`}
-                    className="font-text hover:underline"
-                    dir="auto"
-                  >
-                    {e.into.name}
-                  </Link>
-                </>
-              )}
+              {e.into
+                ? tx('Merged into <a>{name}</a>', {
+                    name: e.into.name,
+                    a: (c) => (
+                      <Link
+                        to={`/vocabularies/${e.vocabId}?item=${encodeURIComponent(e.into.id)}`}
+                        className="font-text hover:underline"
+                        dir="auto"
+                      >
+                        {c}
+                      </Link>
+                    ),
+                  })
+                : STATE_WORDS[e.state] && t(STATE_WORDS[e.state])}
             </span>
             {e.changedSince && (
-              <span className="text-xs text-muted-foreground">Changed again later</span>
+              <span className="text-xs text-muted-foreground">{t('Changed again later')}</span>
             )}
           </div>
           {e.fields.length > 0 && (

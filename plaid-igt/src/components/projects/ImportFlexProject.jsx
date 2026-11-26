@@ -43,7 +43,7 @@ import { documentFraction, documentLabel } from '../../import/progress';
 import { useDocumentTitle } from '@ui/hooks/useDocumentTitle.js';
 import { humanizeFieldName } from '@/domain/vocabFields';
 import { scopeBadgeClass } from '@/domain/scopeColors';
-import { countOf } from '@ui/lib/plural.js';
+import { t, tx, msg } from '@ui/lib/i18n.js';
 import { readTextFile } from '@ui/lib/textFile.js';
 import { sameName } from '@ui/lib/nameKey.js';
 import { FORM_PAGE_WIDTH } from '@ui/lib/pageWidth.js';
@@ -56,30 +56,30 @@ import { maintainedLexicons } from '../../import/lexicon';
 const FORMATS = {
   fwbackup: {
     kind: 'FLEx',
-    title: 'Import from FLEx (.fwbackup)',
-    pageTitle: 'Import FLEx project',
+    title: msg('Import from FLEx (.fwbackup)'),
+    pageTitle: msg('Import FLEx project'),
     accept: '.fwbackup,application/zip,audio/*,video/*',
-    drop: 'Drop a .fwbackup file and its recordings here, or click to choose',
-    where: 'In FieldWorks: File → Project Management → Back up this Project',
-    reading: 'Reading backup…',
-    operation: 'Import FLEx project',
+    drop: msg('Drop a .fwbackup file and its recordings here, or click to choose'),
+    where: msg('In FieldWorks: File → Project Management → Back up this Project'),
+    reading: msg('Reading backup…'),
+    operation: 'Import FLEx project', // i18n-ignore: an audit label sent to the server
   },
   flextext: {
     kind: 'FLEx .flextext',
-    title: 'Import from FLEx (.flextext)',
-    pageTitle: 'Import FLEx texts',
+    title: msg('Import from FLEx (.flextext)'),
+    pageTitle: msg('Import FLEx texts'),
     accept: '.flextext',
-    drop: 'Drop .flextext files here, or click to choose',
-    where: 'In FieldWorks: File → Export Interlinear → FLExText',
-    reading: 'Reading files…',
-    operation: 'Import FLEx texts',
+    drop: msg('Drop .flextext files here, or click to choose'),
+    where: msg('In FieldWorks: File → Export Interlinear → FLExText'),
+    reading: msg('Reading files…'),
+    operation: 'Import FLEx texts', // i18n-ignore: an audit label sent to the server
   },
 };
 
 export const ImportFlexProject = ({ format = 'fwbackup' }) => {
   const fmt = FORMATS[format];
   const flextext = format === 'flextext';
-  useDocumentTitle(fmt.pageTitle);
+  useDocumentTitle(t(fmt.pageTitle));
   const { client: session, user } = useAuth();
   // The run's own client, so a write made elsewhere in the tab meanwhile is
   // neither stamped with its document version nor filed under its operation.
@@ -132,8 +132,8 @@ export const ImportFlexProject = ({ format = 'fwbackup' }) => {
   const readFiles = async (files) => {
     if (!flextext) {
       const backups = files.filter((f) => /\.(fwbackup|zip)$/i.test(f.name));
-      if (!backups.length) throw new Error('No .fwbackup file among those chosen');
-      if (backups.length > 1) throw new Error('Choose one .fwbackup file');
+      if (!backups.length) throw new Error(t('No .fwbackup file among those chosen'));
+      if (backups.length > 1) throw new Error(t('Choose one .fwbackup file'));
       const [backup] = backups;
       const bytes = new Uint8Array(await backup.arrayBuffer());
       // Let the spinner paint before the synchronous parse occupies the thread.
@@ -149,17 +149,20 @@ export const ImportFlexProject = ({ format = 'fwbackup' }) => {
       };
     }
     const picked = files.filter((f) => /\.flextext$/i.test(f.name));
-    if (!picked.length) throw new Error('No .flextext files among those chosen');
+    if (!picked.length) throw new Error(t('No .flextext files among those chosen'));
     const texts = await Promise.all(
       picked.map(async (f) => ({ name: f.name, xml: await readTextFile(f, f.name) })),
     );
     await new Promise((r) => setTimeout(r, 50));
     const ir = parseFlextextFiles(texts);
     for (const f of files) {
-      if (!picked.includes(f)) ir.warnings.unshift(`${f.name} is not a .flextext file. Not read.`);
+      if (!picked.includes(f)) {
+        ir.warnings.unshift(t('{file} is not a .flextext file. Not read.', { file: f.name }));
+      }
     }
     const one = picked.length === 1;
     return {
+      // i18n-ignore: the source named in the import record, stored
       sourceName: one ? picked[0].name : `${picked[0].name} and ${picked.length - 1} more`,
       fileCount: picked.length,
       projectName: one ? picked[0].name.replace(/\.flextext$/i, '') : '',
@@ -176,7 +179,9 @@ export const ImportFlexProject = ({ format = 'fwbackup' }) => {
       const build = buildDocuments(ir);
       if (build.documents.length === 0) {
         throw new Error(
-          flextext ? 'No texts found in these files' : 'No interlinear texts found in this backup',
+          flextext
+            ? t('No texts found in these files')
+            : t('No interlinear texts found in this backup'),
         );
       }
       // Analysis writing systems that actually carry data, project order first
@@ -224,7 +229,7 @@ export const ImportFlexProject = ({ format = 'fwbackup' }) => {
       console.error('FLEx parse failed:', e);
       notifyError(
         humanizeError(e),
-        flextext ? 'Failed to read the files' : 'Failed to read the backup',
+        flextext ? t('Failed to read the files') : t('Failed to read the backup'),
       );
       setStage('pick');
     }
@@ -268,7 +273,7 @@ export const ImportFlexProject = ({ format = 'fwbackup' }) => {
   // Entries FLEx marks as a variant of, or a complex form built from, others.
   const variantEntryCount = (parsed?.ir.lexicon ?? []).filter((e) => e.entryRefs.length).length;
 
-  const defaultLexiconName = `${projectName.trim()} Lexicon`;
+  const defaultLexiconName = `${projectName.trim()} Lexicon`; // i18n-ignore: a default vocabulary name, stored
   const effectiveLexiconName = lexiconName ?? defaultLexiconName;
   const existingVocab = existingVocabs.find((v) => v.id === existingVocabId) ?? null;
   const lexiconChoiceValid =
@@ -332,7 +337,9 @@ export const ImportFlexProject = ({ format = 'fwbackup' }) => {
         const vocabs = (await client.projects.get(projectId)).vocabs || [];
         return vocabs.find((v) => sameName(v.name, vocabName))?.id ?? null;
       },
-      requireVocab: flextext ? null : 'The lexicon this import writes into is not on the project.',
+      requireVocab: flextext
+        ? null
+        : t('The lexicon this import writes into is not on the project.'),
       run: ({ projectId, vocabId, shouldStop, setProgress, onEntriesMade }) => {
         const totalDocs = filteredBuild.documents.length;
         return runImport({
@@ -349,7 +356,7 @@ export const ImportFlexProject = ({ format = 'fwbackup' }) => {
           onProgress: (p) => {
             if (p.phase === 'lexicon') {
               setProgress({
-                label: `Importing lexicon (${p.done}/${p.total})`,
+                label: t('Importing lexicon ({done}/{total})', { done: p.done, total: p.total }),
                 pct: 10 + (p.total ? (p.done / p.total) * 20 : 20),
               });
             } else if (p.phase === 'document') {
@@ -366,7 +373,9 @@ export const ImportFlexProject = ({ format = 'fwbackup' }) => {
 
   const totalWarnings = parsed?.build.stats.warnings ?? 0;
   const warningSamples = parsed
-    ? parsed.build.documents.flatMap((d) => d.warnings.map((w) => `${d.name}: ${w}`)).slice(0, 8)
+    ? parsed.build.documents
+        .flatMap((d) => d.warnings.map((w) => t('{file}: {reason}', { file: d.name, reason: w })))
+        .slice(0, 8)
     : [];
   // Parser-level warnings: references inside the backup that couldn't be
   // resolved (missing objects, unexpected analysis classes) — distinct from the
@@ -379,68 +388,79 @@ export const ImportFlexProject = ({ format = 'fwbackup' }) => {
   return (
     <div className={FORM_PAGE_WIDTH}>
       <div className="flex flex-col gap-6">
-        <ImportHeader title={fmt.title}>
-          {flextext ? (
-            <>
-              Create a project from FLEx interlinear texts (<code>.flextext</code>). Texts, glosses,
-              morpheme analyses, and translations are imported. The lexicon, media, and time
-              alignment are not.
-            </>
-          ) : (
-            <>
-              Create a project from a FieldWorks backup (<code>.fwbackup</code>). Texts, glosses,
-              morpheme analyses, translations, and the full lexicon are imported. Choose a text's
-              recording along with the backup and it is imported too, with the text's sentence
-              times. Pictures are not imported.
-            </>
-          )}
+        <ImportHeader title={t(fmt.title)}>
+          {flextext
+            ? tx(
+                'Create a project from FLEx interlinear texts (<code>.flextext</code>). Texts, glosses, morpheme analyses, and translations are imported. The lexicon, media, and time alignment are not.',
+                { code: (c) => <code>{c}</code> },
+              )
+            : tx(
+                "Create a project from a FieldWorks backup (<code>.fwbackup</code>). Texts, glosses, morpheme analyses, translations, and the full lexicon are imported. Choose a text's recording along with the backup and it is imported too, with the text's sentence times. Pictures are not imported.",
+                { code: (c) => <code>{c}</code> },
+              )}
         </ImportHeader>
 
         {stage === 'pick' && (
           <FileDropZone
             onFiles={handleFiles}
-            title={fmt.drop}
-            hint={fmt.where}
+            title={t(fmt.drop)}
+            hint={t(fmt.where)}
             accept={fmt.accept}
             multiple
           />
         )}
 
-        {stage === 'parsing' && <ReadingPanel label={fmt.reading} />}
+        {stage === 'parsing' && <ReadingPanel label={t(fmt.reading)} />}
 
         {(stage === 'review' || stage === 'running' || stage === 'done') && parsed && (
           <div className="flex flex-col gap-4">
             <div className="rounded-lg border bg-card p-4">
               <p className="mb-2 font-medium">
                 {parsed.fileCount > 1
-                  ? `Contents of ${parsed.fileCount} files`
-                  : `Contents of “${parsed.sourceName}”`}
+                  ? t('Contents of {n} files', { n: parsed.fileCount })
+                  : t('Contents of “{name}”', { name: parsed.sourceName })}
               </p>
               <div className="grid grid-cols-2 gap-x-8 gap-y-1 text-sm sm:grid-cols-3">
-                <p>{countOf(parsed.build.stats.documents, 'text')}</p>
-                <p>{countOf(parsed.build.stats.sentences, 'sentence')}</p>
-                <p>{countOf(parsed.build.stats.words, 'word')}</p>
-                <p>{countOf(parsed.build.stats.morphemes, 'morpheme')}</p>
+                <p>
+                  {t('{n, plural, one {# text} other {# texts}}', {
+                    n: parsed.build.stats.documents,
+                  })}
+                </p>
+                <p>
+                  {t('{n, plural, one {# sentence} other {# sentences}}', {
+                    n: parsed.build.stats.sentences,
+                  })}
+                </p>
+                <p>
+                  {t('{n, plural, one {# word} other {# words}}', { n: parsed.build.stats.words })}
+                </p>
+                <p>
+                  {t('{n, plural, one {# morpheme} other {# morphemes}}', {
+                    n: parsed.build.stats.morphemes,
+                  })}
+                </p>
                 {!flextext && (
                   <>
                     <p>
-                      {countOf(
-                        parsed.build.stats.lexiconEntries,
-                        'lexicon entry',
-                        'lexicon entries',
-                      )}
+                      {t('{n, plural, one {# lexicon entry} other {# lexicon entries}}', {
+                        n: parsed.build.stats.lexiconEntries,
+                      })}
                     </p>
-                    <p>{countOf(parsed.build.stats.lexiconSenses, 'sense')}</p>
+                    <p>
+                      {t('{n, plural, one {# sense} other {# senses}}', {
+                        n: parsed.build.stats.lexiconSenses,
+                      })}
+                    </p>
                   </>
                 )}
               </div>
               {parsed.ir.unread?.length > 0 && (
                 <p className="mt-2 text-sm text-muted-foreground">
-                  Not imported:{' '}
-                  {parsed.ir.unread
-                    .map((u) => `${u.label} (${u.count.toLocaleString()})`)
-                    .join(', ')}
-                  .
+                  {t('Not imported: {items}.', {
+                    items: parsed.ir.unread
+                      .map((u) => t('{label} ({n, number})', { label: u.label, n: u.count }))
+                      .join(', '),
+                  })}
                 </p>
               )}
               {(recordings.wanted.length > 0 || mediaFiles.length > 0) && (
@@ -479,15 +499,17 @@ export const ImportFlexProject = ({ format = 'fwbackup' }) => {
               {totalWarnings > 0 && (
                 <div className="mt-3 rounded-md border border-warning/40 bg-warning/10 p-3 text-sm">
                   <p className="font-medium text-warning-foreground">
-                    {countOf(totalWarnings, 'word')} could not be aligned to the baseline and will
-                    be skipped:
+                    {t(
+                      '{n, plural, one {# word} other {# words}} could not be aligned to the baseline and will be skipped:',
+                      { n: totalWarnings },
+                    )}
                   </p>
                   <ul className="mt-1 list-disc pl-5 text-warning-foreground">
                     {warningSamples.map((w, i) => (
                       <li key={i}>{w}</li>
                     ))}
                     {totalWarnings > warningSamples.length && (
-                      <li>…and {totalWarnings - warningSamples.length} more</li>
+                      <li>{t('…and {n} more', { n: totalWarnings - warningSamples.length })}</li>
                     )}
                   </ul>
                 </div>
@@ -496,15 +518,22 @@ export const ImportFlexProject = ({ format = 'fwbackup' }) => {
                 <div className="mt-3 rounded-md border border-warning/40 bg-warning/10 p-3 text-sm">
                   <p className="font-medium text-warning-foreground">
                     {flextext
-                      ? `${countOf(irWarnings.length, 'warning')}:`
-                      : `${countOf(irWarnings.length, 'reference')} in the backup could not be resolved. Some data may be missing from the import:`}
+                      ? t('{n, plural, one {# warning} other {# warnings}}:', {
+                          n: irWarnings.length,
+                        })
+                      : t(
+                          '{n, plural, one {# reference} other {# references}} in the backup could not be resolved. Some data may be missing from the import:',
+                          { n: irWarnings.length },
+                        )}
                   </p>
                   <ul className="mt-1 list-disc pl-5 text-warning-foreground">
                     {irWarningSamples.map((w, i) => (
                       <li key={i}>{w}</li>
                     ))}
                     {irWarnings.length > irWarningSamples.length && (
-                      <li>…and {irWarnings.length - irWarningSamples.length} more</li>
+                      <li>
+                        {t('…and {n} more', { n: irWarnings.length - irWarningSamples.length })}
+                      </li>
                     )}
                   </ul>
                 </div>
@@ -520,10 +549,12 @@ export const ImportFlexProject = ({ format = 'fwbackup' }) => {
 
             {!flextext && (
               <div className="rounded-lg border bg-card p-4">
-                <p className="mb-1 font-medium">Lexicon</p>
+                <p className="mb-1 font-medium">{t('Lexicon')}</p>
                 <p className="mb-3 text-sm text-muted-foreground">
-                  The FLEx lexicon ({countOf(parsed.ir.lexicon.length, 'entry', 'entries')}) becomes
-                  the vocabulary the interlinear links to.
+                  {t(
+                    'The FLEx lexicon ({n, plural, one {# entry} other {# entries}}) becomes the vocabulary the interlinear links to.',
+                    { n: parsed.ir.lexicon.length },
+                  )}
                 </p>
                 <div className="flex flex-col gap-3">
                   <label className="flex cursor-pointer items-center gap-2 text-sm">
@@ -534,12 +565,12 @@ export const ImportFlexProject = ({ format = 'fwbackup' }) => {
                       disabled={locked}
                       onChange={() => setLexiconMode('new')}
                     />
-                    Create a new lexicon
+                    {t('Create a new lexicon')}
                   </label>
                   {lexiconMode === 'new' && (
                     <Input
                       id="flex-lexicon-name"
-                      aria-label="Lexicon name"
+                      aria-label={t('Lexicon name')}
                       className="ml-6 max-w-md"
                       value={effectiveLexiconName}
                       onChange={(e) => setLexiconName(e.target.value)}
@@ -558,22 +589,22 @@ export const ImportFlexProject = ({ format = 'fwbackup' }) => {
                       disabled={locked || existingVocabs.length === 0}
                       onChange={() => setLexiconMode('existing')}
                     />
-                    Add to a lexicon you maintain
+                    {t('Add to a lexicon you maintain')}
                     {existingVocabs.length === 0 && (
-                      <span className="text-xs">(none available)</span>
+                      <span className="text-xs">{t('(none available)')}</span>
                     )}
                   </label>
                   {lexiconMode === 'existing' && (
                     <div className="ml-6 flex flex-col gap-1.5">
                       <select
                         id="flex-lexicon-existing"
-                        aria-label="Existing lexicon"
+                        aria-label={t('Existing lexicon')}
                         className="h-9 max-w-md rounded-md border border-input bg-background px-2 text-sm disabled:cursor-not-allowed disabled:opacity-60"
                         value={existingVocabId}
                         disabled={locked}
                         onChange={(e) => setExistingVocabId(e.target.value)}
                       >
-                        <option value="">Choose a lexicon…</option>
+                        <option value="">{t('Choose a lexicon…')}</option>
                         {existingVocabs.map((v) => (
                           <option key={v.id} value={v.id}>
                             {v.name}
@@ -581,13 +612,14 @@ export const ImportFlexProject = ({ format = 'fwbackup' }) => {
                         ))}
                       </select>
                       <p className="text-xs text-muted-foreground">
-                        Entries are added to it and its existing fields stay as they are. Senses
-                        already imported from this FLEx project are reused, not duplicated.
+                        {t(
+                          'Entries are added to it and its existing fields stay as they are. Senses already imported from this FLEx project are reused, not duplicated.',
+                        )}
                       </p>
                     </div>
                   )}
                   <p className="mt-1 text-xs text-muted-foreground">
-                    Senses are kept under their entry, in FLEx order.
+                    {t('Senses are kept under their entry, in FLEx order.')}
                   </p>
                   {variantEntryCount > 0 && (
                     <label className="flex cursor-pointer items-start gap-2 text-sm">
@@ -599,10 +631,12 @@ export const ImportFlexProject = ({ format = 'fwbackup' }) => {
                         onChange={(e) => setImportVariants(e.target.checked)}
                       />
                       <span>
-                        Variants and complex forms
+                        {t('Variants and complex forms')}
                         <span className="block text-xs text-muted-foreground">
-                          {countOf(variantEntryCount, 'entry')}. A variant refers to its canonical
-                          form, and a complex form to what it is built from.
+                          {t(
+                            '{n, plural, one {# entry} other {# entries}}. A variant refers to its canonical form, and a complex form to what it is built from.',
+                            { n: variantEntryCount },
+                          )}
                         </span>
                       </span>
                     </label>
@@ -614,10 +648,11 @@ export const ImportFlexProject = ({ format = 'fwbackup' }) => {
             <div className="rounded-lg border bg-card p-4">
               <div className="mb-2 flex items-center justify-between">
                 <p className="font-medium">
-                  Texts{' '}
-                  <span className="font-normal text-muted-foreground">
-                    ({selectedTexts.size} of {parsed.build.documents.length} selected)
-                  </span>
+                  {tx('Texts <muted>({n} of {total} selected)</muted>', {
+                    n: selectedTexts.size,
+                    total: parsed.build.documents.length,
+                    muted: (c) => <span className="font-normal text-muted-foreground">{c}</span>,
+                  })}
                 </p>
                 {!locked && (
                   <span className="flex gap-3 text-sm">
@@ -628,14 +663,14 @@ export const ImportFlexProject = ({ format = 'fwbackup' }) => {
                         setSelectedTexts(new Set(parsed.build.documents.map((d) => d.guid)))
                       }
                     >
-                      all
+                      {t('all')}
                     </button>
                     <button
                       type="button"
                       className="text-muted-foreground hover:text-foreground hover:underline"
                       onClick={() => setSelectedTexts(new Set())}
                     >
-                      none
+                      {t('none')}
                     </button>
                   </span>
                 )}
@@ -661,7 +696,10 @@ export const ImportFlexProject = ({ format = 'fwbackup' }) => {
                     />
                     <span className="flex-1 truncate">{d.name}</span>
                     <span className="shrink-0 text-xs text-muted-foreground">
-                      {countOf(d.sentences.length, 'sentence')} · {countOf(d.words.length, 'word')}
+                      {t('{n, plural, one {# sentence} other {# sentences}}', {
+                        n: d.sentences.length,
+                      })}{' '}
+                      · {t('{n, plural, one {# word} other {# words}}', { n: d.words.length })}
                     </span>
                   </label>
                 ))}
@@ -670,10 +708,11 @@ export const ImportFlexProject = ({ format = 'fwbackup' }) => {
 
             {parsed.analysisWssAvailable.length > 1 && (
               <div className="rounded-lg border bg-card p-4">
-                <p className="mb-1 font-medium">Analysis languages</p>
+                <p className="mb-1 font-medium">{t('Analysis languages')}</p>
                 <p className="mb-3 text-sm text-muted-foreground">
-                  Glosses and translations exist in these languages. Each selected one gets its own
-                  annotation fields.
+                  {t(
+                    'Glosses and translations exist in these languages. Each selected one gets its own annotation fields.',
+                  )}
                 </p>
                 <div className="flex flex-wrap gap-4">
                   {parsed.analysisWssAvailable.map((ws) => (
@@ -700,10 +739,11 @@ export const ImportFlexProject = ({ format = 'fwbackup' }) => {
 
             {(parsed.ir.posWss?.length ?? 0) > 1 && (
               <div className="rounded-lg border bg-card p-4">
-                <p className="mb-1 font-medium">Part-of-speech language</p>
+                <p className="mb-1 font-medium">{t('Part-of-speech language')}</p>
                 <p className="mb-3 text-sm text-muted-foreground">
-                  Categories are named in these languages. Words, morphemes and entries take the
-                  name in the one selected.
+                  {t(
+                    'Categories are named in these languages. Words, morphemes and entries take the name in the one selected.',
+                  )}
                 </p>
                 <div className="flex flex-wrap gap-4">
                   {parsed.ir.posWss.map((ws) => (
@@ -724,17 +764,19 @@ export const ImportFlexProject = ({ format = 'fwbackup' }) => {
 
             {parsed.ir.lexiconFields.length > 0 && (
               <div className="rounded-lg border bg-card p-4">
-                <p className="mb-1 font-medium">Lexicon fields</p>
+                <p className="mb-1 font-medium">{t('Lexicon fields')}</p>
                 <p className="mb-3 text-sm text-muted-foreground">
-                  Form, gloss, part of speech, definition, morph type, examples and custom fields
-                  are always imported. These other FLEx fields carry values too, and each becomes a
-                  field on the lexicon entries. Untick any you do not want.
+                  {t(
+                    'Form, gloss, part of speech, definition, morph type, examples and custom fields are always imported. These other FLEx fields carry values too, and each becomes a field on the lexicon entries. Untick any you do not want.',
+                  )}
                 </p>
                 <div className="flex flex-col gap-2">
                   {parsed.ir.lexiconFields.map((f) => {
                     const where = [
-                      f.entries > 0 && countOf(f.entries, 'entry'),
-                      f.senses > 0 && countOf(f.senses, 'sense'),
+                      f.entries > 0 &&
+                        t('{n, plural, one {# entry} other {# entries}}', { n: f.entries }),
+                      f.senses > 0 &&
+                        t('{n, plural, one {# sense} other {# senses}}', { n: f.senses }),
                     ]
                       .filter(Boolean)
                       .join(', ');
@@ -769,10 +811,12 @@ export const ImportFlexProject = ({ format = 'fwbackup' }) => {
 
             {liveConfig.orthographies.length > 0 && (
               <div className="rounded-lg border bg-card p-4">
-                <p className="mb-1 font-medium">Orthographies</p>
+                <p className="mb-1 font-medium">{t('Orthographies')}</p>
                 <p className="mb-3 text-sm text-muted-foreground">
-                  The baseline text is in {parsed.build.baselineWs}. Other writing systems on words
-                  become orthographies.
+                  {t(
+                    'The baseline text is in {ws}. Other writing systems on words become orthographies.',
+                    { ws: parsed.build.baselineWs },
+                  )}
                 </p>
                 <div className="flex flex-col gap-2">
                   {liveConfig.orthographies.map((o) => (
@@ -794,11 +838,14 @@ export const ImportFlexProject = ({ format = 'fwbackup' }) => {
             )}
 
             <div className="rounded-lg border bg-card p-4">
-              <p className="mb-2 font-medium">Annotation fields</p>
+              <p className="mb-2 font-medium">{t('Annotation fields')}</p>
               <div className="flex flex-wrap gap-2">
                 {liveConfig.fields.map((f) => (
                   <Badge key={`${f.scope}:${f.name}`} className={scopeBadgeClass(f.scope)}>
-                    {f.name} · {f.scope}
+                    {t(
+                      '{name} · {scope, select, Sentence {Sentence} Word {Word} Morpheme {Morpheme} other {{scope}}}',
+                      { name: f.name, scope: f.scope },
+                    )}
                   </Badge>
                 ))}
               </div>
@@ -825,7 +872,7 @@ export const ImportFlexProject = ({ format = 'fwbackup' }) => {
                   }}
                   disabled={!!unfinished}
                 >
-                  Choose another file
+                  {t('Choose another file')}
                 </Button>
                 {!unfinished && (
                   <Button
@@ -834,7 +881,10 @@ export const ImportFlexProject = ({ format = 'fwbackup' }) => {
                       !projectName.trim() || selectedTexts.size === 0 || !lexiconChoiceValid
                     }
                   >
-                    <FileUp className="h-4 w-4" /> Import {countOf(selectedTexts.size, 'text')}
+                    <FileUp className="h-4 w-4" />{' '}
+                    {t('Import {n, plural, one {# text} other {# texts}}', {
+                      n: selectedTexts.size,
+                    })}
                   </Button>
                 )}
               </div>
@@ -844,8 +894,8 @@ export const ImportFlexProject = ({ format = 'fwbackup' }) => {
 
             {stage === 'done' && (
               <Notice tone="success" className="p-4">
-                <p className="font-medium">Import complete</p>
-                <p className="mt-1">{results?.imported ?? 0} imported.</p>
+                <p className="font-medium">{t('Import complete')}</p>
+                <p className="mt-1">{t('{n} imported.', { n: results?.imported ?? 0 })}</p>
                 {results?.warnings?.length > 0 && (
                   <ul className="mt-2 list-disc ps-5">
                     {results.warnings.map((w, i) => (
@@ -855,7 +905,7 @@ export const ImportFlexProject = ({ format = 'fwbackup' }) => {
                 )}
                 {!finishPending && (
                   <Button className="mt-3" asChild>
-                    <Link to={`/projects/${projectIdRef.current}`}>Open project</Link>
+                    <Link to={`/projects/${projectIdRef.current}`}>{t('Open project')}</Link>
                   </Button>
                 )}
               </Notice>
@@ -883,67 +933,75 @@ export const RecordingsSummary = ({ recordings, locked, decoding = null, onAdd, 
     <div className="mt-3 rounded-md border p-3 text-sm" data-testid="flex-recordings">
       <p className="font-medium">
         {wanted.length > 0
-          ? `Recordings: ${have} of ${countOf(wanted.length, 'text')} with sentence times`
-          : 'Recordings'}
+          ? t(
+              'Recordings: {have} of {n, plural, one {# text} other {# texts}} with sentence times',
+              { have, n: wanted.length },
+            )
+          : t('Recordings')}
       </p>
       {missing.length > 0 && (
         <p className="mt-1 text-muted-foreground">
-          Not chosen: {missing.join(', ')}. These texts are imported with their times and no
-          recording.
+          {t('Not chosen: {names}. These texts are imported with their times and no recording.', {
+            names: missing.join(', '),
+          })}
         </p>
       )}
       {tooLarge.length > 0 && (
         <p className="mt-1 text-destructive">
-          Over the {formatBytes(maxBytes)} limit: {tooLarge.map((f) => f.name).join(', ')}. These
-          texts are imported with their times and no recording.
+          {t(
+            'Over the {size} limit: {names}. These texts are imported with their times and no recording.',
+            { size: formatBytes(maxBytes), names: tooLarge.map((f) => f.name).join(', ') },
+          )}
         </p>
       )}
       {elsewhere.length > 0 && (
         <p className="mt-1 text-muted-foreground">
-          {countOf(elsewhere.length, 'sentence')} timed against a second recording (
-          {elsewhereNames.join(', ')}) {elsewhere.length === 1 ? 'is' : 'are'} left untimed.
+          {t(
+            '{n, plural, one {# sentence timed against a second recording ({names}) is left untimed.} other {# sentences timed against a second recording ({names}) are left untimed.}}',
+            { n: elsewhere.length, names: elsewhereNames.join(', ') },
+          )}
         </p>
       )}
       {overlapping > 0 && (
         <p className="mt-1 text-muted-foreground">
-          {countOf(overlapping, 'sentence')}{' '}
-          {overlapping === 1
-            ? 'overlaps an earlier one in time and is left untimed.'
-            : 'overlap an earlier one in time and are left untimed.'}
+          {t(
+            '{n, plural, one {# sentence overlaps an earlier one in time and is left untimed.} other {# sentences overlap an earlier one in time and are left untimed.}}',
+            { n: overlapping },
+          )}
         </p>
       )}
       {unmatched.length > 0 && (
         <p className="mt-1 text-muted-foreground">
-          No text uses:{' '}
-          {unmatched.map((f, i) => (
-            <span key={`${i}:${f.name}`}>
-              {i > 0 && ', '}
-              {f.name}
-              {!locked && onRemove && (
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="icon"
-                  className="ml-0.5 h-5 w-5 align-middle"
-                  aria-label={`Remove ${f.name}`}
-                  onClick={() => onRemove(f)}
-                >
-                  <X className="h-3.5 w-3.5" />
-                </Button>
-              )}
-            </span>
-          ))}
-          .
+          {tx('No text uses: {files}.', {
+            files: unmatched.map((f, i) => (
+              <span key={`${i}:${f.name}`}>
+                {i > 0 && ', '}
+                {f.name}
+                {!locked && onRemove && (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    className="ml-0.5 h-5 w-5 align-middle"
+                    aria-label={t('Remove {name}', { name: f.name })}
+                    onClick={() => onRemove(f)}
+                  >
+                    <X className="h-3.5 w-3.5" />
+                  </Button>
+                )}
+              </span>
+            )),
+          })}
         </p>
       )}
       {decoding && (
         <p className="mt-1 text-muted-foreground" aria-live="polite">
-          Converting {decoding} to PCM WAV.
+          {t('Converting {name} to PCM WAV.', { name: decoding })}
         </p>
       )}
       {!locked && (missing.length > 0 || tooLarge.length > 0) && (
         <Button type="button" variant="outline" size="sm" className="mt-2" onClick={onAdd}>
-          Add recordings
+          {t('Add recordings')}
         </Button>
       )}
     </div>

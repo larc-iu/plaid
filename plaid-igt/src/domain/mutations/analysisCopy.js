@@ -31,6 +31,7 @@ import { isVirtualMorphemeId } from '../virtualMorpheme.js';
 import { EQUALS_BEFORE_KEY, EQUALS_TYPE_KEY } from './equalsRule.js';
 import { entryMorphTypesOf } from '../vocabLookup.js';
 import { notSetUp } from '@ui/domain/setupGuard.js';
+import { t, msg } from '@ui/lib/i18n.js';
 
 // Entities per chunk. A chunk is one atomic batch, and the writes inside it go
 // to the BULK endpoints, so its op count is a handful (one per entity kind,
@@ -111,9 +112,9 @@ const storedPrecedences = (info) => {
 
 const stripOf = (token, stored) => {
   const strip = { links: [], spans: [], morphs: [], patches: [], renumber: [], size: 0 };
-  const collectAttached = (t) => {
-    if (t.vocabItem?.linkId) strip.links.push(t.vocabItem.linkId);
-    for (const span of Object.values(t.annotations || {})) {
+  const collectAttached = (tok) => {
+    if (tok.vocabItem?.linkId) strip.links.push(tok.vocabItem.linkId);
+    for (const span of Object.values(tok.annotations || {})) {
       if (span?.id) strip.spans.push(span.id);
     }
   };
@@ -171,7 +172,7 @@ export const analysisCopyMutations = {
     const todo = this._planAnalysisApply(proposals);
     if (todo === false) return false;
     if (!todo.length) return 0;
-    const label = 'Failed to copy previous analyses';
+    const label = msg('Failed to copy previous analyses');
     if (!this._canWrite(label)) return false;
     const plan = this._planAnalysesApply(todo, stampInferred(provSource, { detail }));
     this._showAnalysesApply(plan);
@@ -197,7 +198,7 @@ export const analysisCopyMutations = {
     );
     if (todo === false) return false;
     if (!todo.length) return 0;
-    const label = 'Failed to analyze words';
+    const label = msg('Failed to analyze words');
     if (!this._canWrite(label)) return false;
     const plan = this._planAnalysesApply(todo, this.createStamp || {});
     this._showAnalysesApply(plan);
@@ -250,19 +251,19 @@ export const analysisCopyMutations = {
     let cur = [];
     let curSize = 0;
     const stored = storedPrecedences(this.layerInfo);
-    for (const t of targets) {
-      const size = stripOf(t.token, stored).size + opsForWord(t);
+    for (const tok of targets) {
+      const size = stripOf(tok.token, stored).size + opsForWord(tok);
       if (cur.length && curSize + size > ANALYSIS_BATCH_BUDGET) {
         chunks.push(cur);
         cur = [];
         curSize = 0;
       }
-      cur.push(t);
+      cur.push(tok);
       curSize += size;
     }
     if (cur.length) chunks.push(cur);
 
-    return (await this._queueWrite('Failed to re-analyze words', async () => {
+    return (await this._queueWrite(msg('Failed to re-analyze words'), async () => {
       for (const chunk of chunks) {
         // Planned on the document as it stands now, after the chunks before.
         const storedNow = storedPrecedences(this.layerInfo);
@@ -536,7 +537,7 @@ export const analysisCopyMutations = {
       : new Set();
     const renumber = gone('renumber');
     this._applyRawPatch((next, info, vocabs) => {
-      const hangsOff = (tokens) => (tokens || []).some((t) => morphs.has(t));
+      const hangsOff = (tokens) => (tokens || []).some((tok) => morphs.has(tok));
       Object.values(vocabs || {}).forEach((v) => {
         if (!Array.isArray(v.vocabLinks)) return;
         v.vocabLinks = v.vocabLinks.filter((l) => !links.has(l.id) && !hangsOff(l.tokens));
@@ -694,16 +695,16 @@ export const analysisCopyMutations = {
   async discardWordAnalysis(wordTokenId) {
     const token = this.tokenLookup.get(wordTokenId);
     if (!token) {
-      this.refuse('Word not found');
+      this.refuse(t('Word not found'));
       return false;
     }
     const linkIds = [];
     const spanIds = [];
     const morphIds = [];
     let resetFirst = null;
-    const collectAttached = (t) => {
-      if (this.reviewableState(t.vocabItem?.prov)) linkIds.push(t.vocabItem.linkId);
-      for (const span of Object.values(t.annotations || {})) {
+    const collectAttached = (tok) => {
+      if (this.reviewableState(tok.vocabItem?.prov)) linkIds.push(tok.vocabItem.linkId);
+      for (const span of Object.values(tok.annotations || {})) {
         if (span && this.reviewable(span.metadata)) spanIds.push(span.id);
       }
     };
@@ -729,7 +730,7 @@ export const analysisCopyMutations = {
       .filter(({ id, precedence }) => !isVirtualMorphemeId(id) && stored(id) !== precedence);
 
     if (!linkIds.length && !spanIds.length && !morphIds.length && !resetFirst) return true;
-    const label = 'Failed to discard word analysis';
+    const label = msg('Failed to discard word analysis');
     if (!this._canWrite(label)) return false;
 
     // The whole discard shows at once, the server's cascade included: a
@@ -752,14 +753,14 @@ export const analysisCopyMutations = {
         (info.spanLayers?.[scope] || []).forEach((sl) => {
           if (!Array.isArray(sl.spans)) return;
           sl.spans = sl.spans.filter(
-            (s) => !goneSpans.has(s.id) && !(s.tokens || []).some((t) => goneTokens.has(t)),
+            (s) => !goneSpans.has(s.id) && !(s.tokens || []).some((tok) => goneTokens.has(tok)),
           );
         });
       }
       Object.values(vocabs || {}).forEach((vocab) => {
         if (!Array.isArray(vocab.vocabLinks)) return;
         vocab.vocabLinks = vocab.vocabLinks.filter(
-          (l) => !goneLinks.has(l.id) && !(l.tokens || []).some((t) => goneTokens.has(t)),
+          (l) => !goneLinks.has(l.id) && !(l.tokens || []).some((tok) => goneTokens.has(tok)),
         );
       });
     });
@@ -814,12 +815,12 @@ export const analysisCopyMutations = {
     const spanIds = [];
     const tokenIds = [];
     const linkIds = [];
-    const collect = (t) => {
-      if (this.reviewableState(t.vocabItem?.prov)) linkIds.push(t.vocabItem.linkId);
-      for (const span of Object.values(t.annotations || {})) {
+    const collect = (tok) => {
+      if (this.reviewableState(tok.vocabItem?.prov)) linkIds.push(tok.vocabItem.linkId);
+      for (const span of Object.values(tok.annotations || {})) {
         if (span && this.reviewable(span.metadata)) spanIds.push(span.id);
       }
-      if (this.reviewable(t.metadata)) tokenIds.push(t.id);
+      if (this.reviewable(tok.metadata)) tokenIds.push(tok.id);
     };
     for (const token of words) {
       if (!token) continue;
@@ -845,8 +846,8 @@ export const analysisCopyMutations = {
     const linkSet = new Set(linkIds);
     this._applyRawPatch((next, infoNext, vocabs) => {
       for (const layer of [infoNext.primaryTokenLayer, infoNext.morphemeTokenLayer]) {
-        (layer?.tokens || []).forEach((t) => {
-          if (tokenSet.has(t.id)) t.metadata = mergeMetadata(t.metadata, confirm);
+        (layer?.tokens || []).forEach((tok) => {
+          if (tokenSet.has(tok.id)) tok.metadata = mergeMetadata(tok.metadata, confirm);
         });
       }
       for (const scope of ['word', 'morpheme']) {
@@ -918,7 +919,7 @@ export const analysisCopyMutations = {
   async confirmWordAnalysis(wordTokenId, adoptions = []) {
     const token = this.tokenLookup.get(wordTokenId);
     if (!token) {
-      this.refuse('Word not found');
+      this.refuse(t('Word not found'));
       return false;
     }
     // One writer, one stamp: what it merges does not depend on the entity.
@@ -930,7 +931,7 @@ export const analysisCopyMutations = {
     const writes = this._wordAdoptionWrites(token, adoptions);
 
     if (!spanIds.length && !tokenIds.length && !linkIds.length && !writes.length) return true;
-    const label = 'Failed to accept word analysis';
+    const label = msg('Failed to accept word analysis');
     if (!this._canWrite(label)) return false;
 
     // An adoption can target the morpheme derive synthesized for a word
@@ -952,8 +953,8 @@ export const analysisCopyMutations = {
     this._applyRawPatch((next, infoNext, vocabs) => {
       this._showMorphemes(infoNext, creates);
       for (const layer of [infoNext.primaryTokenLayer, infoNext.morphemeTokenLayer]) {
-        (layer?.tokens || []).forEach((t) => {
-          if (tokenSet.has(t.id)) t.metadata = mergeMetadata(t.metadata, confirm);
+        (layer?.tokens || []).forEach((tok) => {
+          if (tokenSet.has(tok.id)) tok.metadata = mergeMetadata(tok.metadata, confirm);
         });
       }
       for (const scope of ['word', 'morpheme']) {

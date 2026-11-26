@@ -10,6 +10,7 @@ import {
   BUILTIN_LINK_PRECEDENT,
   BUILTIN_DETECT_SPEECH_SILERO,
 } from '@/domain/serviceDefaults';
+import { t, msg } from '@ui/lib/i18n.js';
 
 // The app's service integration spots: each is a place in the UI where an
 // external service can be plugged in, keyed by the task vocabulary services
@@ -18,39 +19,43 @@ import {
 const SPOTS = [
   {
     key: TASKS.TOKENIZE,
-    label: 'Tokenization',
-    description: 'Splits the baseline text into sentences and words (the Tokenize tab).',
-    builtins: [{ name: BUILTIN_TOKENIZE_RULE_BASED, label: 'Rule-based punctuation' }],
+    label: msg('Tokenization'),
+    description: msg('Splits the baseline text into sentences and words (the Tokenize tab).'),
+    builtins: [{ name: BUILTIN_TOKENIZE_RULE_BASED, label: msg('Rule-based punctuation') }],
   },
   {
     key: TASKS.TRANSCRIBE,
-    label: 'Transcription (ASR)',
-    description: 'Transcribes and time-aligns audio on the Media tab.',
+    label: msg('Transcription (ASR)'),
+    description: msg('Transcribes and time-aligns audio on the Media tab.'),
     builtins: [],
   },
   {
     key: TASKS.DETECT_SPEECH,
-    label: 'Speech detection',
-    description: 'Proposes segments from the speech in a recording (the Media tab).',
-    builtins: [{ name: BUILTIN_DETECT_SPEECH_SILERO, label: 'Silero, in the browser' }],
+    label: msg('Speech detection'),
+    description: msg('Proposes segments from the speech in a recording (the Media tab).'),
+    builtins: [{ name: BUILTIN_DETECT_SPEECH_SILERO, label: msg('Silero, in the browser') }],
   },
   {
     key: TASKS.TRANSLATE,
-    label: 'Translation',
-    description: 'Proposes a free translation for each sentence (Auto-analyze, step 1).',
+    label: msg('Translation'),
+    description: msg('Proposes a free translation for each sentence (Auto-analyze, step 1).'),
     builtins: [],
   },
   {
     key: TASKS.ANALYZE,
-    label: 'Analysis (segmentation + glosses)',
-    description: 'Proposes morpheme segmentation and glosses for words (Auto-analyze, step 3).',
+    label: msg('Analysis (segmentation + glosses)'),
+    description: msg(
+      'Proposes morpheme segmentation and glosses for words (Auto-analyze, step 3).',
+    ),
     builtins: [],
   },
   {
     key: TASKS.LINK_VOCAB,
-    label: 'Auto-link vocabulary',
-    description: 'Proposes vocabulary links for unlinked words/morphemes (Auto-analyze, step 4).',
-    builtins: [{ name: BUILTIN_LINK_PRECEDENT, label: 'Follow precedent and unique matches' }],
+    label: msg('Auto-link vocabulary'),
+    description: msg(
+      'Proposes vocabulary links for unlinked words/morphemes (Auto-analyze, step 4).',
+    ),
+    builtins: [{ name: BUILTIN_LINK_PRECEDENT, label: msg('Follow precedent and unique matches') }],
   },
 ];
 
@@ -88,26 +93,27 @@ function CopyOptions({ draft, onChange }) {
   return (
     <Card>
       <CardHeader className="pb-3">
-        <CardTitle>Copy previous analyses</CardTitle>
+        <CardTitle>{t('Copy previous analyses')}</CardTitle>
         <CardDescription>
-          Copies the analysis a word is given most often onto identical words with none
-          (Auto-analyze, step 2).
+          {t(
+            'Copies the analysis a word is given most often onto identical words with none (Auto-analyze, step 2).',
+          )}
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-2.5">
         <CheckRow
           id="auto-analysis-copy"
-          label="Copy analyses by default"
-          hint="Pre-checks the step in the Auto-analyze dialog."
+          label={t('Copy analyses by default')}
+          hint={t('Pre-checks the step in the Auto-analyze dialog.')}
           checked={draft.copyAnalyses}
           onChange={set('copyAnalyses')}
         />
         <div className="ml-6 space-y-1.5">
-          <p className="text-xs font-medium text-muted-foreground">What a copy includes:</p>
+          <p className="text-xs font-medium text-muted-foreground">{t('What a copy includes:')}</p>
           <CheckRow
             id="auto-analysis-copy-seg"
             indent
-            label="Morpheme segmentation (forms and types)"
+            label={t('Morpheme segmentation (forms and types)')}
             checked={draft.copySegmentation}
             disabled={!copyOn}
             onChange={set('copySegmentation')}
@@ -115,7 +121,7 @@ function CopyOptions({ draft, onChange }) {
           <CheckRow
             id="auto-analysis-copy-links"
             indent
-            label="Lexicon links"
+            label={t('Lexicon links')}
             checked={draft.copyLinks}
             disabled={!copyOn}
             onChange={set('copyLinks')}
@@ -123,7 +129,7 @@ function CopyOptions({ draft, onChange }) {
           <CheckRow
             id="auto-analysis-copy-fields"
             indent
-            label="Annotation values (glosses, POS, …)"
+            label={t('Annotation values (glosses, POS, …)')}
             checked={draft.copyFields}
             disabled={!copyOn}
             onChange={set('copyFields')}

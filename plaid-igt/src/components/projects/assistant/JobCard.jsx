@@ -26,6 +26,7 @@ import {
   JobActiveLine,
   NoWorkerLine,
 } from '../jobs/jobLines.jsx';
+import { msg, t } from '@ui/lib/i18n.js';
 
 // The job card: an unattended job the assistant drafted with the user
 // (plaid-agent's propose_job), on the reply that drafted it. The page starts
@@ -45,23 +46,24 @@ const JOB_CARD_NAMES = 5;
 // it is. Anything else (no answer, a server error) leaves the card to try again.
 const REFUSED = new Set([400, 403, 404, 409]);
 
+// Each label a message: the badge calls t().
 const BADGES = {
-  started: ['secondary', 'Started'],
-  discarded: ['outline', 'Discarded'],
-  failed: ['outline', 'Not started'],
-  replaced: ['outline', 'Replaced'],
+  started: ['secondary', msg('Started')],
+  discarded: ['outline', msg('Discarded')],
+  failed: ['outline', msg('Not started')],
+  replaced: ['outline', msg('Replaced')],
 };
 
 const Documents = ({ card, projectId }) => {
   const [open, setOpen] = useState(false);
-  if (card.all) return <>All documents ({card.count.toLocaleString()})</>;
+  if (card.all) return <>{t('All documents ({n, number})', { n: card.count })}</>;
   const docs = card.documents || [];
   const shown = open ? docs : docs.slice(0, JOB_CARD_NAMES);
   // A settled card keeps only the first names (plaid-agent conversation.py),
   // so the rest is counted from `count`. Names the card holds open in place,
   // and a started card's others are on its job's page (RPF3-E, RP2-3).
   const more = (card.count ?? docs.length) - shown.length;
-  const moreText = `and ${more.toLocaleString()} more`;
+  const moreText = t('and {n, number} more', { n: more });
   let rest = null;
   if (more > 0 && docs.length > shown.length) {
     rest = (
@@ -107,7 +109,7 @@ const TextRow = ({ edits }) =>
         {setupTextText(true)}
       </span>
       <p className="text-xs text-warning-foreground">
-        This job may retype, split, merge or delete words and sentences.
+        {t('This job may retype, split, merge or delete words and sentences.')}
       </p>
     </>
   ) : (
@@ -163,7 +165,7 @@ export const JobCard = ({
           if (!live) return;
           // Its state as the job page says it, in every state, and
           // "Undone" once undone (RPF3-D3, RP2-1 finding 9).
-          setNotStarted(j ? (j.undone ? 'Undone' : (jobStateText(j.state) ?? null)) : null);
+          setNotStarted(j ? (j.undone ? t('Undone') : (jobStateText(j.state) ?? null)) : null);
           if (isJobActive(j)) timer = setTimeout(look, JOB_POLL_MS);
         })
         .catch(() => live && setNotStarted(null));
@@ -182,7 +184,9 @@ export const JobCard = ({
   const briefMax = worker?.instructionsMaxChars ?? null;
   const briefOver = briefMax !== null && instructionsLength(brief) > briefMax;
   const mayStart = canStartJob(project, user);
-  const badge = notStarted ? ['secondary', notStarted] : BADGES[card.status];
+  const badge = notStarted
+    ? ['secondary', notStarted]
+    : BADGES[card.status] && [BADGES[card.status][0], t(BADGES[card.status][1])];
   const setup = jobSetupOf(card, conversationId);
 
   // Every press makes the job under the card's own id. A press after a reload,
@@ -211,12 +215,12 @@ export const JobCard = ({
         await onSettle({
           outcome: 'failed',
           reason: active
-            ? 'This project already has a job.'
+            ? 'This project already has a job.' // i18n-ignore: told to the assistant service and its model, and shown as it comes back
             : err.responseData?.error || humanizeError(err),
           activeJob: active,
         });
       } else {
-        notifyError(err, 'Failed to start the job');
+        notifyError(err, t('Failed to start the job'));
       }
     } finally {
       setStarting(false);
@@ -236,7 +240,7 @@ export const JobCard = ({
       <div className="flex items-start gap-2">
         {/* A proposal until its job started (RP-1). */}
         <span className="font-medium" data-testid="job-card-heading">
-          {card.status === 'started' ? 'Job' : 'Proposed job'}
+          {card.status === 'started' ? t('Job') : t('Proposed job')}
         </span>
         {badge && (
           <Badge variant={badge[0]} className="ml-auto shrink-0" data-testid="job-card-state">
@@ -245,23 +249,23 @@ export const JobCard = ({
         )}
         {undecided && readOnly && (
           <Badge variant="outline" className="ml-auto shrink-0">
-            Waiting to start
+            {t('Waiting to start')}
           </Badge>
         )}
       </div>
       <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1">
-        <dt className="text-muted-foreground">Documents</dt>
+        <dt className="text-muted-foreground">{t('Documents')}</dt>
         <dd className="min-w-0">
           <Documents card={card} projectId={projectId} />
         </dd>
         {setup && (
           <>
-            <dt className="text-muted-foreground">Fills</dt>
+            <dt className="text-muted-foreground">{t('Fills')}</dt>
             <dd className="min-w-0">
-              <FillsNames fills={setup.fills} none="Nothing" />
-              {setup.onlynew === true && <p>Fills only the words this job adds.</p>}
+              <FillsNames fills={setup.fills} none={t('Nothing')} />
+              {setup.onlynew === true && <p>{t('Fills only the words this job adds.')}</p>}
             </dd>
-            <dt className="text-muted-foreground">Text</dt>
+            <dt className="text-muted-foreground">{t('Text')}</dt>
             <dd>
               <TextRow edits={setup.text} />
             </dd>
@@ -270,7 +274,7 @@ export const JobCard = ({
       </dl>
       {undecided && !readOnly && mayStart ? (
         <div className="flex flex-col gap-1">
-          <Label htmlFor={`job-brief-${card.id}`}>Instructions</Label>
+          <Label htmlFor={`job-brief-${card.id}`}>{t('Instructions')}</Label>
           <Textarea
             id={`job-brief-${card.id}`}
             compose
@@ -283,7 +287,7 @@ export const JobCard = ({
         </div>
       ) : (
         <div className="flex flex-col gap-1">
-          <span className="text-muted-foreground">Instructions</span>
+          <span className="text-muted-foreground">{t('Instructions')}</span>
           <p dir="auto" className="whitespace-pre-wrap" data-testid="job-card-brief">
             {card.status === 'started' ? card.sentBrief : card.brief}
           </p>
@@ -291,7 +295,7 @@ export const JobCard = ({
       )}
       {card.status === 'started' && card.jobId && (
         <AppLink className="underline" to={jobPath(projectId, card.jobId)}>
-          Open job
+          {t('Open job')}
         </AppLink>
       )}
       {card.status === 'failed' &&
@@ -299,7 +303,7 @@ export const JobCard = ({
           <JobActiveLine projectId={projectId} jobId={card.activeJob} client={client} />
         ) : (
           <p role="alert" className="text-destructive">
-            {card.reason || 'The job did not start.'}
+            {card.reason || t('The job did not start.')}
           </p>
         ))}
       {undecided && !readOnly && (
@@ -314,11 +318,13 @@ export const JobCard = ({
                 onClick={start}
                 disabled={busy || starting || briefOver || !brief.trim()}
               >
-                <Play className="h-4 w-4" /> {starting ? 'Starting…' : 'Start job'}
+                <Play className="h-4 w-4" /> {starting ? t('Starting…') : t('Start job')}
               </Button>
             ) : (
               project && (
-                <span className="text-muted-foreground">Starting a job needs write access.</span>
+                <span className="text-muted-foreground">
+                  {t('Starting a job needs write access.')}
+                </span>
               )
             )}
             <Button
@@ -328,7 +334,7 @@ export const JobCard = ({
               onClick={() => onSettle({ outcome: 'discarded' })}
               disabled={busy || starting}
             >
-              <X className="h-4 w-4" /> Discard
+              <X className="h-4 w-4" /> {t('Discard')}
             </Button>
           </div>
         </>

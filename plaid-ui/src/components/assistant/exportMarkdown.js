@@ -19,6 +19,7 @@ import {
   stagedLine,
 } from './planChanges.js';
 import { formatElapsed } from '../../hooks/useRunProgress.js';
+import { msg, t } from '../../lib/i18n.js';
 import {
   couldNotOpen,
   namedCitations,
@@ -67,30 +68,33 @@ export const replyToMarkdown = (text, citations, ctx) => {
   });
   const out = lines.join('\n');
   if (!inline.length) return out;
-  return `${out}\n\n**Cited examples**\n\n${inline.map((c) => cardToMarkdown(c, ctx)).join('\n\n')}`;
+  return `${out}\n\n**${t('Cited examples')}**\n\n${inline.map((c) => cardToMarkdown(c, ctx)).join('\n\n')}`;
 };
 
 // A job card a reply drafted (an unattended job for the user to start): what
 // it covers, how it ended, and its instructions as sent, or as drafted.
 const JOB_CARD_ENDS = {
-  started: 'Started.',
-  discarded: 'Discarded.',
-  failed: 'Not started.',
-  replaced: 'Replaced by a later job card.',
+  started: msg('Started.'),
+  discarded: msg('Discarded.'),
+  failed: msg('Not started.'),
+  replaced: msg('Replaced by a later job card.'),
 };
 const jobCardToMarkdown = (card) => {
   const names = (card.documents || []).map((d) => d.name || d.id);
   // A settled card keeps only its first names: the rest is counted.
   const more = (card.count ?? names.length) - names.length;
+  const listed = markdownText(names.join(', '));
   const docs = card.all
-    ? `All documents (${card.count})`
-    : markdownText(names.join(', ')) + (more > 0 ? ` and ${more.toLocaleString()} more` : '');
-  const said = JOB_CARD_ENDS[card.status] ?? 'Not yet started.';
+    ? t('All documents ({n})', { n: card.count })
+    : more > 0
+      ? t('{names} and {n, plural, one {# more} other {# more}}', { names: listed, n: more })
+      : listed;
+  const said = JOB_CARD_ENDS[card.status] ? t(JOB_CARD_ENDS[card.status]) : t('Not yet started.');
   const brief = card.status === 'started' ? card.sentBrief : card.brief;
   // What the job fills and whether it may edit the text, as the card's rows
   // say them (a card drafted before cards had them has neither).
   const fills = Array.isArray(card.fills)
-    ? card.fills.map((f) => f.name || f.id).join(', ') || 'Nothing'
+    ? card.fills.map((f) => f.name || f.id).join(', ') || t('Nothing')
     : null;
   const setup =
     fills === null
@@ -98,12 +102,16 @@ const jobCardToMarkdown = (card) => {
       : [
           '',
           markdownText(
-            `Fills: ${fills}${card.onlyNew === true ? ', only on the words the job adds' : ''}. Text: ${card.editsText ? 'May be edited' : 'Unchanged'}.`,
+            `${
+              card.onlyNew === true
+                ? t('Fills: {fills}, only on the words the job adds.', { fills })
+                : t('Fills: {fills}.', { fills })
+            } ${card.editsText ? t('Text: May be edited.') : t('Text: Unchanged.')}`,
           ),
         ];
   return [
     // A proposal until its job started, as the card heads it.
-    `**${card.status === 'started' ? 'Job' : 'Proposed job'}:** ${docs}. (${said})`,
+    `**${card.status === 'started' ? t('Job:') : t('Proposed job:')}** ${docs}. (${said})`,
     ...setup,
     '',
     ...(brief ? [markdownText(brief)] : []),
@@ -117,19 +125,24 @@ const planToMarkdown = (plan, status, outcome, inProject, reason, recorded) => {
   const said =
     status === 'applied'
       ? plan?.stampChoice === false
-        ? 'Applied.'
-        : `Approved as ${approvedAs(recorded)} and applied.`
+        ? t('Applied.')
+        : t(
+            'Approved as {how, select, human {human-made} unverified {unverified} contribution {a contribution} other {verified}} and applied.',
+            { how: approvedAs(recorded) },
+          )
       : status === 'partial'
-        ? `Partly applied: ${outcome}`
+        ? t('Partly applied: {outcome}', { outcome })
         : status === 'discarded'
-          ? 'Discarded.'
+          ? t('Discarded.')
           : status === 'stale'
-            ? 'Out of date.'
+            ? t('Out of date.')
             : status === 'replaced'
-              ? 'Replaced by a later plan.'
-              : 'Not yet approved.';
-  const where = inProject ? ` in ${markdownText(inProject)}` : '';
-  const lines = [`**Proposed changes${where}:** ${markdownText(plan.summary)} (${said})`, ''];
+              ? t('Replaced by a later plan.')
+              : t('Not yet approved.');
+  const heading = inProject
+    ? t('Proposed changes in {name}:', { name: markdownText(inProject) })
+    : t('Proposed changes:');
+  const lines = [`**${heading}** ${markdownText(plan.summary)} (${said})`, ''];
   // The card's sentence saying why an out-of-date plan was refused.
   if (status === 'stale' && reason) lines.push(markdownText(staleLine(reason)), '');
   planRows(plan).forEach((r, i) => {
@@ -141,13 +154,15 @@ const planToMarkdown = (plan, status, outcome, inProject, reason, recorded) => {
     const { named, moreDocs, moreChanges } = ruleDocuments(r.rule);
     lines.push(`   - ${ruleCountLine(r.rule, r.replacesWork, r.count)}`);
     if (r.rule.partial) lines.push(`   - ${markdownText(r.rule.partial)}`);
-    if (r.rule.mode) lines.push(`   - Matches ${r.rule.mode}`);
+    if (r.rule.mode) lines.push(`   - ${t('Matches {mode}', { mode: r.rule.mode })}`);
     const changes = ruleTransitions(r.rule);
-    changes.rows.forEach((t) => lines.push(`   - ${markdownText(transitionLine(t))}`));
+    changes.rows.forEach((tr) => lines.push(`   - ${markdownText(transitionLine(tr))}`));
     if (changes.more) lines.push(`   - ${changes.more}`);
     named.forEach((d) => lines.push(`   - ${markdownText(d.name || d.id)}: ${d.count}`));
     if (moreDocs) lines.push(`   - ${ruleMoreLine(moreDocs, moreChanges)}`);
-    (r.rule.sample || []).forEach((c) => lines.push(`   - For example: ${markdownText(c.label)}`));
+    (r.rule.sample || []).forEach((c) =>
+      lines.push(`   - ${t('For example: {label}', { label: markdownText(c.label) })}`),
+    );
   });
   // A long settled plan keeps its first rows only (planRecord.js).
   const omitted = changesOmitted(plan);
@@ -159,15 +174,18 @@ const planToMarkdown = (plan, status, outcome, inProject, reason, recorded) => {
 // a question, what a reply fetched (linked to where it came from, when that is
 // a web address), and what a reply made for the user to download.
 const WEB = /^https?:\/\//i;
+// `label` is a whole message taking the names, `{names}`.
 const filesLine = (label, files) =>
-  `*${label}: ${files
-    .map((f) => {
-      const name = markdownText(f.name || 'file');
-      return f.source && WEB.test(f.source)
-        ? `[${name}](<${String(f.source).replace(/[<>\s]/g, encodeURIComponent)}>)`
-        : name;
-    })
-    .join(', ')}*`;
+  `*${t(label, {
+    names: files
+      .map((f) => {
+        const name = markdownText(f.name || t('file'));
+        return f.source && WEB.test(f.source)
+          ? `[${name}](<${String(f.source).replace(/[<>\s]/g, encodeURIComponent)}>)`
+          : name;
+      })
+      .join(', '),
+  })}*`;
 
 // What a turn did, as the panel lists it: the summary line, then each step's
 // label with the text the assistant wrote before it as a quote, and any text
@@ -180,7 +198,10 @@ const workToMarkdown = (out, d) => {
       const label = markdownText(plain(s.label || s.name || ''));
       // A failed step is red in the panel. A change says so in its own words
       // ("Could not plan …"), a read does not.
-      out.push(`- ${label}${s.failed && !/^Could not /.test(label) ? ' (failed)' : ''}`);
+      // The label is the service's, in English, so testing its words is safe.
+      out.push(
+        `- ${s.failed && !/^Could not /.test(label) ? t('{label} (failed)', { label }) : label}`,
+      );
     }
     out.push('');
   }
@@ -195,37 +216,37 @@ const quoted = (text) =>
 
 export const conversationToMarkdown = (conv, meta, { origin, projectId, projectName, adapter }) => {
   const ctx = { origin, projectId, adapter };
-  const out = [`# ${markdownText(meta?.title || 'Conversation')}`, ''];
+  const out = [`# ${markdownText(meta?.title || t('Conversation'))}`, ''];
   const facts = [];
-  if (projectName) facts.push(`Project: ${markdownText(projectName)}`);
-  if (meta?.model) facts.push(`Assistant: ${markdownText(meta.model)}`);
-  if (meta?.createdAt) facts.push(`Started: ${meta.createdAt.slice(0, 10)}`);
+  if (projectName) facts.push(t('Project: {name}', { name: markdownText(projectName) }));
+  if (meta?.model) facts.push(t('Assistant: {names}', { names: markdownText(meta.model) }));
+  if (meta?.createdAt) facts.push(t('Started: {date}', { date: meta.createdAt.slice(0, 10) }));
   if (facts.length) out.push(facts.join(' · '), '');
   const display = conv?.display || [];
   display.forEach((d, i) => {
     if (d.kind === 'user') {
-      out.push('## You', '');
+      out.push(`## ${t('You')}`, '');
       if (reachChanged(display, i)) {
         const line = d.projects?.length ? withProjects(d.projects) : homeOnly(projectName);
         out.push(`*${markdownText(plain(line))}*`, '');
       }
       out.push(d.text || '', '');
-      if (d.files?.length) out.push(filesLine('Attached', d.files), '');
+      if (d.files?.length) out.push(filesLine(msg('Attached: {names}'), d.files), '');
     } else if (d.kind === 'error') {
       workToMarkdown(out, d);
-      out.push(`> **Error:** ${plain(d.text)}`, '');
+      out.push(`> **${t('Error:')}** ${plain(d.text)}`, '');
     } else {
-      out.push('## Assistant', '');
+      out.push(`## ${t('Assistant')}`, '');
       // What it did before answering, in the service's own words.
       // As the panel shows it: never for a turn that called no tool.
       workToMarkdown(out, d);
       if (typeof d.elapsedMs === 'number')
-        out.push(`*Answered in ${formatElapsed(d.elapsedMs)}*`, '');
+        out.push(`*${t('Answered in {time}', { time: formatElapsed(d.elapsedMs) })}*`, '');
       if (d.contextNote) out.push(`*${d.contextNote}*`, '');
       const fetched = (d.files || []).filter((f) => !f.made);
       const made = (d.files || []).filter((f) => f.made);
-      if (fetched.length) out.push(filesLine('Fetched', fetched), '');
-      if (made.length) out.push(filesLine('Files', made), '');
+      if (fetched.length) out.push(filesLine(msg('Fetched: {names}'), fetched), '');
+      if (made.length) out.push(filesLine(msg('Files: {names}'), made), '');
       if (d.unavailableProjects?.length)
         out.push(`*${markdownText(plain(couldNotOpen(d.unavailableProjects)))}*`, '');
       if (d.text) {

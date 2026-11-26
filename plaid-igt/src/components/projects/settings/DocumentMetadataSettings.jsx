@@ -9,6 +9,7 @@ import { TYPE } from '@ui/lib/typeScale.js';
 import { queueStated, tagsetsChangedError } from '@/domain/tagsetsSave';
 import { refusedMetadataBySave } from '@/domain/refusedMetadata.js';
 import { REFUSED_TITLE, refusedValuesText } from './refusedValues.js';
+import { t } from '@ui/lib/i18n.js';
 
 // A save refused because what it read changed elsewhere: the fields, or the
 // tagsets it points them at.
@@ -132,11 +133,11 @@ export const DocumentMetadataSettings = ({
   // Handle errors
   const handleError = (error) => {
     if (error?.refusedValues) {
-      notifyError(refusedValuesText(error.refusedValues), REFUSED_TITLE);
+      notifyError(refusedValuesText(error.refusedValues), t(REFUSED_TITLE));
       return;
     }
     if (!isStale(error)) setHasError(true);
-    notifyError(error, 'Failed to save the metadata fields');
+    notifyError(error, t('Failed to save the metadata fields'));
   };
 
   if (hasError) {
@@ -146,9 +147,9 @@ export const DocumentMetadataSettings = ({
           <AlertTriangle className="mt-0.5 h-4 w-4 text-destructive" />
           <div>
             <p className="text-sm font-medium text-destructive">
-              Failed to load or save the metadata fields
+              {t('Failed to load or save the metadata fields')}
             </p>
-            <p className="text-sm text-muted-foreground">Refresh the page and try again.</p>
+            <p className="text-sm text-muted-foreground">{t('Refresh the page and try again.')}</p>
           </div>
         </div>
       </div>
@@ -157,10 +158,11 @@ export const DocumentMetadataSettings = ({
 
   return (
     <div>
-      <h2 className={TYPE.card}>Document metadata</h2>
+      <h2 className={TYPE.card}>{t('Document metadata')}</h2>
       <p className="mb-4 mt-1 text-sm text-muted-foreground">
-        Configure which metadata fields are available when creating or editing documents in this
-        project.
+        {t(
+          'Configure which metadata fields are available when creating or editing documents in this project.',
+        )}
       </p>
 
       <DocumentMetadataManager

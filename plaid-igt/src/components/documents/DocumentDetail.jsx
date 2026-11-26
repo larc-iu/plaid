@@ -31,6 +31,7 @@ import { useComposeProject } from '@/hooks/useCompose';
 import { IGT_ASSISTANT } from '../projects/assistant/adapter.js';
 import { AssistantButton } from '../projects/assistant/AssistantButton.jsx';
 import { DocumentHistoryChanges } from './history/DocumentHistoryChanges.jsx';
+import { t, tx, msg } from '@ui/lib/i18n.js';
 
 // The Media tab (the timeline, waveform, speech detection, and recording
 // conversion) and the Comments tab ride in their own chunks.
@@ -43,15 +44,16 @@ const CommentsTab = lazyNamed(() => import('./comments/CommentsTab.jsx'), 'Comme
 // island read.
 
 // The tabs, in the order every app keeps: the work tabs, then Comments,
-// Export, Details.
+// Export, Details. The labels are messages: the shell's tab row shows them
+// through t().
 const TABS = [
-  { value: 'baseline', label: 'Baseline' },
-  { value: 'media', label: 'Media' },
-  { value: 'tokenize', label: 'Tokenize' },
-  { value: 'analyze', label: 'Analyze' },
-  { value: 'comments', label: 'Comments' },
-  { value: 'export', label: 'Export' },
-  { value: 'details', label: 'Details' },
+  { value: 'baseline', label: msg('Baseline') },
+  { value: 'media', label: msg('Media') },
+  { value: 'tokenize', label: msg('Tokenize') },
+  { value: 'analyze', label: msg('Analyze') },
+  { value: 'comments', label: msg('Comments') },
+  { value: 'export', label: msg('Export') },
+  { value: 'details', label: msg('Details') },
 ];
 
 // Tabs whose body gets the whole width instead of the form-width column. Both
@@ -98,10 +100,10 @@ const IGT_SHELL = {
       me: user?.id,
       warn: (message) => notifyWarning(message),
     });
-    return (msg, err, label) =>
+    return (message, err, label) =>
       err?.linkConflict
         ? linkConflict(err.linkConflict)
-        : notifyError(err ?? msg, label ?? 'Not changed');
+        : notifyError(err ?? message, label ?? t('Not changed'));
   },
   assistantApp: IGT_ASSISTANT.app,
   documentPath: (projectId, documentId) => `/projects/${projectId}/documents/${documentId}`,
@@ -110,7 +112,7 @@ const IGT_SHELL = {
     editor: 'analyze',
     wide: WIDE_TABS,
     // Comments hang live threads on the document, so a past state has none.
-    past: TABS.map((t) => t.value).filter((t) => t !== 'comments'),
+    past: TABS.map((entry) => entry.value).filter((value) => value !== 'comments'),
     long: ['baseline', 'analyze'],
     query: { fallback: 'baseline', landing },
   },
@@ -205,17 +207,15 @@ const DocumentBody = ({ tab, context }) => {
   if (!readInitialized(project?.config)) {
     return (
       <Gate>
-        {permissions.canManage ? (
-          <>
-            This project is not set up for IGT.{' '}
-            <Link className="underline" to={`/projects/${projectId}/setup`}>
-              Set it up
-            </Link>
-            .
-          </>
-        ) : (
-          <>This project is not set up for IGT. A project maintainer can set it up.</>
-        )}
+        {permissions.canManage
+          ? tx('This project is not set up for IGT. <a>Set it up</a>.', {
+              a: (c) => (
+                <Link className="underline" to={`/projects/${projectId}/setup`}>
+                  {c}
+                </Link>
+              ),
+            })
+          : t('This project is not set up for IGT. A project maintainer can set it up.')}
       </Gate>
     );
   }
@@ -255,7 +255,7 @@ const DocumentBody = ({ tab, context }) => {
       {!isViewingHistorical && permissions.isReadOnly && (
         <div className={inset}>
           <Notice tone="info" className="mb-4">
-            <p className="font-medium">Read-only</p>
+            <p className="font-medium">{t('Read-only')}</p>
             <p className="text-xs">{readOnlyReason(project, user)}</p>
           </Notice>
         </div>

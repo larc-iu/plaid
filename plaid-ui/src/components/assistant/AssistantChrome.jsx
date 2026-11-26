@@ -11,6 +11,7 @@ import { useAssistantAvailable } from './useAssistantAvailable.js';
 import { useDockWidth } from './useDock.js';
 import { useSlide, SLIDE_CLASSES } from '../../hooks/useSlide.js';
 import { cn } from '../../lib/utils.js';
+import { t } from '../../lib/i18n.js';
 
 // The assistant as part of an app's chrome: the header chip, the edge rail,
 // the docked panel, and the gutter the page leaves for it.
@@ -152,10 +153,10 @@ export const AssistantChrome = ({
       size="sm"
       className="gap-1.5"
       onClick={() => setDockOpen(true)}
-      title="Assistant"
+      title={t('Assistant')}
     >
       <AssistantMark className="h-4 w-4" />
-      Assistant
+      {t('Assistant')}
     </Button>
   ) : null;
 

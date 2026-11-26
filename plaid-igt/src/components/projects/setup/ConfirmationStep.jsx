@@ -9,7 +9,12 @@ import { notifySuccess, notifyError, humanizeError } from '@/utils/feedback';
 import { executeProjectSetup } from './executeSetup';
 import { IGNORED_TOKEN_MODES } from '@/domain/igtConfig';
 import { scopeBadgeClass } from '@/domain/scopeColors';
-import { countOf } from '@ui/lib/plural.js';
+import { t } from '@ui/lib/i18n.js';
+
+// The names setup gives the layers it makes (executeSetup.js).
+const TEXT = 'Main Text'; // i18n-ignore: a layer name, stored
+const TOKENS = 'Main Tokens'; // i18n-ignore: a layer name, stored
+const MORPHEMES = 'Main Morphemes'; // i18n-ignore: a layer name, stored
 
 export const ConfirmationStep = ({ setupData, isNewProject, projectId, client, onPrevious }) => {
   const navigate = useNavigate();
@@ -43,7 +48,7 @@ export const ConfirmationStep = ({ setupData, isNewProject, projectId, client, o
 
     try {
       if (!client) {
-        throw new Error('Authentication required');
+        throw new Error(t('Authentication required'));
       }
 
       // If a previous attempt in this wizard session already created the
@@ -62,8 +67,8 @@ export const ConfirmationStep = ({ setupData, isNewProject, projectId, client, o
 
       if (result.alreadyInitialized) {
         notifyError(
-          'This project is already set up for Plaid IGT. Create a new project instead.',
-          'Already set up',
+          t('This project is already set up for Plaid IGT. Create a new project instead.'),
+          t('Already set up'),
         );
         return;
       }
@@ -73,25 +78,27 @@ export const ConfirmationStep = ({ setupData, isNewProject, projectId, client, o
       if (result.failures.length > 0) {
         setErrors(result.failures);
         notifyError(
-          `${countOf(result.failures.length, 'setup step')} failed. ` +
-            'The project is not ready until Retry setup finishes.',
-          'Setup incomplete',
+          t(
+            '{n, plural, one {# setup step} other {# setup steps}} failed. The project is not ready until Retry setup finishes.',
+            { n: result.failures.length },
+          ),
+          t('Setup incomplete'),
         );
         return;
       }
 
-      updateProgress(100, 'Setup complete');
+      updateProgress(100, t('Setup complete'));
       setCreatedResources(result.resources);
       setIsComplete(true);
 
-      notifySuccess('Setup complete');
+      notifySuccess(t('Setup complete'));
 
       navigate(`/projects/${result.projectId}`);
     } catch (error) {
       console.error('Setup failed:', error);
       setErrors((prev) => [...prev, humanizeError(error)]);
 
-      notifyError(humanizeError(error), 'Failed to set up the project');
+      notifyError(humanizeError(error), t('Failed to set up the project'));
     } finally {
       setIsExecuting(false);
     }
@@ -100,9 +107,9 @@ export const ConfirmationStep = ({ setupData, isNewProject, projectId, client, o
   // Review Section Components
   const ProjectInfoReview = () => (
     <div className="rounded-lg border bg-card p-4">
-      <p className="mb-2 font-medium">Project</p>
+      <p className="mb-2 font-medium">{t('Project')}</p>
       <p className="text-sm">
-        <strong>Name:</strong> {setupData.basicInfo?.projectName}
+        <strong>{t('Name:')}</strong> {setupData.basicInfo?.projectName}
       </p>
     </div>
   );
@@ -117,18 +124,18 @@ export const ConfirmationStep = ({ setupData, isNewProject, projectId, client, o
     if (isNewProject) {
       return (
         <div className="rounded-lg border bg-card p-4">
-          <p className="mb-2 font-medium">Layers</p>
+          <p className="mb-2 font-medium">{t('Layers')}</p>
           <div className="flex flex-col gap-2">
             <div className="flex items-center gap-2">
-              <p className="text-sm font-medium">Token layer:</p>
+              <p className="text-sm font-medium">{t('Token layer:')}</p>
               <Badge className="border-transparent bg-success/15 text-success-foreground">
-                New: Main Tokens
+                {t('New: {name}', { name: TOKENS })}
               </Badge>
             </div>
             <div className="flex items-center gap-2">
-              <p className="text-sm font-medium">Morpheme layer:</p>
+              <p className="text-sm font-medium">{t('Morpheme layer:')}</p>
               <Badge className="border-transparent bg-success/15 text-success-foreground">
-                New: Main Morphemes
+                {t('New: {name}', { name: MORPHEMES })}
               </Badge>
             </div>
           </div>
@@ -140,32 +147,34 @@ export const ConfirmationStep = ({ setupData, isNewProject, projectId, client, o
 
     return (
       <div className="rounded-lg border bg-card p-4">
-        <p className="mb-2 font-medium">Layers</p>
+        <p className="mb-2 font-medium">{t('Layers')}</p>
         <div className="flex flex-col gap-2">
           <div className="flex items-center gap-2">
-            <p className="text-sm font-medium">Text layer:</p>
+            <p className="text-sm font-medium">{t('Text layer:')}</p>
             {layerData.textLayerType === 'adopted' ? (
-              <Badge variant="secondary">Reusing existing baseline</Badge>
+              <Badge variant="secondary">{t('Reusing existing baseline')}</Badge>
             ) : layerData.textLayerType === 'existing' ? (
-              <Badge variant="secondary">Existing: {layerData.selectedTextLayerName}</Badge>
+              <Badge variant="secondary">
+                {t('Existing: {name}', { name: layerData.selectedTextLayerName })}
+              </Badge>
             ) : layerData.textLayerType === 'new' ? (
               <Badge className="border-transparent bg-success/15 text-success-foreground">
-                New: Main Text
+                {t('New: {name}', { name: TEXT })}
               </Badge>
             ) : (
-              <Badge variant="secondary">Not configured</Badge>
+              <Badge variant="secondary">{t('Not configured')}</Badge>
             )}
           </div>
           <div className="flex items-center gap-2">
-            <p className="text-sm font-medium">Token layer:</p>
+            <p className="text-sm font-medium">{t('Token layer:')}</p>
             <Badge className="border-transparent bg-success/15 text-success-foreground">
-              Main Tokens
+              {TOKENS}
             </Badge>
           </div>
           <div className="flex items-center gap-2">
-            <p className="text-sm font-medium">Morpheme layer:</p>
+            <p className="text-sm font-medium">{t('Morpheme layer:')}</p>
             <Badge className="border-transparent bg-success/15 text-success-foreground">
-              Main Morphemes
+              {MORPHEMES}
             </Badge>
           </div>
         </div>
@@ -182,11 +191,11 @@ export const ConfirmationStep = ({ setupData, isNewProject, projectId, client, o
 
     return (
       <div className="rounded-lg border bg-card p-4">
-        <p className="mb-2 font-medium">Document metadata fields</p>
+        <p className="mb-2 font-medium">{t('Document metadata fields')}</p>
         <ul className="list-disc pl-5 text-sm">
           {enabledFields.map((field) => (
             <li key={`${field.scope}-${field.name}`}>
-              {field.name} {field.isCustom && <Badge variant="secondary">Custom</Badge>}
+              {field.name} {field.isCustom && <Badge variant="secondary">{t('Custom')}</Badge>}
             </li>
           ))}
         </ul>
@@ -203,9 +212,9 @@ export const ConfirmationStep = ({ setupData, isNewProject, projectId, client, o
 
     return (
       <div className="rounded-lg border bg-card p-4">
-        <p className="mb-2 font-medium">Additional orthographies</p>
+        <p className="mb-2 font-medium">{t('Additional orthographies')}</p>
         {additional.length === 0 ? (
-          <p className="text-sm text-muted-foreground">None</p>
+          <p className="text-sm text-muted-foreground">{t('None')}</p>
         ) : (
           <ul className="list-disc pl-5 text-sm">
             {additional.map((orth) => (
@@ -223,33 +232,42 @@ export const ConfirmationStep = ({ setupData, isNewProject, projectId, client, o
 
     return (
       <div className="rounded-lg border bg-card p-4">
-        <p className="mb-2 font-medium">Annotation fields</p>
+        <p className="mb-2 font-medium">{t('Annotation fields')}</p>
         <ul className="list-disc pl-5 text-sm">
           {fieldsData.fields.map((field) => (
             <li key={`${field.scope}-${field.name}`}>
-              {field.name} - <Badge className={scopeBadgeClass(field.scope)}>{field.scope}</Badge>
+              {field.name} -{' '}
+              <Badge className={scopeBadgeClass(field.scope)}>
+                {t(
+                  '{scope, select, Word {Word} Morpheme {Morpheme} Sentence {Sentence} other {{scope}}}',
+                  { scope: field.scope },
+                )}
+              </Badge>
             </li>
           ))}
         </ul>
         {fieldsData.ignoredTokens && (
           <div className="mt-4">
-            <p className="mb-1 text-sm font-medium">Ignored tokens:</p>
+            <p className="mb-1 text-sm font-medium">{t('Ignored tokens:')}</p>
             <p className="text-sm">
-              Mode:{' '}
               {fieldsData.ignoredTokens.mode === IGNORED_TOKEN_MODES.punctuation
-                ? 'Unicode punctuation'
-                : 'Explicit list'}
+                ? t('Mode: Unicode punctuation')
+                : t('Mode: Explicit list')}
             </p>
             {fieldsData.ignoredTokens.mode === IGNORED_TOKEN_MODES.punctuation &&
               fieldsData.ignoredTokens.unicodePunctuationExceptions?.length > 0 && (
                 <p className="text-sm">
-                  Exceptions: {fieldsData.ignoredTokens.unicodePunctuationExceptions.join(', ')}
+                  {t('Exceptions: {tokens}', {
+                    tokens: fieldsData.ignoredTokens.unicodePunctuationExceptions.join(', '),
+                  })}
                 </p>
               )}
             {fieldsData.ignoredTokens.mode === IGNORED_TOKEN_MODES.explicit &&
               fieldsData.ignoredTokens.explicitIgnoredTokens?.length > 0 && (
                 <p className="text-sm">
-                  Ignored: {fieldsData.ignoredTokens.explicitIgnoredTokens.join(', ')}
+                  {t('Ignored: {tokens}', {
+                    tokens: fieldsData.ignoredTokens.explicitIgnoredTokens.join(', '),
+                  })}
                 </p>
               )}
           </div>
@@ -272,9 +290,9 @@ export const ConfirmationStep = ({ setupData, isNewProject, projectId, client, o
     if (enabledVocabs.length === 0) {
       return (
         <div className="rounded-lg border bg-card p-4">
-          <p className="mb-2 font-medium">Vocabulary</p>
+          <p className="mb-2 font-medium">{t('Vocabulary')}</p>
           <p className="text-sm text-muted-foreground">
-            No vocabulary linked. Words and morphemes will have no lexicon to link to.
+            {t('No vocabulary linked. Words and morphemes will have no lexicon to link to.')}
           </p>
         </div>
       );
@@ -282,14 +300,14 @@ export const ConfirmationStep = ({ setupData, isNewProject, projectId, client, o
 
     return (
       <div className="rounded-lg border bg-card p-4">
-        <p className="mb-2 font-medium">Vocabulary</p>
+        <p className="mb-2 font-medium">{t('Vocabulary')}</p>
         <ul className="list-disc pl-5 text-sm">
           {enabledVocabs.map((vocab) => (
             <li key={vocab.name}>
               {vocab.name}{' '}
               {vocab.isCustom && (
                 <Badge className="border-transparent bg-success/15 text-success-foreground">
-                  New
+                  {t('New')}
                 </Badge>
               )}
             </li>
@@ -303,53 +321,70 @@ export const ConfirmationStep = ({ setupData, isNewProject, projectId, client, o
     return (
       <div className="flex flex-col gap-6">
         <Notice tone="success" className="p-4">
-          <p className="font-medium">Setup complete</p>
+          <p className="font-medium">{t('Setup complete')}</p>
         </Notice>
         <div className="rounded-lg border bg-card p-4">
-          <p className="mb-2 font-medium">Summary</p>
+          <p className="mb-2 font-medium">{t('Summary')}</p>
           <div className="flex flex-col gap-2">
             {createdResources.project && (
-              <p className="text-sm">✓ Project created: {createdResources.project.name}</p>
+              <p className="text-sm">
+                ✓ {t('Project created: {name}', { name: createdResources.project.name })}
+              </p>
             )}
             {createdResources.textLayer && (
-              <p className="text-sm">✓ Text layer: {createdResources.textLayer.name}</p>
+              <p className="text-sm">
+                ✓ {t('Text layer: {name}', { name: createdResources.textLayer.name })}
+              </p>
             )}
             {createdResources.tokenLayer && (
-              <p className="text-sm">✓ Token layer: {createdResources.tokenLayer.name}</p>
+              <p className="text-sm">
+                ✓ {t('Token layer: {name}', { name: createdResources.tokenLayer.name })}
+              </p>
             )}
             {createdResources.morphemeLayer && (
-              <p className="text-sm">✓ Morpheme layer: {createdResources.morphemeLayer.name}</p>
+              <p className="text-sm">
+                ✓ {t('Morpheme layer: {name}', { name: createdResources.morphemeLayer.name })}
+              </p>
             )}
             {createdResources.sentenceTokenLayer && (
               <p className="text-sm">
-                ✓ Sentence token layer: {createdResources.sentenceTokenLayer.name}
+                ✓{' '}
+                {t('Sentence token layer: {name}', {
+                  name: createdResources.sentenceTokenLayer.name,
+                })}
               </p>
             )}
             {createdResources.alignmentTokenLayer && (
               <p className="text-sm">
-                ✓ Alignment token layer: {createdResources.alignmentTokenLayer.name}
+                ✓{' '}
+                {t('Alignment token layer: {name}', {
+                  name: createdResources.alignmentTokenLayer.name,
+                })}
               </p>
             )}
             {createdResources.spanLayers?.length > 0 && (
               <p className="text-sm">
-                ✓ Span layers: {createdResources.spanLayers.map((layer) => layer.name).join(', ')}
+                ✓{' '}
+                {t('Span layers: {names}', {
+                  names: createdResources.spanLayers.map((layer) => layer.name).join(', '),
+                })}
               </p>
             )}
             {createdResources.vocabularies?.length > 0 && (
               <p className="text-sm">
-                ✓ Vocabularies: {createdResources.vocabularies.length} linked
+                ✓ {t('Vocabularies: {n} linked', { n: createdResources.vocabularies.length })}
               </p>
             )}
           </div>
         </div>
-        <Loading label="Opening the project…" className="p-0 text-center" />
+        <Loading label={t('Opening the project…')} className="p-0 text-center" />
       </div>
     );
   }
 
   return (
     <div className="flex flex-col gap-6">
-      <p>Review your choices.</p>
+      <p>{t('Review your choices.')}</p>
 
       <div className="flex flex-col gap-4">
         {isNewProject && <ProjectInfoReview />}
@@ -365,10 +400,11 @@ export const ConfirmationStep = ({ setupData, isNewProject, projectId, client, o
           !setupData.fields?.fields?.length &&
           !setupData.vocabulary?.vocabularies?.some((v) => v.enabled) && (
             <div className="rounded-lg border bg-card p-4">
-              <p className="mb-2 font-medium">Other settings</p>
+              <p className="mb-2 font-medium">{t('Other settings')}</p>
               <p className="text-sm text-muted-foreground">
-                None chosen. Document metadata, orthographies, annotation fields and vocabularies
-                are under Settings.
+                {t(
+                  'None chosen. Document metadata, orthographies, annotation fields and vocabularies are under Settings.',
+                )}
               </p>
             </div>
           )}
@@ -378,7 +414,7 @@ export const ConfirmationStep = ({ setupData, isNewProject, projectId, client, o
 
       {errors.length > 0 && (
         <Notice tone="error" className="p-4">
-          <p className="font-medium">Setup errors</p>
+          <p className="font-medium">{t('Setup errors')}</p>
           <div className="mt-1 flex flex-col gap-2">
             {errors.map((error, index) => (
               <p key={index} className="text-muted-foreground">
@@ -392,7 +428,7 @@ export const ConfirmationStep = ({ setupData, isNewProject, projectId, client, o
       {isExecuting && (
         <div className="rounded-lg border bg-card p-4">
           <div className="flex flex-col gap-2">
-            <p className="font-medium">Setting up…</p>
+            <p className="font-medium">{t('Setting up…')}</p>
             <div className="h-2 w-full overflow-hidden rounded-full bg-muted">
               <div className="h-full bg-primary transition-all" style={{ width: `${progress}%` }} />
             </div>
@@ -403,16 +439,16 @@ export const ConfirmationStep = ({ setupData, isNewProject, projectId, client, o
 
       <div className="flex items-center justify-between gap-2 pt-4">
         <Button variant="outline" onClick={onPrevious} disabled={isExecuting || !onPrevious}>
-          Previous
+          {t('Previous')}
         </Button>
         <div className="flex items-center gap-2">
           {errors.length > 0 && (
             <Button variant="outline" onClick={executeSetup} disabled={isExecuting}>
-              <RefreshCw className="h-4 w-4" /> Retry setup
+              <RefreshCw className="h-4 w-4" /> {t('Retry setup')}
             </Button>
           )}
           <Button onClick={executeSetup} disabled={isExecuting}>
-            {isNewProject ? 'Create project' : 'Set up project'}
+            {isNewProject ? t('Create project') : t('Set up project')}
           </Button>
         </div>
       </div>

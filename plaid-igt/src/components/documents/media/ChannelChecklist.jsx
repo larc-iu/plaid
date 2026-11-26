@@ -1,4 +1,5 @@
 import { Label } from '@ui/components/ui/label';
+import { t } from '@ui/lib/i18n.js';
 
 // The channels of a recording with a speaker on each, one box per channel,
 // all on to begin with: what the speech detector listens to and what the
@@ -10,7 +11,7 @@ export function ChannelChecklist({ channels, disabled = false }) {
   if (!channels.list.length) return null;
   return (
     <div className="flex flex-col gap-2" data-channel-checklist="">
-      <Label className="text-xs">Channels</Label>
+      <Label className="text-xs">{t('Channels')}</Label>
       <ul className="flex flex-col gap-1">
         {channels.list.map((c) => (
           <li key={c.channel}>

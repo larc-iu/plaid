@@ -18,6 +18,7 @@ import { FormLabel } from './FormLabel';
 import { MarkedText } from '@ui/components/shared/MarkedText.jsx';
 import { StackedSentence } from './StackedSentence';
 import { NoteLine } from '@/components/projects/search/NoteLine.jsx';
+import { t, tx } from '@ui/lib/i18n.js';
 
 // The dictionary panels of an entry: where it sits in its sense tree, what
 // refers to it, and its examples.
@@ -40,7 +41,7 @@ const Chip = ({ children, onRemove, disabled }) => (
     {!disabled && onRemove && (
       <button
         type="button"
-        aria-label="Remove"
+        aria-label={t('Remove')}
         onClick={onRemove}
         className="rounded-sm p-0.5 text-muted-foreground hover:text-destructive"
       >
@@ -81,7 +82,7 @@ export const ItemRefField = ({
                 {it ? (
                   <ItemLink item={it} numbers={numbers} itemTo={itemTo} />
                 ) : (
-                  <span className="text-muted-foreground">(missing entry)</span>
+                  <span className="text-muted-foreground">{t('(missing entry)')}</span>
                 )}
               </Chip>
             );
@@ -95,7 +96,7 @@ export const ItemRefField = ({
           numbers={numbers}
           exclude={exclude}
           onPick={(x) => set([...ids, x])}
-          placeholder={`Find an entry for ${humanizeFieldName(field.name)}…`}
+          placeholder={t('Find an entry for {field}…', { field: humanizeFieldName(field.name) })}
         />
       )}
     </div>
@@ -141,8 +142,11 @@ export const EntryPlace = ({
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
         {parent && (
           <span>
-            Sense <span className="tabular-nums">{numbers?.get(item.id) ?? number}</span> of{' '}
-            <ItemLink item={parent} numbers={numbers} itemTo={itemTo} />
+            {tx('Sense <num>{n}</num> of {parent}', {
+              n: numbers?.get(item.id) ?? number,
+              parent: <ItemLink key="parent" item={parent} numbers={numbers} itemTo={itemTo} />,
+              num: (c) => <span className="tabular-nums">{c}</span>,
+            })}
           </span>
         )}
         {senseCount > 0 && (
@@ -153,7 +157,7 @@ export const EntryPlace = ({
             className="inline-flex items-center gap-0.5 text-primary hover:underline"
           >
             {treeOpen ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
-            Senses
+            {t('Senses')}
           </button>
         )}
         <Popover open={!!pickFor} onOpenChange={(o) => !o && setPickFor(null)}>
@@ -164,7 +168,7 @@ export const EntryPlace = ({
                 className="inline-flex items-center gap-1 text-primary hover:underline"
                 onClick={() => setPickFor(item.id)}
               >
-                <CornerLeftUp className="h-3 w-3" /> Set parent
+                <CornerLeftUp className="h-3 w-3" /> {t('Set parent')}
               </button>
             </PopoverTrigger>
           )}
@@ -179,7 +183,7 @@ export const EntryPlace = ({
                 setPickFor(null);
                 onMoveUnder(moving, id);
               }}
-              placeholder="Find the entry"
+              placeholder={t('Find the entry')}
             />
           </PopoverContent>
         </Popover>
@@ -191,11 +195,13 @@ export const EntryPlace = ({
         {canEdit && (
           <button
             type="button"
-            title="A new entry over this one, with the same form. This one becomes its first sense."
+            title={t(
+              'A new entry over this one, with the same form. This one becomes its first sense.',
+            )}
             className="inline-flex items-center gap-1 text-primary hover:underline"
             onClick={() => onRaiseHeadword(item.id)}
           >
-            <Plus className="h-3 w-3" /> Add headword
+            <Plus className="h-3 w-3" /> {t('Add headword')}
           </button>
         )}
         {canEdit && (
@@ -203,7 +209,7 @@ export const EntryPlace = ({
             to={newSenseTo(item.id)}
             className="inline-flex items-center gap-1 text-primary no-underline hover:underline"
           >
-            <Plus className="h-3 w-3" /> Add sense
+            <Plus className="h-3 w-3" /> {t('Add sense')}
           </Link>
         )}
       </div>
@@ -299,11 +305,12 @@ const SenseTree = ({
     <ul className="max-h-72 overflow-y-auto rounded-md border bg-muted/20 py-1 text-sm">
       {canEdit && (
         <li className="px-3 pb-0.5 pt-1 text-[10px] uppercase tracking-wide text-muted-foreground/70">
-          Drag a sense to
+          {t('Drag a sense to')}
         </li>
       )}
-      {canEdit && dropZone('root', 'Make separate entry', () => onDrop(dragId, { kind: 'root' }))}
-      {canEdit && dropZone('pick', 'Move to other entry', () => onPickEntry(dragId))}
+      {canEdit &&
+        dropZone('root', t('Make separate entry'), () => onDrop(dragId, { kind: 'root' }))}
+      {canEdit && dropZone('pick', t('Move to other entry'), () => onPickEntry(dragId))}
       {rows.map(({ item, depth }) => {
         const isCurrent = item.id === current;
         const isOver = over && over.id === item.id;
@@ -393,8 +400,8 @@ export const HomographNumber = ({ number, onOpen, className }) => {
   return (
     <button
       type="button"
-      title="Reorder the entries spelled this way"
-      aria-label={`${number}. Reorder the entries spelled this way`}
+      title={t('Reorder the entries spelled this way')}
+      aria-label={t('{number}. Reorder the entries spelled this way', { number })}
       onClick={onOpen}
       className={cn(
         'rounded-sm px-0.5 tabular-nums text-muted-foreground underline decoration-dotted underline-offset-2 hover:bg-accent hover:text-foreground',
@@ -430,9 +437,11 @@ export const HomographDialog = ({ open, onOpenChange, group, currentId, onReorde
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-md">
         <DialogHeader>
-          <DialogTitle>Entries spelled “{form}”</DialogTitle>
+          <DialogTitle>{t('Entries spelled “{form}”', { form })}</DialogTitle>
         </DialogHeader>
-        <p className="text-sm text-muted-foreground">Drag to reorder. The order is their number.</p>
+        <p className="text-sm text-muted-foreground">
+          {t('Drag to reorder. The order is their number.')}
+        </p>
         <ol className="divide-y rounded-md border">
           {group.map((r, i) => (
             <li
@@ -509,7 +518,7 @@ export const ReferencedByPanel = ({ item, items, fields, numbers, itemTo }) => {
   return (
     <div className="rounded-lg border bg-card">
       <div className="border-b px-4 py-2">
-        <span className="text-sm font-medium">Referenced by</span>
+        <span className="text-sm font-medium">{t('Referenced by')}</span>
       </div>
       <ul className="divide-y">
         {refs.map((r, i) => (
@@ -560,7 +569,7 @@ export const ContextRow = ({ row, to, segmented = false }) => {
     <Link
       to={to}
       className="block min-w-0 flex-1 px-3 py-1.5 text-left no-underline hover:bg-muted/50"
-      title="Open in Analyze (middle-click for a new tab)"
+      title={t('Open in Analyze (middle-click for a new tab)')}
     >
       {body}
     </Link>
@@ -611,9 +620,13 @@ export const ExamplesPanel = ({ item, client, linkedTokenIds, canEdit, onRemove 
               morphemes: true,
             });
             for (const row of g.rows) {
-              for (const t of row.tokenIds || []) {
-                if (tokenIds.has(t))
-                  out.set(`${docId}/${t}`, { row, projectId: g.projectId, docName: g.docName });
+              for (const tokenId of row.tokenIds || []) {
+                if (tokenIds.has(tokenId))
+                  out.set(`${docId}/${tokenId}`, {
+                    row,
+                    projectId: g.projectId,
+                    docName: g.docName,
+                  });
               }
             }
           } catch (err) {
@@ -637,7 +650,7 @@ export const ExamplesPanel = ({ item, client, linkedTokenIds, canEdit, onRemove 
   return (
     <div className="rounded-lg border bg-card">
       <div className="flex items-center justify-between border-b px-4 py-2">
-        <span className="text-sm font-medium">Examples</span>
+        <span className="text-sm font-medium">{t('Examples')}</span>
         <span className="text-xs text-muted-foreground">{examples.length}</span>
       </div>
       <ol className="divide-y">
@@ -659,7 +672,7 @@ export const ExamplesPanel = ({ item, client, linkedTokenIds, canEdit, onRemove 
                 {canEdit && (
                   <button
                     type="button"
-                    aria-label="Remove example"
+                    aria-label={t('Remove example')}
                     onClick={() => onRemove(i)}
                     className="mt-1.5 rounded-md p-1 text-muted-foreground hover:text-destructive"
                   >
@@ -685,11 +698,13 @@ export const ExamplesPanel = ({ item, client, linkedTokenIds, canEdit, onRemove 
                 <div className="min-w-0 flex-1 px-3 py-1.5 text-sm text-muted-foreground">…</div>
               ) : refused ? (
                 <div className="min-w-0 flex-1 px-3 py-1.5 text-sm text-muted-foreground">
-                  This example is in a document you cannot open.
+                  {t('This example is in a document you cannot open.')}
                 </div>
               ) : gone ? (
                 <div className="min-w-0 flex-1 px-3 py-1.5 text-sm text-muted-foreground">
-                  This example no longer exists, or its word is no longer linked to this entry.
+                  {t(
+                    'This example no longer exists, or its word is no longer linked to this entry.',
+                  )}
                 </div>
               ) : (
                 <div className="min-w-0 flex-1">
@@ -705,7 +720,7 @@ export const ExamplesPanel = ({ item, client, linkedTokenIds, canEdit, onRemove 
               {canEdit && !refused && (
                 <button
                   type="button"
-                  aria-label="Remove example"
+                  aria-label={t('Remove example')}
                   onClick={() => onRemove(i)}
                   className="mt-1.5 rounded-md p-1 text-muted-foreground hover:text-destructive"
                 >

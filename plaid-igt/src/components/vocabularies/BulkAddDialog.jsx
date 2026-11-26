@@ -58,7 +58,7 @@ import {
   makeRefusal,
   serializeImportReport,
 } from '@/import/vocabBulk';
-import { countOf } from '@ui/lib/plural.js';
+import { msg, t, tx } from '@ui/lib/i18n.js';
 import { isEnter } from '@ui/lib/chords.js';
 
 // What a plan writes, as the server gets it: pending ids named by the ids the
@@ -83,9 +83,9 @@ const NO_TAGSETS = () => null;
 // The three steps a person walks. `running` is an outcome, not a step, so it
 // carries its own title and no counter.
 const STEPS = {
-  source: { title: 'Bulk Add entries', n: 1 },
-  columns: { title: 'Map columns', n: 2 },
-  review: { title: 'Review changes', n: 3 },
+  source: { title: msg('Bulk Add entries'), n: 1 },
+  columns: { title: msg('Map columns'), n: 2 },
+  review: { title: msg('Review changes'), n: 3 },
 };
 const WIZARD_STEPS = Object.keys(STEPS).length;
 
@@ -100,9 +100,11 @@ const SAMPLE_VALUES = 3;
 // stored or one this import is about to insert makes no difference here, and
 // saying it differently for the two only invites the question why.
 const actionLabel = (d) => {
-  if (d.action === 'create') return 'will be added';
-  if (d.action === 'update') return d.kind === 'conflict' ? 'will be replaced' : 'will be expanded';
-  return 'skipped';
+  if (d.action === 'create') return t('will be added');
+  if (d.action === 'update') {
+    return d.kind === 'conflict' ? t('will be replaced') : t('will be expanded');
+  }
+  return t('skipped');
 };
 const actionTone = (d) => {
   if (d.action === 'skip') return 'text-muted-foreground';
@@ -113,10 +115,25 @@ const actionTone = (d) => {
 // Short labels for the per-row choice. The bucket dropdowns say the same thing
 // at length, since there the subject is a whole pile of rows.
 const ROW_CHOICES = {
-  fill: 'Expand',
-  skip: 'Skip',
-  new: 'Add',
-  overwrite: 'Replace existing',
+  fill: msg('Expand'),
+  skip: msg('Skip'),
+  new: msg('Add'),
+  overwrite: msg('Replace existing'),
+};
+// The same, numbered after one of the entries that share the form.
+const NUMBERED_CHOICES = {
+  fill: msg('Expand {n}'),
+  skip: msg('Skip {n}'),
+  new: msg('Add {n}'),
+  overwrite: msg('Replace existing {n}'),
+};
+
+// How the source step names the separator it found.
+const delimiterShown = (d) => {
+  const name = delimiterName(d);
+  if (name === 'tab-separated') return t('tab-separated');
+  if (name === 'semicolon-separated') return t('semicolon-separated');
+  return t('comma-separated');
 };
 
 /**
@@ -132,14 +149,19 @@ const rowChoices = (d) => {
   // between, and a numbered option there would only restate the default.
   const targetable = d.matches.filter((m) => m.canTarget !== false).length;
   if (!targeted || targetable < 2) {
-    return base.map((v) => ({ value: v, label: ROW_CHOICES[v] }));
+    return base.map((v) => ({ value: v, label: t(ROW_CHOICES[v]) }));
   }
-  const out = base.filter((v) => v !== targeted).map((v) => ({ value: v, label: ROW_CHOICES[v] }));
+  const out = base
+    .filter((v) => v !== targeted)
+    .map((v) => ({ value: v, label: t(ROW_CHOICES[v]) }));
   // Only the entries the comparison shows can be picked: a number past the
   // table would name an entry the reviewer has not seen.
   d.matches.slice(0, MAX_MATCHES).forEach((m, i) => {
     if (m.canTarget === false) return;
-    out.push({ value: targetedAnswer(targeted, i), label: `${ROW_CHOICES[targeted]} ${i + 1}` });
+    out.push({
+      value: targetedAnswer(targeted, i),
+      label: t(NUMBERED_CHOICES[targeted], { n: i + 1 }),
+    });
   });
   return out;
 };
@@ -149,36 +171,40 @@ const rowChoices = (d) => {
 // and they are precisely what a person is here to look at.
 const FILTERS = {
   decide: {
-    label: 'Needs a decision',
+    label: msg('Needs a decision'),
     match: (d) => d.kind === 'conflict' || d.kind === 'ambiguous',
   },
-  changes: { label: 'Will change something', match: (d) => d.action !== 'skip' },
-  all: { label: 'Every row', match: () => true },
-  new: { label: 'New entries', match: (d) => d.kind === 'new' },
-  enrich: { label: 'Expand an entry', match: (d) => d.kind === 'enrich' },
-  conflict: { label: 'Disagree with an entry', match: (d) => d.kind === 'conflict' },
-  ambiguous: { label: 'Could belong to several', match: (d) => d.kind === 'ambiguous' },
-  identical: { label: 'Already present', match: (d) => d.kind === 'identical' },
-  blank: { label: 'No form', match: (d) => d.kind === 'blank' },
+  changes: { label: msg('Will change something'), match: (d) => d.action !== 'skip' },
+  all: { label: msg('Every row'), match: () => true },
+  new: { label: msg('New entries'), match: (d) => d.kind === 'new' },
+  enrich: { label: msg('Expand an entry'), match: (d) => d.kind === 'enrich' },
+  conflict: { label: msg('Disagree with an entry'), match: (d) => d.kind === 'conflict' },
+  ambiguous: { label: msg('Could belong to several'), match: (d) => d.kind === 'ambiguous' },
+  identical: { label: msg('Already present'), match: (d) => d.kind === 'identical' },
+  blank: { label: msg('No form'), match: (d) => d.kind === 'blank' },
 };
 
 // The summary, in order. Counts only: every control lives with the rows it acts
 // on, in the list above, so nothing is offered in two places.
 const SUMMARY = [
-  { kind: 'new', tone: 'good', label: 'new entries will be added' },
-  { kind: 'enrich', tone: 'good', label: 'rows expand existing entries' },
-  { kind: 'conflict', tone: 'warn', label: 'rows disagree with an entry that has the same form' },
+  { kind: 'new', tone: 'good', label: msg('new entries will be added') },
+  { kind: 'enrich', tone: 'good', label: msg('rows expand existing entries') },
+  {
+    kind: 'conflict',
+    tone: 'warn',
+    label: msg('rows disagree with an entry that has the same form'),
+  },
   {
     kind: 'ambiguous',
     tone: 'warn',
-    label: 'rows could belong to more than one entry sharing that form',
+    label: msg('rows could belong to more than one entry sharing that form'),
   },
   {
     kind: 'identical',
     tone: 'muted',
-    label: 'rows are already in the vocabulary, so nothing to do',
+    label: msg('rows are already in the vocabulary, so nothing to do'),
   },
-  { kind: 'blank', tone: 'muted', label: 'rows have no form, so they are skipped' },
+  { kind: 'blank', tone: 'muted', label: msg('rows have no form, so they are skipped') },
 ];
 
 const selectClass =
@@ -240,7 +266,7 @@ const DecisionRow = ({ d, columns, override, fallback, onChoose }) => {
           {d.line}
         </span>
         <div className="min-w-0 flex-1 text-xs">
-          <span className="font-medium">{d.form || <em>(no form)</em>}</span>{' '}
+          <span className="font-medium">{d.form || <em>{t('(no form)')}</em>}</span>{' '}
           <span className={actionTone(d)}>{actionLabel(d)}</span>
           <span className="text-muted-foreground"> ({d.detail})</span>
         </div>
@@ -279,7 +305,7 @@ const DecisionRow = ({ d, columns, override, fallback, onChoose }) => {
           </thead>
           <tbody>
             <tr>
-              <td className="px-2 py-0.5 align-top text-muted-foreground">This row</td>
+              <td className="px-2 py-0.5 align-top text-muted-foreground">{t('This row')}</td>
               {columns.map((f) => (
                 <ValueCell key={f} value={d.values[f]} clash={rowClash.has(f)} add={added.has(f)} />
               ))}
@@ -295,7 +321,7 @@ const DecisionRow = ({ d, columns, override, fallback, onChoose }) => {
                     )}
                   >
                     {d.matches.length > 1 && `${i + 1}. `}
-                    {m.pending ? 'Earlier in file' : 'Already here'}
+                    {m.pending ? t('Earlier in file') : t('Already here')}
                     {/* Every sense of an entry answers to the same form, and
                         the number is what tells them apart. */}
                     {m.number ? <span className="ml-1 tabular-nums">{m.number}</span> : null}
@@ -312,7 +338,9 @@ const DecisionRow = ({ d, columns, override, fallback, onChoose }) => {
             {d.matches.length > shownMatches.length && (
               <tr>
                 <td className="px-2 py-0.5 text-muted-foreground" colSpan={columns.length + 1}>
-                  and {d.matches.length - shownMatches.length} more with this form
+                  {t('and {n} more with this form', {
+                    n: d.matches.length - shownMatches.length,
+                  })}
                 </td>
               </tr>
             )}
@@ -322,12 +350,10 @@ const DecisionRow = ({ d, columns, override, fallback, onChoose }) => {
     </div>
   );
 };
-// "Gloss (optional): The short meaning ..."
-const LegendEntry = ({ name, note, children }) => (
+// "Gloss (optional): The short meaning ...", the term a whole message.
+const LegendEntry = ({ term, children }) => (
   <div>
-    <dt className="inline font-medium">
-      {name} ({note}):
-    </dt>{' '}
+    <dt className="inline font-medium">{term}</dt>{' '}
     <dd className="inline text-muted-foreground">{children}</dd>
   </div>
 );
@@ -453,7 +479,7 @@ export const BulkAddDialog = ({
     if (!/^\d+$/.test(typed)) return keep();
     const line = Number(typed);
     if (line > lastLine) {
-      setStartError(`The last row is row ${n(lastLine)}.`);
+      setStartError(t('The last row is row {n}.', { n: n(lastLine) }));
       return keep();
     }
     setStartError(null);
@@ -537,8 +563,10 @@ export const BulkAddDialog = ({
     // A spreadsheet's own file is not text. The picker leaves these out, a drop does not.
     if (SPREADSHEET_FILE.test(picked.name || '')) {
       notifyError(
-        `${picked.name} is a spreadsheet file. Save it as CSV or TSV and import it again.`,
-        'Failed to read the file',
+        t('{name} is a spreadsheet file. Save it as CSV or TSV and import it again.', {
+          name: picked.name,
+        }),
+        t('Failed to read the file'),
       );
       return;
     }
@@ -548,8 +576,8 @@ export const BulkAddDialog = ({
     } catch (err) {
       console.error('Could not read the file:', err);
       notifyError(
-        err instanceof NotUtf8FileError ? err.message : 'That file could not be read.',
-        'Failed to read the file',
+        err instanceof NotUtf8FileError ? err.message : t('That file could not be read.'),
+        t('Failed to read the file'),
       );
     }
   };
@@ -625,7 +653,10 @@ export const BulkAddDialog = ({
           updated += chunk.length;
           setProgress({ done: created + updated, total, phase: 'updating' });
         }
-        setMessage(`Bulk add: ${countOf(created, 'entry')} added, ${updated} updated`);
+        // i18n-ignore: the operation's message in the History, stored as written
+        setMessage(
+          `Bulk add: ${created.toLocaleString()} ${created === 1 ? 'entry' : 'entries'} added, ${updated} updated`,
+        );
       },
       {
         // The entries are read again in the import's turn, and again before
@@ -673,13 +704,17 @@ export const BulkAddDialog = ({
     if (landed) {
       await onImported();
       notifySuccess(
-        [
-          created ? `Added ${countOf(created, 'entry')}` : null,
-          updated ? `filled in ${n(updated)}` : null,
-        ]
-          .filter(Boolean)
-          .join(', ') || 'Nothing to change',
-        'Bulk Add complete',
+        created && updated
+          ? t('Added {n, plural, one {# entry} other {# entries}}, filled in {updated, number}', {
+              n: created,
+              updated,
+            })
+          : created
+            ? t('Added {n, plural, one {# entry} other {# entries}}', { n: created })
+            : updated
+              ? t('filled in {updated, number}', { updated })
+              : t('Nothing to change'),
+        t('Bulk Add complete'),
       );
       close();
       return;
@@ -694,7 +729,7 @@ export const BulkAddDialog = ({
     // again, shows it as already present.
     if (created || updated) await onImported();
     setFailure({
-      message: humanizeError(error, 'The server rejected the import.'),
+      message: humanizeError(error, t('The server rejected the import.')),
       created,
       updated,
     });
@@ -709,7 +744,10 @@ export const BulkAddDialog = ({
           <FileText className="h-4 w-4 shrink-0 text-muted-foreground" />
           <span className="min-w-0 flex-1 truncate text-sm">{file.name}</span>
           <span className="text-xs text-muted-foreground">
-            {countOf(rows.length, 'row')} · {delimiterName(delimiter)}
+            {t('{n, plural, one {# row} other {# rows}} · {separator}', {
+              n: rows.length,
+              separator: delimiterShown(delimiter),
+            })}
           </span>
           <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => setFile(null)}>
             <X className="h-3.5 w-3.5" />
@@ -726,9 +764,11 @@ export const BulkAddDialog = ({
           }}
         >
           <Upload className="h-6 w-6 text-muted-foreground" />
-          <p className="text-sm font-medium">Drop a .tsv or .csv file here, or click to choose</p>
+          <p className="text-sm font-medium">
+            {t('Drop a .tsv or .csv file here, or click to choose')}
+          </p>
           <p className="text-xs text-muted-foreground">
-            Anything a spreadsheet exports: tab-, comma-, or semicolon-separated.
+            {t('Anything a spreadsheet exports: tab-, comma-, or semicolon-separated.')}
           </p>
           <input
             ref={fileInputRef}
@@ -744,7 +784,7 @@ export const BulkAddDialog = ({
         <>
           <div className="flex items-center gap-2">
             <span className="h-px flex-1 bg-border" />
-            <span className="text-xs text-muted-foreground">or paste</span>
+            <span className="text-xs text-muted-foreground">{t('or paste')}</span>
             <span className="h-px flex-1 bg-border" />
           </div>
           <Textarea
@@ -756,17 +796,20 @@ export const BulkAddDialog = ({
             rows={8}
             value={pasted}
             onChange={(e) => setPasted(e.target.value)}
-            placeholder={`form\t${fieldNames.join('\t')}`}
+            placeholder={`form\t${fieldNames.join('\t')}`} // i18n-ignore: a sample header, the stored field names
             spellCheck={false}
             className="font-mono text-xs"
           />
           <p className="text-xs text-muted-foreground">
-            One entry per line, columns separated by tabs, commas or semicolons. The first row may
-            be a header naming the columns, which you confirm next.
+            {t(
+              'One entry per line, columns separated by tabs, commas or semicolons. The first row may be a header naming the columns, which you confirm next.',
+            )}
             {rows.length > 0 && (
               <>
                 {' '}
-                <span className="text-foreground">{countOf(rows.length, 'row')} read.</span>
+                <span className="text-foreground">
+                  {t('{n, plural, one {# row} other {# rows}} read.', { n: rows.length })}
+                </span>
               </>
             )}
           </p>
@@ -787,7 +830,7 @@ export const BulkAddDialog = ({
       <div className="flex flex-col gap-3">
         <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-sm">
           <label className="flex items-center gap-2">
-            The table starts at row
+            {t('The table starts at row')}
             <Input
               type="number"
               min={1}
@@ -820,7 +863,7 @@ export const BulkAddDialog = ({
                 )
               }
             />
-            That row names the columns (don't import it)
+            {t("That row names the columns (don't import it)")}
           </label>
         </div>
         {startError && (
@@ -831,11 +874,21 @@ export const BulkAddDialog = ({
         )}
         {skip > 0 && (
           <p className="text-xs text-muted-foreground">
-            {countOf(skip, 'row')} above it {skip === 1 ? 'is' : 'are'} left out:{' '}
-            <span dir="auto" className="font-mono">
-              {rows.slice(0, Math.min(skip, 2)).map(cellsPreview).join(' / ')}
-              {skip > 2 ? ' / …' : ''}
-            </span>
+            {tx(
+              '{n, plural, one {# row above it is} other {# rows above it are}} left out: <mono>{cells}</mono>',
+              {
+                n: skip,
+                cells: `${rows
+                  .slice(0, Math.min(skip, 2))
+                  .map(cellsPreview)
+                  .join(' / ')}${skip > 2 ? ' / …' : ''}`,
+                mono: (c) => (
+                  <span dir="auto" className="font-mono">
+                    {c}
+                  </span>
+                ),
+              },
+            )}
           </p>
         )}
         {hasHeader && subHeaderFound && (
@@ -846,10 +899,14 @@ export const BulkAddDialog = ({
               onChange={(e) => setSubHeader(e.target.checked)}
             />
             <span>
-              The row under it names them too (don't import it):{' '}
-              <span dir="auto" className="font-mono text-xs">
-                {cellsPreview(rows[skip + 1])}
-              </span>
+              {tx("The row under it names them too (don't import it): <mono>{cells}</mono>", {
+                cells: cellsPreview(rows[skip + 1]),
+                mono: (c) => (
+                  <span dir="auto" className="font-mono text-xs">
+                    {c}
+                  </span>
+                ),
+              })}
             </span>
           </label>
         )}
@@ -860,7 +917,7 @@ export const BulkAddDialog = ({
                 the first data row show through it as the table scrolls. */}
             <thead className="text-xs text-muted-foreground">
               <tr>
-                {['Column', 'First values', 'Import as'].map((h) => (
+                {[t('Column'), t('First values'), t('Import as')].map((h) => (
                   <th
                     key={h}
                     className="sticky top-0 z-10 border-b bg-background px-2 py-1.5 text-left font-medium"
@@ -876,16 +933,16 @@ export const BulkAddDialog = ({
                   <td className="px-2 py-1.5">
                     <span className="text-xs text-muted-foreground">{i + 1}.</span>{' '}
                     {hasHeader ? (
-                      <span className="font-medium">{rows[skip]?.cells?.[i] || '(blank)'}</span>
+                      <span className="font-medium">{rows[skip]?.cells?.[i] || t('(blank)')}</span>
                     ) : (
-                      <span className="text-muted-foreground">(no header)</span>
+                      <span className="text-muted-foreground">{t('(no header)')}</span>
                     )}
                   </td>
                   <td className="px-2 py-1.5 text-xs text-muted-foreground">
                     {sampleRows
                       .map((r) => r.cells[i])
                       .filter((c) => String(c ?? '').trim() !== '')
-                      .join(' · ') || <span className="italic">empty</span>}
+                      .join(' · ') || <span className="italic">{t('empty')}</span>}
                   </td>
                   <td className="px-2 py-1.5">
                     <select
@@ -893,13 +950,13 @@ export const BulkAddDialog = ({
                       value={target}
                       onChange={(e) => setColumn(i, e.target.value)}
                     >
-                      <option value={FORM}>Form (required)</option>
+                      <option value={FORM}>{t('Form (required)')}</option>
                       {fieldNames.map((f) => (
                         <option key={f} value={f} disabled={target !== f && usedFields.includes(f)}>
                           {humanizeFieldName(f)}
                         </option>
                       ))}
-                      <option value={IGNORE}>Don't import</option>
+                      <option value={IGNORE}>{t("Don't import")}</option>
                     </select>
                   </td>
                 </tr>
@@ -912,14 +969,14 @@ export const BulkAddDialog = ({
           <p className="flex items-start gap-1.5 text-sm text-destructive">
             <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
             {formColumns === 0
-              ? 'Pick the column holding the entry form before going on.'
-              : 'Only one column can be the form.'}
+              ? t('Pick the column holding the entry form before going on.')
+              : t('Only one column can be the form.')}
           </p>
         )}
 
         {(constantFields.length > 0 || addable.length > 0) && (
           <div className="flex flex-col gap-1.5">
-            <p className="text-sm">The same value on every row</p>
+            <p className="text-sm">{t('The same value on every row')}</p>
             {constantFields.map((f) => (
               <div key={f} className="flex items-center gap-2">
                 <span className="w-40 shrink-0 truncate text-sm">{humanizeFieldName(f)}</span>
@@ -928,13 +985,13 @@ export const BulkAddDialog = ({
                   value={constants[f]}
                   onChange={(e) => setConstants((prev) => ({ ...prev, [f]: e.target.value }))}
                   className="h-7 flex-1"
-                  aria-label={`${humanizeFieldName(f)} on every row`}
+                  aria-label={t('{field} on every row', { field: humanizeFieldName(f) })}
                 />
                 <Button
                   variant="ghost"
                   size="icon"
                   className="h-6 w-6"
-                  title="Remove"
+                  title={t('Remove')}
                   onClick={() =>
                     setConstants((prev) => {
                       const next = { ...prev };
@@ -956,7 +1013,7 @@ export const BulkAddDialog = ({
                   if (f) setConstants((prev) => ({ ...prev, [f]: '' }));
                 }}
               >
-                <option value="">Add a field…</option>
+                <option value="">{t('Add a field…')}</option>
                 {addable.map((f) => (
                   <option key={f} value={f}>
                     {humanizeFieldName(f)}
@@ -973,19 +1030,21 @@ export const BulkAddDialog = ({
             checked={caseInsensitive}
             onChange={(e) => setCaseInsensitive(e.target.checked)}
           />
-          Match forms ignoring capitalization
+          {t('Match forms ignoring capitalization')}
         </label>
 
         <div className="rounded-md border bg-muted/30 p-3">
           <p className="mb-1.5 text-xs font-medium uppercase tracking-wide text-muted-foreground">
-            Legend
+            {t('Legend')}
           </p>
           <dl className="flex flex-col gap-1.5 text-xs">
-            <LegendEntry name="Form" note="required">
-              The entry as it appears in the text. A form may repeat: each homonym is its own entry.
+            <LegendEntry term={t('Form (required):')}>
+              {t(
+                'The entry as it appears in the text. A form may repeat: each homonym is its own entry.',
+              )}
             </LegendEntry>
             {fieldNames.map((f) => (
-              <LegendEntry key={f} name={humanizeFieldName(f)} note="optional">
+              <LegendEntry key={f} term={t('{field} (optional):', { field: humanizeFieldName(f) })}>
                 {fieldDescription(f)}
               </LegendEntry>
             ))}
@@ -993,10 +1052,12 @@ export const BulkAddDialog = ({
                 holds, so the way to keep it is to pick that field, and adding
                 a field is said only when every field has its column. */}
             {ignoredColumns > 0 && (
-              <LegendEntry name="Don't import" note="left out">
+              <LegendEntry term={t("Don't import (left out):")}>
                 {unmapped.length > 0
-                  ? 'To keep one of these, choose its field above.'
-                  : 'To keep one of these, add a field to this vocabulary in its Settings first.'}
+                  ? t('To keep one of these, choose its field above.')
+                  : t(
+                      'To keep one of these, add a field to this vocabulary in its Settings first.',
+                    )}
               </LegendEntry>
             )}
           </dl>
@@ -1030,7 +1091,7 @@ export const BulkAddDialog = ({
         {replanned && (
           <p className="flex items-start gap-1.5 text-sm text-warning-foreground">
             <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
-            Entries changed since this review. Check the changes again.
+            {t('Entries changed since this review. Check the changes again.')}
           </p>
         )}
         <div className="rounded-md border">
@@ -1043,7 +1104,10 @@ export const BulkAddDialog = ({
               >
                 {Object.entries(FILTERS).map(([key, f]) => (
                   <option key={key} value={key}>
-                    {f.label} ({n(plan.decisions.filter(f.match).length)})
+                    {t('{label} ({n})', {
+                      label: t(f.label),
+                      n: n(plan.decisions.filter(f.match).length),
+                    })}
                   </option>
                 ))}
               </select>
@@ -1061,10 +1125,10 @@ export const BulkAddDialog = ({
                     });
                   }}
                 >
-                  <option value="">Set all {n(rows.length)} to…</option>
+                  <option value="">{t('Set all {n} to…', { n: n(rows.length) })}</option>
                   {bulk.map((v) => (
                     <option key={v} value={v}>
-                      {ROW_CHOICES[v]}
+                      {t(ROW_CHOICES[v])}
                     </option>
                   ))}
                 </select>
@@ -1078,17 +1142,19 @@ export const BulkAddDialog = ({
                   className="h-6 text-xs"
                   onClick={() => setOverrides({})}
                 >
-                  Reset {countOf(overrideCount, 'choice')}
+                  {t('Reset {n, plural, one {# choice} other {# choices}}', { n: overrideCount })}
                 </Button>
               )}
               <Button variant="ghost" size="sm" className="h-6 text-xs" onClick={downloadReport}>
-                <Download className="h-3 w-3" /> Full plan (.tsv)
+                <Download className="h-3 w-3" /> {t('Full plan (.tsv)')}
               </Button>
             </div>
           </div>
 
           {visible.length === 0 ? (
-            <p className="px-2 py-4 text-center text-xs text-muted-foreground">No rows here.</p>
+            <p className="px-2 py-4 text-center text-xs text-muted-foreground">
+              {t('No rows here.')}
+            </p>
           ) : (
             <div className="max-h-80 overflow-y-auto">
               {visible.map((d) => (
@@ -1116,8 +1182,11 @@ export const BulkAddDialog = ({
           {pages > 1 && (
             <div className="flex items-center justify-between border-t px-2 py-1 text-xs text-muted-foreground">
               <span className="tabular-nums">
-                Rows {n(at * PAGE_ROWS + 1)}–{n(at * PAGE_ROWS + visible.length)} of{' '}
-                {n(rows.length)}
+                {t('Rows {from}–{to} of {total}', {
+                  from: n(at * PAGE_ROWS + 1),
+                  to: n(at * PAGE_ROWS + visible.length),
+                  total: n(rows.length),
+                })}
               </span>
               <div className="flex items-center gap-1">
                 <Button
@@ -1127,10 +1196,10 @@ export const BulkAddDialog = ({
                   disabled={at === 0}
                   onClick={() => setPage(at - 1)}
                 >
-                  <ChevronLeft className="h-3 w-3" /> Previous
+                  <ChevronLeft className="h-3 w-3" /> {t('Previous')}
                 </Button>
                 <span className="tabular-nums">
-                  Page {n(at + 1)} of {n(pages)}
+                  {t('Page {page} of {pages}', { page: n(at + 1), pages: n(pages) })}
                 </span>
                 <Button
                   variant="ghost"
@@ -1139,7 +1208,7 @@ export const BulkAddDialog = ({
                   disabled={at >= pages - 1}
                   onClick={() => setPage(at + 1)}
                 >
-                  Next <ChevronRight className="h-3 w-3" />
+                  {t('Next')} <ChevronRight className="h-3 w-3" />
                 </Button>
               </div>
             </div>
@@ -1149,9 +1218,10 @@ export const BulkAddDialog = ({
         {rejectedRows > 0 && (
           <p className="flex items-start gap-1.5 text-xs text-warning-foreground">
             <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-            {countOf(rejectedRows, 'row')} {rejectedRows === 1 ? 'has' : 'have'} a value that{' '}
-            {rejectedIn} does not accept. That value is left out and the rest of the row still
-            imports.
+            {t(
+              '{n, plural, one {# row has} other {# rows have}} a value that {fields} does not accept. That value is left out and the rest of the row still imports.',
+              { n: rejectedRows, fields: rejectedIn },
+            )}
           </p>
         )}
 
@@ -1180,7 +1250,7 @@ export const BulkAddDialog = ({
                 >
                   {n(plan.counts[kind])}
                 </span>
-                <span className="min-w-0 flex-1 text-sm">{label}</span>
+                <span className="min-w-0 flex-1 text-sm">{t(label)}</span>
               </button>
             ),
           )}
@@ -1197,15 +1267,27 @@ export const BulkAddDialog = ({
           {failure.message}
         </p>
         <p className="text-sm text-muted-foreground">
-          {n(failure.created)} added and {n(failure.updated)} updated before it stopped. Back in the
-          review, what landed shows as already present.
+          {t(
+            '{created, number} added and {updated, number} updated before it stopped. Back in the review, what landed shows as already present.',
+            { created: failure.created, updated: failure.updated },
+          )}
         </p>
       </div>
     ) : (
       <div className="py-8 text-center">
         <Loading
           className="p-0"
-          label={`${progress?.phase === 'updating' ? 'Filling in entries' : 'Adding entries'}: ${n(progress?.done ?? 0)} of ${n(progress?.total ?? 0)}`}
+          label={
+            progress?.phase === 'updating'
+              ? t('Filling in entries: {done} of {total}', {
+                  done: n(progress?.done ?? 0),
+                  total: n(progress?.total ?? 0),
+                })
+              : t('Adding entries: {done} of {total}', {
+                  done: n(progress?.done ?? 0),
+                  total: n(progress?.total ?? 0),
+                })
+          }
         />
       </div>
     );
@@ -1221,7 +1303,7 @@ export const BulkAddDialog = ({
       <DialogContent
         className={step === 'review' ? 'max-w-4xl' : 'max-w-2xl'}
         // A stopped import has a Close in its footer too.
-        closeLabel="Close import"
+        closeLabel={t('Close import')}
         // Escape in a text field leaves the field, never the wizard. The
         // start row puts itself back on its own Escape.
         onEscapeKeyDown={(e) => {
@@ -1233,10 +1315,14 @@ export const BulkAddDialog = ({
       >
         <DialogHeader>
           <DialogTitle>
-            {step === 'running' ? (failure ? 'Import stopped' : 'Importing') : STEPS[step].title}
+            {step === 'running'
+              ? failure
+                ? t('Import stopped')
+                : t('Importing')
+              : t(STEPS[step].title)}
             {STEPS[step] && (
               <span className="ml-2 text-xs font-normal text-muted-foreground">
-                Step {STEPS[step].n} of {WIZARD_STEPS}
+                {t('Step {n} of {total}', { n: STEPS[step].n, total: WIZARD_STEPS })}
               </span>
             )}
           </DialogTitle>
@@ -1251,47 +1337,49 @@ export const BulkAddDialog = ({
           {step === 'source' && (
             <>
               <Button variant="outline" onClick={close}>
-                Cancel
+                {t('Cancel')}
               </Button>
               <Button disabled={!rows.length} onClick={() => setStep('columns')}>
-                Next: columns
+                {t('Next: columns')}
               </Button>
             </>
           )}
           {step === 'columns' && (
             <>
               <Button variant="outline" onClick={() => setStep('source')}>
-                <ArrowLeft className="h-3.5 w-3.5" /> Back
+                <ArrowLeft className="h-3.5 w-3.5" /> {t('Back')}
               </Button>
               <Button
                 disabled={formColumns !== 1 || !columnCount}
                 onClick={() => setStep('review')}
               >
-                Next: review
+                {t('Next: review')}
               </Button>
             </>
           )}
           {step === 'review' && (
             <>
               <Button variant="outline" onClick={() => setStep('columns')}>
-                <ArrowLeft className="h-3.5 w-3.5" /> Back
+                <ArrowLeft className="h-3.5 w-3.5" /> {t('Back')}
               </Button>
               <Button disabled={!totalWrites} onClick={runImport}>
-                {totalWrites
-                  ? [
-                      plan.creates.length ? `Add ${n(plan.creates.length)}` : null,
-                      plan.updates.length ? `update ${n(plan.updates.length)}` : null,
-                    ]
-                      .filter(Boolean)
-                      .join(' · ')
-                  : 'Nothing to import'}
+                {!totalWrites
+                  ? t('Nothing to import')
+                  : plan.creates.length && plan.updates.length
+                    ? t('Add {creates} · update {updates}', {
+                        creates: n(plan.creates.length),
+                        updates: n(plan.updates.length),
+                      })
+                    : plan.creates.length
+                      ? t('Add {n}', { n: n(plan.creates.length) })
+                      : t('update {n}', { n: n(plan.updates.length) })}
               </Button>
             </>
           )}
           {step === 'running' && failure && (
             <>
               <Button variant="outline" onClick={close}>
-                Close
+                {t('Close')}
               </Button>
               <Button
                 onClick={() => {
@@ -1299,7 +1387,7 @@ export const BulkAddDialog = ({
                   setStep('review');
                 }}
               >
-                <ArrowLeft className="h-3.5 w-3.5" /> Back to review
+                <ArrowLeft className="h-3.5 w-3.5" /> {t('Back to review')}
               </Button>
             </>
           )}

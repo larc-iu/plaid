@@ -54,7 +54,7 @@ export const queueRepairOfBareLayer = (b, { kind, layerId, constraints, stored }
 export const storedConstraints = (layer, namespace) => layer?.constraints?.[namespace] ?? null;
 
 // The total a checkConstraints answer (camelCased) gives. A refusal's is violationCountOf's.
-const countOf = (answer) => answer?.violationCount ?? answer?.violations?.length ?? 0;
+const violationTotal = (answer) => answer?.violationCount ?? answer?.violations?.length ?? 0;
 
 const typesOf = (violations) => [...new Set((violations || []).map((v) => v.constraint))];
 
@@ -84,7 +84,7 @@ const planOf = async (client, entry, mayRepair = true) => {
   // Every rule with a remedy is repaired when any is broken: the check lists
   // at most 100 violations, so their types do not say which are.
   const fixAnswer = fixable.length ? await check(fixable) : null;
-  const repair = countOf(fixAnswer) > 0 ? fixable : [];
+  const repair = violationTotal(fixAnswer) > 0 ? fixable : [];
   if (repair.length && !mayRepair) {
     // Not to be repaired here: the rules that need it stay out, pending,
     // and the rest is declared as if they were not wanted.
@@ -96,9 +96,9 @@ const planOf = async (client, entry, mayRepair = true) => {
       entry,
       pending: {
         constraints: [...repair.map((c) => c.type), ...pending.constraints],
-        violationCount: countOf(fixAnswer) + pending.violationCount,
+        violationCount: violationTotal(fixAnswer) + pending.violationCount,
         repair: repair.map((c) => c.type),
-        repairCount: countOf(fixAnswer),
+        repairCount: violationTotal(fixAnswer),
       },
     };
   }
@@ -108,7 +108,7 @@ const planOf = async (client, entry, mayRepair = true) => {
   let count = 0;
   if (unfixable.length) {
     const answer = await check(unfixable);
-    count = countOf(answer);
+    count = violationTotal(answer);
     broken = typesOf(answer?.violations);
     if (count && !broken.length) broken = unfixable.map((c) => c.type);
   }
@@ -166,7 +166,7 @@ export async function ensureLayerConstraints(
 
   if (toDeclare.length) {
     await client.withOperation(
-      'Set up layer rules',
+      'Set up layer rules', // i18n-ignore: an audit label, sent to the server
       async () => {
         const toRepair = toDeclare.filter((p) => p.repair.length);
         if (toRepair.length) {

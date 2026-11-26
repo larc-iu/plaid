@@ -17,8 +17,9 @@ import { canManageProject } from '../../domain/permissions.js';
 import { GRANT_ROLES, aclMemberIds, grantRoleHints } from '../../domain/projectRoles.js';
 import { setProjectRoleReporting } from './reportRoleChange.js';
 import { TYPE } from '../../lib/typeScale.js';
+import { msg, t } from '../../lib/i18n.js';
 
-const cap = (s) => s.charAt(0).toUpperCase() + s.slice(1);
+const ROLE_LABELS = { reader: msg('Reader'), writer: msg('Writer'), maintainer: msg('Maintainer') };
 
 /**
  * Who is on a project, what they may do, and how somebody else gets on it: the
@@ -87,7 +88,7 @@ export const ProjectAccessScreen = ({
         headerAction={
           isAdmin && (
             <Button size="sm" onClick={userAdmin.openCreate}>
-              <UserPlus className="h-4 w-4" /> Create user
+              <UserPlus className="h-4 w-4" /> {t('Create user')}
             </Button>
           )
         }
@@ -100,15 +101,17 @@ export const ProjectAccessScreen = ({
                       variant="ghost"
                       size="icon"
                       className="h-8 w-8"
-                      aria-label="User actions"
+                      aria-label={t('User actions')}
                     >
                       <MoreVertical className="h-4 w-4" />
                     </Button>
                   </DropdownMenuTrigger>
                   <DropdownMenuContent align="end">
-                    <DropdownMenuItem onSelect={() => startEdit(m)}>Edit user</DropdownMenuItem>
+                    <DropdownMenuItem onSelect={() => startEdit(m)}>
+                      {t('Edit user')}
+                    </DropdownMenuItem>
                     <DropdownMenuItem disabled={resetting} onSelect={() => createResetLink(m)}>
-                      Create password reset link
+                      {t('Create password reset link')}
                     </DropdownMenuItem>
                   </DropdownMenuContent>
                 </DropdownMenu>
@@ -128,7 +131,7 @@ export const ProjectAccessScreen = ({
       {/* Add a user (server-side search) */}
       <div>
         <div className="pb-3">
-          <h2 className={TYPE.card}>Add a user</h2>
+          <h2 className={TYPE.card}>{t('Add a user')}</h2>
         </div>
         <UserSearch
           client={client}
@@ -137,14 +140,14 @@ export const ProjectAccessScreen = ({
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button size="sm" variant="outline">
-                  <Plus className="h-4 w-4" /> Add
+                  <Plus className="h-4 w-4" /> {t('Add')}
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end">
-                <DropdownMenuLabel>Add as…</DropdownMenuLabel>
+                <DropdownMenuLabel>{t('Add as…')}</DropdownMenuLabel>
                 {GRANT_ROLES.map((role) => (
                   <DropdownMenuItem key={role} onSelect={() => add(u.id, role)}>
-                    {cap(role)}
+                    {t(ROLE_LABELS[role])}
                   </DropdownMenuItem>
                 ))}
               </DropdownMenuContent>

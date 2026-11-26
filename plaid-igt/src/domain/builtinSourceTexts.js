@@ -31,6 +31,8 @@ import s26 from '@ui/domain/punctuationClasses.js?raw';
 import s31 from '@ui/domain/igtWordBreaks.js?raw';
 import s32 from './mutations/spans.js?raw';
 import s33 from './mutations/equalsRule.js?raw';
+import s34 from './writeLabel.js?raw';
+import s35 from '@ui/lib/i18n.js?raw';
 
 export const SOURCE_TEXTS = {
   'plaid-client-js/src/ids.js': s24,
@@ -52,6 +54,7 @@ export const SOURCE_TEXTS = {
   'plaid-igt/src/domain/vocabDictionary.js': s15,
   'plaid-igt/src/domain/vocabFields.js': s16,
   'plaid-igt/src/domain/vocabLookup.js': s17,
+  'plaid-igt/src/domain/writeLabel.js': s34,
   'plaid-igt/src/domain/zeroMorph.js': s18,
   'plaid-ui/src/domain/collation.js': s19,
   'plaid-ui/src/domain/glossCase.js': s25,
@@ -60,5 +63,6 @@ export const SOURCE_TEXTS = {
   'plaid-ui/src/domain/igtWordBreaks.js': s31,
   'plaid-ui/src/domain/punctuationClasses.js': s26,
   'plaid-ui/src/domain/setupGuard.js': s23,
+  'plaid-ui/src/lib/i18n.js': s35,
   'plaid-ui/src/lib/unicodeRanges.js': s30,
 };

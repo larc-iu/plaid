@@ -5,7 +5,7 @@ import { CommentThread } from './CommentThread.jsx';
 import { useCommentStore } from '../../domain/useCommentStore.js';
 import { cn } from '../../lib/utils.js';
 import { SENTENCE_ACTION } from './sentenceActions.js';
-import { countOf } from '../../lib/plural.js';
+import { t } from '../../lib/i18n.js';
 
 /**
  * The Comment action on one sentence of an annotation editor: a small icon and
@@ -54,7 +54,9 @@ export const SentenceComments = ({
   if (count === 0 && !canWrite) return null;
 
   const label =
-    count > 0 ? `${countOf(count, 'comment')} on this sentence` : 'Comment on this sentence';
+    count > 0
+      ? t('{n, plural, one {# comment} other {# comments}} on this sentence', { n: count })
+      : t('Comment on this sentence');
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
@@ -69,7 +71,7 @@ export const SentenceComments = ({
           onClick={() => setOpen((prev) => !prev)}
         >
           <MessageSquare width={12} height={12} />
-          Comment
+          {t('Comment')}
           {count > 0 && <span className="font-medium tabular-nums text-primary">{count}</span>}
         </button>
       </PopoverAnchor>

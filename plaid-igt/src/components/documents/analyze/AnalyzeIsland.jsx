@@ -10,6 +10,7 @@ import { canEditVocabularyEntries } from '@ui/domain/permissions.js';
 import { useVocabularyHomes, vocabularyHome } from '../../../hooks/useVocabularyHomes.js';
 import { useAskAssistant } from '@ui/components/assistant/subject.js';
 import { onSentenceFocus } from '../hooks/focusHandoff.js';
+import { t } from '@ui/lib/i18n.js';
 
 // Thin React shell around the vanilla IgtEditor island. Consumes the single
 // shared IgtDocument from DocumentContext (the same instance the other tabs use)
@@ -113,10 +114,10 @@ export const AnalyzeIsland = () => {
         confirmRef.current({
           title:
             comment.authorId === comments?.currentUserId
-              ? 'Delete your comment?'
-              : `Delete ${comments?.authorName(comment.authorId)}'s comment?`,
-          description: 'This cannot be undone.',
-          confirmLabel: 'Delete',
+              ? t('Delete your comment?')
+              : t("Delete {name}'s comment?", { name: comments?.authorName(comment.authorId) }),
+          description: t('This cannot be undone.'),
+          confirmLabel: t('Delete'),
           destructive: true,
         }),
       assistantOnline,
@@ -161,7 +162,8 @@ export const AnalyzeIsland = () => {
   // While an Auto-analyze run holds the document, whichever page started it,
   // its button turns and is disabled: the banner shows the run and has Stop.
   // Told again when the island is built anew (a new doc, a tab come back to).
-  const autoAnalyzing = heldBy(writeLock, 'Auto-analyze');
+  // The run holds the lock under its name in the interface's language.
+  const autoAnalyzing = heldBy(writeLock, t('Auto-analyze'));
   useEffect(() => {
     editorRef.current?.setAutoAnalyzeRunning(autoAnalyzing);
   }, [autoAnalyzing, doc, comments]);
@@ -181,7 +183,7 @@ export const AnalyzeIsland = () => {
     <div className="igt-analyze-mount">
       {!doc && (
         <div style={{ padding: 24, color: 'hsl(var(--muted-foreground))' }}>
-          Loading interlinear editor…
+          {t('Loading interlinear editor…')}
         </div>
       )}
       <div ref={hostRef} className="igt-island" style={{ display: doc ? 'block' : 'none' }} />

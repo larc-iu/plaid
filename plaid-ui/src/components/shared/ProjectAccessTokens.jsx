@@ -1,4 +1,5 @@
 import { Link } from 'react-router-dom';
+import { t } from '../../lib/i18n.js';
 
 import { Button } from '../ui/button.jsx';
 import { Card, CardContent, CardHeader, CardTitle } from '../ui/card.jsx';
@@ -12,14 +13,14 @@ import { Card, CardContent, CardHeader, CardTitle } from '../ui/card.jsx';
 export const ProjectAccessTokens = ({ profileHref }) => (
   <Card>
     <CardHeader>
-      <CardTitle>API tokens</CardTitle>
+      <CardTitle>{t('API tokens')}</CardTitle>
     </CardHeader>
     <CardContent className="flex flex-col items-start gap-4">
       <p className="text-sm text-muted-foreground">
-        Named tokens for a parser, a script or another service, each revoked on its own.
+        {t('Named tokens for a parser, a script or another service, each revoked on its own.')}
       </p>
       <Button asChild variant="outline">
-        <Link to={profileHref}>Manage API tokens</Link>
+        <Link to={profileHref}>{t('Manage API tokens')}</Link>
       </Button>
     </CardContent>
   </Card>

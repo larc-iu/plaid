@@ -1,3 +1,5 @@
+import { t } from '@ui/lib/i18n.js';
+
 // The speaker on each channel of a multichannel recording, kept on the
 // document as `channelSpeakers`: one entry per channel in channel order,
 // written by this app when several files are mixed into one recording and
@@ -38,4 +40,5 @@ export function withChannelSpeaker(speakers, index, speaker, count) {
 }
 
 /** What a channel is called on screen: its speaker, else its number. */
-export const channelLabel = (index, speakers) => speakers?.[index] || `Channel ${index + 1}`;
+export const channelLabel = (index, speakers) =>
+  speakers?.[index] || t('Channel {n}', { n: index + 1 });

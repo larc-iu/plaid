@@ -9,6 +9,7 @@ import { useAuth } from '../../contexts/useAuth.js';
 import { humanizeError } from '../../lib/errors.js';
 import { expectStored, isConfigConflict } from '../../domain/configCells.js';
 import { notifySuccess, notifyError } from '../../lib/notify.js';
+import { t } from '../../lib/i18n.js';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { Label } from '../ui/label';
@@ -73,10 +74,10 @@ export const ProjectGeneralPage = ({
     try {
       await getClient().projects.update(project.id, trimmedName);
       await onSaved?.();
-      notifySuccess('Project renamed');
+      notifySuccess(t('Project renamed'));
     } catch (err) {
       console.error('Error renaming project:', err);
-      notifyError(humanizeError(err, 'Failed to rename the project.'));
+      notifyError(humanizeError(err, t('Failed to rename the project.')));
       setName(project.name ?? '');
     } finally {
       setSavingName(false);
@@ -87,13 +88,13 @@ export const ProjectGeneralPage = ({
     <div className="flex flex-col gap-6">
       <Card>
         <CardHeader>
-          <CardTitle>Name</CardTitle>
+          <CardTitle>{t('Name')}</CardTitle>
         </CardHeader>
         <CardContent>
           <form className="flex max-w-md items-start gap-2" onSubmit={handleRename}>
             <div className="flex flex-1 flex-col gap-1">
               <Label htmlFor="project-name" className="sr-only">
-                Project name
+                {t('Project name')}
               </Label>
               <Input
                 id="project-name"
@@ -102,11 +103,11 @@ export const ProjectGeneralPage = ({
                 disabled={savingName}
               />
               {nameChanged && !nameValid && (
-                <p className="text-xs text-destructive">Project name cannot be empty</p>
+                <p className="text-xs text-destructive">{t('Project name cannot be empty')}</p>
               )}
             </div>
             <Button type="submit" disabled={!nameChanged || !nameValid || savingName}>
-              {savingName ? 'Saving…' : 'Save'}
+              {savingName ? t('Saving…') : t('Save')}
             </Button>
           </form>
         </CardContent>
@@ -155,10 +156,10 @@ const LanguageCard = ({ project, onSaved, namespace, saved, description, note })
       else
         await client.projects.deleteConfig(project.id, namespace, 'language', undefined, expected);
       await onSaved?.();
-      notifySuccess('Language saved');
+      notifySuccess(t('Language saved'));
     } catch (err) {
       console.error('Failed to save project language:', err);
-      notifyError(humanizeError(err, 'Failed to save the language.'));
+      notifyError(humanizeError(err, t('Failed to save the language.')));
       // Someone else saved since: show what is stored now.
       if (isConfigConflict(err)) onSaved?.();
     } finally {
@@ -169,7 +170,7 @@ const LanguageCard = ({ project, onSaved, namespace, saved, description, note })
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Language</CardTitle>
+        <CardTitle>{t('Language')}</CardTitle>
       </CardHeader>
       <CardContent className="flex flex-col gap-4">
         {description && <p className="text-sm text-muted-foreground">{description}</p>}
@@ -177,14 +178,14 @@ const LanguageCard = ({ project, onSaved, namespace, saved, description, note })
           <Input
             value={tag}
             onChange={(e) => setTag(e.target.value)}
-            placeholder="Not set"
+            placeholder={t('Not set')}
             className="w-56"
             spellCheck={false}
-            aria-label="Project language"
+            aria-label={t('Project language')}
             dir="ltr"
           />
           <Button type="submit" disabled={!changed || saving}>
-            {saving ? 'Saving…' : 'Save'}
+            {saving ? t('Saving…') : t('Save')}
           </Button>
         </form>
         {note && <p className="text-sm text-muted-foreground">{note(saved)}</p>}
@@ -219,7 +220,7 @@ const TartanCard = ({ project, onSaved }) => {
     } catch (err) {
       console.error('Failed to save the project plaid setting:', err);
       setOn(!next);
-      notifyError(humanizeError(err, 'Failed to save the project plaid setting.'));
+      notifyError(humanizeError(err, t('Failed to save the project plaid setting.')));
       if (isConfigConflict(err)) onSaved?.();
     } finally {
       setSaving(false);
@@ -229,7 +230,7 @@ const TartanCard = ({ project, onSaved }) => {
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Project plaid</CardTitle>
+        <CardTitle>{t('Project plaid')}</CardTitle>
       </CardHeader>
       <CardContent className="flex flex-col gap-2">
         <label className="flex cursor-pointer items-center gap-2 text-sm">
@@ -241,10 +242,10 @@ const TartanCard = ({ project, onSaved }) => {
             onChange={(e) => toggle(e.target.checked)}
           />
           {on && <ProjectTartan project={{ id: project.id }} size={16} className="shrink-0" />}
-          Show the project's plaid
+          {t("Show the project's plaid")}
         </label>
         <p className="text-sm text-muted-foreground">
-          Beside the project's name and in the browser tab.
+          {t("Beside the project's name and in the browser tab.")}
         </p>
       </CardContent>
     </Card>
@@ -280,7 +281,7 @@ const ResearchCard = ({ project, onSaved }) => {
     } catch (err) {
       console.error('Failed to save research telemetry:', err);
       setOn(!next);
-      notifyError(humanizeError(err, 'Failed to save the research setting.'));
+      notifyError(humanizeError(err, t('Failed to save the research setting.')));
       if (isConfigConflict(err)) onSaved?.();
     } finally {
       setSaving(false);
@@ -290,7 +291,7 @@ const ResearchCard = ({ project, onSaved }) => {
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Research</CardTitle>
+        <CardTitle>{t('Research')}</CardTitle>
       </CardHeader>
       <CardContent className="flex flex-col gap-2">
         <label className="flex cursor-pointer items-center gap-2 text-sm">
@@ -301,11 +302,12 @@ const ResearchCard = ({ project, onSaved }) => {
             disabled={saving}
             onChange={(e) => toggle(e.target.checked)}
           />
-          Record responses to suggestions
+          {t('Record responses to suggestions')}
         </label>
         <p className="text-sm text-muted-foreground">
-          Records when a suggestion is shown to a member, accepted or replaced, and when an
-          assistant plan is expanded.
+          {t(
+            'Records when a suggestion is shown to a member, accepted or replaced, and when an assistant plan is expanded.',
+          )}
         </p>
       </CardContent>
     </Card>

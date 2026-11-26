@@ -1,6 +1,6 @@
 import { glossSmallCaps } from '@ui/domain/glossCase.js';
 import { cn } from '@ui/lib/utils';
-import { PROV_WORDS } from '@/domain/historyChanges.js';
+import { t } from '@ui/lib/i18n.js';
 import { provClass, provTitle } from './changeMarks.js';
 
 // A gloss as the grid and the export set it: each tag in small caps.
@@ -65,7 +65,10 @@ export const ChangeValue = ({ c, gloss = false }) => {
             c.replaced && 'text-destructive-strong',
           )}
         >
-          was {PROV_WORDS[c.beforeProv] ?? 'a person’s'}
+          {t(
+            'was {prov, select, verified {confirmed} contributed {contributed} machine {machine-made} other {a person’s}}',
+            { prov: c.beforeProv ?? 'human' },
+          )}
         </span>
       )}
     </span>

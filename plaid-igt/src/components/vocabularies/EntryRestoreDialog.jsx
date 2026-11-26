@@ -31,6 +31,7 @@ import { planDeleteRefs, lexiconView } from '@/domain/vocabDictionary';
 import { planKeptTypes, queueKeptTypes, busyLinkedDocument } from '@/domain/keptMorphType';
 import { metadataUpdates } from '@/domain/metadataPatch';
 import { CHUNK } from '@/domain/bulk';
+import { t } from '@ui/lib/i18n.js';
 
 export const EntryRestoreDialog = ({
   open,
@@ -69,7 +70,7 @@ export const EntryRestoreDialog = ({
         if (!cancelled) setPreview(s);
       })
       .catch((err) => {
-        if (!cancelled) setError(humanizeError(err, 'That state could not be read.'));
+        if (!cancelled) setError(humanizeError(err, t('That state could not be read.')));
       });
     return () => {
       cancelled = true;
@@ -135,20 +136,25 @@ export const EntryRestoreDialog = ({
       links = await linkCount();
       if (edited || links) {
         const ok = await confirm({
-          title: `Delete “${label}” again?`,
+          title: t('Delete “{label}” again?', { label }),
           description: links
-            ? `${links} ${links === 1 ? 'word or morpheme is' : 'words and morphemes are'} linked to it now. Their links are deleted too.`
-            : 'It has been edited since the restore.',
-          confirmLabel: 'Delete entry',
+            ? t(
+                '{n, plural, one {{n} word or morpheme is} other {{n} words and morphemes are}} linked to it now. Their links are deleted too.',
+                { n: links },
+              )
+            : t('It has been edited since the restore.'),
+          confirmLabel: t('Delete entry'),
           destructive: true,
         });
         if (!ok) return;
       }
     } else if (edited) {
       const ok = await confirm({
-        title: 'Undo the restore?',
-        description: `“${label}” has been edited since the restore. Those edits are undone too.`,
-        confirmLabel: 'Undo the restore',
+        title: t('Undo the restore?'),
+        description: t('“{label}” has been edited since the restore. Those edits are undone too.', {
+          label,
+        }),
+        confirmLabel: t('Undo the restore'),
         destructive: true,
       });
       if (!ok) return;
@@ -159,9 +165,12 @@ export const EntryRestoreDialog = ({
     notifyPromise(
       run.finally(() => onRestoredRef.current?.()),
       {
-        loading: 'Undoing the restore…',
-        success: inserted ? `“${label}” deleted again.` : `“${label}” is back as it was.`,
-        error: (err) => busyLinkedDocument(err) ?? humanizeError(err, 'The undo was not applied.'),
+        loading: t('Undoing the restore…'),
+        success: inserted
+          ? t('“{label}” deleted again.', { label })
+          : t('“{label}” is back as it was.', { label }),
+        error: (err) =>
+          busyLinkedDocument(err) ?? humanizeError(err, t('The undo was not applied.')),
       },
     ).catch(() => {});
   };
@@ -172,23 +181,23 @@ export const EntryRestoreDialog = ({
       const before = await latestVocabState(client, vocabularyId, itemId).catch(() => null);
       const res = await restoreAt(asOf, entryRestoreMessage(label, asOf));
       const message = res?.inserted
-        ? `“${label}” is back, without its links.`
-        : `“${label}” is as it was at ${fullTimestamp(asOf)}.`;
+        ? t('“{label}” is back, without its links.', { label })
+        : t('“{label}” is as it was at {time}.', { label, time: fullTimestamp(asOf) });
       const after = await latestVocabState(client, vocabularyId, itemId).catch(() => null);
       if (res?.inserted || before) {
-        notifyWithAction(message, 'Restored', {
-          label: 'Undo',
+        notifyWithAction(message, t('Restored'), {
+          label: t('Undo'),
           onClick: () => undo(before, after, !!res?.inserted),
           kind: 'success',
         });
       } else {
-        notifySuccess(message, 'Restored');
+        notifySuccess(message, t('Restored'));
       }
       onOpenChange(false);
       await onRestored?.();
     } catch (err) {
       console.error('Entry restore failed:', err);
-      notifyError(humanizeError(err, 'The restore was not applied.'), 'Failed to restore');
+      notifyError(humanizeError(err, t('The restore was not applied.')), t('Failed to restore'));
     } finally {
       setBusy(false);
     }
@@ -198,23 +207,27 @@ export const EntryRestoreDialog = ({
     <Dialog open={open} onOpenChange={(o) => (o ? onOpenChange(true) : close())}>
       <DialogContent className="max-w-md">
         <DialogHeader>
-          <DialogTitle dir="auto">Restore “{label}”?</DialogTitle>
+          <DialogTitle dir="auto">{t('Restore “{label}”?', { label })}</DialogTitle>
         </DialogHeader>
 
         <div className="flex flex-col gap-3">
-          <p className="text-sm text-muted-foreground">As of {fullTimestamp(asOf)}</p>
+          <p className="text-sm text-muted-foreground">
+            {t('As of {time}', { time: fullTimestamp(asOf) })}
+          </p>
 
           {error && <p className="text-sm text-destructive">{error}</p>}
 
-          {!error && !preview && <Loading label="Comparing…" className="p-0" />}
+          {!error && !preview && <Loading label={t('Comparing…')} className="p-0" />}
 
           {preview && lines.length === 0 && (
-            <p className="text-sm text-muted-foreground">Nothing differs from the current entry.</p>
+            <p className="text-sm text-muted-foreground">
+              {t('Nothing differs from the current entry.')}
+            </p>
           )}
 
           {preview && lines.length > 0 && (
             <div>
-              <p className="mb-1 text-sm font-medium">Changes</p>
+              <p className="mb-1 text-sm font-medium">{t('Changes')}</p>
               <ul className="ml-5 list-disc space-y-0.5 text-sm">
                 {lines.map((l) => (
                   <li key={l} dir="auto">
@@ -228,10 +241,10 @@ export const EntryRestoreDialog = ({
 
         <DialogFooter>
           <Button variant="outline" onClick={close} disabled={busy}>
-            Cancel
+            {t('Cancel')}
           </Button>
           <Button onClick={restore} disabled={busy || !preview || lines.length === 0}>
-            {busy ? 'Restoring…' : 'Restore'}
+            {busy ? t('Restoring…') : t('Restore')}
           </Button>
         </DialogFooter>
       </DialogContent>

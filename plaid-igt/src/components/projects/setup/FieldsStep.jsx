@@ -1,3 +1,4 @@
+import { tx } from '@ui/lib/i18n.js';
 import { useEffect, useRef } from 'react';
 import { Badge } from '@ui/components/ui/badge';
 import { FieldsManager } from '../settings/FieldsManager.jsx';
@@ -17,19 +18,20 @@ export const FieldsStep = ({ data, onDataChange }) => {
       // importEngine.js deriveImportConfig), so a blank project and an
       // imported one look alike and services that write morpheme glosses
       // (Auto-analyze) have their field from the start.
+      // i18n-ignore: default field names, stored in the project
       fields: [
         { name: 'Gloss', scope: 'Word', isCustom: false, lexiconField: 'gloss' },
         { name: 'POS', scope: 'Word', isCustom: false, lexiconField: 'pos' },
         { name: 'Gloss', scope: 'Morpheme', isCustom: false, lexiconField: 'gloss' },
         { name: 'POS', scope: 'Morpheme', isCustom: false, lexiconField: 'pos' },
         {
-          name: 'Translation',
+          name: 'Translation', // i18n-ignore: a default field name, stored
           scope: 'Sentence',
           isCustom: false,
           sentenceRole: SENTENCE_ROLES.TRANSLATION,
         },
         {
-          name: 'Literal Translation',
+          name: 'Literal Translation', // i18n-ignore: a default field name, stored
           scope: 'Sentence',
           isCustom: false,
           sentenceRole: SENTENCE_ROLES.LITERAL_TRANSLATION,
@@ -51,28 +53,36 @@ export const FieldsStep = ({ data, onDataChange }) => {
           which is invalid DOM nesting inside a <p>. */}
       <div>
         <div className="text-sm">
-          Configure annotation fields for your project.{' '}
-          <Badge variant="secondary" className={scopeBadgeClass('Word')}>
-            Word
-          </Badge>{' '}
-          scope fields apply to words,{' '}
-          <Badge variant="secondary" className={scopeBadgeClass('Morpheme')}>
-            Morpheme
-          </Badge>{' '}
-          scope fields apply to morphemes, and{' '}
-          <Badge variant="secondary" className={scopeBadgeClass('Sentence')}>
-            Sentence
-          </Badge>{' '}
-          scope fields apply to entire sentences.
+          {tx(
+            'Configure annotation fields for your project. <word>Word</word> scope fields apply to words, <morpheme>Morpheme</morpheme> scope fields apply to morphemes, and <sentence>Sentence</sentence> scope fields apply to entire sentences.',
+            {
+              word: (c) => (
+                <Badge variant="secondary" className={scopeBadgeClass('Word')}>
+                  {c}
+                </Badge>
+              ),
+              morpheme: (c) => (
+                <Badge variant="secondary" className={scopeBadgeClass('Morpheme')}>
+                  {c}
+                </Badge>
+              ),
+              sentence: (c) => (
+                <Badge variant="secondary" className={scopeBadgeClass('Sentence')}>
+                  {c}
+                </Badge>
+              ),
+            },
+          )}
         </div>
         {/* The Language column had no label, tooltip, placeholder or help, and
             the only mention of it was in the guide's Exporting section, 500
             lines away under a heading nobody opens while setting up. Seven
             fields went out blank. */}
         <p className="mt-2 text-sm text-muted-foreground">
-          Every field listed here is created. <strong>Language</strong> is the writing-system tag
-          for FLEx export, such as <code>en</code> or <code>tur</code>.{' '}
-          <strong>Lexicon field</strong> is the entry field that holds the same value.
+          {tx(
+            'Every field listed here is created. <strong>Language</strong> is the writing-system tag for FLEx export, such as <code>en</code> or <code>tur</code>. <strong>Lexicon field</strong> is the entry field that holds the same value.',
+            { strong: (c) => <strong>{c}</strong>, code: (c) => <code>{c}</code> },
+          )}
         </p>
       </div>
 

@@ -10,6 +10,7 @@ import { TYPE } from '@ui/lib/typeScale.js';
 import { vocabImporting, withLiveMarks } from '@/domain/igtConfig';
 import { entryMorphTypesOf } from '@/domain/vocabLookup';
 import { planKeptTypes, queueKeptTypes, busyLinkedDocument } from '@/domain/keptMorphType';
+import { t } from '@ui/lib/i18n.js';
 
 // What to show for a refused write: the server's own words when it gave any
 // (a refused link says who may make it), otherwise the error for the toast to
@@ -60,7 +61,7 @@ export const VocabularySettings = ({ project, projectId, client, onProjectUpdate
           canLink: canRelink && !vocabImporting(vocab.config),
           // The unlink confirm says when the user could not link it again.
           canRelink,
-          ...(vocabImporting(vocab.config) ? { lockNote: 'Import did not finish.' } : {}),
+          ...(vocabImporting(vocab.config) ? { lockNote: t('Import did not finish.') } : {}),
         };
       });
 
@@ -88,6 +89,7 @@ export const VocabularySettings = ({ project, projectId, client, onProjectUpdate
     const linked = (live.vocabs || []).some((v) => v.id === change.id);
     const name = vocabularies?.find((v) => v.id === change.id)?.name ?? change.id;
     if (change.enabled && !linked) {
+      // i18n-ignore: an audit label, stored on the server
       await client.withOperation(`Link vocabulary “${name}”`, () =>
         client.projects.linkVocab(projectId, change.id),
       );
@@ -100,6 +102,7 @@ export const VocabularySettings = ({ project, projectId, client, onProjectUpdate
       const kept = await planKeptTypes(client, user, { vocabId: change.id, projectId }, (id) =>
         types.get(id),
       );
+      // i18n-ignore: an audit label, stored on the server
       await client.withOperation(`Unlink vocabulary “${name}”`, () =>
         client.batched((b) => {
           queueKeptTypes(b, kept);
@@ -129,7 +132,7 @@ export const VocabularySettings = ({ project, projectId, client, onProjectUpdate
 
   // A failed send says why, and its row is already back as it was.
   const handleError = (error) => {
-    notifyError(busyLinkedDocument(error) ?? refusal(error), 'Vocabularies not updated');
+    notifyError(busyLinkedDocument(error) ?? refusal(error), t('Vocabularies not updated'));
   };
 
   if (hasError) {
@@ -139,9 +142,9 @@ export const VocabularySettings = ({ project, projectId, client, onProjectUpdate
           <AlertTriangle className="mt-0.5 h-4 w-4 text-destructive" />
           <div>
             <p className="text-sm font-medium text-destructive">
-              Failed to load or save the vocabularies
+              {t('Failed to load or save the vocabularies')}
             </p>
-            <p className="text-sm text-muted-foreground">Refresh the page and try again.</p>
+            <p className="text-sm text-muted-foreground">{t('Refresh the page and try again.')}</p>
           </div>
         </div>
       </div>
@@ -150,10 +153,11 @@ export const VocabularySettings = ({ project, projectId, client, onProjectUpdate
 
   return (
     <div>
-      <h2 className={TYPE.card}>Vocabularies</h2>
+      <h2 className={TYPE.card}>{t('Vocabularies')}</h2>
       <p className="mb-4 mt-1 text-sm text-muted-foreground">
-        Vocabularies linked to this project. Words, morphemes and multi-word expressions link to
-        their entries.
+        {t(
+          'Vocabularies linked to this project. Words, morphemes and multi-word expressions link to their entries.',
+        )}
       </p>
 
       <VocabularyManager
@@ -169,7 +173,7 @@ export const VocabularySettings = ({ project, projectId, client, onProjectUpdate
       {canManageProject(project, user) && (
         <Button asChild variant="outline" size="sm" className="mt-4">
           <Link to={`/vocabularies/new?project=${encodeURIComponent(projectId)}`}>
-            <Plus className="h-4 w-4" /> New vocabulary
+            <Plus className="h-4 w-4" /> {t('New vocabulary')}
           </Link>
         </Button>
       )}

@@ -1,5 +1,6 @@
 import { Notice } from './Notice.jsx';
 import { LONG_DOCUMENT_WORDS, isLongDocument } from '../../domain/longDocument.js';
+import { t } from '../../lib/i18n.js';
 
 /**
  * The notice an editor shows over a document long enough to be slow to edit,
@@ -9,10 +10,12 @@ import { LONG_DOCUMENT_WORDS, isLongDocument } from '../../domain/longDocument.j
 export const LongDocumentNotice = ({ words, className }) =>
   isLongDocument(words) ? (
     <Notice tone="info" className={className} data-testid="long-document">
-      <p className="font-medium">Long document</p>
+      <p className="font-medium">{t('Long document')}</p>
       <p className="text-xs">
-        {words.toLocaleString()} words. Editing slows down past{' '}
-        {LONG_DOCUMENT_WORDS.toLocaleString()} words. Split it into shorter documents.
+        {t(
+          '{n, plural, one {# word} other {# words}}. Editing slows down past {max, number} words. Split it into shorter documents.',
+          { n: words, max: LONG_DOCUMENT_WORDS },
+        )}
       </p>
     </Notice>
   ) : null;

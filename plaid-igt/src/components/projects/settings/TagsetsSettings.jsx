@@ -12,6 +12,7 @@ import { isConfigConflict, storedConfig } from '@ui/domain/configCells.js';
 import { useConfigCell } from '@ui/hooks/useConfigCell.js';
 import { TYPE } from '@ui/lib/typeScale.js';
 import { putRulesInForce } from './putRulesInForce.js';
+import { t } from '@ui/lib/i18n.js';
 
 // Everything here is derived from the LIVE project rather than a private fetch.
 // `usage` (which fields point at which tagset) changes when the field table
@@ -52,7 +53,7 @@ export const TagsetsSettings = ({ project, projectId, client, onProjectUpdate })
     let repointed = 0;
     let tagsetsRead = storedConfig(project, IGT_NAMESPACE, 'tagsets');
     try {
-      if (!client) throw new Error('Not authenticated');
+      if (!client) throw new Error(t('Not authenticated'));
       live = await client.projects.get(projectId);
       // A closed tagset's list is a rule its fields hold on the server. The
       // fields take the new rules in the same batch as the tagsets, so a list
@@ -89,7 +90,7 @@ export const TagsetsSettings = ({ project, projectId, client, onProjectUpdate })
       const said = await tagsetsChangedError(error, tagsetsRead, async () =>
         storedConfig(await client.projects.get(projectId), IGT_NAMESPACE, 'tagsets'),
       );
-      notifyError(tagsetRefusal(error) ?? said, 'Failed to save the tagsets');
+      notifyError(tagsetRefusal(error) ?? said, t('Failed to save the tagsets'));
       // Someone else saved since: show what is stored now.
       if (isConfigConflict(error)) {
         Promise.resolve(onProjectUpdate?.()).catch((err) =>
@@ -127,11 +128,11 @@ export const TagsetsSettings = ({ project, projectId, client, onProjectUpdate })
 
   return (
     <div>
-      <h2 className={TYPE.card}>Tagsets</h2>
+      <h2 className={TYPE.card}>{t('Tagsets')}</h2>
       <p className="mb-4 mt-1 text-sm text-muted-foreground">
-        A tagset is the list of tags a field may use, such as Leipzig glossing abbreviations for
-        Gloss or a part of speech inventory. Assign it to a field under Annotation fields below. The
-        lexicon is under Vocabularies, not here.
+        {t(
+          'A tagset is the list of tags a field may use, such as Leipzig glossing abbreviations for Gloss or a part of speech inventory. Assign it to a field under Annotation fields below. The lexicon is under Vocabularies, not here.',
+        )}
       </p>
 
       <TagsetsManager

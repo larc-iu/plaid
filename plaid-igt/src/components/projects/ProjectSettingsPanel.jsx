@@ -5,6 +5,7 @@ import { GeneralSettings } from './settings/GeneralSettings.jsx';
 import { OrthographyVocabSettings } from './settings/OrthographyVocabSettings.jsx';
 import { AnnotationSettings } from './settings/AnnotationSettings.jsx';
 import { ROLE_OPTIONS } from '@/domain/roleGrants.js';
+import { t, msg } from '@ui/lib/i18n.js';
 
 // What the project is, then what it annotates with, then who may touch it: the
 // order every app lists its settings in. Access holds the members and the API
@@ -15,7 +16,7 @@ import { ROLE_OPTIONS } from '@/domain/roleGrants.js';
 const SECTIONS = [
   {
     value: 'general',
-    label: 'General',
+    label: msg('General'),
     body: ({ project, projectId, client, onProjectUpdate }) => (
       <GeneralSettings
         project={project}
@@ -27,7 +28,7 @@ const SECTIONS = [
   },
   {
     value: 'text-and-vocab',
-    label: 'Text and vocab',
+    label: msg('Text and vocab'),
     body: ({ project, projectId, client, onProjectUpdate }) => (
       <OrthographyVocabSettings
         project={project}
@@ -39,7 +40,7 @@ const SECTIONS = [
   },
   {
     value: 'annotation',
-    label: 'Annotation',
+    label: msg('Annotation'),
     body: ({ project, projectId, client, onProjectUpdate }) => (
       <AnnotationSettings
         project={project}
@@ -51,7 +52,7 @@ const SECTIONS = [
   },
   {
     value: 'access',
-    label: 'Access',
+    label: msg('Access'),
     body: ({ onProjectUpdate }) => (
       <ProjectAccessSettings
         roleOptions={ROLE_OPTIONS}
@@ -62,7 +63,7 @@ const SECTIONS = [
   },
   {
     value: 'services',
-    label: 'Services',
+    label: msg('Services'),
     body: ({ projectId, client }) => <ServicesSettings projectId={projectId} client={client} />,
   },
 ];
@@ -72,11 +73,14 @@ const SECTIONS = [
 // the active section follows /general, /text-and-vocab, /annotation, /access,
 // /services, so deep links and the browser back button keep working, and each
 // section in the list is a link to its path.
-export const ProjectSettingsPanel = ({ project, projectId, client, section, onProjectUpdate }) => (
-  <ProjectSettingsLayout
-    sections={SECTIONS}
-    active={SECTIONS.find((s) => s.value === section) ?? SECTIONS[0]}
-    href={(value) => `/projects/${projectId}/${value}`}
-    bodyProps={{ project, projectId, client, onProjectUpdate }}
-  />
-);
+export const ProjectSettingsPanel = ({ project, projectId, client, section, onProjectUpdate }) => {
+  const sections = SECTIONS.map((s) => ({ ...s, label: t(s.label) }));
+  return (
+    <ProjectSettingsLayout
+      sections={sections}
+      active={sections.find((s) => s.value === section) ?? sections[0]}
+      href={(value) => `/projects/${projectId}/${value}`}
+      bodyProps={{ project, projectId, client, onProjectUpdate }}
+    />
+  );
+};

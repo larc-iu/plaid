@@ -5,6 +5,7 @@ import {
   saysUnknownOutcome,
   UNKNOWN_OUTCOME_TITLE,
 } from './errors.js';
+import { t } from './i18n.js';
 
 // The package's own toast primitives, for the screens that live here and for
 // both apps, whose `utils/feedback` modules re-export them. No domain class
@@ -27,7 +28,7 @@ export const notifySuccess = (message, title, options) =>
 export const notifyError = (message, title, options) => {
   const said = humanizeError(message);
   if (isUnknownOutcome(message) || saysUnknownOutcome(said)) {
-    return toast.error(UNKNOWN_OUTCOME_TITLE, { description: said, ...options });
+    return toast.error(t(UNKNOWN_OUTCOME_TITLE), { description: said, ...options });
   }
   return toast.error(title || said, { ...(title ? { description: said } : {}), ...options });
 };

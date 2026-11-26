@@ -17,6 +17,9 @@
 // all: no other action shares their scope, so there is nothing to collide with.
 
 import { createKeymap } from '@ui/lib/keymap.js';
+import { msg } from '@ui/lib/i18n.js';
+
+// Labels are messages (msg): the screen that shows one translates it.
 
 const fixed = (scope, ...keyList) =>
   keyList.map((k) => ({
@@ -29,11 +32,11 @@ const fixed = (scope, ...keyList) =>
   }));
 
 export const KEY_GROUPS = [
-  { id: 'anywhere', label: 'Anywhere' },
-  { id: 'analyze', label: 'Analyze' },
-  { id: 'morphemes', label: 'Analyze: morpheme forms' },
-  { id: 'popover', label: 'Analyze: lexicon popover' },
-  { id: 'media', label: 'Media' },
+  { id: 'anywhere', label: msg('Anywhere') },
+  { id: 'analyze', label: msg('Analyze') },
+  { id: 'morphemes', label: msg('Analyze: morpheme forms') },
+  { id: 'popover', label: msg('Analyze: lexicon popover') },
+  { id: 'media', label: msg('Media') },
 ];
 
 export const KEY_ACTIONS = [
@@ -41,7 +44,7 @@ export const KEY_ACTIONS = [
     id: 'global.search',
     scope: 'global',
     group: 'anywhere',
-    label: 'Go to the search box',
+    label: msg('Go to the search box'),
     keys: ['/'],
     outsideText: true,
   },
@@ -51,49 +54,49 @@ export const KEY_ACTIONS = [
     id: 'analyze.accept',
     scope: 'analyze',
     group: 'analyze',
-    label: 'Accept everything proposed on the word or sentence',
+    label: msg('Accept everything proposed on the word or sentence'),
     keys: ['Mod+Enter'],
   },
   {
     id: 'analyze.discard',
     scope: 'analyze',
     group: 'analyze',
-    label: 'Discard everything proposed on the word or sentence',
+    label: msg('Discard everything proposed on the word or sentence'),
     keys: ['Mod+Backspace', 'Mod+Delete'],
   },
   {
     id: 'analyze.nextUnverified',
     scope: 'analyze',
     group: 'analyze',
-    label: 'Next word with something to review',
+    label: msg('Next word with something to review'),
     keys: ['Mod+Shift+ArrowDown'],
   },
   {
     id: 'analyze.prevUnverified',
     scope: 'analyze',
     group: 'analyze',
-    label: 'Previous word with something to review',
+    label: msg('Previous word with something to review'),
     keys: ['Mod+Shift+ArrowUp'],
   },
   {
     id: 'analyze.nextLink',
     scope: 'analyze',
     group: 'analyze',
-    label: 'Next lexicon link to review',
+    label: msg('Next lexicon link to review'),
     keys: ['Mod+ArrowDown'],
   },
   {
     id: 'analyze.prevLink',
     scope: 'analyze',
     group: 'analyze',
-    label: 'Previous lexicon link to review',
+    label: msg('Previous lexicon link to review'),
     keys: ['Mod+ArrowUp'],
   },
   {
     id: 'analyze.alternatives',
     scope: 'analyze',
     group: 'analyze',
-    label: 'List the other values seen for this form',
+    label: msg('List the other values seen for this form'),
     keys: ['Alt+ArrowDown'],
   },
   {
@@ -102,35 +105,35 @@ export const KEY_ACTIONS = [
     id: 'analyze.respell',
     scope: 'analyze',
     group: 'analyze',
-    label: 'Respell the word',
+    label: msg('Respell the word'),
     keys: ['F2'],
   },
   {
     id: 'analyze.gatherLeft',
     scope: 'analyze',
     group: 'analyze',
-    label: 'Multi-word expression: take the word on the left',
+    label: msg('Multi-word expression: take the word on the left'),
     keys: ['Shift+ArrowLeft'],
   },
   {
     id: 'analyze.gatherRight',
     scope: 'analyze',
     group: 'analyze',
-    label: 'Multi-word expression: take the word on the right',
+    label: msg('Multi-word expression: take the word on the right'),
     keys: ['Shift+ArrowRight'],
   },
   {
     id: 'analyze.gatherLeftSkip',
     scope: 'analyze',
     group: 'analyze',
-    label: 'Multi-word expression: skip a word to the left',
+    label: msg('Multi-word expression: skip a word to the left'),
     keys: ['Mod+Shift+ArrowLeft'],
   },
   {
     id: 'analyze.gatherRightSkip',
     scope: 'analyze',
     group: 'analyze',
-    label: 'Multi-word expression: skip a word to the right',
+    label: msg('Multi-word expression: skip a word to the right'),
     keys: ['Mod+Shift+ArrowRight'],
   },
   ...fixed(
@@ -153,21 +156,21 @@ export const KEY_ACTIONS = [
     id: 'morph.zero',
     scope: 'analyze.morph',
     group: 'morphemes',
-    label: 'Type a zero morph ∅',
+    label: msg('Type a zero morph ∅'),
     keys: ['Alt+0'],
   },
   {
     id: 'morph.literalHyphen',
     scope: 'analyze.morph',
     group: 'morphemes',
-    label: 'Type a hyphen without splitting',
+    label: msg('Type a hyphen without splitting'),
     keys: ['Alt+-'],
   },
   {
     id: 'morph.literalEquals',
     scope: 'analyze.morph',
     group: 'morphemes',
-    label: 'Type an equals sign without splitting',
+    label: msg('Type an equals sign without splitting'),
     keys: ['Alt+='],
   },
 
@@ -179,14 +182,14 @@ export const KEY_ACTIONS = [
     id: 'popover.linkAll',
     scope: 'popover',
     group: 'popover',
-    label: 'Link the highlighted entry to every unlinked occurrence',
+    label: msg('Link the highlighted entry to every unlinked occurrence'),
     keys: ['Shift+Enter'],
   },
   {
     id: 'popover.createNow',
     scope: 'popover',
     group: 'popover',
-    label: 'Create the entry as typed',
+    label: msg('Create the entry as typed'),
     keys: ['Mod+Enter'],
   },
   {
@@ -197,7 +200,7 @@ export const KEY_ACTIONS = [
     id: 'popover.createAndLinkAll',
     scope: 'popover',
     group: 'popover',
-    label: 'Create the entry as typed and link it to every unlinked occurrence',
+    label: msg('Create the entry as typed and link it to every unlinked occurrence'),
     keys: ['Mod+Shift+Enter'],
   },
   ...fixed('popover', 'Enter', 'Escape', 'Tab', 'ArrowUp', 'ArrowDown'),
@@ -207,7 +210,7 @@ export const KEY_ACTIONS = [
     id: 'media.playPause',
     scope: 'media',
     group: 'media',
-    label: 'Play or pause the recording',
+    label: msg('Play or pause the recording'),
     keys: ['Space'],
     outsideText: true,
   },
@@ -215,49 +218,49 @@ export const KEY_ACTIONS = [
     id: 'media.playSegment',
     scope: 'media',
     group: 'media',
-    label: 'Play or pause the segment you are in',
+    label: msg('Play or pause the segment you are in'),
     keys: ['Shift+Space'],
   },
   {
     id: 'media.seekBack',
     scope: 'media',
     group: 'media',
-    label: 'Back one second',
+    label: msg('Back one second'),
     keys: ['Shift+ArrowLeft'],
   },
   {
     id: 'media.seekForward',
     scope: 'media',
     group: 'media',
-    label: 'Forward one second',
+    label: msg('Forward one second'),
     keys: ['Shift+ArrowRight'],
   },
   {
     id: 'media.faster',
     scope: 'media',
     group: 'media',
-    label: 'Play faster',
+    label: msg('Play faster'),
     keys: ['Shift+ArrowUp'],
   },
   {
     id: 'media.slower',
     scope: 'media',
     group: 'media',
-    label: 'Play slower',
+    label: msg('Play slower'),
     keys: ['Shift+ArrowDown'],
   },
   {
     id: 'media.prevRow',
     scope: 'media',
     group: 'media',
-    label: 'Previous segment',
+    label: msg('Previous segment'),
     keys: ['Alt+ArrowUp'],
   },
   {
     id: 'media.nextRow',
     scope: 'media',
     group: 'media',
-    label: 'Next segment',
+    label: msg('Next segment'),
     keys: ['Alt+ArrowDown'],
   },
   {
@@ -265,7 +268,7 @@ export const KEY_ACTIONS = [
     id: 'media.split',
     scope: 'media',
     group: 'media',
-    label: 'Split the segment at playback, between the words at the caret',
+    label: msg('Split the segment at playback, between the words at the caret'),
     keys: ['Alt+Enter'],
   },
   {
@@ -273,7 +276,7 @@ export const KEY_ACTIONS = [
     id: 'media.merge',
     scope: 'media',
     group: 'media',
-    label: 'Merge the segment with the next one',
+    label: msg('Merge the segment with the next one'),
     keys: ['Alt+m'],
   },
   ...fixed(

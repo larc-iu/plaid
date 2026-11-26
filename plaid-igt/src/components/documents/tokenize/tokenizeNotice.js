@@ -3,12 +3,14 @@
 // the fixed copy (null).
 //
 // Pure, so it is tested on its own.
+import { t, msg } from '@ui/lib/i18n.js';
+
 const NOTHING = {
-  'no-text': 'The document has no text.',
-  'no-words': 'No words found in the text.',
+  'no-text': msg('The document has no text.'),
+  'no-words': msg('No words found in the text.'),
 };
 
 export const tokenizeNotice = (result) =>
   NOTHING[result?.reason]
-    ? { level: 'warning', title: 'Nothing to tokenize', message: NOTHING[result.reason] }
+    ? { level: 'warning', title: t('Nothing to tokenize'), message: t(NOTHING[result.reason]) }
     : null;

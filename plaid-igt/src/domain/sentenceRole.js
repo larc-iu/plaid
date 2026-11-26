@@ -13,12 +13,13 @@
 
 import { SENTENCE_ROLES, readSentenceRole } from './igtConfig.js';
 import { fieldBaseName } from './vocabFields.js';
+import { msg } from '@ui/lib/i18n.js';
 
-/** The roles in the order the field settings offer them, with their labels. */
+/** The roles in the order the field settings offer them, with their labels (messages: t() where shown). */
 export const SENTENCE_ROLE_CHOICES = [
-  { role: SENTENCE_ROLES.TRANSLATION, label: 'Translation' },
-  { role: SENTENCE_ROLES.LITERAL_TRANSLATION, label: 'Literal translation' },
-  { role: SENTENCE_ROLES.NOTE, label: 'Note' },
+  { role: SENTENCE_ROLES.TRANSLATION, label: msg('Translation') },
+  { role: SENTENCE_ROLES.LITERAL_TRANSLATION, label: msg('Literal translation') },
+  { role: SENTENCE_ROLES.NOTE, label: msg('Note') },
 ];
 
 const BY_NAME = {

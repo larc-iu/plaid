@@ -10,6 +10,7 @@ import { readyRecordings } from '@/utils/readyRecordings';
 import { SegmentedControl } from '@ui/components/shared/SegmentedControl.jsx';
 import { MixRecordingsDialog } from './MixRecordingsDialog.jsx';
 import { ChannelSpeakersDialog } from './ChannelSpeakersDialog.jsx';
+import { t } from '@ui/lib/i18n.js';
 
 // The upload prompt, and the upload itself once a file is chosen: the bytes
 // going up as a bar with the count, then a pulsing bar while the server checks
@@ -97,7 +98,7 @@ export const MediaUpload = ({
         onCancel();
       }}
     >
-      Cancel
+      {t('Cancel')}
     </Button>
   );
 
@@ -115,11 +116,11 @@ export const MediaUpload = ({
     if (!picked.length || isUploading || convertProgress || readOnly) return;
     setRefusal(null);
     if (picked.length > 1 && !perSpeaker) {
-      setRefusal('One file at a time. For a file per speaker, switch to Per speaker.');
+      setRefusal(t('One file at a time. For a file per speaker, switch to Per speaker.'));
       return;
     }
     if (picked.length === 1 && perSpeaker && picked[0].type?.startsWith('video/')) {
-      setRefusal('A video cannot be split by speaker. Switch to Single.');
+      setRefusal(t('A video cannot be split by speaker. Switch to Single.'));
       return;
     }
     let files;
@@ -165,15 +166,15 @@ export const MediaUpload = ({
       {!(readOnly || decoding || convertProgress || progress || pending) && (
         <div className="flex justify-start">
           <SegmentedControl
-            label="Upload"
+            label={t('Upload')}
             value={mode}
             onChange={(next) => {
               setMode(next);
               setRefusal(null);
             }}
             options={[
-              { value: 'single', label: 'Single' },
-              { value: 'perSpeaker', label: 'Per speaker' },
+              { value: 'single', label: t('Single') },
+              { value: 'perSpeaker', label: t('Per speaker') },
             ]}
           />
         </div>
@@ -183,12 +184,12 @@ export const MediaUpload = ({
           <Upload className="h-12 w-12 text-muted-foreground" />
           <div className="text-center">
             <p className="mb-1 text-lg font-medium">
-              {perSpeaker ? 'Upload media files' : 'Upload media file'}
+              {perSpeaker ? t('Upload media files') : t('Upload media file')}
             </p>
             <p className="mb-4 text-sm text-muted-foreground">
               {perSpeaker
-                ? 'One file per speaker, or one file with a channel per speaker.'
-                : 'One audio or video file.'}
+                ? t('One file per speaker, or one file with a channel per speaker.')
+                : t('One audio or video file.')}
             </p>
           </div>
 
@@ -206,8 +207,8 @@ export const MediaUpload = ({
           {decoding ? (
             <div className="flex w-[28rem] max-w-full flex-col gap-2" aria-live="polite">
               <span className="truncate text-sm font-medium">{decoding}</span>
-              <Progress label="Conversion progress" />
-              <p className="text-xs text-muted-foreground">Converting to PCM WAV.</p>
+              <Progress label={t('Conversion progress')} />
+              <p className="text-xs text-muted-foreground">{t('Converting to PCM WAV.')}</p>
             </div>
           ) : convertProgress ? (
             <div className="flex w-[28rem] max-w-full flex-col gap-2" aria-live="polite">
@@ -217,9 +218,9 @@ export const MediaUpload = ({
                   {Math.floor(convertProgress.fraction * 100)}%
                 </span>
               </div>
-              <Progress value={convertProgress.fraction * 100} label="Conversion progress" />
+              <Progress value={convertProgress.fraction * 100} label={t('Conversion progress')} />
               <div className="flex items-center justify-between gap-3">
-                <p className="text-xs text-muted-foreground">Converting to MP3.</p>
+                <p className="text-xs text-muted-foreground">{t('Converting to MP3.')}</p>
                 {onCancel && cancelButton}
               </div>
             </div>
@@ -228,14 +229,14 @@ export const MediaUpload = ({
               <div className="flex items-baseline justify-between gap-3 text-sm">
                 <span className="truncate font-medium">{progress.name}</span>
                 <span className="shrink-0 tabular-nums text-muted-foreground">
-                  {processing ? 'Processing…' : `${Math.floor(pct)}%`}
+                  {processing ? t('Processing…') : `${Math.floor(pct)}%`}
                 </span>
               </div>
-              <Progress value={processing ? undefined : pct} label="Upload progress" />
+              <Progress value={processing ? undefined : pct} label={t('Upload progress')} />
               <p className="text-xs text-muted-foreground">
                 {processing
-                  ? 'Checking the file and saving it.'
-                  : `${formatBytes(sent)} of ${formatBytes(total)}`}
+                  ? t('Checking the file and saving it.')
+                  : t('{sent} of {total}', { sent: formatBytes(sent), total: formatBytes(total) })}
               </p>
               {canCancel && (
                 <div className="flex items-center justify-end gap-3">{cancelButton}</div>
@@ -252,8 +253,9 @@ export const MediaUpload = ({
               </p>
               {overLimit && (
                 <p className="text-xs font-medium text-destructive">
-                  This server accepts {formatBytes(maxBytes, { against: pending.size })}. Sending
-                  the file as it is would be refused.
+                  {t('This server accepts {max}. Sending the file as it is would be refused.', {
+                    max: formatBytes(maxBytes, { against: pending.size }),
+                  })}
                 </p>
               )}
               <p className="text-xs text-muted-foreground">
@@ -261,14 +263,16 @@ export const MediaUpload = ({
               </p>
               <div className="flex flex-wrap items-center gap-2">
                 <Button onClick={() => send(true)}>
-                  <AudioLines className="h-4 w-4" /> Convert to{' '}
-                  {smaller ? `a ${formatBytes(smaller)} MP3` : 'MP3'}
+                  <AudioLines className="h-4 w-4" />{' '}
+                  {smaller
+                    ? t('Convert to a {size} MP3', { size: formatBytes(smaller) })
+                    : t('Convert to MP3')}
                 </Button>
                 <Button variant="outline" disabled={overLimit} onClick={() => send(false)}>
-                  Upload as it is
+                  {t('Upload as it is')}
                 </Button>
                 <Button variant="ghost" onClick={() => setPending(null)}>
-                  Cancel
+                  {t('Cancel')}
                 </Button>
               </div>
             </div>
@@ -286,7 +290,7 @@ export const MediaUpload = ({
                 onClick={() => inputRef.current?.click()}
               >
                 <Upload className="h-4 w-4" />
-                {perSpeaker ? 'Choose media files' : 'Choose media file'}
+                {perSpeaker ? t('Choose media files') : t('Choose media file')}
               </Button>
               {refusal && (
                 <p className="text-xs font-medium text-destructive" role="status">
@@ -297,7 +301,7 @@ export const MediaUpload = ({
           )}
 
           <p className="text-xs text-muted-foreground">
-            Recommended formats: MP4, WebM, OGG, MOV (video) • MP3, WAV, M4A, AAC (audio)
+            {t('Recommended formats: MP4, WebM, OGG, MOV (video) • MP3, WAV, M4A, AAC (audio)')}
           </p>
         </div>
       </div>

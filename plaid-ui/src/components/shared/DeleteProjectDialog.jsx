@@ -6,6 +6,7 @@ import { ConfirmDeleteDialog } from './ConfirmDeleteDialog.jsx';
 import { Input } from '../ui/input';
 import { Label } from '../ui/label';
 import { isEnter } from '../../lib/chords.js';
+import { t, tx, listOf } from '../../lib/i18n.js';
 
 // How many other projects stand in the way of the delete, from core's 409
 // (`other-projects`), or null for any other answer.
@@ -15,22 +16,32 @@ const borrowersOf = (error) => {
 };
 
 const refusal = (n) =>
-  n === 1
-    ? '1 other project uses a vocabulary of this project. It can be deleted once that project unlinks it.'
-    : `${n.toLocaleString()} other projects use a vocabulary of this project. It can be deleted once they unlink it.`;
+  t(
+    '{n, plural, one {# other project uses a vocabulary of this project. It can be deleted once that project unlinks it.} other {# other projects use a vocabulary of this project. It can be deleted once they unlink it.}}',
+    { n },
+  );
 
-// “A”, “A” and “B”, “A”, “B” and “C”.
+// “A”, “A” and “B”, “A”, “B” and “C”, joined as the language joins a list:
+// the list is made of markers, and each marker is then swapped for its name.
 const nameList = (vocabularies) =>
-  vocabularies.map((v, i) => (
-    <Fragment key={v.id}>
-      {i === 0 ? '' : i === vocabularies.length - 1 ? ' and ' : ', '}
-      {'“'}
-      <span className="font-text text-foreground" dir="auto">
-        {v.name}
-      </span>
-      {'”'}
-    </Fragment>
-  ));
+  listOf(vocabularies.map((_, i) => `@@${i}@@`))
+    .split(/@@(\d+)@@/)
+    .map((part, i) => {
+      if (i % 2 === 0) return part;
+      const v = vocabularies[Number(part)];
+      return (
+        <Fragment key={v.id}>
+          {tx('“<span>{name}</span>”', {
+            name: v.name,
+            span: (c) => (
+              <span className="font-text text-foreground" dir="auto">
+                {c}
+              </span>
+            ),
+          })}
+        </Fragment>
+      );
+    });
 
 /**
  * The confirm every project delete goes through. On open it asks core what
@@ -111,7 +122,7 @@ export const DeleteProjectDialog = ({
         setPreview({ borrowers });
       } else {
         console.error('Error deleting project:', err);
-        notifyError(humanizeError(err), 'Failed to delete project');
+        notifyError(humanizeError(err), t('Failed to delete project'));
         onOpenChange(false);
       }
     } finally {
@@ -124,9 +135,11 @@ export const DeleteProjectDialog = ({
     refusal(refused)
   ) : vocabularies.length ? (
     <>
-      {consequence} {vocabularies.length === 1 ? 'Its vocabulary ' : 'Its vocabularies '}
-      {nameList(vocabularies)}
-      {vocabularies.length === 1 ? ' is deleted with it.' : ' are deleted with it.'}
+      {consequence}{' '}
+      {tx(
+        '{n, plural, one {Its vocabulary {names} is deleted with it.} other {Its vocabularies {names} are deleted with it.}}',
+        { n: vocabularies.length, names: nameList(vocabularies) },
+      )}
     </>
   ) : (
     consequence
@@ -138,8 +151,8 @@ export const DeleteProjectDialog = ({
       onOpenChange={(next) => {
         if (!deleting) onOpenChange(next);
       }}
-      title="Delete project?"
-      confirmLabel={deleting ? 'Deleting…' : 'Delete project'}
+      title={t('Delete project?')}
+      confirmLabel={deleting ? t('Deleting…') : t('Delete project')}
       confirmDisabled={!matches || !ready}
       busy={deleting}
       onConfirm={handleDelete}
@@ -149,10 +162,14 @@ export const DeleteProjectDialog = ({
       {refused ? null : (
         <div className="flex flex-col gap-1.5 text-foreground">
           <Label htmlFor="delete-project-confirm">
-            To confirm, type{' '}
-            <strong dir="auto" className="select-all font-text">
-              {name}
-            </strong>
+            {tx('To confirm, type <strong>{name}</strong>', {
+              name,
+              strong: (c) => (
+                <strong dir="auto" className="select-all font-text">
+                  {c}
+                </strong>
+              ),
+            })}
           </Label>
           <Input
             id="delete-project-confirm"
@@ -168,7 +185,7 @@ export const DeleteProjectDialog = ({
             autoComplete="off"
           />
           {typed && !matches && (
-            <p className="text-xs text-destructive">The name does not match.</p>
+            <p className="text-xs text-destructive">{t('The name does not match.')}</p>
           )}
         </div>
       )}

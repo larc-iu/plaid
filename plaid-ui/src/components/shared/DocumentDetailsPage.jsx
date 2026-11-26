@@ -24,6 +24,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '../ui/card';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '../ui/dialog';
 import { TextDirectionField } from './TextDirectionField.jsx';
 import { isEnter } from '../../lib/chords.js';
+import { t } from '../../lib/i18n.js';
 
 /**
  * The document's own tab: what it is called, which way it reads, a copy of it,
@@ -68,7 +69,7 @@ export const DocumentDetailsPage = ({
   const confirm = useConfirm();
   const routes = appRoutes();
 
-  useDocumentTitle('Details', doc?.name, project?.name);
+  useDocumentTitle(t('Details'), doc?.name, project?.name);
 
   const readOnly = !canEditProject(project, user) || !!pastEntry || !!writeLockHeld;
   const [name, setName] = useState(doc.name || '');
@@ -91,7 +92,7 @@ export const DocumentDetailsPage = ({
   const dirty = name.trim() !== (doc.name || '') && name.trim() !== '';
   // A typed name that has not been saved: leaving this screen asks first,
   // whether by the tab strip, a link, Back or a reload.
-  useUnsavedDraft(dirty ? 'The name you have typed' : null);
+  useUnsavedDraft(dirty ? t('The name you have typed') : null);
   // The two ways this screen leaves itself. A router push is none of the ways
   // out the hook watches, so it asks here.
   const guardLeaving = useUnsavedGuard();
@@ -100,7 +101,7 @@ export const DocumentDetailsPage = ({
     if (!dirty) return;
     const typed = name;
     if (await doc.rename(typed)) {
-      notifySuccess('Document renamed');
+      notifySuccess(t('Document renamed'));
       return;
     }
     // Refused: the reload put the saved name back, and the field followed it.
@@ -150,8 +151,11 @@ export const DocumentDetailsPage = ({
       // copy the file (H2-6-1).
       if (!created.notified) {
         if (created.mediaError) {
-          notifyWarning('The recording was not copied.', `Copied to “${created.name}”`);
-        } else notifySuccess(`Copied to “${created.name}”`);
+          notifyWarning(
+            t('The recording was not copied.'),
+            t('Copied to “{name}”', { name: created.name }),
+          );
+        } else notifySuccess(t('Copied to “{name}”', { name: created.name }));
       }
       if (created.stay) return;
       // The copy is made either way; what is asked about is LEAVING this
@@ -166,11 +170,11 @@ export const DocumentDetailsPage = ({
   };
 
   const handleDelete = async () => {
-    const label = doc.name || 'this document';
+    const { name: docName } = doc;
     const ok = await confirm({
-      title: doc.name ? `Delete “${doc.name}”?` : 'Delete document?',
-      description: 'This cannot be undone.',
-      confirmLabel: 'Delete',
+      title: docName ? t('Delete “{name}”?', { name: docName }) : t('Delete document?'),
+      description: t('This cannot be undone.'),
+      confirmLabel: t('Delete'),
       destructive: true,
     });
     if (!ok) return;
@@ -179,14 +183,16 @@ export const DocumentDetailsPage = ({
       // (or is refused and says so) once the delete has run.
       await doc.whenSaved?.();
       await getClient().documents.delete(documentId);
-      notifySuccess(`Deleted “${label}”`);
+      notifySuccess(
+        docName ? t('Deleted “{name}”', { name: docName }) : t('Deleted “this document”'),
+      );
       // Nothing to ask: the document the name was typed for is gone. The extra
       // history entry still comes out before the route changes. The list takes
       // this page's place, so Back does not come back to the deleted document.
       await dropUnsavedDrafts();
       navigate(routes.documents(projectId), { replace: true });
     } catch (err) {
-      notifyError(humanizeError(err), 'Failed to delete document');
+      notifyError(humanizeError(err), t('Failed to delete document'));
       console.error('Error deleting document:', err);
     }
   };
@@ -197,11 +203,11 @@ export const DocumentDetailsPage = ({
     <div className="flex max-w-2xl flex-col gap-6 pt-4">
       <Card>
         <CardHeader>
-          <CardTitle>Details</CardTitle>
+          <CardTitle>{t('Details')}</CardTitle>
         </CardHeader>
         <CardContent className="flex flex-col gap-4">
           <div className="flex flex-col gap-1.5">
-            <Label htmlFor="document-name">Name</Label>
+            <Label htmlFor="document-name">{t('Name')}</Label>
             <div className="flex items-end gap-2">
               <Input
                 id="document-name"
@@ -212,14 +218,14 @@ export const DocumentDetailsPage = ({
               />
               {!readOnly && (
                 <Button onClick={handleRename} disabled={!dirty || doc.isSaving}>
-                  Save
+                  {t('Save')}
                 </Button>
               )}
             </div>
           </div>
 
           <div className="flex flex-col gap-1.5">
-            <Label htmlFor="document-id">ID</Label>
+            <Label htmlFor="document-id">{t('ID')}</Label>
             <Input id="document-id" value={documentId} readOnly disabled />
           </div>
 
@@ -227,7 +233,7 @@ export const DocumentDetailsPage = ({
 
           {modified && (
             <p className="text-xs text-muted-foreground" title={fullTimestamp(modified)}>
-              Last changed {timeAgo(modified)}.
+              {t('Last changed {when}.', { when: timeAgo(modified) })}
             </p>
           )}
         </CardContent>
@@ -242,17 +248,18 @@ export const DocumentDetailsPage = ({
       {!readOnly && (
         <Card>
           <CardHeader>
-            <CardTitle>Copy</CardTitle>
+            <CardTitle>{t('Copy')}</CardTitle>
           </CardHeader>
           <CardContent className="flex flex-col gap-4">
             <p className="text-sm text-muted-foreground">
               {doc.raw?.mediaUrl
-                ? 'Copies the text, annotations and recording into this project.'
-                : 'Copies the text and annotations into this project.'}{' '}
-              Comments are not copied.
+                ? t(
+                    'Copies the text, annotations and recording into this project. Comments are not copied.',
+                  )
+                : t('Copies the text and annotations into this project. Comments are not copied.')}
             </p>
             <Button variant="outline" className="self-start" onClick={openCopy}>
-              <Copy className="h-4 w-4" /> Copy document
+              <Copy className="h-4 w-4" /> {t('Copy document')}
             </Button>
           </CardContent>
         </Card>
@@ -261,18 +268,18 @@ export const DocumentDetailsPage = ({
       {!readOnly && (
         <Card className="border-destructive/40">
           <CardHeader>
-            <CardTitle>Delete</CardTitle>
+            <CardTitle>{t('Delete')}</CardTitle>
           </CardHeader>
           <CardContent className="flex flex-col gap-4">
             <p className="text-sm text-muted-foreground">
-              Deletes the document and its annotations. This cannot be undone.
+              {t('Deletes the document and its annotations. This cannot be undone.')}
             </p>
             <Button
               variant="outline"
               className="self-start text-destructive"
               onClick={handleDelete}
             >
-              <Trash2 className="h-4 w-4" /> Delete document
+              <Trash2 className="h-4 w-4" /> {t('Delete document')}
             </Button>
           </CardContent>
         </Card>
@@ -281,10 +288,10 @@ export const DocumentDetailsPage = ({
       <Dialog open={copyOpen} onOpenChange={setCopyOpen}>
         <DialogContent className="max-w-md">
           <DialogHeader>
-            <DialogTitle>Copy document</DialogTitle>
+            <DialogTitle>{t('Copy document')}</DialogTitle>
           </DialogHeader>
           <div className="flex flex-col gap-1.5">
-            <Label htmlFor="copy-name">Name for the copy</Label>
+            <Label htmlFor="copy-name">{t('Name for the copy')}</Label>
             <Input
               id="copy-name"
               value={copyName}
@@ -303,7 +310,7 @@ export const DocumentDetailsPage = ({
           </div>
           {copyChoices?.length > 1 && (
             <fieldset className="flex flex-col gap-2" data-testid="copy-choices">
-              <legend className="mb-1.5 text-sm font-medium">Contents</legend>
+              <legend className="mb-1.5 text-sm font-medium">{t('Contents')}</legend>
               {copyChoices.map((choice) => (
                 <div key={choice.value} className="flex items-start gap-2">
                   <input
@@ -327,10 +334,10 @@ export const DocumentDetailsPage = ({
           )}
           <DialogFooter>
             <Button variant="outline" onClick={() => setCopyOpen(false)} disabled={copying}>
-              Cancel
+              {t('Cancel')}
             </Button>
             <Button onClick={handleCopy} disabled={copying || !copyName.trim()}>
-              {copying ? 'Copying…' : 'Copy'}
+              {copying ? t('Copying…') : t('Copy')}
             </Button>
           </DialogFooter>
         </DialogContent>

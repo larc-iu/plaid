@@ -15,6 +15,8 @@
 // leaves these undefined. Nothing here fills that in: a guessed denominator
 // shown where a measurement goes reads as a measurement.
 
+import { t } from '../../lib/i18n.js';
+
 // A conversation nearly at its limit is worth saying out loud, because the
 // failure it is heading for is a turn that will not run at all.
 export const NEARLY_FULL = 0.85;
@@ -35,8 +37,8 @@ export const latestUsage = (display) => {
 // `received` beside it are only the last call's.
 export const totalSpend = (display) =>
   (display || []).reduce((sum, item) => {
-    const t = usageOf(item)?.total;
-    return t ? sum + (t.sent || 0) + (t.received || 0) : sum;
+    const total = usageOf(item)?.total;
+    return total ? sum + (total.sent || 0) + (total.received || 0) : sum;
   }, 0);
 
 // What fraction of the window the last turn used, or null when the window is
@@ -48,7 +50,7 @@ export const fullness = (usage) => {
   return Math.min(1, Math.max(0, usage.sent / usage.window));
 };
 
-const thousands = (n) => (n || 0).toLocaleString('en-US');
+const spent = (spend) => t('{n, number} tokens over the whole conversation.', { n: spend || 0 });
 
 // The tooltip: what the percentage is a percentage OF, the counts it came
 // from, and what the thread has cost. The bar alone read as a share of a
@@ -58,15 +60,26 @@ export const usageTitle = (usage, spend) => {
   if (!usage) return null;
   const f = fullness(usage);
   // Past the window the percentage is clamped, so the sentence says so.
-  const share = usage.sent > usage.window ? 'more than all' : `${Math.round(f * 100)}%`;
+  const counts = { sent: usage.sent || 0, window: usage.window || 0 };
   const lines =
     f !== null
       ? [
-          `In this conversation, you have used ${share} of this model's available ` +
-            `context length (${thousands(usage.sent)}/${thousands(usage.window)} tokens).`,
+          usage.sent > usage.window
+            ? t(
+                "In this conversation, you have used more than all of this model's available context length ({sent, number}/{window, number} tokens).",
+                counts,
+              )
+            : t(
+                "In this conversation, you have used {pct}% of this model's available context length ({sent, number}/{window, number} tokens).",
+                { ...counts, pct: Math.round(f * 100) },
+              ),
         ]
-      : [`${thousands(usage.sent)} tokens on the last turn. This model's limit is not known.`];
-  if (spend) lines.push(`${thousands(spend)} tokens over the whole conversation.`);
+      : [
+          t("{n, number} tokens on the last turn. This model's limit is not known.", {
+            n: usage.sent || 0,
+          }),
+        ];
+  if (spend) lines.push(spent(spend));
   return lines.join('\n');
 };
 
@@ -74,7 +87,7 @@ export const usageTitle = (usage, spend) => {
 // count when it is not, because the count is still worth seeing.
 export const usageLabel = (usage) => {
   const f = fullness(usage);
-  if (f !== null) return `${Math.round(f * 100)}%`;
+  if (f !== null) return t('{pct}%', { pct: Math.round(f * 100) });
   if (!usage || typeof usage.sent !== 'number') return null;
   const k = usage.sent / 1000;
   return k >= 10 ? `${Math.round(k)}k` : `${k.toFixed(1)}k`;
@@ -125,20 +138,25 @@ export const gauge = (usage, record) => {
 // A size in the unit that reads: KB below a megabyte, so a small record is
 // never "0 MB".
 const size = (n) => {
-  if (n < 1048576) return `${n > 0 ? Math.max(1, Math.round(n / 1024)) : 0} KB`;
+  if (n < 1048576) return t('{n} KB', { n: n > 0 ? Math.max(1, Math.round(n / 1024)) : 0 });
   const mb = n / 1048576;
-  return `${mb >= 10 ? Math.round(mb) : Math.round(mb * 10) / 10} MB`;
+  return t('{n} MB', { n: mb >= 10 ? Math.round(mb) : Math.round(mb * 10) / 10 });
 };
 
 // The storage line of the tooltip, in the context line's words.
 const storageLine = (record) => {
   const s = recordShare(record);
   if (s === null) return null;
-  const share = s > 1 ? 'more than all' : `${Math.round(Math.min(1, s) * 100)}%`;
-  return (
-    `In this conversation, you have used ${share} of the available storage ` +
-    `(${size(record.bytes)}/${size(record.cap)}).`
-  );
+  const sizes = { used: size(record.bytes), cap: size(record.cap) };
+  return s > 1
+    ? t(
+        'In this conversation, you have used more than all of the available storage ({used}/{cap}).',
+        sizes,
+      )
+    : t('In this conversation, you have used {pct}% of the available storage ({used}/{cap}).', {
+        ...sizes,
+        pct: Math.round(Math.min(1, s) * 100),
+      });
 };
 
 // The meter's tooltip with both limits, the one the bar shows first.
@@ -148,7 +166,7 @@ export const gaugeTitle = (g, spend) => {
   const storage = g.record ? storageLine(g.record) : null;
   if (!storage) return context;
   const lines = [...(g.which === 'storage' || !context ? [storage, context] : [context, storage])];
-  if (!context && spend) lines.push(`${thousands(spend)} tokens over the whole conversation.`);
+  if (!context && spend) lines.push(spent(spend));
   return lines.filter(Boolean).join('\n');
 };
 
@@ -156,6 +174,6 @@ export const gaugeTitle = (g, spend) => {
 // neither limit is known.
 export const gaugeLabel = (g) => {
   if (!g) return null;
-  if (g.share !== null) return `${Math.round(g.share * 100)}%`;
+  if (g.share !== null) return t('{pct}%', { pct: Math.round(g.share * 100) });
   return usageLabel(g.usage);
 };

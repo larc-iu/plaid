@@ -6,6 +6,7 @@ import {
   readImportState,
   wordValueSpec,
 } from '@/domain/igtConfig';
+import { t } from '@ui/lib/i18n.js';
 
 // "Words" = the primary token layer (the orthographic word tokens); morphemes
 // are sub-word units and shouldn't inflate the word count.
@@ -18,7 +19,7 @@ const wordValue = (project) =>
 const note = (project) => {
   const record = readImportState(project.config);
   if (!record) return null;
-  return importRanWhole(record) ? 'Import not marked done' : 'Import did not finish';
+  return importRanWhole(record) ? t('Import not marked done') : t('Import did not finish');
 };
 
 export const ProjectList = () => (
@@ -26,7 +27,7 @@ export const ProjectList = () => (
     wordLayerId={wordLayerId}
     wordValue={wordValue}
     note={note}
-    newProject="New project"
+    newProject={t('New project')}
     newProjectTo="/projects/new"
   />
 );

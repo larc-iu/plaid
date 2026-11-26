@@ -6,7 +6,7 @@ import { translationFieldsOf } from '@/domain/sentenceRole';
 import { PRECEDENT_SOURCE, VOCAB_ENTRY_SOURCE } from '@/domain/glossGuess';
 import { bracketPieces } from '@/domain/mwe';
 import { humanizeError } from '@/utils/feedback';
-import { provConfidence, provTitle } from './shared.js';
+import { provConfidence, provTitle, tlit } from './shared.js';
 import { keys } from '@/lib/keymap.js';
 import { NOT_SET_UP } from '@ui/domain/setupGuard.js';
 import { saveStateText } from '@ui/lib/saveState.js';
@@ -23,12 +23,14 @@ import {
   PAGER_LABEL,
   PAGER_FOOT,
 } from '@ui/components/shared/runBar.js';
-import { countOf } from '@ui/lib/plural.js';
+import { t } from '@ui/lib/i18n.js';
 
 // The grid's frame: the page template, the pager and toolbar, the legend,
 // the tooltips' wording, and one sentence's block.
 // An action's chord as keycaps, in whatever the person has bound it to.
 const kbd = (id) => keys.caps(id).map((cap, i) => html`${i ? '+' : ''}<kbd>${cap}</kbd>`);
+// A key's cap by its name, which is the key's and stays as it is.
+const cap = (name) => html`<kbd>${name}</kbd>`;
 
 // lucide's Sparkles, the Auto-analyze dialog's own icon, and its spinner while
 // a run is on, as ServiceRunButton draws them in ud and umr.
@@ -71,8 +73,8 @@ export const chrome = {
       // One muted line and the app's own outline button, as every other empty
       // state draws it. A document with no text is sent to Baseline (H16-6).
       const [line, tab, label] = /[^\s\u0085]/u.test(doc.body ?? '')
-        ? ['No sentences. Split the text on the Tokenize tab.', 'tokenize', 'Go to Tokenize']
-        : ['No text. Add it on the Baseline tab.', 'baseline', 'Go to Baseline'];
+        ? [t('No sentences. Split the text on the Tokenize tab.'), 'tokenize', t('Go to Tokenize')]
+        : [t('No text. Add it on the Baseline tab.'), 'baseline', t('Go to Baseline')];
       return html` <div class="igt-island__empty">
         <p>${line}</p>
         ${this.readOnly
@@ -207,11 +209,13 @@ export const chrome = {
       </button>`;
     const pager = html`
       <div class="igt-pager ${PAGER}">
-        ${btn(FIRST, 0, 'First page', this._page === 0)}
-        ${btn(PREV, this._page - 1, 'Previous page', this._page === 0)}
-        <span class="igt-pager__label ${PAGER_LABEL}">${start + 1}–${end} of ${total}</span>
-        ${btn(NEXT, this._page + 1, 'Next page', this._page >= pageCount - 1)}
-        ${btn(LAST, pageCount - 1, 'Last page', this._page >= pageCount - 1)}
+        ${btn(FIRST, 0, t('First page'), this._page === 0)}
+        ${btn(PREV, this._page - 1, t('Previous page'), this._page === 0)}
+        <span class="igt-pager__label ${PAGER_LABEL}"
+          >${t('{start}–{end} of {total}', { start: start + 1, end, total })}</span
+        >
+        ${btn(NEXT, this._page + 1, t('Next page'), this._page >= pageCount - 1)}
+        ${btn(LAST, pageCount - 1, t('Last page'), this._page >= pageCount - 1)}
       </div>
     `;
     return where === 'bottom'
@@ -249,21 +253,21 @@ export const chrome = {
                 title=${
                   /* A phrase, like every other button here. The steps it can
                      run are the dialog's own checkboxes. */
-                  'Analyze the document automatically'
+                  t('Analyze the document automatically')
                 }
                 @click=${(e) => {
                   e.stopPropagation();
                   this._openAutoAnalyze();
                 }}
               >
-                ${running ? ICON(SPINNER, 'animate-spin') : ICON(SPARKLES)} Auto-analyze
+                ${running ? ICON(SPINNER, 'animate-spin') : ICON(SPARKLES)} ${t('Auto-analyze')}
               </button>`
             : nothing
         }
         ${pageCount > 1
           ? this._pager(nSent, pageCount, 'top')
           : html`<span class="igt-toolbar__count ${RUN_COUNT}"
-              >${countOf(nSent, 'sentence')}</span
+              >${t('{n, plural, one {# sentence} other {# sentences}}', { n: nSent })}</span
             >`}
         <span class="igt-status-mount ms-auto"></span>
         <button
@@ -275,7 +279,7 @@ export const chrome = {
             this._toggleHelp();
           }}
         >
-          <span aria-hidden="true" class=${HELP_MARK}>?</span>Keys and marks
+          <span aria-hidden="true" class=${HELP_MARK}>?</span>${t('Keys and marks')}
         </button>
       </div>
     `;
@@ -301,11 +305,15 @@ export const chrome = {
       const name = g.entryId
         ? this._entryLabel({ id: g.entryId, form: g.entryForm }, g.vocabId)
         : g.entryForm;
-      const entry = name ? `the entry “${name}”` : 'the linked entry';
-      return g.trusted ? `from ${entry}` : `from ${entry}, unconfirmed link`;
+      if (name) {
+        return g.trusted
+          ? t('from the entry “{name}”', { name })
+          : t('from the entry “{name}”, unconfirmed link', { name });
+      }
+      return g.trusted ? t('from the linked entry') : t('from the linked entry, unconfirmed link');
     }
     if (g.source === PRECEDENT_SOURCE && g.count)
-      return `seen ${countOf(g.count, 'time')} in this project`;
+      return t('seen {n, plural, one {# time} other {# times}} in this project', { n: g.count });
     return null;
   },
 
@@ -313,109 +321,243 @@ export const chrome = {
   // marked link, its state and what the click does. `single` is a word's or
   // morpheme's own chip (the MWE label prefixes the words itself). Without
   // `canLink` the chip does not open (a reader, a History version), so the
-  // text names the state and no action.
-  _linkStateText(state, origin, form, canLink, single = false) {
-    const manage = canLink ? ' · manage' : '';
-    const linked = single ? `Linked to "${form}"` : `linked to "${form}"`;
+  // text names the state and no action. `words` is an MWE label's words, which
+  // the text then starts with.
+  _linkStateText(state, origin, form, canLink, single = false, words = null) {
+    const v = {
+      form,
+      words,
+      mwe: !single && words != null ? 'yes' : 'no',
+      manage: canLink ? 'yes' : 'no',
+    };
     if (state === PROV_STATES.MACHINE) {
-      const auto = `${single ? 'Auto-linked' : 'auto-linked'} to "${form}"`;
-      return canLink ? `${auto}: open to accept or change` : `${auto}, unconfirmed`;
+      return canLink
+        ? t(
+            '{mwe, select, yes {“{words}” auto-linked} other {Auto-linked}} to "{form}": open to accept or change',
+            v,
+          )
+        : t(
+            '{mwe, select, yes {“{words}” auto-linked} other {Auto-linked}} to "{form}", unconfirmed',
+            v,
+          );
     }
     if (state === PROV_STATES.CONTRIBUTED) {
-      if (this.doc.isContributor) return `${linked}: contributed, awaiting review${manage}`;
+      if (this.doc.isContributor) {
+        return t(
+          '{mwe, select, yes {“{words}” linked} other {Linked}} to "{form}": contributed, awaiting review{manage, select, yes { · manage} other {}}',
+          v,
+        );
+      }
       return canLink
-        ? `${linked}: contributed. Open to accept or change`
-        : `${linked}: contributed, unconfirmed`;
+        ? t(
+            '{mwe, select, yes {“{words}” linked} other {Linked}} to "{form}": contributed. Open to accept or change',
+            v,
+          )
+        : t(
+            '{mwe, select, yes {“{words}” linked} other {Linked}} to "{form}": contributed, unconfirmed',
+            v,
+          );
     }
-    if (state === PROV_STATES.VERIFIED)
-      return `${linked}: ${origin === PROV.CONTRIBUTED ? 'contributed' : 'auto-linked'}, confirmed${manage}`;
-    return `${linked}${manage}`;
+    if (state === PROV_STATES.VERIFIED) {
+      return t(
+        '{mwe, select, yes {“{words}” linked} other {Linked}} to "{form}": {origin, select, contributed {contributed} other {auto-linked}}, confirmed{manage, select, yes { · manage} other {}}',
+        { ...v, origin: origin === PROV.CONTRIBUTED ? 'contributed' : 'machine' },
+      );
+    }
+    return t(
+      '{mwe, select, yes {“{words}” linked} other {Linked}} to "{form}"{manage, select, yes { · manage} other {}}',
+      v,
+    );
   },
 
   _legend(ctx) {
+    const enter = cap('↵');
+    const esc = cap('Esc'); // i18n-ignore: a key's name
     return html`
       <div class="igt-legend ${HELP_PANEL}">
         <div class="igt-legend__row">
-          <strong>Scopes</strong>
-          <span class="igt-legend__chip igt-legend__chip--orth">Orthography</span>
-          <span class="igt-legend__chip igt-legend__chip--word">Word</span>
+          <strong>${t('Scopes')}</strong>
+          <span class="igt-legend__chip igt-legend__chip--orth">${t('Orthography')}</span>
+          <span class="igt-legend__chip igt-legend__chip--word">${t('Word')}</span>
           ${ctx.hasMorphemes
-            ? html`<span class="igt-legend__chip igt-legend__chip--morph">Morpheme</span>`
+            ? html`<span class="igt-legend__chip igt-legend__chip--morph">${t('Morpheme')}</span>`
             : nothing}
-          <span class="igt-legend__chip igt-legend__chip--sent">Sentence</span>
+          <span class="igt-legend__chip igt-legend__chip--sent">${t('Sentence')}</span>
         </div>
         <div class="igt-legend__row">
-          <strong>Marks</strong>
+          <strong>${t('Marks')}</strong>
           <span
-            ><span class="igt-legend__prov--machine">machine-made</span> ·
-            <span class="igt-legend__prov--machine igt-legend__prov--doubtful">low confidence</span>
+            ><span class="igt-legend__prov--machine">${t('machine-made')}</span> ·
+            <span class="igt-legend__prov--machine igt-legend__prov--doubtful"
+              >${t('low confidence')}</span
+            >
             ·
             ${ctx.reviewsSomeone
-              ? html`<span class="igt-legend__prov--contributed">contributed</span> · `
-              : nothing}<span class="igt-legend__prov--verified">confirmed</span> · plain: a
-            person's · ${kbd('analyze.accept')} to accept a word's proposal,
-            ${kbd('analyze.discard')} to discard it, ${kbd('analyze.prevUnverified')} and
-            ${kbd('analyze.nextUnverified')} to jump between them</span
+              ? html`<span class="igt-legend__prov--contributed">${t('contributed')}</span> · `
+              : nothing}<span class="igt-legend__prov--verified">${t('confirmed')}</span> ·
+            ${t("plain: a person's")} ·
+            ${tlit(
+              {
+                accept: kbd('analyze.accept'),
+                discard: kbd('analyze.discard'),
+                prev: kbd('analyze.prevUnverified'),
+                next: kbd('analyze.nextUnverified'),
+              },
+              (m) =>
+                t(
+                  "{accept} to accept a word's proposal, {discard} to discard it, {prev} and {next} to jump between them",
+                  m,
+                ),
+            )}</span
           >
         </div>
         <div class="igt-legend__row">
-          <strong>Suggestions</strong>
+          <strong>${t('Suggestions')}</strong>
           <span
-            ><span class="igt-legend__guess">from this project</span> ·
-            <span class="igt-legend__guess igt-legend__guess--entry">from the linked entry</span> ·
-            <kbd>↵</kbd> to accept one, ${kbd('analyze.alternatives')} to list the rest</span
-          >
-        </div>
-        ${ctx.hasMorphemes
-          ? html` <div class="igt-legend__row">
-              <strong>Lexicon</strong>
-              <span
-                >the form under a morpheme is the entry it is linked to, and nothing under it means
-                no link · click it to manage the link</span
-              >
-            </div>`
-          : nothing}
-        <div class="igt-legend__row">
-          <strong>Navigate</strong>
-          <span
-            ><kbd>Enter</kbd>/<kbd>Tab</kbd> next cell in the same row · <kbd>⇧</kbd>+ previous ·
-            <kbd>↑</kbd><kbd>↓</kbd> to move between rows · <kbd>←</kbd><kbd>→</kbd> to move along
-            the row from the ends of a value · <kbd>Esc</kbd> to cancel an edit ·
-            <kbd>Alt</kbd>+click a word to open it in Tokenize</span
-          >
-        </div>
-        <div class="igt-legend__row">
-          <strong>Spelling</strong>
-          <span
-            >${kbd('analyze.respell')} on a word to respell it · <kbd>↵</kbd> to save ·
-            <kbd>Esc</kbd> to cancel</span
-          >
-        </div>
-        <div class="igt-legend__row">
-          <strong>Rows</strong>
-          <span
-            >click a row label (or <kbd>↵</kbd>/<kbd>Space</kbd> on it) to pick which rows show ·
-            minimized rows stay as a thin stripe · <kbd>Esc</kbd> to close the menu</span
+            ><span class="igt-legend__guess">${t('from this project')}</span> ·
+            <span class="igt-legend__guess igt-legend__guess--entry"
+              >${t('from the linked entry')}</span
+            >
+            ·
+            ${tlit(
+              {
+                enter,
+                key: kbd('analyze.alternatives'),
+              },
+              (m) => t('{enter} to accept one, {key} to list the rest', m),
+            )}</span
           >
         </div>
         ${ctx.hasMorphemes
           ? html` <div class="igt-legend__row">
-              <strong>Morphemes</strong>
+              <strong>${t('Lexicon')}</strong>
               <span
-                >type <kbd>-</kbd> to split, <kbd>=</kbd> to split at a clitic (pasting
-                <em>a-b=c</em> splits too) · <kbd>⌫</kbd> at the start to merge with the previous ·
-                ${kbd('morph.literalHyphen')} / ${kbd('morph.literalEquals')} literal character ·
-                ${kbd('morph.zero')} to type a zero morph <em>∅</em></span
+                >${t(
+                  'the form under a morpheme is the entry it is linked to, and nothing under it means no link',
+                )}
+                · ${t('click it to manage the link')}</span
               >
             </div>`
           : nothing}
         <div class="igt-legend__row">
-          <strong>Special characters</strong>
+          <strong>${t('Navigate')}</strong>
           <span
-            >type <kbd>\\</kbd> and a two-letter code in any text field: <em>\\sw</em> → ə,
-            <em>\\ng</em> → ŋ, <em>\\?g</em> → ʔ, <em>\\00</em> → ∅ · these are Praat's codes ·
-            <em>\\u0250</em> → any character by number · <kbd>\\</kbd><kbd>\\</kbd> for a plain
-            backslash · add codes for this project under Settings → Text and vocab</span
+            >${tlit(
+              {
+                enter: cap('Enter'), // i18n-ignore: a key's name
+                tab: cap('Tab'), // i18n-ignore: a key's name
+              },
+              (m) => t('{enter}/{tab} next cell in the same row', m),
+            )}
+            · ${tlit({ shift: cap('⇧') }, (m) => t('{shift}+ previous', m))} ·
+            ${tlit({ keys: [cap('↑'), cap('↓')] }, (m) => t('{keys} to move between rows', m))} ·
+            ${tlit(
+              {
+                keys: [cap('←'), cap('→')],
+              },
+              (m) => t('{keys} to move along the row from the ends of a value', m),
+            )}
+            · ${tlit({ esc }, (m) => t('{esc} to cancel an edit', m))} ·
+            ${tlit(
+              {
+                alt: cap('Alt'), // i18n-ignore: a key's name
+              },
+              (m) => t('{alt}+click a word to open it in Tokenize', m),
+            )}</span
+          >
+        </div>
+        <div class="igt-legend__row">
+          <strong>${t('Spelling')}</strong>
+          <span
+            >${tlit({ key: kbd('analyze.respell') }, (m) => t('{key} on a word to respell it', m))}
+            · ${tlit({ enter }, (m) => t('{enter} to save', m))} ·
+            ${tlit({ esc }, (m) => t('{esc} to cancel', m))}</span
+          >
+        </div>
+        <div class="igt-legend__row">
+          <strong>${t('Rows')}</strong>
+          <span
+            >${tlit(
+              {
+                enter,
+                space: cap('Space'), // i18n-ignore: a key's name
+              },
+              (m) => t('click a row label (or {enter}/{space} on it) to pick which rows show', m),
+            )}
+            · ${t('minimized rows stay as a thin stripe')} ·
+            ${tlit({ esc }, (m) => t('{esc} to close the menu', m))}</span
+          >
+        </div>
+        ${ctx.hasMorphemes
+          ? html` <div class="igt-legend__row">
+              <strong>${t('Morphemes')}</strong>
+              <span
+                >${tlit(
+                  { hyphen: cap('-'), equals: cap('='), example: html`<em>a-b=c</em>` },
+                  (m) =>
+                    t(
+                      'type {hyphen} to split, {equals} to split at a clitic (pasting {example} splits too)',
+                      m,
+                    ),
+                )}
+                ·
+                ${tlit(
+                  {
+                    backspace: cap('⌫'),
+                  },
+                  (m) => t('{backspace} at the start to merge with the previous', m),
+                )}
+                ·
+                ${tlit(
+                  {
+                    hyphen: kbd('morph.literalHyphen'),
+                    equals: kbd('morph.literalEquals'),
+                  },
+                  (m) => t('{hyphen} / {equals} literal character', m),
+                )}
+                ·
+                ${tlit(
+                  {
+                    key: kbd('morph.zero'),
+                    zero: html`<em>∅</em>`,
+                  },
+                  (m) => t('{key} to type a zero morph {zero}', m),
+                )}</span
+              >
+            </div>`
+          : nothing}
+        <div class="igt-legend__row">
+          <strong>${t('Special characters')}</strong>
+          <span
+            >${tlit(
+              {
+                backslash: cap('\\'),
+                sw: html`<em>\\sw</em>`, // i18n-ignore: one of Praat's codes
+                ng: html`<em>\\ng</em>`, // i18n-ignore: one of Praat's codes
+                glottal: html`<em>\\?g</em>`,
+                zero: html`<em>\\00</em>`,
+              },
+              (m) =>
+                t(
+                  'type {backslash} and a two-letter code in any text field: {sw} → ə, {ng} → ŋ, {glottal} → ʔ, {zero} → ∅',
+                  m,
+                ),
+            )}
+            · ${t("these are Praat's codes")} ·
+            ${tlit(
+              {
+                example: html`<em>\\u0250</em>`,
+              },
+              (m) => t('{example} → any character by number', m),
+            )}
+            ·
+            ${tlit(
+              {
+                backslashes: [cap('\\'), cap('\\')],
+              },
+              (m) => t('{backslashes} for a plain backslash', m),
+            )}
+            · ${t('add codes for this project under Settings → Text and vocab')}</span
           >
         </div>
       </div>
@@ -469,7 +611,7 @@ export const chrome = {
       pending =
         pendingIdx.length >= 2
           ? bracketPieces(sentence.tokens.length, pendingIdx)
-          : sentence.tokens.map((t, i) => (i === pendingIdx[0] ? 'solo' : null));
+          : sentence.tokens.map((_tok, i) => (i === pendingIdx[0] ? 'solo' : null));
     }
     const sctx = { sentence, index, posMap, lanes, pending, pendingIdx: sel ? pendingIdx : null };
     return html`
@@ -479,12 +621,12 @@ export const chrome = {
         dir=${this.doc.textDirection}
         style=${`--igt-mwe-lanes:${lanes + (sel ? 1 : 0)}`}
         role="group"
-        aria-label=${`Sentence ${index + 1}`}
+        aria-label=${t('Sentence {n}', { n: index + 1 })}
       >
-        <h3 class="igt-sr-only">Sentence ${index + 1}</h3>
+        <h3 class="igt-sr-only">${t('Sentence {n}', { n: index + 1 })}</h3>
         <span class="igt-sentence__num">
           <span aria-hidden="true">${index + 1}</span>
-          ${this._commentBadge('token', sentence.id, `sentence ${index + 1}`)}
+          ${this._commentBadge('token', sentence.id, t('sentence {n}', { n: index + 1 }))}
         </span>
         <div class="igt-sentence__tools">
           <div class="igt-sentence__toolrow" dir="ltr">

@@ -5,6 +5,7 @@ import { cn } from '@ui/lib/utils';
 import { channelLabel } from '@/domain/media/channelSpeakers';
 import { speakerHue } from '@/domain/speakerHue.js';
 import { isEnter } from '@ui/lib/chords.js';
+import { t } from '@ui/lib/i18n.js';
 
 // The channels of a multichannel recording, one row each: a swatch in the
 // speaker's colour, the speaker (editable, written to the document as
@@ -24,10 +25,10 @@ const SpeakerField = ({ value, label, disabled, onCommit }) => {
     <Input
       value={draft}
       list={SPEAKER_LIST_ID}
-      placeholder="Speaker"
+      placeholder={t('Speaker')}
       compose
       autoComplete="off"
-      aria-label={`${label} speaker`}
+      aria-label={t('{name} speaker', { name: label })}
       className="h-8 text-xs"
       disabled={disabled}
       onChange={(e) => setDraft(e.target.value)}
@@ -101,20 +102,20 @@ export function ChannelList({
                   size="sm"
                   className={cn('h-8 px-2 text-xs', isMuted && 'text-primary')}
                   aria-pressed={isMuted}
-                  aria-label={`Mute ${label}`}
+                  aria-label={t('Mute {name}', { name: label })}
                   onClick={() => onToggleMute(i)}
                 >
-                  Mute
+                  {t('Mute')}
                 </Button>
                 <Button
                   variant={isSolo ? 'secondary' : 'ghost'}
                   size="sm"
                   className={cn('h-8 px-2 text-xs', isSolo && 'text-primary')}
                   aria-pressed={isSolo}
-                  aria-label={`Solo ${label}`}
+                  aria-label={t('Solo {name}', { name: label })}
                   onClick={() => onToggleSolo(i)}
                 >
-                  Solo
+                  {t('Solo')}
                 </Button>
               </div>
             </li>
@@ -129,7 +130,7 @@ export function ChannelList({
             className="h-7 px-2 text-xs text-muted-foreground"
             onClick={onRemove}
           >
-            Remove speakers per channel
+            {t('Remove speakers per channel')}
           </Button>
         </div>
       )}

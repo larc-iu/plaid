@@ -6,6 +6,8 @@
 // `adapter.changePlace`, listed in adapterContract.js). A change the service
 // could not locate falls back to its label whole.
 
+import { t } from '../../lib/i18n.js';
+
 export const ROWS_COLLAPSED = 12;
 
 /**
@@ -32,6 +34,8 @@ const alwaysShown = (r) => r.writesText || r.replacesWork || r.rule;
 // How many documents a rule's row lists before "and n more documents".
 export const RULE_DOCUMENTS_SHOWN = 10;
 
+// A count in the service's own unit words (`rule.unit`), which come as they
+// are.
 const count = (n, one, many) => `${Number(n).toLocaleString('en-US')} ${n === 1 ? one : many}`;
 
 // A rule's documents (`rule.documents`, `[id, name, changes]` largest first)
@@ -56,7 +60,11 @@ const changedAgainBy = (rule) => {
   const by =
     later.length === 1
       ? later[0][0]
-      : later.map(([words, k]) => `${words} (${count(Number(k), 'value', 'values')})`).join(', ');
+      : later
+          .map(([words, k]) =>
+            t('{words} ({n, plural, one {# value} other {# values}})', { words, n: Number(k) }),
+          )
+          .join(', ');
   return { n, by };
 };
 
@@ -70,14 +78,31 @@ export const ruleCountLine = (rule, replacesWork = 0, rowCount = null) => {
   const total = Number.isInteger(rowCount) ? rowCount : Number(rule?.total) || 0;
   const again = changedAgainBy(rule);
   if (total === 0 && again) {
-    return `0 changes: its ${count(again.n, 'value is', 'values are')} changed again by ${again.by}`;
+    return t(
+      '0 changes: its {n, plural, one {# value is} other {# values are}} changed again by {by}',
+      { n: again.n, by: again.by },
+    );
   }
-  let line = `${count(total, 'change', 'changes')} in ${count(docs, 'document', 'documents')}`;
+  const values = { total, docs, work: replacesWork, again: again?.n, by: again?.by };
+  if (replacesWork > 0 && again)
+    return t(
+      '{total, plural, one {# change} other {# changes}} in {docs, plural, one {# document} other {# documents}}, {work, plural, one {# replaces} other {# replace}} accepted work, and {again, plural, one {# value} other {# values}} changed again by {by}',
+      values,
+    );
   if (replacesWork > 0)
-    line = `${line}, ${count(replacesWork, 'replaces', 'replace')} accepted work`;
-  return again
-    ? `${line}, and ${count(again.n, 'value', 'values')} changed again by ${again.by}`
-    : line;
+    return t(
+      '{total, plural, one {# change} other {# changes}} in {docs, plural, one {# document} other {# documents}}, {work, plural, one {# replaces} other {# replace}} accepted work',
+      values,
+    );
+  if (again)
+    return t(
+      '{total, plural, one {# change} other {# changes}} in {docs, plural, one {# document} other {# documents}}, and {again, plural, one {# value} other {# values}} changed again by {by}',
+      values,
+    );
+  return t(
+    '{total, plural, one {# change} other {# changes}} in {docs, plural, one {# document} other {# documents}}',
+    values,
+  );
 };
 
 // Every distinct change a rule makes (`rule.transitions`, `{from, to, count,
@@ -87,11 +112,11 @@ export const ruleCountLine = (rule, replacesWork = 0, rowCount = null) => {
 // than one or one is noted: a rule over one value says it in its own line.
 export const ruleTransitions = (rule) => {
   const [one, many] = rule?.unit || ['value', 'values'];
-  const rows = (rule?.transitions || []).map((t) => ({
-    from: t.from ?? '',
-    to: t.to ?? '',
-    count: Number(t.count) || 0,
-    notes: Array.isArray(t.notes) ? t.notes : [],
+  const rows = (rule?.transitions || []).map((tr) => ({
+    from: tr.from ?? '',
+    to: tr.to ?? '',
+    count: Number(tr.count) || 0,
+    notes: Array.isArray(tr.notes) ? tr.notes : [],
   }));
   const [moreKinds, moreValues] = rule?.transitionsMore || [0, 0];
   const shown = rows.length > 1 || rows.some((r) => r.notes.length) || Number(moreKinds) > 0;
@@ -99,40 +124,46 @@ export const ruleTransitions = (rule) => {
     rows: shown ? rows : [],
     more:
       shown && Number(moreKinds) > 0
-        ? `and ${count(Number(moreKinds), 'more distinct change', 'more distinct changes')} (${count(Number(moreValues), one, many)})`
+        ? t(
+            'and {n, plural, one {# more distinct change} other {# more distinct changes}} ({values})',
+            { n: Number(moreKinds), values: count(Number(moreValues), one, many) },
+          )
         : null,
   };
 };
 
 // One of them as text: "PROSP:EXP" → "PROSPP:EXP" 145 (inside a word).
-export const transitionLine = (t) =>
-  `"${t.from}" → "${t.to}" ${t.count.toLocaleString('en-US')}${t.notes.length ? ` (${t.notes.join(', ')})` : ''}`;
+export const transitionLine = (tr) =>
+  `"${tr.from}" → "${tr.to}" ${tr.count.toLocaleString('en-US')}${tr.notes.length ? ` (${tr.notes.join(', ')})` : ''}`;
 
 // "and 3 more documents (31 changes)".
 export const ruleMoreLine = (docs, changes) =>
-  `and ${count(docs, 'more document', 'more documents')} (${count(changes, 'change', 'changes')})`;
+  t(
+    'and {docs, plural, one {# more document} other {# more documents}} ({changes, plural, one {# change} other {# changes}})',
+    { docs, changes },
+  );
 
 // How a plan that wrote was approved, as the record keeps it (the service's
 // `recorded_as`): the button pressed, or the human-made box, which wins. The
 // card's settled line and the exports.
+// A key, not words: each place that says it has a message of its own.
 export const approvedAs = ({ asHuman, asUnverified, contributed } = {}) =>
-  asHuman
-    ? 'human-made'
-    : asUnverified
-      ? 'unverified'
-      : contributed
-        ? 'a contribution'
-        : 'verified';
+  asHuman ? 'human' : asUnverified ? 'unverified' : contributed ? 'contribution' : 'verified';
 
 export const approvedLine = (recorded) => {
   const how = approvedAs(recorded);
-  return how === 'human-made' ? 'Recorded as human-made.' : `Approved as ${how}.`;
+  return how === 'human'
+    ? t('Recorded as human-made.')
+    : t(
+        'Approved as {how, select, unverified {unverified} contribution {a contribution} other {verified}}.',
+        { how },
+      );
 };
 
 // Why an out-of-date plan was refused, as the service said it, on the card and
 // in the exports.
 export const staleLine = (reason) =>
-  `${/[.!?]$/.test(reason) ? reason : `${reason}.`} Nothing was written.`;
+  t('{reason} Nothing was written.', { reason: /[.!?]$/.test(reason) ? reason : `${reason}.` });
 
 // The line above a reply's card: how many changes the turn staged. Built only
 // from the plan the record holds, never from the reply's words, which have
@@ -146,7 +177,9 @@ export const staleLine = (reason) =>
 // whose record holds no count, or that stages none, gets no line.
 export const stagedLine = (plan) => {
   const n = plan?.proposedCount;
-  return Number.isInteger(n) && n > 0 ? `Staged: ${count(n, 'change', 'changes')}` : null;
+  return Number.isInteger(n) && n > 0
+    ? t('Staged: {n, plural, one {# change} other {# changes}}', { n })
+    : null;
 };
 
 // How many rows a settled plan's record no longer holds (planRecord.js).
@@ -164,10 +197,8 @@ export const changesOmitted = (plan) => {
 // exports.
 export const omittedLine = (n) =>
   n == null
-    ? 'and more changes'
-    : n === 1
-      ? 'and 1 more change'
-      : `and ${n.toLocaleString('en-US')} more changes`;
+    ? t('and more changes')
+    : t('and {n, plural, one {# more change} other {# more changes}}', { n });
 
 // The changes to show, in plan order: the service's located changes when
 // they line up with the ops, else their labels alone.

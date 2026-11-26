@@ -25,8 +25,11 @@ import { useDocumentModel } from '@ui/domain/useDocumentModel.js';
 import { TokenizeDialog } from './TokenizeDialog.jsx';
 import Lazy from '../../lazy';
 import './DocumentTokenize.css';
-import { countOf, plural } from '@ui/lib/plural.js';
+import { t, tx, msg } from '@ui/lib/i18n.js';
 import { analyzeFocus, tokenizeFocus } from '../hooks/focusHandoff.js';
+
+const kbd = (c) => <kbd className="rounded-sm border bg-muted px-1.5 py-0.5 text-xs">{c}</kbd>;
+const strong = (c) => <strong>{c}</strong>;
 
 export function DocumentTokenize() {
   const { doc, readOnly, canWrite, writeLock } = useDocumentCtx();
@@ -105,14 +108,17 @@ export function DocumentTokenize() {
     const n = positions.length;
     const loss = doc.sentenceSplitLoss(positions);
     const ok = await confirm({
-      title: 'Split sentences at segments?',
+      title: t('Split sentences at segments?'),
       description: segmentSplitDescription(n, insideWord, loss),
-      confirmLabel: 'Split sentences',
+      confirmLabel: t('Split sentences'),
       destructive: Boolean(lossPhrase(loss)),
     });
     if (!ok) return;
     if (await ops.splitSentencesAt(positions)) {
-      notifySuccess(`Added ${countOf(n, 'sentence break')}`, 'Sentences split');
+      notifySuccess(
+        t('Added {n, plural, one {# sentence break} other {# sentence breaks}}', { n }),
+        t('Sentences split'),
+      );
     }
   };
 
@@ -120,11 +126,11 @@ export function DocumentTokenize() {
   // Why Tokenize cannot run, stated in the dialog rather than left to a
   // disabled button with no explanation. Null means it can.
   const tokenizeBlockedHint = !layers?.primaryTokenLayer
-    ? 'This project is not set up for words.'
+    ? t('This project is not set up for words.')
     : !text?.body
-      ? 'This document has no text yet.'
+      ? t('This document has no text yet.')
       : !hasSentencePartition
-        ? 'The text has no sentences yet. Save it again on the Baseline tab.'
+        ? t('The text has no sentences yet. Save it again on the Baseline tab.')
         : null;
 
   // Drag-to-merge selection state. Mirrored into a ref so synchronous DOM event
@@ -167,7 +173,7 @@ export function DocumentTokenize() {
           <div className="border-b p-4">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <div className="flex items-center gap-2">
-                <h3 className="text-base font-semibold">Tokens</h3>
+                <h3 className="text-base font-semibold">{t('Tokens')}</h3>
                 <Tooltip>
                   <TooltipTrigger asChild>
                     <Button
@@ -179,7 +185,7 @@ export function DocumentTokenize() {
                       <HelpCircle className="h-5 w-5" />
                     </Button>
                   </TooltipTrigger>
-                  <TooltipContent>{helpOpen ? 'Hide help' : 'Show help'}</TooltipContent>
+                  <TooltipContent>{helpOpen ? t('Hide help') : t('Show help')}</TooltipContent>
                 </Tooltip>
               </div>
 
@@ -195,7 +201,7 @@ export function DocumentTokenize() {
                     onClick={() => setConfirmClear('tokens')}
                     disabled={busy || !existingTokens.length}
                   >
-                    Clear tokens
+                    {t('Clear tokens')}
                   </Button>
                   <Button
                     variant="outline"
@@ -205,14 +211,14 @@ export function DocumentTokenize() {
                       busy || !existingSentenceTokens.length || existingSentenceTokens.length === 1
                     }
                   >
-                    Reset sentences
+                    {t('Reset sentences')}
                   </Button>
                   <Button
                     variant="outline"
                     onClick={splitAtSegments}
                     disabled={busy || !segmentSplits.positions.length}
                   >
-                    Split at segments
+                    {t('Split at segments')}
                   </Button>
                 </div>
               )}
@@ -221,50 +227,34 @@ export function DocumentTokenize() {
             {helpOpen && (
               <div>
                 <p className="text-sm mb-2 mt-2">
-                  Existing tokens are highlighted. Untokenized text appears as plain text.
+                  {t('Existing tokens are highlighted. Untokenized text appears as plain text.')}
                 </p>
                 <div className="flex flex-col gap-[0.4rem] mb-2">
                   <div>
-                    <kbd className="rounded-sm border bg-muted px-1.5 py-0.5 text-xs">
-                      Left click
-                    </kbd>{' '}
-                    + <kbd className="rounded-sm border bg-muted px-1.5 py-0.5 text-xs">Drag</kbd>:
-                    Create token from selection, or merge tokens
+                    {tx(
+                      '<kbd>Left click</kbd> + <kbd>Drag</kbd>: Create token from selection, or merge tokens',
+                      { kbd },
+                    )}
+                  </div>
+                  <div>{tx('<kbd>Left click</kbd>: Split token', { kbd })}</div>
+                  <div>{tx('<kbd>Esc</kbd>: Close the split points', { kbd })}</div>
+                  <div>{tx('<kbd>Right click</kbd>: Delete token', { kbd })}</div>
+                  <div>
+                    {tx(
+                      '<kbd>Ctrl</kbd>/<kbd>Cmd</kbd> + <kbd>Left click</kbd> on token: Split sentence here',
+                      { kbd },
+                    )}
                   </div>
                   <div>
-                    <kbd className="rounded-sm border bg-muted px-1.5 py-0.5 text-xs">
-                      Left click
-                    </kbd>
-                    : Split token
+                    {tx('<kbd>Alt</kbd> + <kbd>Left click</kbd> on token: Open it in Analyze', {
+                      kbd,
+                    })}
                   </div>
                   <div>
-                    <kbd className="rounded-sm border bg-muted px-1.5 py-0.5 text-xs">Esc</kbd>:
-                    Close the split points
-                  </div>
-                  <div>
-                    <kbd className="rounded-sm border bg-muted px-1.5 py-0.5 text-xs">
-                      Right click
-                    </kbd>
-                    : Delete token
-                  </div>
-                  <div>
-                    <kbd className="rounded-sm border bg-muted px-1.5 py-0.5 text-xs">Ctrl</kbd>/
-                    <kbd className="rounded-sm border bg-muted px-1.5 py-0.5 text-xs">Cmd</kbd> +{' '}
-                    <kbd className="rounded-sm border bg-muted px-1.5 py-0.5 text-xs">
-                      Left click
-                    </kbd>{' '}
-                    on token: Split sentence here
-                  </div>
-                  <div>
-                    <kbd className="rounded-sm border bg-muted px-1.5 py-0.5 text-xs">Alt</kbd> +{' '}
-                    <kbd className="rounded-sm border bg-muted px-1.5 py-0.5 text-xs">
-                      Left click
-                    </kbd>{' '}
-                    on token: Open it in Analyze
-                  </div>
-                  <div>
-                    <ChevronUp className="h-3 w-3 inline" /> button above a sentence: Merge it with
-                    the previous sentence
+                    {tx(
+                      '<icon></icon> button above a sentence: Merge it with the previous sentence',
+                      { icon: () => <ChevronUp className="h-3 w-3 inline" /> },
+                    )}
                   </div>
                 </div>
               </div>
@@ -277,13 +267,13 @@ export function DocumentTokenize() {
                 empty state is. Text without sentences is a fault, so a warning. */}
             {!hasSentencePartition && !readOnly && !text?.body && (
               <p className="px-4 py-10 text-center font-sans text-sm text-muted-foreground">
-                No text. Add it on the Baseline tab.
+                {t('No text. Add it on the Baseline tab.')}
               </p>
             )}
             {!hasSentencePartition && !readOnly && text?.body && (
               <Notice tone="warning" icon={Info} className="m-4 font-sans">
-                <p className="font-medium">No sentences yet</p>
-                <p>The text has no sentences. Save it again on the Baseline tab.</p>
+                <p className="font-medium">{t('No sentences yet')}</p>
+                <p>{t('The text has no sentences. Save it again on the Baseline tab.')}</p>
               </Notice>
             )}
             {sentences.map((sentence, index) => (
@@ -305,7 +295,7 @@ export function DocumentTokenize() {
         {/* Not set up is a plain fact, never drawn as if broken. */}
         {!layers?.primaryTokenLayer && (
           <Notice tone="info" icon={Info}>
-            This project is not set up for words. A project maintainer can finish setup.
+            {t('This project is not set up for words. A project maintainer can finish setup.')}
           </Notice>
         )}
       </div>
@@ -316,18 +306,20 @@ export function DocumentTokenize() {
         onOpenChange={(o) => {
           if (!o) setConfirmClear(null);
         }}
-        title="Clear all tokens?"
-        confirmLabel="Clear"
+        title={t('Clear all tokens?')}
+        confirmLabel={t('Clear')}
         onConfirm={() => {
           setConfirmClear(null);
           ops.handleClearTokens();
         }}
       >
         <p>
-          Deletes all <strong>{countOf(existingTokens.length, 'word token')}</strong> in this
-          document, with their morphemes and every annotation and vocabulary link on them.
+          {tx(
+            'Deletes all <strong>{n, plural, one {# word token} other {# word tokens}}</strong> in this document, with their morphemes and every annotation and vocabulary link on them.',
+            { n: existingTokens.length, strong },
+          )}
         </p>
-        <p>Sentence boundaries and sentence-level annotations are unchanged.</p>
+        <p>{t('Sentence boundaries and sentence-level annotations are unchanged.')}</p>
       </ConfirmDeleteDialog>
 
       <ConfirmDeleteDialog
@@ -335,8 +327,8 @@ export function DocumentTokenize() {
         onOpenChange={(o) => {
           if (!o) setConfirmClear(null);
         }}
-        title="Reset sentences?"
-        confirmLabel="Reset"
+        title={t('Reset sentences?')}
+        confirmLabel={t('Reset')}
         confirmDisabled={confirmClear === 'sentences' && !clearSentencesFits(layers)}
         onConfirm={() => {
           setConfirmClear(null);
@@ -344,11 +336,12 @@ export function DocumentTokenize() {
         }}
       >
         <p>
-          Replaces all <strong>{existingSentenceTokens.length.toLocaleString()} sentences</strong>{' '}
-          with a single sentence spanning the whole text. Sentence-level annotations (e.g.
-          translations) are deleted with their sentences.
+          {tx(
+            'Replaces all <strong>{n, number} sentences</strong> with a single sentence spanning the whole text. Sentence-level annotations (e.g. translations) are deleted with their sentences.',
+            { n: existingSentenceTokens.length, strong },
+          )}
         </p>
-        <p>Words, morphemes, and their annotations are unchanged.</p>
+        <p>{t('Words, morphemes, and their annotations are unchanged.')}</p>
         {confirmClear === 'sentences' && !clearSentencesFits(layers) && (
           <p className="text-destructive">{TOO_MANY_SENTENCES}</p>
         )}
@@ -361,13 +354,12 @@ export function DocumentTokenize() {
         onOpenChange={(o) => {
           if (!o) ops.cancelPendingDelete();
         }}
-        title="Delete token?"
-        confirmLabel="Delete"
+        title={t('Delete token?')}
+        confirmLabel={t('Delete')}
         onConfirm={() => ops.confirmPendingDelete()}
       >
         <p>
-          Deleting <strong>“{ops.pendingDelete?.content}”</strong>
-          <LossWords loss={ops.pendingDelete} />
+          <LossWords verb="delete" name={ops.pendingDelete?.content} loss={ops.pendingDelete} />
         </p>
       </ConfirmDeleteDialog>
 
@@ -385,27 +377,26 @@ export function DocumentTokenize() {
         }}
         title={
           ops.pendingStructural?.kind === 'merge'
-            ? 'Merge words?'
+            ? t('Merge words?')
             : ops.pendingStructural?.kind === 'sentence-split'
-              ? 'Split sentence?'
-              : 'Split word?'
+              ? t('Split sentence?')
+              : t('Split word?')
         }
-        confirmLabel={ops.pendingStructural?.kind === 'merge' ? 'Merge' : 'Split'}
+        confirmLabel={ops.pendingStructural?.kind === 'merge' ? t('Merge') : t('Split')}
         onConfirm={() => ops.confirmPendingStructural()}
       >
         {ops.pendingStructural?.kind === 'sentence-split' ? (
           <SentenceSplitWords loss={ops.pendingStructural} />
         ) : (
           <p>
-            {ops.pendingStructural?.kind === 'merge' ? 'Merging' : 'Splitting'}{' '}
-            <strong>“{ops.pendingStructural?.label}”</strong>
             <LossWords
+              verb={ops.pendingStructural?.kind === 'merge' ? 'merge' : 'split'}
+              name={ops.pendingStructural?.label}
               loss={ops.pendingStructural}
-              under={ops.pendingStructural?.kind === 'merge' ? 'these words' : 'this word'}
-            />
+            />{' '}
             {ops.pendingStructural?.kind === 'merge'
-              ? ' Word-level annotations are joined.'
-              : ' Word-level annotations are unchanged.'}
+              ? t('Word-level annotations are joined.')
+              : t('Word-level annotations are unchanged.')}
           </p>
         )}
       </ConfirmDeleteDialog>
@@ -418,35 +409,34 @@ export function DocumentTokenize() {
         onOpenChange={(o) => {
           if (!o) ops.cancelPendingTokenize();
         }}
-        title="Re-tokenize document?"
-        confirmLabel="Re-tokenize"
+        title={t('Re-tokenize document?')}
+        confirmLabel={t('Re-tokenize')}
         onConfirm={() => ops.confirmPendingTokenize()}
       >
         <p>
-          {ops.pendingTokenize?.annotations || ops.pendingTokenize?.links ? (
-            <>
-              Re-tokenizing re-segments this document, discarding{' '}
-              <strong>
-                {countOf(ops.pendingTokenize?.annotations || 0, 'existing annotation')}
-                {ops.pendingTokenize?.links
-                  ? ` and ${countOf(ops.pendingTokenize.links, 'vocabulary link')}`
-                  : ''}
-              </strong>{' '}
-              (word, morpheme, and sentence level).
-            </>
-          ) : (
-            'Re-tokenizing re-segments this document.'
-          )}
+          {ops.pendingTokenize?.links
+            ? tx(
+                'Re-tokenizing re-segments this document, discarding <strong>{a, plural, one {# existing annotation} other {# existing annotations}} and {l, plural, one {# vocabulary link} other {# vocabulary links}}</strong> (word, morpheme, and sentence level).',
+                { a: ops.pendingTokenize.annotations || 0, l: ops.pendingTokenize.links, strong },
+              )
+            : ops.pendingTokenize?.annotations
+              ? tx(
+                  'Re-tokenizing re-segments this document, discarding <strong>{a, plural, one {# existing annotation} other {# existing annotations}}</strong> (word, morpheme, and sentence level).',
+                  { a: ops.pendingTokenize.annotations, strong },
+                )
+              : t('Re-tokenizing re-segments this document.')}
           {ops.pendingTokenize?.cut ? (
             <>
               {' '}
-              New sentence breaks delete up to{' '}
-              <strong>
-                {ops.pendingTokenize.cut}
-                {ops.pendingTokenize.annotations || ops.pendingTokenize.links ? ' more' : ''}{' '}
-                {plural(ops.pendingTokenize.cut, 'annotation')}
-              </strong>
-              .
+              {ops.pendingTokenize.annotations || ops.pendingTokenize.links
+                ? tx(
+                    'New sentence breaks delete up to <strong>{n, plural, one {{n} more annotation} other {{n} more annotations}}</strong>.',
+                    { n: ops.pendingTokenize.cut, strong },
+                  )
+                : tx(
+                    'New sentence breaks delete up to <strong>{n, plural, one {{n} annotation} other {{n} annotations}}</strong>.',
+                    { n: ops.pendingTokenize.cut, strong },
+                  )}
             </>
           ) : null}
         </p>
@@ -455,33 +445,45 @@ export function DocumentTokenize() {
   );
 }
 
-// " deletes 3 annotations and 1 vocabulary link under this word, and shortens
-// 1 vocabulary link." What a delete, split or merge takes, by count only, on
-// whatever layer it lies. `under` names where, for a split or merge, which
-// keeps the words themselves.
-function LossWords({ loss, under = null }) {
+// "Deleting “kai” deletes 3 annotations on it, and shortens 1 vocabulary
+// link." What a delete, split or merge takes, by count only, on whatever layer
+// it lies, as one sentence per verb and per what it takes. A split or merge
+// keeps the words themselves, so what it deletes is under them.
+const LOSS_SENTENCES = {
+  delete: {
+    both: msg(
+      'Deleting <strong>“{name}”</strong> deletes <strong>{gone}</strong> on it, and shortens <strong>{cut}</strong>.',
+    ),
+    gone: msg('Deleting <strong>“{name}”</strong> deletes <strong>{gone}</strong> on it.'),
+    cut: msg('Deleting <strong>“{name}”</strong> shortens <strong>{cut}</strong>.'),
+    none: msg('Deleting <strong>“{name}”</strong>.'),
+  },
+  merge: {
+    both: msg(
+      'Merging <strong>“{name}”</strong> deletes <strong>{gone}</strong> under these words, and shortens <strong>{cut}</strong>.',
+    ),
+    gone: msg(
+      'Merging <strong>“{name}”</strong> deletes <strong>{gone}</strong> under these words.',
+    ),
+    cut: msg('Merging <strong>“{name}”</strong> shortens <strong>{cut}</strong>.'),
+    none: msg('Merging <strong>“{name}”</strong>.'),
+  },
+  split: {
+    both: msg(
+      'Splitting <strong>“{name}”</strong> deletes <strong>{gone}</strong> under this word, and shortens <strong>{cut}</strong>.',
+    ),
+    gone: msg(
+      'Splitting <strong>“{name}”</strong> deletes <strong>{gone}</strong> under this word.',
+    ),
+    cut: msg('Splitting <strong>“{name}”</strong> shortens <strong>{cut}</strong>.'),
+    none: msg('Splitting <strong>“{name}”</strong>.'),
+  },
+};
+function LossWords({ verb, name, loss }) {
   const gone = lossPhrase(loss || {});
   const cut = lossPhrase(loss?.shortened || {});
-  const where = under ? ` under ${under}` : ' on it';
-  return (
-    <>
-      {gone ? (
-        <>
-          {' '}
-          deletes <strong>{gone}</strong>
-          {where}
-        </>
-      ) : null}
-      {gone && cut ? ', and' : null}
-      {cut ? (
-        <>
-          {' '}
-          shortens <strong>{cut}</strong>
-        </>
-      ) : null}
-      .
-    </>
-  );
+  const which = gone && cut ? 'both' : gone ? 'gone' : cut ? 'cut' : 'none';
+  return tx(LOSS_SENTENCES[verb][which], { name, gone, cut, strong });
 }
 
 // The body of the sentence split confirmation: what the split deletes, then
@@ -493,8 +495,10 @@ export function SentenceSplitWords({ loss }) {
     <>
       {gone ? (
         <p>
-          Splitting the sentence here deletes <strong>{gone}</strong> that{' '}
-          {(loss.annotations || 0) + (loss.links || 0) === 1 ? 'crosses' : 'cross'} the new break.
+          {tx(
+            '{n, plural, one {Splitting the sentence here deletes <strong>{gone}</strong> that crosses the new break.} other {Splitting the sentence here deletes <strong>{gone}</strong> that cross the new break.}}',
+            { n: (loss.annotations || 0) + (loss.links || 0), gone, strong },
+          )}
         </p>
       ) : null}
       {mweSplitLines(loss).map(([count, rest]) => (
@@ -547,13 +551,13 @@ export function SentenceComponent({
                 <button
                   type="button"
                   onClick={handleMerge}
-                  aria-label="Merge with above"
+                  aria-label={t('Merge with above')}
                   className="merge-icon inline-flex items-center justify-center rounded-sm h-5 w-5 text-muted-foreground"
                 >
                   <ChevronUp className="h-3 w-3" />
                 </button>
               </TooltipTrigger>
-              <TooltipContent>Merge with above</TooltipContent>
+              <TooltipContent>{t('Merge with above')}</TooltipContent>
             </Tooltip>
           </div>
         )}
@@ -578,7 +582,7 @@ export function SentenceComponent({
                 key={`${piece.begin}-${piece.end}`}
                 className="untokenized"
                 onMouseUp={readOnly ? undefined : (e) => ops.createTokenFromSelection(e, piece)}
-                title={readOnly ? 'Untokenized text' : 'Select text to create token'}
+                title={readOnly ? t('Untokenized text') : t('Select text to create token')}
                 style={{ cursor: readOnly ? 'default' : 'text' }}
               >
                 {piece.content}

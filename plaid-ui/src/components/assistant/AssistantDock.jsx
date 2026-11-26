@@ -3,6 +3,7 @@ import { AssistantPanel } from './AssistantPanel.jsx';
 import { clampWidth } from './panelWidth.js';
 import { SLIDE_CLASSES } from '../../hooks/useSlide.js';
 import { cn } from '../../lib/utils.js';
+import { t } from '../../lib/i18n.js';
 
 // The assistant as part of the app's chrome: one panel on the right, mounted by
 // the shell and not by any screen, holding its conversation across a navigation.
@@ -48,7 +49,7 @@ const Resizer = ({ width, onResize }) => {
     <div
       role="separator"
       aria-orientation="vertical"
-      aria-label="Resize the assistant"
+      aria-label={t('Resize the assistant')}
       className="group absolute inset-y-0 left-0 w-1.5 cursor-col-resize touch-none"
       onPointerDown={onPointerDown}
       onPointerMove={onPointerMove}

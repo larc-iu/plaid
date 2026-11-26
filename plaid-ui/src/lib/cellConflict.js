@@ -15,11 +15,21 @@
 // the one named (Luke's ruling, 2026-10-09).
 
 import { settledId } from '../domain/pendingIds.js';
+import { msg, t } from './i18n.js';
 
 const RECENT = 50;
 
 /** What `whoChanged` answers for a change made by the same account. */
-const YOU = 'You';
+const YOU = 'You'; // i18n-ignore: a marker, never shown: the sentences below say it
+
+// Who made a change, as the sentences below take it: `by` picks the words
+// (you, someone, or the person `name`).
+const byWhom = (who) =>
+  who === YOU
+    ? { by: 'you', name: '' }
+    : who
+      ? { by: 'other', name: who }
+      : { by: 'someone', name: '' };
 
 // An audit time or a document's `timeModified` (ISO instants) with the
 // fraction of a second at nine digits, so two compare as strings.
@@ -71,13 +81,19 @@ const closed = (value) => (/[.!?…]$/u.test(value) ? value : `${value}.`);
  * split or joined meanwhile, so the value was typed for another word. `unit`
  * is 'morpheme' for a morpheme re-segmented meanwhile. */
 export const recutTo = (who, text, unit = 'word') =>
-  `${who || 'Someone'} changed this ${unit} to ${closed(text)}`;
+  t(
+    '{by, select, you {You} someone {Someone} other {{name}}} changed this {unit, select, word {word} morpheme {morpheme} sentence {sentence} other {{unit}}} to {value}',
+    { ...byWhom(who), unit, value: closed(text) },
+  );
 
 /** "b changed this to NOUN.", or "b cleared this." */
 export const changedTo = (who, stored) =>
   stored
-    ? `${who || 'Someone'} changed this to ${closed(stored)}`
-    : `${who || 'Someone'} cleared this.`;
+    ? t('{by, select, you {You} someone {Someone} other {{name}}} changed this to {value}', {
+        ...byWhom(who),
+        value: closed(stored),
+      })
+    : t('{by, select, you {You} someone {Someone} other {{name}}} cleared this.', byWhom(who));
 
 /**
  * The notice for a lexicon link edit refused because someone else changed
@@ -87,20 +103,28 @@ export const changedTo = (who, stored) =>
  * `conflict.unit`), `entry` (the entry changed) or `entryGone`.
  */
 export const linkChangedTo = (who, conflict = {}) => {
-  const by = who || 'Someone';
+  const by = byWhom(who);
   switch (conflict.kind) {
     case 'removed':
-      return `${by} removed this link.`;
+      return t('{by, select, you {You} someone {Someone} other {{name}}} removed this link.', by);
     case 'linked':
-      return conflict.form ? `${by} linked this to ${closed(conflict.form)}` : `${by} linked this.`;
+      return conflict.form
+        ? t('{by, select, you {You} someone {Someone} other {{name}}} linked this to {value}', {
+            ...by,
+            value: closed(conflict.form),
+          })
+        : t('{by, select, you {You} someone {Someone} other {{name}}} linked this.', by);
     case 'token':
-      return `${by} changed this ${conflict.unit || 'word'}.`;
+      return t(
+        '{by, select, you {You} someone {Someone} other {{name}}} changed this {unit, select, word {word} morpheme {morpheme} sentence {sentence} other {{unit}}}.',
+        { ...by, unit: conflict.unit || 'word' },
+      );
     case 'entry':
-      return `${by} changed this entry.`;
+      return t('{by, select, you {You} someone {Someone} other {{name}}} changed this entry.', by);
     case 'entryGone':
-      return `${by} deleted this entry.`;
+      return t('{by, select, you {You} someone {Someone} other {{name}}} deleted this entry.', by);
     default:
-      return `${by} changed this link.`;
+      return t('{by, select, you {You} someone {Someone} other {{name}}} changed this link.', by);
   }
 };
 
@@ -128,22 +152,22 @@ export const announceLinkConflict = (context) => (conflict) =>
  * own (another change came first elsewhere), when the value waits in its
  * cell, drawn or not, to be sent again.
  */
-export const KEPT_IN_CELL = 'Changed elsewhere. Your value is in its cell, not saved.';
+export const KEPT_IN_CELL = msg('Changed elsewhere. Your value is in its cell, not saved.');
 
 /** The toast for a refused cell edit whose row is gone: nothing to put it back into. */
-const NOT_SAVED = (typed) => `Not saved: ${typed}`;
+const NOT_SAVED = (typed) => t('Not saved: {value}', { value: typed });
 
 /**
  * The words of the note under a cell that lost a conflict, "Yours: X · Enter
  * to keep yours", in three parts so the value can sit in its own `<bdi>`.
  */
 export const conflictNoteParts = (typed, recut = null) => ({
-  before: 'Yours: ',
-  value: typed || '(none)',
+  before: t('Yours: '),
+  value: typed || t('(none)'),
   // After a split, join or merge of its row the refused value was typed for
   // a row that is gone: it is shown to copy from, and only the stored one is
   // kept (Luke, 2026-10-15). A row only respelled keeps it on Enter.
-  after: recut?.reshaped ? ' · Esc to keep theirs' : ' · Enter to keep yours',
+  after: recut?.reshaped ? t(' · Esc to keep theirs') : t(' · Enter to keep yours'),
 });
 
 /**
@@ -169,8 +193,8 @@ export const announceCells = (context) => (event) => {
         ),
       );
   } else if (event.kind === 'keptInCell') {
-    context.error(KEPT_IN_CELL, `Failed to update ${event.field}`);
+    context.error(t(KEPT_IN_CELL), t('Failed to update {field}', { field: event.field }));
   } else if (event.kind === 'lost') {
-    context.error(NOT_SAVED(event.typed), 'Changed elsewhere');
+    context.error(NOT_SAVED(event.typed), t('Changed elsewhere'));
   }
 };

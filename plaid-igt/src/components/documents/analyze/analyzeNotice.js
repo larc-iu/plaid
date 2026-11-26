@@ -1,4 +1,4 @@
-import { countOf } from '@ui/lib/plural.js';
+import { t } from '@ui/lib/i18n.js';
 
 // What Auto-analyze's service steps say, from the counts the services report
 // (the core manual, "Service results"). Each step gives its parts, lower-case
@@ -13,29 +13,42 @@ const count = (n) => (Number.isInteger(n) && n > 0 ? n : 0);
 // What a service could not do. Services report per-sentence failures in the
 // result rather than failing the request, and the sentences never sent once
 // the model stopped answering in `sentencesNotAsked`.
-const failureParts = (result, verb) => {
+// `couldNot` words the first, for the step's own verb.
+const failureParts = (result, couldNot) => {
   const failed = Array.isArray(result?.sentencesFailed) ? result.sentencesFailed.length : 0;
   const notAsked = Array.isArray(result?.sentencesNotAsked) ? result.sentencesNotAsked.length : 0;
   return [
-    ...(failed ? [`could not ${verb} ${countOf(failed, 'sentence')}`] : []),
+    ...(failed ? [couldNot(failed)] : []),
     ...(notAsked
-      ? [`stopped early: the model did not answer (${countOf(notAsked, 'sentence')} not asked)`]
+      ? [
+          t(
+            'stopped early: the model did not answer ({n, plural, one {# sentence} other {# sentences}} not asked)',
+            { n: notAsked },
+          ),
+        ]
       : []),
   ];
 };
-
-// A field a service reads only for context, and went on without.
-const missingPart = (name, scope, what) =>
-  name ? [`read no ${what} (no ${scope} field “${name}”)`] : [];
 
 export const translateParts = (result) => {
   const written = count(result?.sentencesWritten);
   return {
     wrote: written > 0,
     parts: [
-      ...(written ? [`proposed translations for ${countOf(written, 'sentence')}`] : []),
-      ...failureParts(result, 'translate'),
-      ...missingPart(result?.glossFieldMissing, 'morpheme', 'glosses'),
+      ...(written
+        ? [
+            t('proposed translations for {n, plural, one {# sentence} other {# sentences}}', {
+              n: written,
+            }),
+          ]
+        : []),
+      ...failureParts(result, (n) =>
+        t('could not translate {n, plural, one {# sentence} other {# sentences}}', { n }),
+      ),
+      // A field the service reads only for context, and went on without.
+      ...(result?.glossFieldMissing
+        ? [t('read no glosses (no morpheme field “{name}”)', { name: result.glossFieldMissing })]
+        : []),
     ],
   };
 };
@@ -47,15 +60,30 @@ export const analyzeParts = (result) => {
   return {
     wrote: written > 0,
     parts: [
-      ...(written ? [`proposed analyses for ${countOf(written, 'word')}`] : []),
+      ...(written
+        ? [t('proposed analyses for {n, plural, one {# word} other {# words}}', { n: written })]
+        : []),
       ...(kept
         ? [
-            `left ${countOf(kept, 'word')} with a person’s morphemes or morpheme glosses alone (“Overwrite human-edited annotations” replaces them)`,
+            t(
+              'left {n, plural, one {# word} other {# words}} with a person’s morphemes or morpheme glosses alone (“Overwrite human-edited annotations” replaces them)',
+              { n: kept },
+            ),
           ]
         : []),
-      ...(unaligned ? [`got no analysis for ${countOf(unaligned, 'word')}`] : []),
-      ...failureParts(result, 'analyze'),
-      ...missingPart(result?.translationFieldMissing, 'sentence', 'translations'),
+      ...(unaligned
+        ? [t('got no analysis for {n, plural, one {# word} other {# words}}', { n: unaligned })]
+        : []),
+      ...failureParts(result, (n) =>
+        t('could not analyze {n, plural, one {# sentence} other {# sentences}}', { n }),
+      ),
+      ...(result?.translationFieldMissing
+        ? [
+            t('read no translations (no sentence field “{name}”)', {
+              name: result.translationFieldMissing,
+            }),
+          ]
+        : []),
     ],
   };
 };
@@ -64,13 +92,17 @@ export const analyzeParts = (result) => {
 // promise about material on screen, so it is only made when something was
 // written.
 export const partsNotice = ({ parts, wrote }) => {
-  const msg = parts.length
-    ? `${parts.join(', ')}.${wrote ? ' Shown in violet until confirmed.' : ''}`
-    : 'Nothing new to apply.';
+  // The clauses are a list of their own messages, so the join stays here.
+  const joined = `${parts.join(', ')}.`; // i18n-ignore: punctuation joining whole clauses
+  const text = parts.length
+    ? wrote
+      ? `${joined} ${t('Shown in violet until confirmed.')}`
+      : joined
+    : t('Nothing new to apply.');
   return {
     level: wrote ? 'success' : 'warning',
-    title: 'Auto-analyze',
-    message: msg.charAt(0).toUpperCase() + msg.slice(1),
+    title: t('Auto-analyze'),
+    message: text.charAt(0).toUpperCase() + text.slice(1),
   };
 };
 

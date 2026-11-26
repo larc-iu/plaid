@@ -7,6 +7,7 @@
 // version known is never written unchecked. Imports nothing, so plain node
 // reaches it.
 export async function atVersion(client, docId, version, send) {
+  // i18n-ignore: an invariant for the developer, and plain node reaches this file
   if (version == null) throw new Error('The document was read with no version.');
   client.documentVersions = { ...client.documentVersions, [docId]: version };
   client.enterStrictMode(docId);

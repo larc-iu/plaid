@@ -21,6 +21,7 @@ import { personDye } from '@ui/domain/projectTartan.js';
 import { renderCommentBody } from './renderCommentBody.js';
 import './comments.css';
 import { isEnter } from '@ui/lib/chords.js';
+import { t } from '@ui/lib/i18n.js';
 
 // Keep a composer's submit button in step with what is typed.
 //
@@ -65,6 +66,10 @@ const PENCIL = icon(
 );
 const TRASH = icon(svg`<path d="M3 6h18" /><path d="M8 6V4h8v2" /><path d="M19 6l-1 14H6L5 6" />`);
 
+// The composer's hint: a format name and key names, the same in any language.
+const composerHint = () =>
+  `Markdown · ${navigator.platform?.startsWith('Mac') ? '⌘' : 'Ctrl'}+Enter`; // i18n-ignore: a format name and key names
+
 const submitOnMetaEnter = (fn) => (e) => {
   // Enter alone inserts a newline: a comment is prose, and losing a paragraph
   // break to an accidental submit is worse than reaching for a modifier.
@@ -89,7 +94,7 @@ function commentRow(comment, ctx) {
           dir="auto"
           rows="3"
           maxlength=${store.bodyMax}
-          aria-label="Edit your comment"
+          aria-label=${t('Edit your comment')}
           .value=${live(editDraft)}
           @input=${onComposerInput(on.changeEdit, (v) => v.trim() && v.trim() !== comment.body)}
           @keydown=${(e) => {
@@ -102,14 +107,14 @@ function commentRow(comment, ctx) {
           }}
         ></textarea>
         <div class="igt-cmt__actions">
-          <button class="igt-cmt__btn" type="button" @click=${on.cancelEdit}>Cancel</button>
+          <button class="igt-cmt__btn" type="button" @click=${on.cancelEdit}>${t('Cancel')}</button>
           <button
             class="igt-cmt__btn igt-cmt__btn--primary"
             type="button"
             ?disabled=${live(!editDraft.trim() || editDraft.trim() === comment.body)}
             @click=${on.saveEdit}
           >
-            Save
+            ${t('Save')}
           </button>
         </div>
       </li>
@@ -128,20 +133,20 @@ function commentRow(comment, ctx) {
           >${initials(name)}</span
         >
         <span class="igt-cmt__author"
-          >${name}${mine ? html`<span class="igt-cmt__you"> (you)</span>` : nothing}</span
+          >${name}${mine ? html`<span class="igt-cmt__you"> ${t('(you)')}</span>` : nothing}</span
         >
         <time
           class="igt-cmt__time"
           datetime=${comment.createdAt}
           title=${new Date(comment.createdAt).toLocaleString()}
         >
-          ${pending ? 'sending…' : timeAgo(comment.createdAt)}
+          ${pending ? t('sending…') : timeAgo(comment.createdAt)}
         </time>
         ${comment.edited
           ? html`<span
               class="igt-cmt__edited"
-              title=${`Edited ${new Date(comment.updatedAt).toLocaleString()}`}
-              >edited</span
+              title=${t('Edited {date}', { date: new Date(comment.updatedAt).toLocaleString() })}
+              >${t('edited')}</span
             >`
           : nothing}
         <!-- Actions ride the byline rather than sitting under the body: icons
@@ -154,8 +159,8 @@ function commentRow(comment, ctx) {
                   ? html`<button
                       class="igt-cmt__icon"
                       type="button"
-                      title="Edit"
-                      aria-label="Edit this comment"
+                      title=${t('Edit')}
+                      aria-label=${t('Edit this comment')}
                       @click=${() => on.startEdit(comment)}
                     >
                       ${PENCIL}
@@ -165,8 +170,8 @@ function commentRow(comment, ctx) {
                   ? html`<button
                       class="igt-cmt__icon igt-cmt__icon--danger"
                       type="button"
-                      title="Delete"
-                      aria-label="Delete this comment"
+                      title=${t('Delete')}
+                      aria-label=${t('Delete this comment')}
                       @click=${() => on.remove(comment)}
                     >
                       ${TRASH}
@@ -231,7 +236,9 @@ export function commentThread(opts) {
               (c) => commentRow(c, ctx),
             )}
           </ul>`
-        : html`<p class="igt-cmt__empty">${canWrite ? 'No comments yet.' : 'No comments.'}</p>`}
+        : html`<p class="igt-cmt__empty">
+            ${canWrite ? t('No comments yet.') : t('No comments.')}
+          </p>`}
       ${canWrite
         ? html`
             <div class="igt-cmt__composer">
@@ -240,23 +247,21 @@ export function commentThread(opts) {
                 dir="auto"
                 rows="2"
                 maxlength=${store.bodyMax}
-                placeholder="Add a comment…"
-                aria-label="Add a comment"
+                placeholder=${t('Add a comment…')}
+                aria-label=${t('Add a comment')}
                 .value=${live(composerDraft)}
                 @input=${onComposerInput(on.changeComposer, (v) => v.trim())}
                 @keydown=${submitOnMetaEnter(on.submit)}
               ></textarea>
               <div class="igt-cmt__composer-foot">
-                <span class="igt-cmt__hint"
-                  >Markdown · ${navigator.platform?.startsWith('Mac') ? '⌘' : 'Ctrl'}+Enter</span
-                >
+                <span class="igt-cmt__hint">${composerHint()}</span>
                 <button
                   class="igt-cmt__btn igt-cmt__btn--primary"
                   type="button"
                   ?disabled=${live(!composerDraft.trim())}
                   @click=${on.submit}
                 >
-                  Comment
+                  ${t('Comment')}
                 </button>
               </div>
             </div>

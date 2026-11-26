@@ -10,6 +10,7 @@ import {
 } from '@/domain/tagsets';
 import { readLexiconField } from '@/domain/igtConfig';
 import { notifyError, notifyInfo } from '@/utils/feedback';
+import { t } from '@ui/lib/i18n.js';
 import { arrowStep, caretAtArrowEdge } from '@ui/lib/bidi.js';
 import { isEnter, isImeKey } from '@ui/lib/chords.js';
 import { keys } from '@/lib/keymap.js';
@@ -499,10 +500,10 @@ export const cells = {
         const saved = el.dataset.orig ?? '';
         el.value = saved;
         this._syncCellClasses(el, saved, tagset);
-        notifyError(`${why}. Not saved`, 'Value not allowed');
+        notifyError(t('{why}. Not saved', { why }), t('Value not allowed'));
         return;
       }
-      notifyError(`${why}. Escape to put the saved value back`, 'Value not allowed');
+      notifyError(t('{why}. Escape to put the saved value back', { why }), t('Value not allowed'));
       // Nothing re-renders after a refusal; the class sync above has already
       // squiggled the cell, so it cannot read as committed. The next commit's
       // sync takes the squiggle off again once the text is a legal value.
@@ -681,7 +682,7 @@ export const cells = {
       return;
     }
     if (namesPendingId(key)) return;
-    notifyError(`Not saved: ${d.typed}`, 'Changed elsewhere');
+    notifyError(t('Not saved: {typed}', { typed: d.typed }), t('Changed elsewhere'));
   },
 
   // Whether a cell's input is still bound to the cell it was focused in. A
@@ -726,13 +727,22 @@ export const cells = {
     const unknown = violations.filter((x) => x.reason === 'unknown').map((x) => x.part);
     const bits = [];
     if (unknown.length) {
-      const list = unknown.map((u) => `"${u}"`).join(', ');
-      const verb = unknown.length === 1 ? 'is not' : 'are not';
-      const where = tagset?.name ? `the ${tagset.name} tagset` : "this field's tagset";
-      bits.push(`${list} ${verb} in ${where}`);
+      const parts = unknown.map((u) => `"${u}"`).join(', ');
+      const n = unknown.length;
+      bits.push(
+        tagset?.name
+          ? t(
+              '{n, plural, one {{parts} is not in the {tagset} tagset} other {{parts} are not in the {tagset} tagset}}',
+              { n, parts, tagset: tagset.name },
+            )
+          : t(
+              "{n, plural, one {{parts} is not in this field's tagset} other {{parts} are not in this field's tagset}}",
+              { n, parts },
+            ),
+      );
     }
     if (violations.some((x) => x.reason === 'empty')) {
-      bits.push('There is a delimiter with nothing beside it');
+      bits.push(t('There is a delimiter with nothing beside it'));
     }
     return bits.join('. ');
   },
@@ -792,9 +802,9 @@ export const cells = {
       if (unchanged && !this._isReviewable(el, 'igt-field')) {
         notifyInfo(
           el.value
-            ? 'This value was made by a person already.'
-            : 'There is nothing proposed here yet.',
-          `Nothing to accept in ${field}`,
+            ? t('This value was made by a person already.')
+            : t('There is nothing proposed here yet.'),
+          t('Nothing to accept in {field}', { field }),
         );
         return;
       }
@@ -804,7 +814,7 @@ export const cells = {
         if (!this._navMove(el, 'next')) el.blur();
         return;
       }
-      if (this._refuseOffList([el], `Nothing accepted in ${field}`, el)) return;
+      if (this._refuseOffList([el], t('Nothing accepted in {field}', { field }), el)) return;
       this.doc.confirmSentenceSpan(sid, field);
       // Same beat as the word gesture, and for a stronger reason: the hop is
       // to the NEXT SENTENCE, so without it the pulse plays on a row already
@@ -882,10 +892,10 @@ export const cells = {
       const map = new Map();
       for (const [bucket, layers] of Object.entries(info?.spanLayers || {})) {
         for (const sl of layers || []) {
-          const t = resolveTagset(sl.config, project?.config);
+          const ts = resolveTagset(sl.config, project?.config);
           // The name rides along so a rejection can say WHICH list refused the
           // value. Nothing in tagsets.js reads it.
-          if (t) map.set(`${bucket}:${sl.name}`, { ...t, name: readTagsetName(sl.config) });
+          if (ts) map.set(`${bucket}:${sl.name}`, { ...ts, name: readTagsetName(sl.config) });
         }
       }
       this._tagsetCache = map;

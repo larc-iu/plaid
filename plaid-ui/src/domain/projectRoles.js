@@ -1,5 +1,6 @@
 import { projectRole } from '@larc-iu/plaid-client';
 import { MAINTAINER_HINT, NO_ACCESS_HINT } from './permissions.js';
+import { msg, t } from '../lib/i18n.js';
 
 // The project ACL as the Access screens work with it. It reports to its
 // callers and never toasts: the screens say what happened.
@@ -23,12 +24,16 @@ export const GRANT_ROLES = ['reader', 'writer', 'maintainer'];
  * Reader and hearing about it. Two of the four lines name what the app holds
  * (texts and a lexicon, a treebank, meaning representations), so the app hands
  * those two over and the other two read the same everywhere.
+ *
+ * Apps build these at module level, so every label and hint is a message
+ * (msg(), the app's two hints included), and the screen that shows one calls
+ * t() on it.
  */
 export const projectRoleOptions = ({ readerHint, writerHint }) => [
-  { value: 'none', label: 'No access', hint: NO_ACCESS_HINT },
-  { value: 'reader', label: 'Reader', hint: readerHint },
-  { value: 'writer', label: 'Writer', hint: writerHint },
-  { value: 'maintainer', label: 'Maintainer', hint: MAINTAINER_HINT },
+  { value: 'none', label: msg('No access'), hint: NO_ACCESS_HINT },
+  { value: 'reader', label: msg('Reader'), hint: readerHint },
+  { value: 'writer', label: msg('Writer'), hint: writerHint },
+  { value: 'maintainer', label: msg('Maintainer'), hint: MAINTAINER_HINT },
 ];
 
 /** The same hints by role, for the pickers that cannot offer 'none'. */
@@ -80,7 +85,7 @@ export const setProjectRole = async ({
   onDataUpdate,
 }) => {
   if (userId === currentUserId) {
-    return { changed: false, refused: 'You cannot change your own role.' };
+    return { changed: false, refused: t('You cannot change your own role.') };
   }
   const current = roleOf(await client.projects.get(projectId), userId);
   if (current === newRole) {
@@ -88,8 +93,9 @@ export const setProjectRole = async ({
     return { changed: false };
   }
 
+  // An audit label, sent to the server: English.
   const label =
-    newRole === 'none' ? `Remove ${userId} from the project` : `Make ${userId} a ${newRole}`;
+    newRole === 'none' ? `Remove ${userId} from the project` : `Make ${userId} a ${newRole}`; // i18n-ignore: an audit label
   await client.withOperation(label, async () => {
     if (current === 'maintainer') await client.projects.removeMaintainer(projectId, userId);
     else if (current === 'writer') await client.projects.removeWriter(projectId, userId);

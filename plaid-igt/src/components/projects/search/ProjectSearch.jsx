@@ -23,17 +23,13 @@ import { runHitsSearch, runFreqSearch } from './searchRunner.js';
 import { SegmentedControl } from '@ui/components/shared/SegmentedControl.jsx';
 import { MarkedText } from '@ui/components/shared/MarkedText.jsx';
 import { hitTo, rememberCaret } from './hitLinks.js';
-import { countOf } from '@ui/lib/plural.js';
+import { t, tx } from '@ui/lib/i18n.js';
 import { isEnter } from '@ui/lib/chords.js';
 import { NoteLine } from './NoteLine.jsx';
 
 // A query as it was searched, in quotes: its spaces kept and shown, and its
 // own direction kept inside a line in the page's.
-const Searched = ({ query }) => (
-  <>
-    “<bdi className="whitespace-pre-wrap">{query}</bdi>”
-  </>
-);
+const searched = (query) => <bdi className="whitespace-pre-wrap">{query}</bdi>;
 
 export const ProjectSearch = ({ project, projectId, client }) => {
   const layerInfo = useMemo(() => getIgtLayerInfo(project), [project]);
@@ -85,10 +81,10 @@ export const ProjectSearch = ({ project, projectId, client }) => {
   // A frequency row is [value, count]. Value orders by the locale rather than
   // case-folded, since these are forms in the language being documented.
   const freqColumns = [
-    { key: 'value', label: 'Value', sort: (r) => r[0], render: (r) => r[0] },
+    { key: 'value', label: t('Value'), sort: (r) => r[0], render: (r) => r[0] },
     {
       key: 'count',
-      label: 'Count',
+      label: t('Count'),
       sort: (r) => r[1],
       align: 'right',
       className: 'tabular-nums text-muted-foreground',
@@ -120,13 +116,15 @@ export const ProjectSearch = ({ project, projectId, client }) => {
       const detail = humanizeError(err, '').replace(/^.*?invalid regex:\s*/i, '');
       notifyError(
         err instanceof PatternError
-          ? `Check your regex: ${err.message}`
+          ? t('Check your regex: {error}', { error: err.message })
           : matchType === 'regex' && err?.status === 400
-            ? `Check your regex: ${detail || 'the pattern is invalid.'}`
+            ? detail
+              ? t('Check your regex: {error}', { error: detail })
+              : t('Check your regex: the pattern is invalid.')
             : isQueryTimeout(err)
               ? detail
-              : 'Try again or simplify the query.',
-        'Failed to search',
+              : t('Try again or simplify the query.'),
+        t('Failed to search'),
       );
     } finally {
       setBusy(false);
@@ -155,9 +153,9 @@ export const ProjectSearch = ({ project, projectId, client }) => {
     const fields = domains.filter((d) => d.kind === 'span');
     const lex = domains.filter((d) => d.kind === 'lexicon');
     return [
-      { label: 'Forms', items: word },
-      ...(fields.length ? [{ label: 'Annotations', items: fields }] : []),
-      ...(lex.length ? [{ label: 'Lexicon', items: lex }] : []),
+      { label: t('Forms'), items: word },
+      ...(fields.length ? [{ label: t('Annotations'), items: fields }] : []),
+      ...(lex.length ? [{ label: t('Lexicon'), items: lex }] : []),
     ];
   }, [domains]);
 
@@ -168,7 +166,7 @@ export const ProjectSearch = ({ project, projectId, client }) => {
         <div className="flex flex-wrap items-end gap-2">
           <SearchInput
             className="min-w-64 flex-1"
-            placeholder="Search this project…"
+            placeholder={t('Search this project…')}
             // A pattern is a format and reads one way. A plain search is
             // whatever was typed into it.
             dir={matchType === 'regex' ? 'ltr' : 'auto'}
@@ -185,7 +183,7 @@ export const ProjectSearch = ({ project, projectId, client }) => {
             <SelectContent>
               {MATCH_TYPES.map((m) => (
                 <SelectItem key={m.id} value={m.id}>
-                  {m.label}
+                  {t(m.label)}
                 </SelectItem>
               ))}
             </SelectContent>
@@ -208,17 +206,17 @@ export const ProjectSearch = ({ project, projectId, client }) => {
             </SelectContent>
           </Select>
           <Button onClick={() => runSearch()} disabled={busy || !queryText.trim()}>
-            {busy ? 'Searching…' : 'Search'}
+            {busy ? t('Searching…') : t('Search')}
           </Button>
         </div>
         <SegmentedControl
-          label="View"
+          label={t('View')}
           className="mt-3"
           value={mode}
           onChange={switchMode}
           options={[
-            { value: 'hits', label: 'Hits' },
-            { value: 'freq', label: 'Frequencies' },
+            { value: 'hits', label: t('Hits') },
+            { value: 'freq', label: t('Frequencies') },
           ]}
         />
       </div>
@@ -227,8 +225,15 @@ export const ProjectSearch = ({ project, projectId, client }) => {
       {result?.mode === 'hits' && (
         <div className="flex flex-col gap-4">
           <p className="text-sm text-muted-foreground">
-            {countOf(result.totalHits, 'hit')} in {countOf(result.totalDocs, 'document')}
-            {result.truncated ? ' (capped, so refine your search for exact totals)' : ''}
+            {result.truncated
+              ? t(
+                  '{n, plural, one {# hit} other {# hits}} in {docs, plural, one {# document} other {# documents}} (capped, so refine your search for exact totals)',
+                  { n: result.totalHits, docs: result.totalDocs },
+                )
+              : t(
+                  '{n, plural, one {# hit} other {# hits}} in {docs, plural, one {# document} other {# documents}}',
+                  { n: result.totalHits, docs: result.totalDocs },
+                )}
           </p>
           {result.groups.map((g) => (
             <div key={g.docId} className="rounded-lg border bg-card">
@@ -237,7 +242,9 @@ export const ProjectSearch = ({ project, projectId, client }) => {
                 <span dir="auto" className="font-text text-sm font-medium">
                   {g.docName}
                 </span>
-                <span className="text-xs text-muted-foreground">{countOf(g.docHits, 'hit')}</span>
+                <span className="text-xs text-muted-foreground">
+                  {t('{n, plural, one {# hit} other {# hits}}', { n: g.docHits })}
+                </span>
               </div>
               <div className="divide-y">
                 {g.rows.map((row) => (
@@ -246,7 +253,7 @@ export const ProjectSearch = ({ project, projectId, client }) => {
                     to={hitTo(projectId, g.docId, row.sentenceId)}
                     onClick={(e) => rememberCaret(e, g.docId, row.sentenceId, row.hitBegin ?? null)}
                     className="block w-full px-4 py-2 text-left hover:bg-muted/50"
-                    title="Open in Analyze"
+                    title={t('Open in Analyze')}
                   >
                     <p className="text-sm">
                       <span className="mr-2 text-xs text-muted-foreground">
@@ -271,13 +278,14 @@ export const ProjectSearch = ({ project, projectId, client }) => {
                 ))}
                 {g.capped ? (
                   <p className="px-4 py-2 text-xs text-muted-foreground">
-                    Too many hits in this document to show them all. Narrow the search to see the
-                    rest.
+                    {t(
+                      'Too many hits in this document to show them all. Narrow the search to see the rest.',
+                    )}
                   </p>
                 ) : (
                   g.rows.length === 0 && (
                     <p className="px-4 py-2 text-xs text-muted-foreground">
-                      Hits in this document could not be located. Open it to look.
+                      {t('Hits in this document could not be located. Open it to look.')}
                     </p>
                   )
                 )}
@@ -286,14 +294,15 @@ export const ProjectSearch = ({ project, projectId, client }) => {
           ))}
           {result.remainingDocs > 0 && (
             <ListHint>
-              Another {countOf(result.remainingHits, 'hit')} in{' '}
-              {countOf(result.remainingDocs, 'more document')} are not shown. Refine your search to
-              see them.
+              {t(
+                'Another {n, plural, one {# hit} other {# hits}} in {docs, plural, one {# more document} other {# more documents}} are not shown. Refine your search to see them.',
+                { n: result.remainingHits, docs: result.remainingDocs },
+              )}
             </ListHint>
           )}
           {result.totalHits === 0 && (
             <p className="break-words py-6 text-center text-sm text-muted-foreground">
-              No hits for <Searched query={result.query} />.
+              {tx('No hits for “{query}”.', { query: searched(result.query) })}
             </p>
           )}
         </div>
@@ -302,12 +311,14 @@ export const ProjectSearch = ({ project, projectId, client }) => {
       {result?.mode === 'freq' && (
         <div className="rounded-lg border bg-card p-4">
           <p className="mb-3 text-sm text-muted-foreground">
-            {countOf(result.totalValues, 'distinct value')} ·{' '}
-            {countOf(result.totalHits, 'total occurrence')}
+            {t(
+              '{n, plural, one {# distinct value} other {# distinct values}} · {total, plural, one {# total occurrence} other {# total occurrences}}',
+              { n: result.totalValues, total: result.totalHits },
+            )}
           </p>
           {result.rows.length === 0 ? (
             <p className="break-words py-6 text-center text-sm text-muted-foreground">
-              No matches for <Searched query={result.query} />.
+              {tx('No matches for “{query}”.', { query: searched(result.query) })}
             </p>
           ) : (
             <DataTable
@@ -316,7 +327,8 @@ export const ProjectSearch = ({ project, projectId, client }) => {
               rowKey={(r) => r[0]}
               id="search-freq"
               defaultSort={{ key: 'count', dir: 'desc' }}
-              noun="value"
+              countLabel={(v) => t('{total} {n, plural, one {value} other {values}}', v)}
+              noMatch={t('No values match.')}
               // The line above already says how many distinct values there
               // are, how many occurrences, and that the list is capped.
               showCount={false}
@@ -327,8 +339,10 @@ export const ProjectSearch = ({ project, projectId, client }) => {
               distinct forms when the line above said 11,130. */}
           {result.totalValues > result.rows.length && (
             <ListHint>
-              Another {countOf(result.totalValues - result.rows.length, 'value')} are not shown.
-              Refine your search to see them.
+              {t(
+                'Another {n, plural, one {# value} other {# values}} are not shown. Refine your search to see them.',
+                { n: result.totalValues - result.rows.length },
+              )}
             </ListHint>
           )}
         </div>
@@ -336,8 +350,9 @@ export const ProjectSearch = ({ project, projectId, client }) => {
 
       {!result && (
         <p className="py-10 text-center text-sm text-muted-foreground">
-          Search word forms, morphemes, annotations, or lexicon links across every document in this
-          project.
+          {t(
+            'Search word forms, morphemes, annotations, or lexicon links across every document in this project.',
+          )}
         </p>
       )}
     </div>

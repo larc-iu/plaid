@@ -1,6 +1,7 @@
 import { toast } from 'sonner';
 
 import { appName } from './uiConfig.js';
+import { msg, t } from './i18n.js';
 
 // Saying that a loaded document did not come back the way it should have.
 //
@@ -15,16 +16,19 @@ import { appName } from './uiConfig.js';
 
 const TOAST_ID = 'plaid-integrity-findings';
 
-export const INTEGRITY_DESCRIPTION =
-  'This document has problems. Copy the details for a bug report.';
+// A message: the place that shows it calls t().
+export const INTEGRITY_DESCRIPTION = msg(
+  'This document has problems. Copy the details for a bug report.',
+);
 
 /**
- * The findings as one line each, machine-pasteable into a bug report.
+ * The findings as one line each, machine-pasteable into a bug report. In
+ * English whatever the interface's language: it is read by a developer.
  */
 export const formatFindingsForClipboard = (findings, { documentId } = {}) => {
   const header = documentId
-    ? `Document integrity findings (document ${documentId})`
-    : 'Document integrity findings';
+    ? `Document integrity findings (document ${documentId})` // i18n-ignore: bug report text for a developer
+    : 'Document integrity findings'; // i18n-ignore: bug report text for a developer
   const lines = (findings || []).map(
     (f) => `[${f.severity}] ${f.code}: ${f.message} ${JSON.stringify(f.context || {})}`,
   );
@@ -47,12 +51,12 @@ export const reportIntegrityFindings = (findings, { documentId } = {}) => {
   const detail = formatFindingsForClipboard(findings, { documentId });
 
   const show = errors.length ? toast.error : toast.warning;
-  show('Data integrity issue detected', {
+  show(t('Data integrity issue detected'), {
     id: TOAST_ID,
-    description: INTEGRITY_DESCRIPTION,
+    description: t(INTEGRITY_DESCRIPTION),
     duration: Infinity,
     action: {
-      label: 'Copy details',
+      label: t('Copy details'),
       onClick: () => navigator.clipboard?.writeText(detail).catch(() => {}),
     },
   });

@@ -1,5 +1,6 @@
 import { notifyError, notifySuccess } from '../../lib/notify.js';
 import { setProjectRole } from '../../domain/projectRoles.js';
+import { t } from '../../lib/i18n.js';
 
 // The Access screens' half of a role change: what `setProjectRole` answers,
 // said to the person.
@@ -7,8 +8,8 @@ import { setProjectRole } from '../../domain/projectRoles.js';
 /** `setProjectRole`, with what it answers said as a toast. */
 export const setProjectRoleNotifying = async (args) => {
   const result = await setProjectRole(args);
-  if (result.refused) notifyError(result.refused);
-  else if (result.changed) notifySuccess('Permissions updated');
+  if (result.refused) notifyError(t(result.refused));
+  else if (result.changed) notifySuccess(t('Permissions updated'));
   return result;
 };
 
@@ -31,7 +32,7 @@ export const setProjectRoleReporting = async (args) => {
     await setProjectRoleNotifying({ ...args, onDataUpdate: refetch });
   } catch (err) {
     console.error('Error updating role:', err);
-    notifyError(err, 'Failed to update permissions');
+    notifyError(err, t('Failed to update permissions'));
     await refetch();
   }
 };

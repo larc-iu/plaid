@@ -7,45 +7,126 @@
 // one table, so a reason core adds later shows as its own code rather than
 // breaking the dialog.
 
-import { countOf, andList } from '@ui/lib/plural.js';
+import { ROLES } from '@larc-iu/plaid-client';
+import { t, msg, listOf } from '@ui/lib/i18n.js';
 import { humanizeError, statusOf } from '@ui/lib/errors.js';
-import { TOKEN_ROLE_WORDS } from './restoreSummary.js';
+
+// Each kind of row: `n` of them named (`count`), and `n` of them said with
+// what the undo does to them (`done`, by `act`, one of ACTS). One verb for one
+// act whatever the kind (REV-RPF3B-7): one the entry deleted is brought back,
+// one it made is removed, one it changed is put back as it was.
+const NOUNS = {
+  value: {
+    count: msg('{n, plural, one {# value} other {# values}}'),
+    done: msg(
+      '{act, select, inserted {{n, plural, one {# value brought back} other {# values brought back}}} deleted {{n, plural, one {# value removed} other {# values removed}}} other {{n, plural, one {# value put back as it was} other {# values put back as they were}}}}',
+    ),
+  },
+  link: {
+    count: msg('{n, plural, one {# link} other {# links}}'),
+    done: msg(
+      '{act, select, inserted {{n, plural, one {# link brought back} other {# links brought back}}} deleted {{n, plural, one {# link removed} other {# links removed}}} other {{n, plural, one {# link put back as it was} other {# links put back as they were}}}}',
+    ),
+  },
+  lexiconEntry: {
+    count: msg('{n, plural, one {# lexicon entry} other {# lexicon entries}}'),
+    done: msg(
+      '{act, select, inserted {{n, plural, one {# lexicon entry brought back} other {# lexicon entries brought back}}} deleted {{n, plural, one {# lexicon entry removed} other {# lexicon entries removed}}} other {{n, plural, one {# lexicon entry put back as it was} other {# lexicon entries put back as they were}}}}',
+    ),
+  },
+  text: {
+    count: msg('{n, plural, one {# text} other {# texts}}'),
+    done: msg(
+      '{act, select, inserted {{n, plural, one {# text brought back} other {# texts brought back}}} deleted {{n, plural, one {# text removed} other {# texts removed}}} other {{n, plural, one {# text put back as it was} other {# texts put back as they were}}}}',
+    ),
+  },
+  // The texts undone, said with the words and sentences of them a text edit
+  // moved, added or removed, which no count a person reads says (RP-6).
+  textWithWords: {
+    done: msg(
+      '{act, select, inserted {{n, plural, one {the text with its words and sentences brought back} other {# texts with their words and sentences brought back}}} deleted {{n, plural, one {the text with its words and sentences removed} other {# texts with their words and sentences removed}}} other {{n, plural, one {the text with its words and sentences put back as it was} other {# texts with their words and sentences put back as they were}}}}',
+    ),
+  },
+  // A document's own row changed is its name and details.
+  document: {
+    done: msg(
+      '{act, select, inserted {{n, plural, one {# document brought back} other {# documents brought back}}} deleted {{n, plural, one {# document removed} other {# documents removed}}} other {{n, plural, one {the document’s name or details put back as they were} other {# documents’ names or details put back as they were}}}}',
+    ),
+  },
+  documentDetail: {
+    count: msg('{n, plural, one {# document detail} other {# document details}}'),
+  },
+  otherAnnotation: {
+    count: msg('{n, plural, one {# other annotation} other {# other annotations}}'),
+    done: msg(
+      '{act, select, inserted {{n, plural, one {# other annotation brought back} other {# other annotations brought back}}} deleted {{n, plural, one {# other annotation removed} other {# other annotations removed}}} other {{n, plural, one {# other annotation put back as it was} other {# other annotations put back as they were}}}}',
+    ),
+  },
+  token: {
+    count: msg('{n, plural, one {# token} other {# tokens}}'),
+    done: msg(
+      '{act, select, inserted {{n, plural, one {# token brought back} other {# tokens brought back}}} deleted {{n, plural, one {# token removed} other {# tokens removed}}} other {{n, plural, one {# token put back as it was} other {# tokens put back as they were}}}}',
+    ),
+  },
+  sentence: {
+    count: msg('{n, plural, one {# sentence} other {# sentences}}'),
+    done: msg(
+      '{act, select, inserted {{n, plural, one {# sentence brought back} other {# sentences brought back}}} deleted {{n, plural, one {# sentence removed} other {# sentences removed}}} other {{n, plural, one {# sentence put back as it was} other {# sentences put back as they were}}}}',
+    ),
+  },
+  word: {
+    count: msg('{n, plural, one {# word} other {# words}}'),
+    done: msg(
+      '{act, select, inserted {{n, plural, one {# word brought back} other {# words brought back}}} deleted {{n, plural, one {# word removed} other {# words removed}}} other {{n, plural, one {# word put back as it was} other {# words put back as they were}}}}',
+    ),
+  },
+  morpheme: {
+    count: msg('{n, plural, one {# morpheme} other {# morphemes}}'),
+    done: msg(
+      '{act, select, inserted {{n, plural, one {# morpheme brought back} other {# morphemes brought back}}} deleted {{n, plural, one {# morpheme removed} other {# morphemes removed}}} other {{n, plural, one {# morpheme put back as it was} other {# morphemes put back as they were}}}}',
+    ),
+  },
+  timeAlignment: {
+    count: msg('{n, plural, one {# time alignment} other {# time alignments}}'),
+    done: msg(
+      '{act, select, inserted {{n, plural, one {# time alignment brought back} other {# time alignments brought back}}} deleted {{n, plural, one {# time alignment removed} other {# time alignments removed}}} other {{n, plural, one {# time alignment put back as it was} other {# time alignments put back as they were}}}}',
+    ),
+  },
+};
+
+// `n` rows of `noun` named, and said with what `act` does to them.
+const named = (noun, n) => t(NOUNS[noun].count, { n });
+const doneOf = (noun) => (n, act) => t(NOUNS[noun].done, { n, act });
 
 // What each kind of row is called, in the order the line names them. Tokens
 // are named by role where the entry's rows say which (see undoneLine). A
 // document's own row is its name and details.
-const KIND_WORDS = [
-  ['spans', ['value', 'values']],
+const KIND_NOUNS = [
+  ['spans', 'value'],
   ['tokens', null],
-  ['vocabLinks', ['link', 'links']],
-  ['vocabItems', ['lexicon entry', 'lexicon entries']],
-  ['texts', ['text', 'texts']],
-  ['documents', null],
-  ['relations', ['other annotation', 'other annotations']],
+  ['vocabLinks', 'link'],
+  ['vocabItems', 'lexiconEntry'],
+  ['texts', 'text'],
+  ['documents', 'document'],
+  ['relations', 'otherAnnotation'],
 ];
 
-const DOCUMENT = ['document', 'documents'];
-
-// What happens to `k` rows by the undo's act on them, one verb for one act
-// whatever the kind (REV-RPF3B-7): one the entry deleted is brought back, one
-// it made is removed, one it changed is put back as it was.
-const VERBS = {
-  inserted: () => 'brought back',
-  deleted: () => 'removed',
-  updated: (k) => `put back as ${k === 1 ? 'it was' : 'they were'}`,
-};
 const ACTS = ['inserted', 'deleted', 'updated'];
 
 // Every part of `c` said by what happens to it (REV-RPF3B-2: a bare count
-// read under the next part's verb). `noun(k)` names `k` rows.
-const byWhatHappens = (c, noun) =>
-  ACTS.filter((a) => c?.[a]).map((a) => `${noun(c[a])} ${VERBS[a](c[a])}`);
+// read under the next part's verb). `said(k, act)` says `k` rows.
+const byWhatHappens = (c, said) => ACTS.filter((a) => c?.[a]).map((a) => said(c[a], a));
 
-const counted = (words) => (k) => countOf(k, ...words);
+// What this app calls the tokens of each role, in the order the line names
+// them.
+const ROLE_NOUNS = {
+  [ROLES.SENTENCE]: 'sentence',
+  [ROLES.WORD]: 'word',
+  [ROLES.MORPHEME]: 'morpheme',
+  [ROLES.TIME_ALIGNMENT]: 'timeAlignment',
+};
 
-const TOKEN_WORDS = ['token', 'tokens'];
-
-const ROLE_ORDER = Object.keys(TOKEN_ROLE_WORDS);
+const ROLE_ORDER = Object.keys(ROLE_NOUNS);
 
 const sum = (c) => (c?.inserted ?? 0) + (c?.updated ?? 0) + (c?.deleted ?? 0);
 
@@ -61,19 +142,12 @@ const tokensByRole = (summary, tokenRows) => {
   const counts = {};
   let n = 0;
   for (const r of tokenRows) {
-    if (left.has(r.id) || !TOKEN_ROLE_WORDS[r.role]) continue;
+    if (left.has(r.id) || !ROLE_NOUNS[r.role]) continue;
     counts[r.role] = (counts[r.role] || 0) + 1;
     n += 1;
   }
   return n === total ? counts : null;
 };
-
-// The texts undone, said with the words and sentences of them a text edit
-// moved, added or removed, which no count a person reads says (RP-6).
-const textWithWords = (n) =>
-  n === 1
-    ? 'the text with its words and sentences'
-    : `${n.toLocaleString()} texts with their words and sentences`;
 
 // The tokens' parts: by role where the rows give the roles and either one
 // role or one act, so each count has its own verb; else as one noun (a job's
@@ -81,13 +155,11 @@ const textWithWords = (n) =>
 const tokenParts = (c, roles, fallback) => {
   const present = roles ? ROLE_ORDER.filter((r) => roles[r]) : [];
   const acts = ACTS.filter((a) => c?.[a]);
-  if (present.length === 1) return byWhatHappens(c, counted(TOKEN_ROLE_WORDS[present[0]]));
+  if (present.length === 1) return byWhatHappens(c, doneOf(ROLE_NOUNS[present[0]]));
   if (present.length > 1 && acts.length === 1) {
-    return present.map(
-      (r) => `${countOf(roles[r], ...TOKEN_ROLE_WORDS[r])} ${VERBS[acts[0]](roles[r])}`,
-    );
+    return present.map((r) => doneOf(ROLE_NOUNS[r])(roles[r], acts[0]));
   }
-  return byWhatHappens(c, counted(fallback));
+  return byWhatHappens(c, doneOf(fallback));
 };
 
 /**
@@ -104,27 +176,16 @@ const tokenParts = (c, roles, fallback) => {
 export const undoneLine = (summary, { tokenRows, tokens } = {}) => {
   const parts = [];
   const withText = tokens === 'with-text' && !tokenRows?.length;
-  for (const [kind, words] of KIND_WORDS) {
+  for (const [kind, noun] of KIND_NOUNS) {
     const n = sum(summary?.undone?.[kind]);
     if (!n) continue;
     const c = summary.undone[kind];
-    if (kind === 'documents') {
-      // A document's own row changed is its name and details.
-      parts.push(
-        ...ACTS.filter((a) => c[a]).map((a) =>
-          a === 'updated'
-            ? `${c[a] === 1 ? 'the document’s name or details' : `${c[a].toLocaleString()} documents’ names or details`} ${VERBS.updated(2)}`
-            : `${countOf(c[a], ...DOCUMENT)} ${VERBS[a](c[a])}`,
-        ),
-      );
-      continue;
-    }
     if (kind === 'texts' && withText) {
-      parts.push(...byWhatHappens(c, textWithWords));
+      parts.push(...byWhatHappens(c, doneOf('textWithWords')));
       continue;
     }
     if (kind !== 'tokens') {
-      parts.push(...byWhatHappens(c, counted(words)));
+      parts.push(...byWhatHappens(c, doneOf(noun)));
       continue;
     }
     const roles = tokensByRole(summary, tokenRows);
@@ -132,34 +193,30 @@ export const undoneLine = (summary, { tokenRows, tokens } = {}) => {
       // Said with the text, or, with no text undone, as tokens: a text
       // edit's are sentences or words, and the job may segment too
       // (S7-1, REV-SJ3-7).
-      if (!sum(summary?.undone?.texts)) parts.push(...byWhatHappens(c, counted(TOKEN_WORDS)));
+      if (!sum(summary?.undone?.texts)) parts.push(...byWhatHappens(c, doneOf('token')));
       continue;
     }
     parts.push(
-      ...tokenParts(
-        c,
-        roles,
-        tokens === 'morphemes' && !tokenRows?.length ? ['morpheme', 'morphemes'] : TOKEN_WORDS,
-      ),
+      ...tokenParts(c, roles, tokens === 'morphemes' && !tokenRows?.length ? 'morpheme' : 'token'),
     );
   }
-  return andList(parts);
+  return listOf(parts);
 };
 
 // Why a row is left, in the order the dialog lists them.
 const REASONS = [
-  ['changed-since', 'Changed again later'],
-  ['changed-between', 'Changed by someone else during the entry'],
-  ['built-on', 'Something was added to it since'],
-  ['needs', 'Needs something not brought back'],
-  ['text-changed-since', 'Text changed since'],
-  ['place-taken', 'Its place is taken'],
-  ['not-permitted', 'Not permitted'],
-  ['locked', 'Document locked by someone else'],
-  ['name-taken', 'Name taken by another document'],
-  ['does-not-fit', 'Would not fit the document'],
-  ['value-not-allowed', 'Value no longer allowed'],
-  ['not-undone', 'Vocabulary name and settings'],
+  ['changed-since', msg('Changed again later')],
+  ['changed-between', msg('Changed by someone else during the entry')],
+  ['built-on', msg('Something was added to it since')],
+  ['needs', msg('Needs something not brought back')],
+  ['text-changed-since', msg('Text changed since')],
+  ['place-taken', msg('Its place is taken')],
+  ['not-permitted', msg('Not permitted')],
+  ['locked', msg('Document locked by someone else')],
+  ['name-taken', msg('Name taken by another document')],
+  ['does-not-fit', msg('Would not fit the document')],
+  ['value-not-allowed', msg('Value no longer allowed')],
+  ['not-undone', msg('Vocabulary name and settings')],
 ];
 const REASON_WORDS = new Map(REASONS);
 const REASON_ORDER = new Map(REASONS.map(([r], i) => [r, i]));
@@ -180,9 +237,10 @@ export const leftGroups = (summary, place = () => null) => {
   for (const row of skipped) {
     let g = groups.get(row.reason);
     if (!g) {
+      const words = REASON_WORDS.get(row.reason);
       g = {
         reason: row.reason,
-        label: REASON_WORDS.get(row.reason) ?? String(row.reason),
+        label: words ? t(words) : String(row.reason),
         count: 0,
         byPlace: new Map(),
         unplaced: 0,
@@ -210,21 +268,21 @@ export const leftGroups = (summary, place = () => null) => {
       places: [
         // In the order the place gives (`rank`), else as first met.
         ...[...byPlace.values()].sort((a, b) => (a.rank ?? 0) - (b.rank ?? 0)),
-        ...(unplaced ? [{ key: null, label: 'Elsewhere', to: null, count: unplaced }] : []),
+        ...(unplaced ? [{ key: null, label: t('Elsewhere'), to: null, count: unplaced }] : []),
       ],
     }));
 };
 
 // What each kind of row left is called, in the nouns of the line of what
 // is undone, in its order (core's `kind` of a row left).
-const ROW_WORDS = [
-  ['span', ['value', 'values']],
+const ROW_NOUNS = [
+  ['span', 'value'],
   ['token', null],
-  ['vocab-link', ['link', 'links']],
-  ['vocab-item', ['lexicon entry', 'lexicon entries']],
-  ['text', ['text', 'texts']],
-  ['document', ['document detail', 'document details']],
-  ['relation', ['other annotation', 'other annotations']],
+  ['vocab-link', 'link'],
+  ['vocab-item', 'lexiconEntry'],
+  ['text', 'text'],
+  ['document', 'documentDetail'],
+  ['relation', 'otherAnnotation'],
 ];
 
 /**
@@ -237,34 +295,34 @@ const ROW_WORDS = [
  */
 export const leftLine = (rows, { tokenRows, tokens } = {}, more = 0) => {
   const roles = new Map((tokenRows || []).map((r) => [r.id, r.role]));
-  const tokenWords = (id) =>
-    TOKEN_ROLE_WORDS[roles.get(id)] ??
-    (tokens === 'morphemes' ? ['morpheme', 'morphemes'] : TOKEN_WORDS);
+  const tokenNoun = (id) =>
+    ROLE_NOUNS[roles.get(id)] ?? (tokens === 'morphemes' ? 'morpheme' : 'token');
   const counts = new Map();
-  const add = (key, words) => {
-    const c = counts.get(key) ?? { n: 0, words };
+  const add = (key, say) => {
+    const c = counts.get(key) ?? { n: 0, say };
     c.n += 1;
     counts.set(key, c);
   };
   for (const r of rows || []) {
     if (r.kind === 'token') {
-      const words = tokenWords(r.id);
-      add(`token ${words[0]}`, words);
+      const noun = tokenNoun(r.id);
+      add(`token ${noun}`, (n) => named(noun, n));
     } else {
-      const words = ROW_WORDS.find(([k]) => k === r.kind)?.[1] ?? [String(r.kind), String(r.kind)];
-      add(r.kind, words);
+      const noun = ROW_NOUNS.find(([k]) => k === r.kind)?.[1];
+      // A kind this table does not know is named by core's own code.
+      add(r.kind, (n) =>
+        noun ? named(noun, n) : t('{n, number} {kind}', { n, kind: String(r.kind) }),
+      );
     }
   }
   const order = (key) => {
     const kind = key.startsWith('token ') ? 'token' : key;
-    const i = ROW_WORDS.findIndex(([k]) => k === kind);
-    return i < 0 ? ROW_WORDS.length : i;
+    const i = ROW_NOUNS.findIndex(([k]) => k === kind);
+    return i < 0 ? ROW_NOUNS.length : i;
   };
-  const parts = [...counts]
-    .sort(([a], [b]) => order(a) - order(b))
-    .map(([, c]) => countOf(c.n, ...c.words));
-  if (more > 0) parts.push(`${more.toLocaleString()} more`);
-  return andList(parts);
+  const parts = [...counts].sort(([a], [b]) => order(a) - order(b)).map(([, c]) => c.say(c.n));
+  if (more > 0) parts.push(t('{n, number} more', { n: more }));
+  return listOf(parts);
 };
 
 /**
@@ -280,12 +338,15 @@ export const leftCounts = (summary) => {
 
 // What core never undoes, by the operation types that wrote it.
 const NOT_UNDONE = [
-  [/^project\//, 'Project settings'],
-  [/^(text-layer|token-layer|span-layer|relation-layer|layer)\//, 'Fields and their settings'],
-  [/^vocab\//, 'Vocabularies and their settings'],
-  [/^(user|invite|api-token)\//, 'Users and invitations'],
-  [/^comment\//, 'Comments'],
-  [/^media\//, 'Recordings'],
+  [/^project\//, msg('Project settings are not undone.')],
+  [
+    /^(text-layer|token-layer|span-layer|relation-layer|layer)\//,
+    msg('Fields and their settings are not undone.'),
+  ],
+  [/^vocab\//, msg('Vocabularies and their settings are not undone.')],
+  [/^(user|invite|api-token)\//, msg('Users and invitations are not undone.')],
+  [/^comment\//, msg('Comments are not undone.')],
+  [/^media\//, msg('Recordings are not undone.')],
 ];
 
 /**
@@ -294,13 +355,14 @@ const NOT_UNDONE = [
  * the table does not know reads "Changes of type <code> are not undone."
  */
 export const notUndoneLines = (summary) => {
-  const words = [];
+  const lines = [];
   for (const { opType } of summary?.notUndone || []) {
-    const w = NOT_UNDONE.find(([re]) => re.test(opType))?.[1] ?? `Changes of type ${opType}`;
-    if (!words.includes(w)) words.push(w);
+    const known = NOT_UNDONE.find(([re]) => re.test(opType))?.[1];
+    const line = known ? t(known) : t('Changes of type {type} are not undone.', { type: opType });
+    if (!lines.includes(line)) lines.push(line);
   }
   const unread = unreadableLine(summary);
-  return [...words.map((w) => `${w} are not undone.`), ...(unread ? [unread] : [])];
+  return [...lines, ...(unread ? [unread] : [])];
 };
 
 // The rows an undo leaves where the caller cannot read, which core counts and
@@ -308,8 +370,13 @@ export const notUndoneLines = (summary) => {
 const unreadableLine = (summary) => {
   const n = summary?.skippedUnreadable ?? 0;
   if (!(n > 0)) return '';
-  return `${countOf(n, 'change')} in documents or lexicons you cannot open ${n === 1 ? 'is' : 'are'} not undone.`;
+  return t(
+    '{n, plural, one {# change in documents or lexicons you cannot open is not undone.} other {# changes in documents or lexicons you cannot open are not undone.}}',
+    { n },
+  );
 };
+
+const capitalized = (line) => `${line[0].toUpperCase()}${line.slice(1)}`;
 
 /**
  * The toast after an undo: `{title, message, undid}`. Titled by what the call
@@ -318,20 +385,22 @@ const unreadableLine = (summary) => {
  * sentence in `summary.already` (a job another page undid first, S6-3).
  */
 export const undoneToast = (summary, opts) => {
-  if (summary?.already) return { title: 'Nothing undone', message: summary.already, undid: false };
+  if (summary?.already) {
+    return { title: t('Nothing undone'), message: summary.already, undid: false };
+  }
   const line = undoneLine(summary, opts);
   const { total, unlisted } = leftCounts(summary);
   const left = total ? leftLine(summary?.skipped, opts, unlisted) : '';
   const message = [
-    line ? `${line[0].toUpperCase()}${line.slice(1)}.` : '',
+    line ? capitalized(t('{list}.', { list: line })) : '',
     // Said apart from what was undone, never "as they were" twice
     // (REV-RPF3B-7).
-    left ? `${left[0].toUpperCase()}${left.slice(1)} not undone.` : '',
+    left ? capitalized(t('{list} not undone.', { list: left })) : '',
     unreadableLine(summary),
   ]
     .filter(Boolean)
     .join(' ');
-  return { title: line ? 'Undone' : 'Nothing undone', message, undid: !!line };
+  return { title: line ? t('Undone') : t('Nothing undone'), message, undid: !!line };
 };
 
 /**
@@ -345,14 +414,14 @@ export const isJobUndo = (entry) => /^job:[^/]+\/undo$/.test(entry?.ref ?? '');
 export const undoError = (err, fallback) => {
   const status = statusOf(err);
   if (status === 422 && err?.responseData?.code === 'job-undo-final') {
-    return 'A job’s undo cannot be undone.';
+    return t('A job’s undo cannot be undone.');
   }
-  if (status === 413) return 'Too many changes to undo. An undo takes at most 20,000.';
-  if (status === 422) return 'A project’s deletion cannot be undone.';
+  if (status === 413) return t('Too many changes to undo. An undo takes at most 20,000.');
+  if (status === 422) return t('A project’s deletion cannot be undone.');
   if (status === 404 || (status === 403 && err?.responseData?.unresolved)) {
-    return 'This entry does not exist or cannot be opened.';
+    return t('This entry does not exist or cannot be opened.');
   }
-  if (status === 403) return 'Only a maintainer can undo this entry.';
+  if (status === 403) return t('Only a maintainer can undo this entry.');
   return humanizeError(err, fallback);
 };
 
@@ -367,15 +436,18 @@ export const jobUndoError = (err, fallback) => {
     const n = Number(
       /changed (\d+) rows/.exec(err?.responseData?.error ?? err?.message ?? '')?.[1],
     );
-    const made =
-      Number.isFinite(n) && n > 0
-        ? `This job made ${countOf(n, 'change')}.`
-        : 'This job made more than 20,000 changes.';
-    return `${made} An undo takes at most 20,000, so this job is undone document by document, from each document’s Changes link on this page.`;
+    return Number.isFinite(n) && n > 0
+      ? t(
+          'This job made {n, plural, one {# change} other {# changes}}. An undo takes at most 20,000, so this job is undone document by document, from each document’s Changes link on this page.',
+          { n },
+        )
+      : t(
+          'This job made more than 20,000 changes. An undo takes at most 20,000, so this job is undone document by document, from each document’s Changes link on this page.',
+        );
   }
-  if (status === 409) return 'This job has not ended. A job is undone once it has stopped.';
+  if (status === 409) return t('This job has not ended. A job is undone once it has stopped.');
   if (status === 403 && !err?.responseData?.unresolved)
-    return 'Only a maintainer can undo this job.';
-  if (status === 404 || status === 403) return 'This job does not exist or cannot be opened.';
+    return t('Only a maintainer can undo this job.');
+  if (status === 404 || status === 403) return t('This job does not exist or cannot be opened.');
   return undoError(err, fallback);
 };

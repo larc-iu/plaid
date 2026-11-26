@@ -17,6 +17,7 @@ import { findBaselineTextLayer } from '@/domain/igtConfig';
 import { nameTakenMessage } from '@ui/lib/documentNames.js';
 import { createOnce } from '@ui/lib/createOnce.js';
 import { isEnter } from '@ui/lib/chords.js';
+import { t } from '@ui/lib/i18n.js';
 
 // A name of only invisible characters is no name, as one of only spaces is
 // not. The set is core's (plaid.sql.common/visible?): White_Space, Cc, Cf and
@@ -50,13 +51,13 @@ export const NewDocument = ({ projectId, client, canManage }) => {
 
   const handleCreateDocument = async () => {
     if (!named(documentName)) {
-      notifyError('Name the document.', 'Failed to create the document');
+      notifyError(t('Name the document.'), t('Failed to create the document'));
       return;
     }
     setIsCreating(true);
     const name = documentName.trim();
     try {
-      if (!client) throw new Error('Authentication required');
+      if (!client) throw new Error(t('Authentication required'));
       const newDocument = await createOnce(mint, (id) =>
         client.documents.create(projectId, name, undefined, undefined, { id }),
       );
@@ -74,7 +75,7 @@ export const NewDocument = ({ projectId, client, canManage }) => {
       } catch (error) {
         console.error('Failed to give the new document its text:', error);
       }
-      notifySuccess(`Document “${name}” created`);
+      notifySuccess(t('Document “{name}” created', { name }));
       setDocumentName('');
       setOpen(false);
       // A new document is empty, so the next thing to do is type its text.
@@ -86,7 +87,7 @@ export const NewDocument = ({ projectId, client, canManage }) => {
         return;
       }
       console.error('Failed to create document:', error);
-      notifyError(error, 'Failed to create the document');
+      notifyError(error, t('Failed to create the document'));
     } finally {
       setIsCreating(false);
     }
@@ -100,7 +101,7 @@ export const NewDocument = ({ projectId, client, canManage }) => {
           setOpen(true);
         }}
       >
-        <Plus className="h-4 w-4" /> New document
+        <Plus className="h-4 w-4" /> {t('New document')}
       </Button>
 
       <Dialog open={open} onOpenChange={setOpen}>
@@ -109,10 +110,10 @@ export const NewDocument = ({ projectId, client, canManage }) => {
           {...(choosing ? { 'aria-describedby': undefined } : {})}
         >
           <DialogHeader>
-            <DialogTitle>New document</DialogTitle>
+            <DialogTitle>{t('New document')}</DialogTitle>
             {!choosing && (
               <DialogDescription>
-                Name the document. Its text goes on the Baseline tab.
+                {t('Name the document. Its text goes on the Baseline tab.')}
               </DialogDescription>
             )}
           </DialogHeader>
@@ -127,9 +128,9 @@ export const NewDocument = ({ projectId, client, canManage }) => {
                   <PenLine className="h-4 w-4 text-muted-foreground" />
                 </span>
                 <span className="flex-1">
-                  <span className="block text-sm font-medium">Blank document</span>
+                  <span className="block text-sm font-medium">{t('Blank document')}</span>
                   <span className="block text-xs text-muted-foreground">
-                    Name it now and add its text on the Baseline tab.
+                    {t('Name it now and add its text on the Baseline tab.')}
                   </span>
                 </span>
                 <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" />
@@ -142,10 +143,13 @@ export const NewDocument = ({ projectId, client, canManage }) => {
                   <AudioLines className="h-4 w-4 text-muted-foreground" />
                 </span>
                 <span className="flex-1">
-                  <span className="block text-sm font-medium">Import from ELAN or Praat</span>
+                  <span className="block text-sm font-medium">
+                    {t('Import from ELAN or Praat')}
+                  </span>
                   <span className="block text-xs text-muted-foreground">
-                    One document per .eaf or .TextGrid file, with its tiers, speakers and time
-                    alignment.
+                    {t(
+                      'One document per .eaf or .TextGrid file, with its tiers, speakers and time alignment.',
+                    )}
                   </span>
                 </span>
                 <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" />
@@ -154,10 +158,10 @@ export const NewDocument = ({ projectId, client, canManage }) => {
           ) : (
             <>
               <div className="flex flex-col gap-1.5">
-                <Label htmlFor="doc-name">Document name</Label>
+                <Label htmlFor="doc-name">{t('Document name')}</Label>
                 <Input
                   id="doc-name"
-                  placeholder="Enter document name"
+                  placeholder={t('Enter document name')}
                   value={documentName}
                   onChange={(e) => {
                     mint.current = null;
@@ -179,13 +183,13 @@ export const NewDocument = ({ projectId, client, canManage }) => {
               </div>
               <DialogFooter>
                 <Button variant="outline" onClick={() => setOpen(false)} disabled={isCreating}>
-                  Cancel
+                  {t('Cancel')}
                 </Button>
                 <Button
                   onClick={handleCreateDocument}
                   disabled={!named(documentName) || isCreating}
                 >
-                  {isCreating ? 'Creating…' : 'Create'}
+                  {isCreating ? t('Creating…') : t('Create')}
                 </Button>
               </DialogFooter>
             </>

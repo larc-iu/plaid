@@ -3,6 +3,7 @@ import { useProjectRoster } from '../../hooks/useProjectRoster.js';
 import { useManagedProject } from '../../hooks/useManagedProject.js';
 import { useDocumentTitle } from '../../hooks/useDocumentTitle.js';
 import { appRoutes } from '../../lib/uiConfig.js';
+import { t } from '../../lib/i18n.js';
 import { ActivityPanel } from './ActivityPanel.jsx';
 import { Loading } from './Loading.jsx';
 import { SectionHeader } from './SectionHeader.jsx';
@@ -19,7 +20,7 @@ export const ProjectActivityPage = ({ tabs: Tabs }) => {
   const client = getClient();
   const roster = useProjectRoster(client, project);
 
-  useDocumentTitle('Activity', project?.name);
+  useDocumentTitle(t('Activity'), project?.name);
 
   if (loading)
     return (
@@ -35,7 +36,7 @@ export const ProjectActivityPage = ({ tabs: Tabs }) => {
   return (
     <div className="w-full">
       <Tabs projectId={projectId} project={project} />
-      <SectionHeader title="Activity" />
+      <SectionHeader title={t('Activity')} />
       <div className="w-full">
         <ActivityPanel
           client={client}

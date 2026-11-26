@@ -12,6 +12,7 @@ import { Link, useSearchParams } from 'react-router-dom';
 import { Button } from '@ui/components/ui/button';
 import { DELETE_BUTTON_CLASS } from '@ui/lib/destructive.js';
 import { DeleteSegmentsDialog } from './DeleteSegmentsDialog.jsx';
+import { t, tx } from '@ui/lib/i18n.js';
 
 export function DocumentMedia() {
   const { doc, readOnly, canWrite, writeLock, asOf } = useDocumentCtx();
@@ -88,7 +89,7 @@ export function DocumentMedia() {
                   !mediaOps.alignmentTokens.length
                 }
               >
-                Delete segments
+                {t('Delete segments')}
               </Button>
             </>
           )
@@ -101,10 +102,16 @@ export function DocumentMedia() {
           // sentence of the whole recording into Analyze.
           mediaOps.alignmentTokens.length > 0 && canWrite ? (
             <p className="mt-3 border-t pt-3 text-xs text-muted-foreground">
-              <Link to={tokenizeTo} className="underline underline-offset-4">
-                Split at segments
-              </Link>
-              , on the Tokenize tab, makes each of these a sentence.
+              {tx(
+                '<link>Split at segments</link>, on the Tokenize tab, makes each of these a sentence.',
+                {
+                  link: (c) => (
+                    <Link to={tokenizeTo} className="underline underline-offset-4">
+                      {c}
+                    </Link>
+                  ),
+                },
+              )}
             </p>
           ) : null
         }

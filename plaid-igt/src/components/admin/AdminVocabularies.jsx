@@ -4,6 +4,7 @@ import { DataTable } from '@ui/components/shared/data-table';
 import { notifyError, humanizeError } from '@/utils/feedback';
 import { textIncludes } from '@ui/domain/collation.js';
 import { ProjectLink } from './ProjectLink';
+import { t } from '@ui/lib/i18n.js';
 
 // Every vocabulary belongs to one project and other projects may link it, so
 // which projects use one is invisible from inside any of them. This is the
@@ -25,7 +26,7 @@ export const AdminVocabularies = ({ client }) => {
       setProjects(projectList || []);
     } catch (err) {
       console.error('Error loading vocabularies:', err);
-      notifyError(humanizeError(err), 'Failed to load the vocabularies');
+      notifyError(humanizeError(err), t('Failed to load the vocabularies'));
     } finally {
       setLoading(false);
     }
@@ -60,7 +61,7 @@ export const AdminVocabularies = ({ client }) => {
   const columns = [
     {
       key: 'name',
-      label: 'Name',
+      label: t('Name'),
       sort: (v) => (v.name || '').toLowerCase(),
       render: (v) => (
         <Link to={`/vocabularies/${v.id}`} className="font-medium hover:underline">
@@ -70,7 +71,7 @@ export const AdminVocabularies = ({ client }) => {
     },
     {
       key: 'project',
-      label: 'Project',
+      label: t('Project'),
       sort: (v) => (v.homeLabel || '').toLowerCase(),
       render: (v) => (
         <ProjectLink project={v.home} dir="auto" className="hover:underline">
@@ -80,7 +81,7 @@ export const AdminVocabularies = ({ client }) => {
     },
     {
       key: 'projects',
-      label: 'Used by',
+      label: t('Used by'),
       sort: (v) => v.projects.length,
       render: (v) => (
         <span className="flex flex-wrap gap-x-2 gap-y-1">
@@ -105,11 +106,12 @@ export const AdminVocabularies = ({ client }) => {
       id="admin-vocabularies"
       defaultSort={{ key: 'name', dir: 'asc' }}
       search={{
-        placeholder: 'Search vocabularies…',
+        placeholder: t('Search vocabularies…'),
         match: (v, q) => textIncludes(v.name || '', q),
       }}
       noun="vocabulary"
-      empty="No vocabularies."
+      empty={t('No vocabularies.')}
+      noMatch={t('No vocabularies match.')}
       loading={loading}
     />
   );

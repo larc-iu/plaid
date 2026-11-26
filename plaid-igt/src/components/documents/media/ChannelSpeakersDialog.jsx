@@ -15,6 +15,7 @@ import { notifyError } from '@/utils/feedback';
 import { keptChannelsWav, readChannelFile } from '@/domain/media/mixRecordings';
 import { keptChannelsBytes, startingQuality } from '@/domain/media/mixdown';
 import { QualityChoice } from './QualityChoice.jsx';
+import { t } from '@ui/lib/i18n.js';
 
 // One file chosen under Per speaker: a recording made elsewhere with a
 // speaker on each channel. Nothing is mixed. The dialog reads how many
@@ -106,7 +107,10 @@ export function ChannelSpeakersDialog({
     } catch (error) {
       if (abort.signal.aborted) return;
       console.error('Converting the recording failed:', error);
-      notifyError(error?.message || 'The recording could not be converted.', 'Failed to convert');
+      notifyError(
+        error?.message || t('The recording could not be converted.'),
+        t('Failed to convert'),
+      );
       setConverting(false);
     }
   };
@@ -123,12 +127,12 @@ export function ChannelSpeakersDialog({
     >
       <DialogContent
         className="max-w-lg"
-        closeLabel="Close Speakers per channel"
+        closeLabel={t('Close Speakers per channel')}
         onInteractOutside={(e) => converting && e.preventDefault()}
       >
         <DialogHeader>
-          <DialogTitle>Speakers per channel</DialogTitle>
-          <DialogDescription>One file with a speaker on each channel.</DialogDescription>
+          <DialogTitle>{t('Speakers per channel')}</DialogTitle>
+          <DialogDescription>{t('One file with a speaker on each channel.')}</DialogDescription>
         </DialogHeader>
 
         <div className="flex flex-col gap-3">
@@ -139,16 +143,16 @@ export function ChannelSpeakersDialog({
             >
               {' · '}
               {read.status === 'reading'
-                ? 'Reading…'
+                ? t('Reading…')
                 : read.status === 'failed'
-                  ? 'Cannot be decoded.'
-                  : `${read.channels} ${read.channels === 1 ? 'channel' : 'channels'}`}
+                  ? t('Cannot be decoded.')
+                  : t('{n, plural, one {# channel} other {# channels}}', { n: read.channels })}
             </span>
           </p>
 
           {oneChannel && (
             <p className="text-xs font-medium text-destructive">
-              One channel. Choose two or more files, or a file with a channel per speaker.
+              {t('One channel. Choose two or more files, or a file with a channel per speaker.')}
             </p>
           )}
 
@@ -156,14 +160,16 @@ export function ChannelSpeakersDialog({
             <ul className="flex flex-col gap-2">
               {speakers.map((speaker, i) => (
                 <li key={i} className="grid grid-cols-[6rem_minmax(0,1fr)] items-center gap-3">
-                  <span className="text-xs text-muted-foreground">Channel {i + 1}</span>
+                  <span className="text-xs text-muted-foreground">
+                    {t('Channel {n}', { n: i + 1 })}
+                  </span>
                   <Input
                     value={speaker}
                     list={SPEAKER_LIST_ID}
-                    placeholder="Speaker"
+                    placeholder={t('Speaker')}
                     compose
                     autoComplete="off"
-                    aria-label={`Channel ${i + 1} speaker`}
+                    aria-label={t('Channel {n} speaker', { n: i + 1 })}
                     disabled={converting}
                     className="h-8 text-xs"
                     onChange={(e) =>
@@ -182,7 +188,7 @@ export function ChannelSpeakersDialog({
 
           {convert && !oneChannel && (
             <>
-              <p className="text-xs text-muted-foreground">Uploaded as a WAV.</p>
+              <p className="text-xs text-muted-foreground">{t('Uploaded as a WAV.')}</p>
               <QualityChoice
                 value={quality}
                 onChange={setChosen}
@@ -196,15 +202,22 @@ export function ChannelSpeakersDialog({
 
           {overLimit && (
             <p className="text-xs font-medium text-destructive">
-              This server accepts {formatBytes(maxBytes, { against: bytes })}.{' '}
-              {convert ? 'The WAV is' : 'The file is'} {formatBytes(bytes, { against: maxBytes })}.
+              {convert
+                ? t('This server accepts {max}. The WAV is {size}.', {
+                    max: formatBytes(maxBytes, { against: bytes }),
+                    size: formatBytes(bytes, { against: maxBytes }),
+                  })
+                : t('This server accepts {max}. The file is {size}.', {
+                    max: formatBytes(maxBytes, { against: bytes }),
+                    size: formatBytes(bytes, { against: maxBytes }),
+                  })}
             </p>
           )}
 
           {converting && (
             <div className="flex flex-col gap-1" aria-live="polite">
-              <Progress label="Conversion progress" />
-              <p className="text-xs text-muted-foreground">Converting to WAV.</p>
+              <Progress label={t('Conversion progress')} />
+              <p className="text-xs text-muted-foreground">{t('Converting to WAV.')}</p>
             </div>
           )}
         </div>
@@ -214,10 +227,10 @@ export function ChannelSpeakersDialog({
             variant="outline"
             onClick={() => (converting ? stopConverting() : onOpenChange(false))}
           >
-            Cancel
+            {t('Cancel')}
           </Button>
           <Button onClick={upload} disabled={!canUpload}>
-            Upload
+            {t('Upload')}
           </Button>
         </DialogFooter>
       </DialogContent>

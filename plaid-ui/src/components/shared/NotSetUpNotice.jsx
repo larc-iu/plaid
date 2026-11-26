@@ -1,4 +1,5 @@
 import { Link } from 'react-router-dom';
+import { t, tx } from '../../lib/i18n.js';
 import { Notice } from './Notice.jsx';
 
 // What a screen says in a project the app has no layers in yet: the fact,
@@ -8,19 +9,18 @@ import { Notice } from './Notice.jsx';
 // what is.
 export const NotSetUpNotice = ({ app, canManage, setupHref, title = true, className }) => (
   <Notice tone="info" className={className}>
-    {title && <p className="font-medium">Not set up for {app}</p>}
+    {title && <p className="font-medium">{t('Not set up for {app}', { app })}</p>}
     <p className={title ? 'mt-1' : undefined}>
-      This project is not set up for {app}.{' '}
-      {canManage ? (
-        <>
-          <Link className="font-medium underline underline-offset-2" to={setupHref}>
-            Set it up
-          </Link>
-          .
-        </>
-      ) : (
-        'A project maintainer can set it up.'
-      )}
+      {canManage
+        ? tx('This project is not set up for {app}. <a>Set it up</a>.', {
+            app,
+            a: (c) => (
+              <Link className="font-medium underline underline-offset-2" to={setupHref}>
+                {c}
+              </Link>
+            ),
+          })
+        : t('This project is not set up for {app}. A project maintainer can set it up.', { app })}
     </p>
   </Notice>
 );

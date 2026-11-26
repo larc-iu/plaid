@@ -10,6 +10,7 @@ import {
 import { morphemeGlossReading, readingTagset } from '@/domain/tagsets';
 import { trimIgnoredEdges } from '@/domain/igtConfig';
 import { entryName } from '@/domain/vocabLookup.js';
+import { t } from '@ui/lib/i18n.js';
 import { morphFormOf, numHtml } from './shared.js';
 
 // The pair picker: a morpheme's link and value picked together. Alt+Down on a
@@ -165,14 +166,18 @@ export const pairPicker = {
   // for a reader (see _pairRowCells, which draws exactly these).
   _pairShown(row, multiVocab = false) {
     const tags = [];
-    if (row.current) tags.push('current');
+    if (row.current) tags.push(t('current'));
     // Rounded down, as every confidence is (plaid-ui domain/confidence.js).
     if (row.model) {
-      tags.push(row.prob != null ? `machine ${Math.floor(row.prob * 100 + 1e-9)}%` : 'machine');
+      tags.push(
+        row.prob != null
+          ? t('machine {p}%', { p: Math.floor(row.prob * 100 + 1e-9) })
+          : t('machine'),
+      );
     }
     if (row.count) tags.push(`×${row.count}`);
     if (row.current && row.item && this.doc.reviewableState(row.linkState)) {
-      tags.push('unconfirmed');
+      tags.push(t('unconfirmed'));
     }
     // A row that names no entry shows nothing of the one it carries.
     const vocab =
@@ -180,7 +185,7 @@ export const pairPicker = {
     const detail = vocab ? this._vocabItemDetail(row.item, vocab) : '';
     return {
       value: row.value,
-      entry: row.named && row.item ? row.item.form : row.current && !row.item ? 'no entry' : '',
+      entry: row.named && row.item ? row.item.form : row.current && !row.item ? t('no entry') : '',
       senseValue: row.senseValue || '',
       vocab: multiVocab && vocab && row.vocabName ? row.vocabName : '',
       description: row.description || '',
@@ -243,7 +248,7 @@ export const pairPicker = {
             this._morphemeSubject(morph, word, word.morphemes || []),
             index,
             value,
-          )}${entry ? `, linked to "${entry}"` : ''}`
+          )}${entry ? `, linked to "${entry}"` : ''}` // i18n-ignore: History's label, stored with the edit
         : null;
     return this.doc.labelled(label, () =>
       this.doc.setMorphemePair(morph.id, {
@@ -299,13 +304,13 @@ export const pairPicker = {
           ? html`<a
               class="igt-pair__entry igt-vocab-pop__form igt-vocab-pop__goto"
               href=${entryLink}
-              title="Open this entry in the lexicon"
+              title=${t('Open this entry in the lexicon')}
               @click=${(e) => e.stopPropagation()}
               >${form}</a
             >`
           : html`<span class="igt-pair__entry igt-vocab-pop__form">${form}</span>`
         : row.current && !row.item
-          ? html`<span class="igt-pair__entry igt-pair__none">no entry</span>`
+          ? html`<span class="igt-pair__entry igt-pair__none">${t('no entry')}</span>`
           : html`<span class="igt-pair__entry"></span>`;
     const shown = this._pairShown(row, multiVocab);
     // Under a value the entry's detail has a line of its own. A row with no
@@ -327,7 +332,9 @@ export const pairPicker = {
         ${beside ? html`<span class="igt-pair__desc">${shown.detail}</span>` : nothing}
         <span class="igt-pair__end">
           <span class="igt-pair__tags">${shown.tags}</span>
-          ${this._pairConfirms(row) ? html`<span class="igt-vocab-pop__ok">accept</span>` : nothing}
+          ${this._pairConfirms(row)
+            ? html`<span class="igt-vocab-pop__ok">${t('accept')}</span>`
+            : nothing}
           ${extra}
         </span>
       </span>

@@ -9,6 +9,7 @@ import { nameKey } from '@ui/lib/nameKey.js';
 import { sameNameIgnoringCase } from '@/domain/nameMatch';
 import { RowControls } from '@/components/shared/RowControls';
 import { useListManager } from './useListManager';
+import { t } from '@ui/lib/i18n.js';
 import {
   Select,
   SelectTrigger,
@@ -49,7 +50,8 @@ export const DocumentMetadataManager = ({
     report,
   } = useListManager({
     listKey: 'enabledFields',
-    noun: 'metadata fields',
+    loadFailed: t('Failed to load the metadata fields'),
+    saveFailed: t('Failed to save the metadata fields'),
     defaults: defaultFields,
     initialData,
     onLoadData,
@@ -72,7 +74,7 @@ export const DocumentMetadataManager = ({
     const trimmedName = nameKey(newFieldName).trim();
 
     if (!trimmedName) {
-      notifyError('Field name cannot be empty', 'Invalid field name');
+      notifyError(t('Field name cannot be empty'), t('Invalid field name'));
       return;
     }
 
@@ -82,7 +84,7 @@ export const DocumentMetadataManager = ({
     // as having no values at all — a silent all-clear in the Validation tab
     // rather than an error.
     if (trimmedName.includes('.')) {
-      notifyError('Field names cannot contain a period', 'Invalid field name');
+      notifyError(t('Field names cannot contain a period'), t('Invalid field name'));
       return;
     }
 
@@ -92,15 +94,15 @@ export const DocumentMetadataManager = ({
     if (isReservedMetadataKey(trimmedName)) {
       notifyError(
         trimmedName === PLAID_NAMESPACE
-          ? `${trimmedName} is reserved for document settings`
-          : `${trimmedName} is reserved for provenance`,
-        'Invalid field name',
+          ? t('{name} is reserved for document settings', { name: trimmedName })
+          : t('{name} is reserved for provenance', { name: trimmedName }),
+        t('Invalid field name'),
       );
       return;
     }
 
     if (enabledFields.some((field) => sameNameIgnoringCase(field.name, trimmedName))) {
-      notifyError('A field with this name already exists', 'Duplicate field');
+      notifyError(t('A field with this name already exists'), t('Duplicate field'));
       return;
     }
 
@@ -111,12 +113,12 @@ export const DocumentMetadataManager = ({
     if (!saved) return;
 
     setNewFieldName('');
-    notifySuccess(`Field “${trimmedName}” added`);
+    notifySuccess(t('Field “{name}” added', { name: trimmedName }));
   };
 
   const handleDeleteCustomField = async (fieldName) => {
     if (!(await saveChanges(enabledFields.filter((field) => field.name !== fieldName)))) return;
-    notifyInfo(`Field “${fieldName}” removed`);
+    notifyInfo(t('Field “{name}” removed', { name: fieldName }));
   };
 
   const handleKeyPress = (event) => {
@@ -132,7 +134,9 @@ export const DocumentMetadataManager = ({
   };
 
   if (!isInitialized) {
-    return <div className="rounded-lg border p-4 text-sm text-muted-foreground">Loading…</div>;
+    return (
+      <div className="rounded-lg border p-4 text-sm text-muted-foreground">{t('Loading…')}</div>
+    );
   }
 
   // Point a metadata field at a tagset (or at none). Genre, Text type and
@@ -149,7 +153,7 @@ export const DocumentMetadataManager = ({
       // Shown at once, put back when refused.
       console.error('Failed to save the metadata fields:', error);
       setEnabledFields(before);
-      report(error, 'Failed to save the metadata fields');
+      report(error, t('Failed to save the metadata fields'));
     }
   };
 
@@ -162,16 +166,16 @@ export const DocumentMetadataManager = ({
     <div className="flex flex-col gap-8">
       {/* Metadata Fields Table */}
       <div>
-        {showTitle && <p className="mb-4 text-sm font-medium">Metadata fields</p>}
+        {showTitle && <p className="mb-4 text-sm font-medium">{t('Metadata fields')}</p>}
 
         <div className="overflow-hidden rounded-md border">
           <table className="w-full text-sm">
             <thead>
               <tr>
-                <th className="w-[10%] px-3 py-2 text-left font-medium">Enabled</th>
-                <th className="px-3 py-2 text-left font-medium">Field name</th>
+                <th className="w-[10%] px-3 py-2 text-left font-medium">{t('Enabled')}</th>
+                <th className="px-3 py-2 text-left font-medium">{t('Field name')}</th>
                 {tagsetNames.length > 0 && (
-                  <th className="w-[22%] px-3 py-2 text-left font-medium">Tagset</th>
+                  <th className="w-[22%] px-3 py-2 text-left font-medium">{t('Tagset')}</th>
                 )}
                 <th className="w-px px-3 py-2" />
               </tr>
@@ -193,7 +197,11 @@ export const DocumentMetadataManager = ({
                       type="checkbox"
                       className="h-4 w-4 cursor-pointer accent-primary"
                       checked={record.enabled}
-                      aria-label={`${record.enabled ? 'Disable' : 'Enable'} ${record.name}`}
+                      aria-label={
+                        record.enabled
+                          ? t('Disable {name}', { name: record.name })
+                          : t('Enable {name}', { name: record.name })
+                      }
                       onClick={(event) => event.stopPropagation()}
                       onChange={(event) => handleFieldToggle(record.name, event.target.checked)}
                     />
@@ -207,10 +215,10 @@ export const DocumentMetadataManager = ({
                         to={`/projects/${projectId}?tab=validate`}
                         onClick={(event) => event.stopPropagation()}
                         className="ml-2 inline-flex items-center gap-1 rounded-sm bg-destructive/10 px-1.5 py-0.5 align-middle text-xs text-destructive hover:underline"
-                        title="Show these in the Validation tab"
+                        title={t('Show these in the Validation tab')}
                       >
                         <AlertTriangle className="h-3 w-3" />
-                        {violations[`document:${record.name}`]} outside the tagset
+                        {t('{n} outside the tagset', { n: violations[`document:${record.name}`] })}
                       </Link>
                     )}
                   </td>
@@ -225,7 +233,7 @@ export const DocumentMetadataManager = ({
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent>
-                          <SelectItem value={NO_TAGSET}>No tagset</SelectItem>
+                          <SelectItem value={NO_TAGSET}>{t('No tagset')}</SelectItem>
                           {tagsetNames.map((n) => (
                             <SelectItem key={n} value={n}>
                               {n}
@@ -235,7 +243,9 @@ export const DocumentMetadataManager = ({
                               renamed or deleted; keep the dangling name visible
                               rather than letting it read as "none". */}
                           {record.tagset && !tagsetNames.includes(record.tagset) && (
-                            <SelectItem value={record.tagset}>{record.tagset} (missing)</SelectItem>
+                            <SelectItem value={record.tagset}>
+                              {t('{name} (missing)', { name: record.tagset })}
+                            </SelectItem>
                           )}
                         </SelectContent>
                       </Select>
@@ -257,7 +267,7 @@ export const DocumentMetadataManager = ({
                       {...(record.isCustom
                         ? {}
                         : {
-                            removeLabel: 'Reset to default',
+                            removeLabel: t('Reset to default'),
                             removeIcon: RotateCcw,
                             destructive: false,
                           })}
@@ -271,10 +281,10 @@ export const DocumentMetadataManager = ({
 
         {/* Add a field */}
         <div className={showTitle ? 'p-4' : 'mt-4'}>
-          <p className="mb-4 text-sm font-medium">Add a field</p>
+          <p className="mb-4 text-sm font-medium">{t('Add a field')}</p>
           <div className="flex items-center gap-2">
             <Input
-              placeholder="Enter custom field name"
+              placeholder={t('Enter custom field name')}
               value={newFieldName}
               onChange={(event) => setNewFieldName(event.target.value)}
               onKeyDown={handleKeyPress}
@@ -284,7 +294,7 @@ export const DocumentMetadataManager = ({
               onClick={handleAddCustomField}
               disabled={!newFieldName.trim() || wouldBeDuplicate()}
             >
-              <Plus className="h-4 w-4" /> Add field
+              <Plus className="h-4 w-4" /> {t('Add field')}
             </Button>
           </div>
         </div>

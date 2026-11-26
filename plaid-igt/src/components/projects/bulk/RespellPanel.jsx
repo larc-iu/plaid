@@ -4,7 +4,8 @@ import { cn } from '@ui/lib/utils';
 import { notifySuccess, notifyWarning } from '@/utils/feedback';
 import { buildReplacer, chainText, respellBarred } from './bulkPlan.js';
 import { planRespell, applyRespell } from './bulkRunner.js';
-import { notifyStopped, countOf, skippedNote, useRun, useWriter } from './bulkShared.js';
+import { notifyStopped, skippedNote, useRun, useWriter } from './bulkShared.js';
+import { t } from '@ui/lib/i18n.js';
 import { scopeTextClass } from '@/domain/scopeColors';
 import { canManageVocabulary } from '@ui/domain/permissions.js';
 import { useVocabularyHomes, vocabularyHome } from '../../../hooks/useVocabularyHomes.js';
@@ -22,6 +23,58 @@ import {
 import { usePreviewFocus } from './usePreviewFocus.js';
 import { respellLabel } from '@/domain/editLabels.js';
 
+// "3 words in 1 document, 2 morpheme forms, 1 lexicon entry respelled": what
+// an apply wrote, each count shown only when there is one.
+const respelledText = ({ wordsChanged, docsChanged, morphemesChanged, entriesChanged }) => {
+  const v = {
+    words: wordsChanged,
+    docs: docsChanged,
+    morphemes: morphemesChanged,
+    entries: entriesChanged,
+  };
+  if (morphemesChanged && entriesChanged)
+    return t(
+      '{words, plural, one {# word} other {# words}} in {docs, plural, one {# document} other {# documents}}, {morphemes, plural, one {# morpheme form} other {# morpheme forms}}, {entries, plural, one {# lexicon entry} other {# lexicon entries}} respelled',
+      v,
+    );
+  if (morphemesChanged)
+    return t(
+      '{words, plural, one {# word} other {# words}} in {docs, plural, one {# document} other {# documents}}, {morphemes, plural, one {# morpheme form} other {# morpheme forms}} respelled',
+      v,
+    );
+  if (entriesChanged)
+    return t(
+      '{words, plural, one {# word} other {# words}} in {docs, plural, one {# document} other {# documents}}, {entries, plural, one {# lexicon entry} other {# lexicon entries}} respelled',
+      v,
+    );
+  return t(
+    '{words, plural, one {# word} other {# words}} in {docs, plural, one {# document} other {# documents}} respelled',
+    v,
+  );
+};
+
+// The confirm's sentence: the words, and the forms and entries that go with
+// them when there are any.
+const willRespellText = (words, morphemes, entries) => {
+  const v = { words, morphemes, entries };
+  if (morphemes && entries)
+    return t(
+      '{words, plural, one {# word} other {# words}} will be respelled, along with {morphemes, plural, one {# morpheme form} other {# morpheme forms}}, and {entries, plural, one {# lexicon entry} other {# lexicon entries}}.',
+      v,
+    );
+  if (morphemes)
+    return t(
+      '{words, plural, one {# word} other {# words}} will be respelled, along with {morphemes, plural, one {# morpheme form} other {# morpheme forms}}.',
+      v,
+    );
+  if (entries)
+    return t(
+      '{words, plural, one {# word} other {# words}} will be respelled, and {entries, plural, one {# lexicon entry} other {# lexicon entries}}.',
+      v,
+    );
+  return t('{words, plural, one {# word} other {# words}} will be respelled.', v);
+};
+
 // Respell: change a word's spelling wherever it occurs, morphemes included.
 const RespellChange = ({ row, includeMorphemes }) => {
   const chain = row.chain ? chainText(row.chain, includeMorphemes) : null;
@@ -29,11 +82,11 @@ const RespellChange = ({ row, includeMorphemes }) => {
     <>
       <ChangeGrid
         lines={[
-          { label: 'Word', cls: scopeTextClass('word'), from: row.old, to: row.new },
+          { label: t('Word'), cls: scopeTextClass('word'), from: row.old, to: row.new },
           ...(chain
             ? [
                 {
-                  label: 'Morphemes',
+                  label: t('Morphemes'),
                   cls: scopeTextClass('morpheme'),
                   from: chain.old,
                   to: chain.new,
@@ -43,13 +96,17 @@ const RespellChange = ({ row, includeMorphemes }) => {
         ]}
       />
       {row.invalid === 'empty' && (
-        <p className="mt-1 text-xs text-destructive">Empty word, so it will be skipped.</p>
+        <p className="mt-1 text-xs text-destructive">{t('Empty word, so it will be skipped.')}</p>
       )}
       {row.invalid === 'refused' && (
-        <p className="mt-1 text-xs text-destructive">Will be skipped. {row.refusal}</p>
+        <p className="mt-1 text-xs text-destructive">
+          {t('Will be skipped.')} {row.refusal}
+        </p>
       )}
       {!row.invalid && includeMorphemes && row.emptiesForm && (
-        <p className="mt-1 text-xs text-destructive">Empty morpheme form, so it will be skipped.</p>
+        <p className="mt-1 text-xs text-destructive">
+          {t('Empty morpheme form, so it will be skipped.')}
+        </p>
       )}
     </>
   );
@@ -75,8 +132,11 @@ export const RespellPanel = ({ project, projectId, client, layerInfo }) => {
   const lockedMark = (vocabId) => {
     const home = homeOf((project.vocabs || []).find((v) => v.id === vocabId));
     return home
-      ? { label: 'maintainers only', title: `Needs a maintainer of “${home.name}”.` }
-      : { label: 'read only', title: 'This vocabulary belongs to another project.' };
+      ? {
+          label: t('maintainers only'),
+          title: t('Needs a maintainer of “{name}”.', { name: home.name }),
+        }
+      : { label: t('read only'), title: t('This vocabulary belongs to another project.') };
   };
   const writer = useWriter(project);
 
@@ -134,6 +194,7 @@ export const RespellPanel = ({ project, projectId, client, layerInfo }) => {
     ? selectedRows.reduce((a, x) => a + x.morphemes.length, 0)
     : 0;
   const total = selectedRows.length + (includeLexicon ? selectedLex.length : 0);
+  const lexCount = includeLexicon ? selectedLex.length : 0;
 
   const doApply = async () => {
     const res = await r.run('Apply', (onProgress) =>
@@ -157,24 +218,18 @@ export const RespellPanel = ({ project, projectId, client, layerInfo }) => {
     if (!res) return;
     const skipped = skippedNote([
       [res.wordsSkipped, 'word'],
-      [res.entriesSkipped, 'lexicon entry', 'lexicon entries'],
+      [res.entriesSkipped, 'lexicon entry'],
     ]);
-    const done =
-      `${countOf(res.wordsChanged, 'word')} in ${countOf(res.docsChanged, 'document')}` +
-      (res.morphemesChanged ? `, ${countOf(res.morphemesChanged, 'morpheme form')}` : '') +
-      (res.entriesChanged
-        ? `, ${countOf(res.entriesChanged, 'lexicon entry', 'lexicon entries')}`
-        : '') +
-      ' respelled';
+    const done = respelledText(res);
     if (res.failed) {
       // The plan stays, so Apply again sends what did not land.
       notifyStopped(res.failed, done, skipped);
       return;
     }
     if (!res.wordsChanged && !res.entriesChanged && skipped) {
-      notifyWarning(skipped.trim(), 'Nothing respelled');
+      notifyWarning(skipped.trim(), t('Nothing respelled'));
     } else {
-      notifySuccess(`${done}.${skipped}`, 'Respelled');
+      notifySuccess(`${done}.${skipped}`, t('Respelled'));
     }
     r.setPlan(null);
   };
@@ -186,23 +241,26 @@ export const RespellPanel = ({ project, projectId, client, layerInfo }) => {
           {...{ find, setFind, matchType, setMatchType, repl, setRepl }}
           onEnter={preview}
         />
-        {error && <p className="text-sm text-destructive">Check your regex: {error}</p>}
+        {error && (
+          <p className="text-sm text-destructive">{t('Check your regex: {error}', { error })}</p>
+        )}
         <div className="flex flex-wrap items-center gap-4 text-sm">
           <label className="flex items-center gap-2">
             <Checkbox checked={includeMorphemes} onChange={setIncludeMorphemes} />
-            Also respell morpheme forms
+            {t('Also respell morpheme forms')}
           </label>
           <label className="flex items-center gap-2">
             <Checkbox checked={includeLexicon} onChange={setIncludeLexicon} />
-            Also respell lexicon entries
+            {t('Also respell lexicon entries')}
           </label>
           <Button className="ml-auto" onClick={preview} disabled={r.busy || !find || !!error}>
-            {r.busy && !plan ? 'Searching…' : 'Preview'}
+            {r.busy && !plan ? t('Searching…') : t('Preview')}
           </Button>
         </div>
         <p className="text-xs text-muted-foreground">
-          Whole words are respelled in the baseline text. Each keeps its morphemes, glosses, and
-          lexicon links. Text outside words (punctuation between them, gaps) is left alone.
+          {t(
+            'Whole words are respelled in the baseline text. Each keeps its morphemes, glosses, and lexicon links. Text outside words (punctuation between them, gaps) is left alone.',
+          )}
         </p>
       </div>
       <Progress text={r.progress} startedAt={r.startedAt} />
@@ -213,13 +271,7 @@ export const RespellPanel = ({ project, projectId, client, layerInfo }) => {
             count={total}
             busy={r.busy}
             onApply={doApply}
-            summary={`${countOf(selectedRows.length, 'word')} will be respelled${
-              morphCount ? `, along with ${countOf(morphCount, 'morpheme form')}` : ''
-            }${
-              includeLexicon && selectedLex.length
-                ? `, and ${countOf(selectedLex.length, 'lexicon entry', 'lexicon entries')}`
-                : ''
-            }.`}
+            summary={willRespellText(selectedRows.length, morphCount, lexCount)}
           >
             <SelectionSummary
               selectable={selectableRow}
@@ -229,7 +281,9 @@ export const RespellPanel = ({ project, projectId, client, layerInfo }) => {
             />
           </ApplyBar>
           {plan.rows.length === 0 && plan.lexiconRows.length === 0 && (
-            <p className="py-6 text-center text-sm text-muted-foreground">No matching words.</p>
+            <p className="py-6 text-center text-sm text-muted-foreground">
+              {t('No matching words.')}
+            </p>
           )}
           <MatchGroups
             selectable={selectableRow}
@@ -254,10 +308,17 @@ export const RespellPanel = ({ project, projectId, client, layerInfo }) => {
                   }
                   disabled={!includeLexicon || openLex.length === 0}
                 />
-                <span className="text-sm font-medium">Lexicon entries</span>
+                <span className="text-sm font-medium">{t('Lexicon entries')}</span>
                 <span className="text-xs text-muted-foreground">
-                  {selectedLex.length} of {countOf(plan.lexiconRows.length, 'entry', 'entries')}{' '}
-                  selected{!includeLexicon && ' (not included)'}
+                  {includeLexicon
+                    ? t('{on} of {n, plural, one {# entry} other {# entries}} selected', {
+                        on: selectedLex.length,
+                        n: plan.lexiconRows.length,
+                      })
+                    : t(
+                        '{on} of {n, plural, one {# entry} other {# entries}} selected (not included)',
+                        { on: selectedLex.length, n: plan.lexiconRows.length },
+                      )}
                 </span>
               </div>
               <div className="divide-y">
@@ -280,7 +341,7 @@ export const RespellPanel = ({ project, projectId, client, layerInfo }) => {
                     </span>
                     {x.invalid === 'empty' && (
                       <span className="text-xs text-destructive">
-                        Empty form, so it will be skipped.
+                        {t('Empty form, so it will be skipped.')}
                       </span>
                     )}
                   </div>

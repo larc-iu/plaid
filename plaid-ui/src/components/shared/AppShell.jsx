@@ -23,6 +23,7 @@ import { useUserKeymap } from '../../hooks/useUserKeymap.js';
 import { useUnsavedGuard } from '../../hooks/useUnsavedDraft.js';
 import { focusMain, useRouteFocus } from '../../hooks/useRouteFocus.js';
 import { SLIDE_CLASSES } from '../../hooks/useSlide.js';
+import { t } from '../../lib/i18n.js';
 
 // The app shell, and the one place the assistant panel is mounted.
 //
@@ -111,7 +112,7 @@ const Shell = ({ adapter, keymap, nav = [], guideHref, adminTo, isAssistantRoute
             }}
             className="sr-only z-50 rounded-md bg-background px-3 py-2 text-sm font-medium shadow focus:not-sr-only focus:fixed focus:left-4 focus:top-2 focus:outline-none focus:ring-2 focus:ring-ring"
           >
-            Skip to content
+            {t('Skip to content')}
           </a>
           {/* Sticky in every app: the band is how a reader leaves a long
               document, and plaid-igt's document bar sits right under it. The
@@ -136,7 +137,7 @@ const Shell = ({ adapter, keymap, nav = [], guideHref, adminTo, isAssistantRoute
                   this app's and leads to its projects. The name stays on screen
                   at every width, since on a phone it is the way to them. */}
               <div className="flex shrink-0 items-center gap-2">
-                <a href="/" aria-label="Plaid home" className="shrink-0">
+                <a href="/" aria-label={t('Plaid home')} className="shrink-0">
                   <PlaidMark className="h-[18px] w-[18px] shrink-0" />
                 </a>
                 <Link to={routes.projects} className="font-bold">
@@ -154,7 +155,7 @@ const Shell = ({ adapter, keymap, nav = [], guideHref, adminTo, isAssistantRoute
                       bundled with the app. */}
                   {guideHref && (
                     <a href={guideHref} target="_blank" rel="noreferrer" className={headerItem()}>
-                      Guide
+                      {t('Guide')}
                     </a>
                   )}
                 </nav>
@@ -175,11 +176,11 @@ const Shell = ({ adapter, keymap, nav = [], guideHref, adminTo, isAssistantRoute
                         to={adminTo}
                         className={cn(headerItem(path.startsWith(adminTo)), 'hidden sm:block')}
                       >
-                        Admin
+                        {t('Admin')}
                       </Link>
                     ) : (
                       <a href={adminUrl()} className={cn(headerItem(), 'hidden sm:block')}>
-                        Admin
+                        {t('Admin')}
                       </a>
                     ))}
                   {/* On a phone the band has room for the name and the account
@@ -188,7 +189,12 @@ const Shell = ({ adapter, keymap, nav = [], guideHref, adminTo, isAssistantRoute
                   {(nav.length > 0 || guideHref || user.isAdmin) && (
                     <DropdownMenu>
                       <DropdownMenuTrigger asChild>
-                        <Button variant="ghost" size="icon" className="sm:hidden" aria-label="Menu">
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="sm:hidden"
+                          aria-label={t('Menu')}
+                        >
                           <Menu className="h-4 w-4" />
                         </Button>
                       </DropdownMenuTrigger>
@@ -201,16 +207,16 @@ const Shell = ({ adapter, keymap, nav = [], guideHref, adminTo, isAssistantRoute
                         {guideHref && (
                           <DropdownMenuItem asChild>
                             <a href={guideHref} target="_blank" rel="noreferrer">
-                              Guide
+                              {t('Guide')}
                             </a>
                           </DropdownMenuItem>
                         )}
                         {user.isAdmin && (
                           <DropdownMenuItem asChild>
                             {adminTo ? (
-                              <Link to={adminTo}>Admin</Link>
+                              <Link to={adminTo}>{t('Admin')}</Link>
                             ) : (
-                              <a href={adminUrl()}>Admin</a>
+                              <a href={adminUrl()}>{t('Admin')}</a>
                             )}
                           </DropdownMenuItem>
                         )}

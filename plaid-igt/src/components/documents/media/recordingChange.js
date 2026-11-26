@@ -1,3 +1,5 @@
+import { t } from '@ui/lib/i18n.js';
+
 // What a page holding a document says when the recording it plays changed
 // under it: deleted or replaced by someone else, and learned when the page
 // read the document again (a write of its own refused as changed elsewhere,
@@ -16,8 +18,31 @@
  */
 export function recordingChangeNotice(before, after, { ownDelete = false, notSaved = null } = {}) {
   if (!before || before === after) return null;
-  const lost = notSaved ? ` ${notSaved} not saved.` : '';
-  if (!after)
-    return ownDelete ? null : { title: 'Recording deleted', message: `Deleted elsewhere.${lost}` };
-  return { title: 'Recording replaced', message: `Replaced elsewhere.${lost}` };
+  if (!after) {
+    return ownDelete
+      ? null
+      : { title: t('Recording deleted'), message: changedMessage('deleted', notSaved) };
+  }
+  return { title: t('Recording replaced'), message: changedMessage('replaced', notSaved) };
+}
+
+// `notSaved` is the name alignment.js gives what it refused: "Segment" and
+// "Segment edit" have whole sentences of their own, and any other name goes
+// into the sentence as it came.
+function changedMessage(change, notSaved) {
+  const deleted = change === 'deleted';
+  if (!notSaved) return deleted ? t('Deleted elsewhere.') : t('Replaced elsewhere.');
+  if (notSaved === 'Segment') {
+    return deleted
+      ? t('Deleted elsewhere. Segment not saved.')
+      : t('Replaced elsewhere. Segment not saved.');
+  }
+  if (notSaved === 'Segment edit') {
+    return deleted
+      ? t('Deleted elsewhere. Segment edit not saved.')
+      : t('Replaced elsewhere. Segment edit not saved.');
+  }
+  return deleted
+    ? t('Deleted elsewhere. {what} not saved.', { what: notSaved })
+    : t('Replaced elsewhere. {what} not saved.', { what: notSaved });
 }

@@ -27,7 +27,7 @@ import {
 import { ConfirmDeleteDialog } from '@ui/components/shared/ConfirmDeleteDialog';
 import { Loading } from '@ui/components/shared/Loading.jsx';
 import { scopeBadgeClass } from '@/domain/scopeColors';
-import { countOf } from '@ui/lib/plural.js';
+import { t, tx, msg } from '@ui/lib/i18n.js';
 import { nameKey } from '@ui/lib/nameKey.js';
 import { sameNameIgnoringCase } from '@/domain/nameMatch';
 import { RowControls } from '@/components/shared/RowControls';
@@ -52,6 +52,19 @@ const NO_ROLE = '__none__';
 const SCOPE_RANK = { Word: 0, Morpheme: 1, Sentence: 2 };
 const scopeRank = (scope) => SCOPE_RANK[scope] ?? 3;
 
+// A scope as shown. The stored value is the English word.
+const SCOPE_LABELS = { Word: msg('Word'), Morpheme: msg('Morpheme'), Sentence: msg('Sentence') };
+const scopeLabel = (scope) => (SCOPE_LABELS[scope] ? t(SCOPE_LABELS[scope]) : scope);
+// A field named with its scope, as the row's controls name it.
+const fieldLabel = (scope, name) => t('{scope} {name}', { scope, name });
+// A Word-scope badge inside a sentence.
+const wordBadge = (c) => (
+  <Badge variant="secondary" className={scopeBadgeClass('Word')}>
+    {c}
+  </Badge>
+);
+
+// i18n-ignore: default field names, stored in the project
 const DEFAULT_FIELDS = [
   { name: 'Gloss', scope: 'Word', isCustom: false, lexiconField: 'gloss' },
   { name: 'POS', scope: 'Word', isCustom: false, lexiconField: 'pos' },
@@ -64,7 +77,7 @@ const DEFAULT_FIELDS = [
     sentenceRole: SENTENCE_ROLES.TRANSLATION,
   },
   {
-    name: 'Literal Translation',
+    name: 'Literal Translation', // i18n-ignore: a default field name, stored
     scope: 'Sentence',
     isCustom: false,
     sentenceRole: SENTENCE_ROLES.LITERAL_TRANSLATION,
@@ -223,9 +236,9 @@ export const FieldsManager = ({
 
   // Define scope options (morpheme layer is always present)
   const scopeOptions = [
-    { value: 'Word', label: 'Word' },
-    { value: 'Morpheme', label: 'Morpheme' },
-    { value: 'Sentence', label: 'Sentence' },
+    { value: 'Word', label: scopeLabel('Word') },
+    { value: 'Morpheme', label: scopeLabel('Morpheme') },
+    { value: 'Sentence', label: scopeLabel('Sentence') },
   ];
 
   useEffect(() => {
@@ -288,7 +301,7 @@ export const FieldsManager = ({
         if (onError) {
           onError(error);
         } else {
-          notifyError(error, 'Failed to load the fields');
+          notifyError(error, t('Failed to load the fields'));
         }
       }
     };
@@ -332,7 +345,7 @@ export const FieldsManager = ({
         if (onError) {
           onError(error);
         } else {
-          notifyError(error, 'Not saved');
+          notifyError(error, t('Not saved'));
         }
         return false;
       } finally {
@@ -356,12 +369,18 @@ export const FieldsManager = ({
     const trimmedName = nameKey(newFieldName).trim();
 
     if (!trimmedName) {
-      notifyError('Field name cannot be empty', 'Invalid field name');
+      notifyError(t('Field name cannot be empty'), t('Invalid field name'));
       return;
     }
 
     if (wouldBeDuplicate()) {
-      notifyError(`A ${newFieldScope} field with this name already exists`, 'Duplicate field');
+      notifyError(
+        t(
+          '{scope, select, Word {A Word field with this name already exists} Morpheme {A Morpheme field with this name already exists} Sentence {A Sentence field with this name already exists} other {A {scope} field with this name already exists}}',
+          { scope: newFieldScope },
+        ),
+        t('Duplicate field'),
+      );
       return;
     }
 
@@ -391,7 +410,12 @@ export const FieldsManager = ({
       setNewFieldScope(newField.scope);
       return;
     }
-    notifySuccess(`${newField.scope} field “${trimmedName}” added`);
+    notifySuccess(
+      t(
+        '{scope, select, Word {Word field “{name}” added} Morpheme {Morpheme field “{name}” added} Sentence {Sentence field “{name}” added} other {{scope} field “{name}” added}}',
+        { scope: newField.scope, name: trimmedName },
+      ),
+    );
   };
 
   const handleDeleteField = async (key) => {
@@ -399,7 +423,7 @@ export const FieldsManager = ({
     const updatedFields = fields.filter((f) => fieldKey(f) !== key);
     if (!(await saveChanges(updatedFields, ignoredTokens))) return;
 
-    notifyInfo(`Field “${field?.name ?? key}” removed`);
+    notifyInfo(t('Field “{name}” removed', { name: field?.name ?? key }));
   };
 
   // The writing system a field's values are in, as the FLEx and ELAN exports
@@ -508,7 +532,7 @@ export const FieldsManager = ({
         console.error('Failed to move field:', error);
         setFields(before);
         if (onError) onError(error);
-        else notifyError(error, 'Not moved');
+        else notifyError(error, t('Not moved'));
       }
       return;
     }
@@ -595,7 +619,7 @@ export const FieldsManager = ({
       await onTokenizeNewTextChange(next);
     } catch (error) {
       if (onError) onError(error);
-      else notifyError(error, 'Not saved');
+      else notifyError(error, t('Not saved'));
     } finally {
       setTokenizeChanged(null);
     }
@@ -648,14 +672,14 @@ export const FieldsManager = ({
           title + description. */}
       <div>
         {showTitle ? (
-          <p className="mb-4 text-sm font-medium">Annotation fields</p>
+          <p className="mb-4 text-sm font-medium">{t('Annotation fields')}</p>
         ) : (
           <>
-            <h2 className={TYPE.card}>Annotation fields</h2>
+            <h2 className={TYPE.card}>{t('Annotation fields')}</h2>
             <p className="mb-4 mt-1 text-sm text-muted-foreground">
-              Configure annotation fields for your project. Word scope fields apply to words,
-              Morpheme scope fields apply to morphemes, and Sentence scope fields apply to entire
-              sentences.
+              {t(
+                'Configure annotation fields for your project. Word scope fields apply to words, Morpheme scope fields apply to morphemes, and Sentence scope fields apply to entire sentences.',
+              )}
             </p>
           </>
         )}
@@ -665,21 +689,25 @@ export const FieldsManager = ({
           <table className="w-full text-sm">
             <thead>
               <tr>
-                <th className="w-[15%] px-3 py-2 text-left font-medium">Scope</th>
-                <th className="px-3 py-2 text-left font-medium">Field name</th>
+                <th className="w-[15%] px-3 py-2 text-left font-medium">{t('Scope')}</th>
+                <th className="px-3 py-2 text-left font-medium">{t('Field name')}</th>
                 <th className="w-[14%] px-3 py-2 text-left font-medium">
-                  <span title="Writing-system tag for FLEx export, such as en or tur.">
-                    Language
+                  <span title={t('Writing-system tag for FLEx export, such as en or tur.')}>
+                    {t('Language')}
                   </span>
                 </th>
                 <th className="w-[18%] px-3 py-2 text-left font-medium">
-                  <span title="The entry field that holds this field's value.">Lexicon field</span>
+                  <span title={t("The entry field that holds this field's value.")}>
+                    {t('Lexicon field')}
+                  </span>
                 </th>
                 <th className="w-[16%] px-3 py-2 text-left font-medium">
-                  <span title="What a sentence field holds, for exports and services.">Role</span>
+                  <span title={t('What a sentence field holds, for exports and services.')}>
+                    {t('Role')}
+                  </span>
                 </th>
                 {tagsetNames.length > 0 && (
-                  <th className="w-[22%] px-3 py-2 text-left font-medium">Tagset</th>
+                  <th className="w-[22%] px-3 py-2 text-left font-medium">{t('Tagset')}</th>
                 )}
                 <th className="w-px px-3 py-2" />
               </tr>
@@ -689,7 +717,7 @@ export const FieldsManager = ({
                 <tr key={record.id} className="group hover:bg-muted/50">
                   <td className="border-t px-3 py-2 align-middle">
                     <Badge variant="secondary" className={scopeBadgeClass(record.scope)}>
-                      {record.scope}
+                      {scopeLabel(record.scope)}
                     </Badge>
                   </td>
                   <td className="border-t px-3 py-2 align-middle">
@@ -698,20 +726,23 @@ export const FieldsManager = ({
                       <Link
                         to={`/projects/${projectId}?tab=validate`}
                         className="ml-2 inline-flex items-center gap-1 rounded-sm bg-destructive/10 px-1.5 py-0.5 align-middle text-xs text-destructive hover:underline"
-                        title="Show these in the Validation tab"
+                        title={t('Show these in the Validation tab')}
                       >
                         <AlertTriangle className="h-3 w-3" />
-                        {violations[`${record.scope.toLowerCase()}:${record.name}`]} outside the
-                        tagset
+                        {t('{n} outside the tagset', {
+                          n: violations[`${record.scope.toLowerCase()}:${record.name}`],
+                        })}
                       </Link>
                     )}
                   </td>
                   <td className="border-t px-3 py-2 align-middle">
                     <Input
                       value={langDrafts[record.key] ?? record.lang ?? ''}
-                      aria-label={`Language of ${record.scope} ${record.name}`}
+                      aria-label={t('Language of {field}', {
+                        field: fieldLabel(record.scope, record.name),
+                      })}
                       list="field-language-tags"
-                      placeholder="en"
+                      placeholder="en" // i18n-ignore: a language tag
                       className="h-8 w-24"
                       onChange={(e) =>
                         setLangDrafts((d) => ({ ...d, [record.key]: e.target.value }))
@@ -730,12 +761,14 @@ export const FieldsManager = ({
                       >
                         <SelectTrigger
                           className="h-8"
-                          aria-label={`Lexicon field of ${record.scope} ${record.name}`}
+                          aria-label={t('Lexicon field of {field}', {
+                            field: fieldLabel(record.scope, record.name),
+                          })}
                         >
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent>
-                          <SelectItem value={NO_LEXICON_FIELD}>None</SelectItem>
+                          <SelectItem value={NO_LEXICON_FIELD}>{t('None')}</SelectItem>
                           {lexiconKeys.map((k) => (
                             <SelectItem key={k} value={k}>
                               {humanizeFieldName(k)}
@@ -743,7 +776,9 @@ export const FieldsManager = ({
                           ))}
                           {record.lexiconField && !lexiconKeys.includes(record.lexiconField) && (
                             <SelectItem value={record.lexiconField}>
-                              {humanizeFieldName(record.lexiconField)} (missing)
+                              {t('{name} (missing)', {
+                                name: humanizeFieldName(record.lexiconField),
+                              })}
                             </SelectItem>
                           )}
                         </SelectContent>
@@ -758,15 +793,17 @@ export const FieldsManager = ({
                       >
                         <SelectTrigger
                           className="h-8"
-                          aria-label={`Role of ${record.scope} ${record.name}`}
+                          aria-label={t('Role of {field}', {
+                            field: fieldLabel(record.scope, record.name),
+                          })}
                         >
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent>
-                          <SelectItem value={NO_ROLE}>None</SelectItem>
+                          <SelectItem value={NO_ROLE}>{t('None')}</SelectItem>
                           {SENTENCE_ROLE_CHOICES.map((c) => (
                             <SelectItem key={c.role} value={c.role}>
-                              {c.label}
+                              {t(c.label)}
                             </SelectItem>
                           ))}
                         </SelectContent>
@@ -781,12 +818,14 @@ export const FieldsManager = ({
                       >
                         <SelectTrigger
                           className="h-8"
-                          aria-label={`Tagset of ${record.scope} ${record.name}`}
+                          aria-label={t('Tagset of {field}', {
+                            field: fieldLabel(record.scope, record.name),
+                          })}
                         >
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent>
-                          <SelectItem value={NO_TAGSET}>No tagset</SelectItem>
+                          <SelectItem value={NO_TAGSET}>{t('No tagset')}</SelectItem>
                           {tagsetNames.map((n) => (
                             <SelectItem key={n} value={n}>
                               {n}
@@ -797,7 +836,9 @@ export const FieldsManager = ({
                               selectable so the picker shows what is actually
                               stored rather than silently reading as "none". */}
                           {record.tagset && !tagsetNames.includes(record.tagset) && (
-                            <SelectItem value={record.tagset}>{record.tagset} (missing)</SelectItem>
+                            <SelectItem value={record.tagset}>
+                              {t('{name} (missing)', { name: record.tagset })}
+                            </SelectItem>
                           )}
                         </SelectContent>
                       </Select>
@@ -806,7 +847,7 @@ export const FieldsManager = ({
                   <td className="w-px whitespace-nowrap border-t px-3 py-2 align-middle">
                     <RowControls
                       // Two scopes may hold a field of one name.
-                      name={`${record.scope} ${record.name}`}
+                      name={fieldLabel(record.scope, record.name)}
                       onUp={() => handleMoveField(record.key, 'up')}
                       onDown={() => handleMoveField(record.key, 'down')}
                       canUp={neighborInScope(record.key, 'up') !== -1}
@@ -820,8 +861,8 @@ export const FieldsManager = ({
           </table>
           <datalist id="field-language-tags">
             {[...new Set([...knownLangs, ...fields.map((f) => f.lang).filter(Boolean)])].map(
-              (t) => (
-                <option key={t} value={t} />
+              (tag) => (
+                <option key={tag} value={tag} />
               ),
             )}
           </datalist>
@@ -829,10 +870,10 @@ export const FieldsManager = ({
 
         {/* Add Field Form */}
         <div className="mt-4 flex flex-col gap-4">
-          <p className="text-sm font-medium">Add field</p>
+          <p className="text-sm font-medium">{t('Add field')}</p>
           <div className="flex items-center gap-2">
             <Input
-              placeholder="Enter field name"
+              placeholder={t('Enter field name')}
               value={newFieldName}
               onChange={(event) => setNewFieldName(event.currentTarget.value)}
               onKeyDown={handleKeyPress}
@@ -851,7 +892,7 @@ export const FieldsManager = ({
               </SelectContent>
             </Select>
             <Button onClick={handleAddField} disabled={!newFieldName.trim() || wouldBeDuplicate()}>
-              <Plus className="h-4 w-4" /> Add field
+              <Plus className="h-4 w-4" /> {t('Add field')}
             </Button>
           </div>
         </div>
@@ -860,14 +901,13 @@ export const FieldsManager = ({
       {/* Ignored Tokens Section, separated from Annotation Fields by a rule. */}
       <div className="border-t pt-6">
         <p className={showTitle ? 'mb-4 text-sm font-medium' : 'mb-1 text-lg font-semibold'}>
-          Ignored tokens
+          {t('Ignored tokens')}
         </p>
         <div className="mb-6 text-sm text-muted-foreground">
-          Which tokens carry no{' '}
-          <Badge variant="secondary" className={scopeBadgeClass('Word')}>
-            Word
-          </Badge>{' '}
-          scope annotations, and where the built-in tokenizer splits words.
+          {tx(
+            'Which tokens carry no <badge>Word</badge> scope annotations, and where the built-in tokenizer splits words.',
+            { badge: wordBadge },
+          )}
         </div>
 
         <div className="flex flex-col gap-6">
@@ -880,10 +920,11 @@ export const FieldsManager = ({
                 className="mt-1"
               />
               <span>
-                <span className="text-sm font-medium">Tokenize new text</span>
+                <span className="text-sm font-medium">{t('Tokenize new text')}</span>
                 <span className="block text-xs text-muted-foreground">
-                  New text from the Baseline and Media tabs and the assistant is split into words,
-                  except in scripts written without spaces, such as Chinese or Thai.
+                  {t(
+                    'New text from the Baseline and Media tabs and the assistant is split into words, except in scripts written without spaces, such as Chinese or Thai.',
+                  )}
                 </span>
               </span>
             </label>
@@ -899,33 +940,34 @@ export const FieldsManager = ({
               className="mt-1"
             />
             <span>
-              <span className="text-sm font-medium">Unicode punctuation (recommended)</span>
+              <span className="text-sm font-medium">{t('Unicode punctuation (recommended)')}</span>
               <span className="block text-xs text-muted-foreground">
-                Ignore punctuation and symbols, except ∅, tone letters such as ˥ and pictographs
-                such as ★
+                {t(
+                  'Ignore punctuation and symbols, except ∅, tone letters such as ˥ and pictographs such as ★',
+                )}
               </span>
             </span>
           </label>
 
           {shownIgnored.mode === IGNORED_TOKEN_MODES.punctuation && (
             <div className="ml-8 rounded-md border p-4">
-              <p className="mb-1 text-sm font-medium">Characters that behave as letters</p>
+              <p className="mb-1 text-sm font-medium">{t('Characters that behave as letters')}</p>
               <div className="mb-4 text-xs text-muted-foreground">
-                Typed between letters, these join the word instead of splitting it. They stay on the
-                word's form in the lexicon, and a token spelled with them takes{' '}
-                <Badge variant="secondary" className={scopeBadgeClass('Word')}>
-                  Word
-                </Badge>{' '}
-                scope annotations.
+                {tx(
+                  "Typed between letters, these join the word instead of splitting it. They stay on the word's form in the lexicon, and a token spelled with them takes <badge>Word</badge> scope annotations.",
+                  { badge: wordBadge },
+                )}
               </div>
               <Input
-                placeholder={"Separate with commas (e.g. ʼ, ', -)"}
+                placeholder={t('Separate with commas (e.g. {examples})', { examples: "ʼ, ', -" })}
                 value={exceptionsText}
                 onChange={(event) => handleExceptionsChange(event.currentTarget.value)}
               />
               {rejectedExceptions.length > 0 && (
                 <p className="mt-2 text-xs text-destructive">
-                  One character each. Not saved: {rejectedExceptions.join(', ')}
+                  {t('One character each. Not saved: {entries}', {
+                    entries: rejectedExceptions.join(', '),
+                  })}
                 </p>
               )}
             </div>
@@ -941,25 +983,24 @@ export const FieldsManager = ({
               className="mt-1"
             />
             <span>
-              <span className="text-sm font-medium">Explicit list</span>
+              <span className="text-sm font-medium">{t('Explicit list')}</span>
               <span className="block text-xs text-muted-foreground">
-                Manually specify which tokens to ignore
+                {t('Manually specify which tokens to ignore')}
               </span>
             </span>
           </label>
 
           {shownIgnored.mode === IGNORED_TOKEN_MODES.explicit && (
             <div className="ml-8 rounded-md border p-4">
-              <p className="mb-1 text-sm font-medium">Ignored tokens</p>
+              <p className="mb-1 text-sm font-medium">{t('Ignored tokens')}</p>
               <div className="mb-4 text-xs text-muted-foreground">
-                These specific tokens will be ignored for{' '}
-                <Badge variant="secondary" className={scopeBadgeClass('Word')}>
-                  Word
-                </Badge>{' '}
-                scope annotations:
+                {tx(
+                  'These specific tokens will be ignored for <badge>Word</badge> scope annotations:',
+                  { badge: wordBadge },
+                )}
               </div>
               <Input
-                placeholder="Add tokens to ignore (e.g. . , ; !)"
+                placeholder={t('Add tokens to ignore (e.g. {examples})', { examples: '. , ; !' })}
                 value={explicitText}
                 onChange={(event) => handleExplicitTokensChange(event.currentTarget.value)}
               />
@@ -974,20 +1015,23 @@ export const FieldsManager = ({
               <AlertTriangle aria-hidden="true" className="h-4 w-4 text-destructive" />
               <span className="flex-1">
                 {heldIgnored.hidden === undefined
-                  ? 'Counting the annotated words this change hides…'
+                  ? t('Counting the annotated words this change hides…')
                   : heldIgnored.hidden === null
-                    ? 'Not saved. The annotated words this change hides could not be counted.'
-                    : `Not saved. This change hides the annotations on ${countOf(heldIgnored.hidden, 'word')}.`}
+                    ? t('Not saved. The annotated words this change hides could not be counted.')
+                    : t(
+                        'Not saved. This change hides the annotations on {n, plural, one {# word} other {# words}}.',
+                        { n: heldIgnored.hidden },
+                      )}
               </span>
               <Button size="sm" variant="outline" onClick={cancelHeldIgnored}>
-                Cancel
+                {t('Cancel')}
               </Button>
               <Button
                 size="sm"
                 onClick={saveHeldIgnored}
                 disabled={heldIgnored.hidden === undefined}
               >
-                Save
+                {t('Save')}
               </Button>
             </div>
           )}
@@ -1001,26 +1045,25 @@ export const FieldsManager = ({
         onOpenChange={(o) => {
           if (!o) setPendingDelete(null);
         }}
-        title={`Delete field “${pendingDelete?.name ?? ''}”?`}
-        confirmLabel="Delete"
+        title={t('Delete field “{name}”?', { name: pendingDelete?.name ?? '' })}
+        confirmLabel={t('Delete')}
         confirmDisabled={pendingDelete?.count === undefined}
         onConfirm={handleConfirmDelete}
       >
-        <p>All of its annotations, in every document in this project, are deleted.</p>
+        <p>{t('All of its annotations, in every document in this project, are deleted.')}</p>
         <p>
-          {pendingDelete?.count === undefined && 'Counting existing annotations…'}
+          {pendingDelete?.count === undefined && t('Counting existing annotations…')}
           {pendingDelete?.count === null &&
-            'The number of existing annotations could not be determined. The field may still contain data.'}
+            t(
+              'The number of existing annotations could not be determined. The field may still contain data.',
+            )}
           {typeof pendingDelete?.count === 'number' &&
-            (pendingDelete.count === 0 ? (
-              'This field has no annotations yet.'
-            ) : (
-              <>
-                This field currently has{' '}
-                <strong>{countOf(pendingDelete.count, 'annotation')}</strong>. This cannot be
-                undone.
-              </>
-            ))}
+            (pendingDelete.count === 0
+              ? t('This field has no annotations yet.')
+              : tx(
+                  'This field currently has <strong>{n, plural, one {# annotation} other {# annotations}}</strong>. This cannot be undone.',
+                  { n: pendingDelete.count, strong: (c) => <strong>{c}</strong> },
+                ))}
         </p>
       </ConfirmDeleteDialog>
     </div>

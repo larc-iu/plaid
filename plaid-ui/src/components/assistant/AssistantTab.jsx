@@ -7,6 +7,7 @@ import { AssistantChat } from './AssistantChat.jsx';
 import { AssistantMark } from './PlaidMarks.jsx';
 import { runByLine } from './useAssistantAvailable.js';
 import { useConversationParam } from './conversationParam.js';
+import { t } from '../../lib/i18n.js';
 import {
   AllProjectsSwitch,
   AssistantPicker,
@@ -52,7 +53,7 @@ export const AssistantTab = ({
         renderSidebar={({ listProps, allProjects, setAllProjects, startNew }) => (
           <aside className="flex max-h-48 w-full shrink-0 flex-col rounded-lg border bg-card sm:max-h-none sm:w-64">
             <div className="flex items-center justify-between border-b px-3 py-2">
-              <span className="text-sm font-medium max-sm:hidden">Conversations</span>
+              <span className="text-sm font-medium max-sm:hidden">{t('Conversations')}</span>
               <button
                 type="button"
                 aria-expanded={listOpen}
@@ -64,14 +65,14 @@ export const AssistantTab = ({
                 ) : (
                   <ChevronRight className="h-4 w-4" />
                 )}
-                Conversations
+                {t('Conversations')}
               </button>
               <Button
                 type="button"
                 variant="ghost"
                 size="sm"
                 onClick={startNew}
-                title="New conversation"
+                title={t('New conversation')}
               >
                 <Plus className="h-4 w-4" />
               </Button>
@@ -86,7 +87,7 @@ export const AssistantTab = ({
                 <ConversationRows {...listProps} />
               </div>
               <p className="border-t px-3 py-2 text-[11px] text-muted-foreground">
-                Conversations are private to you and saved to your account.
+                {t('Conversations are private to you and saved to your account.')}
               </p>
             </div>
           </aside>
@@ -102,7 +103,7 @@ export const AssistantTab = ({
             )}
             {!canWrite && (
               <span className="text-xs text-muted-foreground">
-                Read-only access: plans cannot be applied.
+                {t('Read-only access: plans cannot be applied.')}
               </span>
             )}
           </>
@@ -126,7 +127,7 @@ export const AssistantTab = ({
                 grey circle behind it was a container around a container. */}
             <AssistantMark ring className="h-11 w-11" />
             <div className="max-w-md text-sm text-muted-foreground">
-              {adapter.intro} Changes come back as a plan to approve.
+              {adapter.intro} {t('Changes come back as a plan to approve.')}
             </div>
             {/* Which assistant answers is settled here, at the start, and then
                 stays put for the rest of the conversation. */}

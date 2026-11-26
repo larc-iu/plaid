@@ -8,6 +8,7 @@ import { ProjectTartan } from './ProjectTartan.jsx';
 import { useUnsavedGuard } from '../../hooks/useUnsavedDraft.js';
 import { useProjectFavicon } from '../../hooks/useProjectFavicon.js';
 import { TYPE } from '../../lib/typeScale.js';
+import { t } from '../../lib/i18n.js';
 
 /**
  * The header over an open document, in every app: the breadcrumb, a heading
@@ -131,8 +132,9 @@ export const DocumentTabStrip = ({
   }, [sticky, failed]);
 
   const p = location.pathname;
-  const active = activeProp ?? tabs.find((t) => p.includes(`/${t.value}`))?.value ?? tabs[0].value;
-  const to = Object.fromEntries(tabs.map((t) => [t.value, t.to]));
+  const active =
+    activeProp ?? tabs.find((tab) => p.includes(`/${tab.value}`))?.value ?? tabs[0].value;
+  const to = Object.fromEntries(tabs.map((tab) => [tab.value, tab.to]));
   const target = (value) => (disabled ? { disabled: true } : { to: to[value] });
   const name = document?.name;
 
@@ -141,9 +143,9 @@ export const DocumentTabStrip = ({
       <div className={cn('mb-2 flex items-center gap-2', inset)}>
         <Breadcrumb
           items={[
-            { label: 'Projects', to: routes.projects, fixed: true },
+            { label: t('Projects'), to: routes.projects, fixed: true },
             {
-              label: project?.name || (failed ? 'Project' : '…'),
+              label: project?.name || (failed ? t('Project') : '…'),
               to: routes.documents(projectId),
               icon: <ProjectTartan project={project} size={14} />,
             },
@@ -194,7 +196,7 @@ export const DocumentTabStrip = ({
               className="-mr-3 flex min-w-0 max-w-[16rem] shrink items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground hover:underline"
             >
               <ProjectTartan project={project} size={14} className="shrink-0" />
-              <span className="truncate">{project?.name || 'Project'}</span>
+              <span className="truncate">{project?.name || t('Project')}</span>
             </Link>
           )}
           <Tabs
@@ -208,12 +210,12 @@ export const DocumentTabStrip = ({
             {/* Pinned, the row's own rule is the tabs' rule: a second one under
               the list drew two lines a few pixels apart. */}
             <TabsList className={sticky ? 'border-b-0' : undefined}>
-              {tabs.map((t) => (
-                <TabsTrigger key={t.value} value={t.value} {...target(t.value)}>
-                  {t.label}
-                  {t.count > 0 && (
+              {tabs.map((tab) => (
+                <TabsTrigger key={tab.value} value={tab.value} {...target(tab.value)}>
+                  {tab.label}
+                  {tab.count > 0 && (
                     <span className="ms-1.5 rounded-full bg-muted px-1.5 text-[10px] leading-4 tabular-nums">
-                      {t.count}
+                      {tab.count}
                     </span>
                   )}
                 </TabsTrigger>

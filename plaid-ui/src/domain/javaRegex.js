@@ -50,11 +50,16 @@
 
 import FOLDS from './javaCaseFolds.js';
 import { MARK_NAMES } from './markNames.js';
+import { t } from '../lib/i18n.js';
 
 /** The server refuses a longer pattern (plaid.query.clauses/regex-max-len). */
 export const SERVER_PATTERN_MAX = 4096;
 
-const TOO_LONG = `The pattern is too long. The limit is ${SERVER_PATTERN_MAX} characters, and each \\b, \\s, \\w, $ or . counts as 30 to 230.`;
+const tooLong = () =>
+  t(
+    'The pattern is too long. The limit is {max} characters, and each \\b, \\s, \\w, $ or . counts as 30 to 230.',
+    { max: SERVER_PATTERN_MAX },
+  );
 
 export class PatternError extends Error {
   constructor(message) {
@@ -241,7 +246,7 @@ function parse(pattern, caseInsensitive) {
     let v = 0;
     for (let k = 0; k < n; k++) {
       const c = cps[i];
-      if (c === undefined || !isHex(c)) fail('\\x and \\u take hex digits.');
+      if (c === undefined || !isHex(c)) fail(t('\\x and \\u take hex digits.'));
       v = v * 16 + parseInt(ch(c), 16);
       i++;
     }
@@ -252,14 +257,14 @@ function parse(pattern, caseInsensitive) {
     let name;
     if (peek() === 0x7b) {
       const close = cps.indexOf(0x7d, i);
-      if (close < 0) fail('Unclosed \\p{.');
+      if (close < 0) fail(t('Unclosed {syntax}.', { syntax: '\\p{' }));
       name = cps
         .slice(i + 1, close)
         .map(ch)
         .join('');
       i = close + 1;
     } else {
-      if (atEnd()) fail('\\p needs a category, such as \\p{L}.');
+      if (atEnd()) fail(t('\\p needs a category, such as {example}.', { example: '\\p{L}' }));
       name = ch(cps[i++]);
     }
     const shown = `\\${negated ? 'P' : 'p'}{${name}}`;
@@ -275,7 +280,12 @@ function parse(pattern, caseInsensitive) {
     } else if (key === 'sc' || key === 'script') {
       if (script(value)) found = `sc=${script(value)}`;
     } else if (key === 'blk' || key === 'block' || (key === null && name.startsWith('In'))) {
-      fail(`${shown} is a block, which is not supported. Use a script such as \\p{IsCyrillic}.`);
+      fail(
+        t('{shown} is a block, which is not supported. Use a script such as {example}.', {
+          shown,
+          example: '\\p{IsCyrillic}',
+        }),
+      );
     } else if (key === null && name.startsWith('Is')) {
       const rest = name.slice(2);
       if (CATEGORIES.has(rest)) found = rest;
@@ -283,16 +293,19 @@ function parse(pattern, caseInsensitive) {
     } else if (key === null && CATEGORIES.has(name)) found = name;
     if (!found)
       fail(
-        `${shown} is not supported. Use a category such as \\p{L} or a script such as \\p{IsArabic}.`,
+        t(
+          '{shown} is not supported. Use a category such as {category} or a script such as {script}.',
+          { shown, category: '\\p{L}', script: '\\p{IsArabic}' },
+        ),
       );
-    if (flags.ci && CASED.has(found)) fail(`${shown} cannot be used with (?i).`);
+    if (flags.ci && CASED.has(found)) fail(t('{shown} cannot be used with (?i).', { shown }));
     return { name: found, negated };
   };
 
   // One escape after the backslash. In a class it gives a character
   // ({cp}) or a set ({fixed, props}). Outside, any node.
   const escape = (inClass) => {
-    if (atEnd()) fail('The pattern ends with a backslash.');
+    if (atEnd()) fail(t('The pattern ends with a backslash.'));
     const c = cps[i++];
     const name = ch(c);
     switch (name) {
@@ -311,7 +324,7 @@ function parse(pattern, caseInsensitive) {
       case '0': {
         // Java's octal: \0n, \0nn, \0mnn with m at most 3.
         const oct = (k) => cps[i + k] >= 0x30 && cps[i + k] <= 0x37;
-        if (!oct(0)) fail('\\0 takes octal digits.');
+        if (!oct(0)) fail(t('\\0 takes octal digits.'));
         let v = cps[i++] - 0x30;
         if (oct(0)) {
           v = v * 8 + (cps[i++] - 0x30);
@@ -327,9 +340,9 @@ function parse(pattern, caseInsensitive) {
           while (!atEnd() && isHex(peek())) {
             v = v * 16 + parseInt(ch(cps[i++]), 16);
             n++;
-            if (v > MAX_CP) fail('\\x{..} is past the last code point.');
+            if (v > MAX_CP) fail(t('{syntax} is past the last code point.', { syntax: '\\x{..}' }));
           }
-          if (!n || peek() !== 0x7d) fail('\\x{..} takes hex digits.');
+          if (!n || peek() !== 0x7d) fail(t('{syntax} takes hex digits.', { syntax: '\\x{..}' }));
           i++;
           return { cp: v };
         }
@@ -340,14 +353,14 @@ function parse(pattern, caseInsensitive) {
         if (v >= 0xd800 && v <= 0xdbff && peek() === 0x5c && peek(1) === 0x75) {
           i += 2;
           const lo = readHex(4);
-          if (lo < 0xdc00 || lo > 0xdfff) fail('A lone surrogate is not supported.');
+          if (lo < 0xdc00 || lo > 0xdfff) fail(t('A lone surrogate is not supported.'));
           return { cp: 0x10000 + ((v - 0xd800) << 10) + (lo - 0xdc00) };
         }
-        if (v >= 0xd800 && v <= 0xdfff) fail('A lone surrogate is not supported.');
+        if (v >= 0xd800 && v <= 0xdfff) fail(t('A lone surrogate is not supported.'));
         return { cp: v };
       }
       case 'c': {
-        if (atEnd()) fail('\\c needs a character.');
+        if (atEnd()) fail(t('\\c needs a character.'));
         return { cp: cps[i++] ^ 64 };
       }
       case 'd':
@@ -358,7 +371,7 @@ function parse(pattern, caseInsensitive) {
         return { fixed: JOINERS, props: WORD_PROPS.map((n) => prop(n)) };
       case 'W':
         // Not a word character in any of its parts: a class of its own.
-        if (inClass) fail('\\W is not supported in [...]. Use [^\\w...] instead.');
+        if (inClass) fail(t('\\W is not supported in [...]. Use [^\\w...] instead.'));
         return { negatedSet: true, fixed: JOINERS, props: WORD_PROPS.map((n) => prop(n)) };
       case 's':
       case 'h':
@@ -375,7 +388,7 @@ function parse(pattern, caseInsensitive) {
         break;
     }
     if (isDigit(c) || isAsciiLetter(c)) {
-      if (inClass) fail(`\\${name} is not supported in [...].`);
+      if (inClass) fail(t('\\{name} is not supported in [...].', { name }));
       return escapeOutside(c);
     }
     return { cp: c };
@@ -394,15 +407,16 @@ function parse(pattern, caseInsensitive) {
       return { nodes };
     }
     if (name === 'k') {
-      if (peek() !== 0x3c) fail('\\k needs a group name, as in \\k<name>.');
+      if (peek() !== 0x3c)
+        fail(t('\\k needs a group name, as in {example}.', { example: '\\k<name>' }));
       const close = cps.indexOf(0x3e, i);
-      if (close < 0) fail('Unclosed \\k<.');
+      if (close < 0) fail(t('Unclosed \\k<.'));
       const gname = cps
         .slice(i + 1, close)
         .map(ch)
         .join('');
       i = close + 1;
-      if (!groupNames.has(gname)) fail(`No group named ${gname}.`);
+      if (!groupNames.has(gname)) fail(t('No group named {name}.', { name: gname }));
       return { node: backref(groupNames.get(gname)) };
     }
     if (c >= 0x31 && c <= 0x39) {
@@ -415,14 +429,14 @@ function parse(pattern, caseInsensitive) {
         n = next;
         i++;
       }
-      if (n > groupCount) fail(`\\${n} refers to a group that does not exist.`);
+      if (n > groupCount) fail(t('\\{n} refers to a group that does not exist.', { n }));
       return { node: backref(n) };
     }
-    return fail(`\\${name} is not supported.`);
+    return fail(t('\\{name} is not supported.', { name }));
   };
 
   const backref = (n) => {
-    if (flags.ci) fail('A back reference cannot be used with (?i).');
+    if (flags.ci) fail(t('A back reference cannot be used with (?i).'));
     return { t: 'backref', n };
   };
 
@@ -432,20 +446,20 @@ function parse(pattern, caseInsensitive) {
       negated = true;
       i++;
     }
-    if (peek() === 0x5d) fail('Write \\] for a ] inside [...].');
+    if (peek() === 0x5d) fail(t('Write \\] for a ] inside [...].'));
     const lits = [];
     const fixed = [];
     const props = [];
     const single = () => {
       const c = cps[i];
-      if (c === 0x5b) fail('Nested [...] is not supported. Write \\[ for a [.');
-      if (c === 0x26 && peek(1) === 0x26) fail('&& in [...] is not supported.');
+      if (c === 0x5b) fail(t('Nested [...] is not supported. Write \\[ for a [.'));
+      if (c === 0x26 && peek(1) === 0x26) fail(t('&& in [...] is not supported.'));
       i++;
       if (c === 0x5c) return escape(true);
       return { cp: c };
     };
     for (;;) {
-      if (atEnd()) fail('Unclosed [.');
+      if (atEnd()) fail(t('Unclosed [.'));
       if (peek() === 0x5d) {
         i++;
         break;
@@ -453,7 +467,7 @@ function parse(pattern, caseInsensitive) {
       const item = single();
       const rangeNext = peek() === 0x2d && peek(1) !== undefined && peek(1) !== 0x5d;
       if (item.cp === undefined) {
-        if (rangeNext) fail('A range cannot start or end at a class like \\w.');
+        if (rangeNext) fail(t('A range cannot start or end at a class like \\w.'));
         fixed.push(...item.fixed);
         props.push(...item.props);
         continue;
@@ -463,10 +477,11 @@ function parse(pattern, caseInsensitive) {
         continue;
       }
       i++;
-      if (atEnd()) fail('Unclosed [.');
+      if (atEnd()) fail(t('Unclosed [.'));
       const hi = single();
-      if (hi.cp === undefined) fail('A range cannot start or end at a class like \\w.');
-      if (hi.cp < item.cp) fail(`${ch(item.cp)}-${ch(hi.cp)} is not a range.`);
+      if (hi.cp === undefined) fail(t('A range cannot start or end at a class like \\w.'));
+      if (hi.cp < item.cp)
+        fail(t('{from}-{to} is not a range.', { from: ch(item.cp), to: ch(hi.cp) }));
       lits.push([item.cp, hi.cp]);
     }
     return setNode({ negated, lits, fixed, props, ci: flags.ci });
@@ -478,10 +493,10 @@ function parse(pattern, caseInsensitive) {
     let on = true;
     let letters = 0;
     for (;;) {
-      if (atEnd()) fail('Unclosed group.');
+      if (atEnd()) fail(t('Unclosed group.'));
       const c = ch(cps[i]);
       if (c === ')' || c === ':') {
-        if (!letters) fail('(? must be followed by a flag or a group kind.');
+        if (!letters) fail(t('(? must be followed by a flag or a group kind.'));
         break;
       }
       i++;
@@ -495,7 +510,7 @@ function parse(pattern, caseInsensitive) {
       else if (c === 'u') continue;
       // The server compiles every pattern with UNICODE_CHARACTER_CLASS.
       else if (c === 'U' && on) continue;
-      else fail(`(?${on ? '' : '-'}${c}) is not supported.`);
+      else fail(t('{group} is not supported.', { group: `(?${on ? '' : '-'}${c})` }));
     }
     return next;
   };
@@ -521,14 +536,14 @@ function parse(pattern, caseInsensitive) {
         i++;
         const close = cps.indexOf(0x3e, i);
         const name = close < 0 ? '' : cps.slice(i, close).map(ch).join('');
-        if (!/^[A-Za-z][A-Za-z0-9]*$/.test(name)) fail('A group name is letters and digits.');
-        if (groupNames.has(name)) fail(`Two groups are named ${name}.`);
+        if (!/^[A-Za-z][A-Za-z0-9]*$/.test(name)) fail(t('A group name is letters and digits.'));
+        if (groupNames.has(name)) fail(t('Two groups are named {name}.', { name }));
         i = close + 1;
         groupCount += 1;
         groupNames.set(name, groupCount);
         node = { t: 'group', kind: 'cap', n: groupCount, name };
       } else if (c === 0x3e) {
-        fail('(?>...) is not supported.');
+        fail(t('(?>...) is not supported.'));
       } else {
         const next = parseFlags();
         if (peek() === 0x29) {
@@ -546,7 +561,7 @@ function parse(pattern, caseInsensitive) {
       node = { t: 'group', kind: 'cap', n: groupCount };
     }
     node.body = parseAlt();
-    if (peek() !== 0x29) fail('Unclosed group.');
+    if (peek() !== 0x29) fail(t('Unclosed group.'));
     i++;
     flags = saved;
     return node;
@@ -577,12 +592,13 @@ function parse(pattern, caseInsensitive) {
         b = num();
         if (b === '') b = null;
       }
-      if (a === '' || cps[j] !== 0x7d) fail('Write \\{ for a {.');
+      if (a === '' || cps[j] !== 0x7d)
+        fail(t('Write {escaped} for a {brace}.', { escaped: '\\{', brace: '{' }));
       min = Number(a);
       max = b === null ? Infinity : Number(b);
       if (min > MAX_COUNT || (max !== Infinity && max > MAX_COUNT))
-        fail(`A count above ${MAX_COUNT} is not supported.`);
-      if (max < min) fail(`In {${a},${b}} the first number is larger.`);
+        fail(t('A count above {n} is not supported.', { n: MAX_COUNT }));
+      if (max < min) fail(t('In {range} the first number is larger.', { range: `{${a},${b}}` }));
       i = j + 1;
     } else return null;
     if (c !== 0x7b) i++;
@@ -590,7 +606,7 @@ function parse(pattern, caseInsensitive) {
     if (peek() === 0x3f) {
       lazy = true;
       i++;
-    } else if (peek() === 0x2b) fail('Possessive quantifiers (*+, ++, ?+) are not supported.');
+    } else if (peek() === 0x2b) fail(t('Possessive quantifiers (*+, ++, ?+) are not supported.'));
     return { min, max, lazy };
   };
 
@@ -623,19 +639,27 @@ function parse(pattern, caseInsensitive) {
         else if (e.nodes) nodes = e.nodes;
         else nodes = [setNode({ negated: !!e.negatedSet, fixed: e.fixed, props: e.props })];
       } else if (isQuantChar(c)) {
-        fail(`Nothing to repeat before ${ch(c)}. Write \\${ch(c)} for the character.`);
+        fail(
+          t('Nothing to repeat before {char}. Write \\{char} for the character.', { char: ch(c) }),
+        );
       } else nodes = [charNode(c)];
       items.push(...nodes);
       if (!atEnd() && isQuantChar(peek())) {
         const last = nodes[nodes.length - 1];
         if (!last || isAssertion(last))
-          fail(`Nothing to repeat before ${ch(peek())}. Write \\${ch(peek())} for the character.`);
+          fail(
+            t('Nothing to repeat before {char}. Write \\{char} for the character.', {
+              char: ch(peek()),
+            }),
+          );
         const q = quantifier();
         if (q) {
           items[items.length - 1] = { t: 'rep', ...q, body: last };
           if (!atEnd() && isQuantChar(peek()))
             fail(
-              `Nothing to repeat before ${ch(peek())}. Write \\${ch(peek())} for the character.`,
+              t('Nothing to repeat before {char}. Write \\{char} for the character.', {
+                char: ch(peek()),
+              }),
             );
         }
       }
@@ -653,7 +677,7 @@ function parse(pattern, caseInsensitive) {
   };
 
   const ast = parseAlt();
-  if (!atEnd()) fail('Unmatched ).');
+  if (!atEnd()) fail(t('Unmatched ).'));
   check(ast);
   return ast;
 }
@@ -678,7 +702,7 @@ function check(ast) {
         const look = node.kind !== 'cap' && node.kind !== 'nc';
         const behind = node.kind === 'lb' || node.kind === 'nlb';
         if (behind && maxLength(node.body) === Infinity)
-          fail('A lookbehind must have a bounded length.');
+          fail(t('A lookbehind must have a bounded length.'));
         if (node.kind === 'cap') groups.set(node.n, { closed: false, conditional });
         walk(node.body, conditional || look, inBehind || behind);
         if (node.kind === 'cap') groups.get(node.n).closed = true;
@@ -686,9 +710,9 @@ function check(ast) {
       }
       case 'backref': {
         const g = groups.get(node.n);
-        if (inBehind) fail('A back reference inside a lookbehind is not supported.');
+        if (inBehind) fail(t('A back reference inside a lookbehind is not supported.'));
         if (!g || !g.closed || g.conditional)
-          fail(`\\${node.n} must refer to a group that always matches before it.`);
+          fail(t('\\{n} must refer to a group that always matches before it.', { n: node.n }));
         break;
       }
       default:
@@ -871,7 +895,7 @@ export function translatePattern(
     // The cap counts the pattern as sent, where \b, \s, \w, $ and . are
     // spelled out as classes of 30 to 230 characters each (and \B, \S, \W, \h
     // likewise), so the message names them.
-    if (server.length > SERVER_PATTERN_MAX) fail(TOO_LONG);
+    if (server.length > SERVER_PATTERN_MAX) fail(tooLong());
     return { server, source: wrap('js'), error: null };
   } catch (err) {
     if (err instanceof PatternError) return { server: null, source: null, error: err.message };

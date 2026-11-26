@@ -1,4 +1,5 @@
 import { cn } from '../../lib/utils.js';
+import { t } from '../../lib/i18n.js';
 
 /**
  * What a screen or a panel shows while it loads: one muted line of text.
@@ -14,6 +15,6 @@ import { cn } from '../../lib/utils.js';
  * No padding at the sides: the line starts on the gutter of the page or box it
  * is in, where that page's own text would start.
  */
-export const Loading = ({ label = 'Loading…', className }) => (
+export const Loading = ({ label = t('Loading…'), className }) => (
   <p className={cn('py-4 text-sm text-muted-foreground', className)}>{label}</p>
 );

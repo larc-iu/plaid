@@ -5,7 +5,7 @@ import { cn } from '@ui/lib/utils';
 import { ContextRow } from './DictionaryPanels';
 import { sentenceTo } from './vocabConcordance';
 import { Loading } from '@ui/components/shared/Loading.jsx';
-import { countOf } from '@ui/lib/plural.js';
+import { t } from '@ui/lib/i18n.js';
 
 // The Concordance tab: the open entry's uses, grouped by document, each row
 // a link into the sentence, with "Use as example" for a maintainer. `conc` is
@@ -47,7 +47,7 @@ export const ConcordancePanel = ({ conc, selectedItem, canEdit, onAddExample }) 
   return (
     <div className="rounded-lg border bg-card">
       <div className="flex items-center justify-between border-b px-4 py-2">
-        <span className="text-sm font-medium">Concordance</span>
+        <span className="text-sm font-medium">{t('Concordance')}</span>
         <span className="flex items-center gap-4">
           <label className="flex items-center gap-1.5 text-xs text-muted-foreground">
             <input
@@ -55,24 +55,31 @@ export const ConcordancePanel = ({ conc, selectedItem, canEdit, onAddExample }) 
               checked={segmented}
               onChange={(e) => toggleSegmented(e.target.checked)}
             />
-            Show segmentation
+            {t('Show segmentation')}
           </label>
           {concPlan && (
             <span className="text-xs text-muted-foreground">
-              {countOf(concPlan.totalHits, 'use')} in {countOf(concPlan.totalDocs, 'document')}
-              {concPlan.truncated ? ' (capped)' : ''}
+              {concPlan.truncated
+                ? t(
+                    '{hits, plural, one {# use} other {# uses}} in {docs, plural, one {# document} other {# documents}} (capped)',
+                    { hits: concPlan.totalHits, docs: concPlan.totalDocs },
+                  )
+                : t(
+                    '{hits, plural, one {# use} other {# uses}} in {docs, plural, one {# document} other {# documents}}',
+                    { hits: concPlan.totalHits, docs: concPlan.totalDocs },
+                  )}
             </span>
           )}
         </span>
       </div>
 
       {concLoading ? (
-        <Loading label="Loading usage examples…" className="py-10 text-center" />
+        <Loading label={t('Loading usage examples…')} className="py-10 text-center" />
       ) : concError ? (
         <p className="px-4 py-6 text-center text-sm text-muted-foreground">{concError}</p>
       ) : !concPlan || concPlan.totalHits === 0 ? (
         <p className="px-4 py-10 text-center text-sm text-muted-foreground">
-          Not linked to any words or morphemes yet.
+          {t('Not linked to any words or morphemes yet.')}
         </p>
       ) : (
         <div className="flex flex-col gap-3 p-3">
@@ -81,7 +88,9 @@ export const ConcordancePanel = ({ conc, selectedItem, canEdit, onAddExample }) 
               <div className="flex items-center gap-2 border-b bg-muted/50 px-3 py-1.5">
                 <FileText className="h-3.5 w-3.5 text-muted-foreground" />
                 <span className="text-sm font-medium">{g.docName}</span>
-                <span className="text-xs text-muted-foreground">{countOf(g.docHits, 'use')}</span>
+                <span className="text-xs text-muted-foreground">
+                  {t('{n, plural, one {# use} other {# uses}}', { n: g.docHits })}
+                </span>
               </div>
               <div className="divide-y">
                 {g.rows.map((row) => {
@@ -113,7 +122,7 @@ export const ConcordancePanel = ({ conc, selectedItem, canEdit, onAddExample }) 
                           )}
                         >
                           <Quote className="h-3 w-3" />
-                          {chosen ? 'Example' : 'Use as example'}
+                          {chosen ? t('Example') : t('Use as example')}
                         </button>
                       )}
                     </div>
@@ -121,7 +130,7 @@ export const ConcordancePanel = ({ conc, selectedItem, canEdit, onAddExample }) 
                 })}
                 {g.rows.length === 0 && (
                   <p className="px-3 py-2 text-xs text-muted-foreground">
-                    Uses in this document could not be located. Open it to look.
+                    {t('Uses in this document could not be located. Open it to look.')}
                   </p>
                 )}
               </div>
@@ -132,8 +141,10 @@ export const ConcordancePanel = ({ conc, selectedItem, canEdit, onAddExample }) 
             <div ref={sentinelRef} className="flex justify-center py-2">
               <Button variant="outline" size="sm" onClick={loadMore} disabled={concLoadingMore}>
                 {concLoadingMore
-                  ? 'Loading…'
-                  : `Load more (${countOf(concPlan.totalDocs - concLoaded, 'document')} left)`}
+                  ? t('Loading…')
+                  : t('Load more ({n, plural, one {# document} other {# documents}} left)', {
+                      n: concPlan.totalDocs - concLoaded,
+                    })}
               </Button>
             </div>
           )}

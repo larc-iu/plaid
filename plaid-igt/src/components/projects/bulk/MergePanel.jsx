@@ -26,7 +26,8 @@ import { morphTypeLabel } from '@/domain/affixMarkers';
 import { metadataUpdates } from '@/domain/metadataPatch';
 import { readVocabFields } from '@/domain/igtConfig';
 import { planMerge, applyMerge } from './bulkRunner.js';
-import { countOf, useRun } from './bulkShared.js';
+import { useRun } from './bulkShared.js';
+import { t, tx } from '@ui/lib/i18n.js';
 import { ApplyBar, Checkbox, Progress } from './parts.jsx';
 import { usePreviewFocus } from './usePreviewFocus.js';
 import { textIncludes } from '@ui/domain/collation.js';
@@ -41,6 +42,8 @@ import { isChangedElsewhere } from '@ui/lib/errors.js';
 // Provenance keys are bookkeeping rather than content. The structural keys
 // (the sense tree, the examples, the import identity) are set apart by
 // editableMetadata, and the two the panel draws itself are drawn below.
+const strong = (c) => <strong>{c}</strong>;
+
 const isBookkeepingKey = (k) => PROVENANCE_KEYS.includes(k);
 
 // The whole of one lexicon entry (minus its attestations): every configured
@@ -84,7 +87,7 @@ const EntryDetail = ({ item, fields, nameOf, client }) => {
         ))}
         {homograph > 0 && (
           <>
-            <dt className="text-xs text-muted-foreground">FLEx homograph</dt>
+            <dt className="text-xs text-muted-foreground">{t('FLEx homograph')}</dt>
             <dd>{homograph}</dd>
           </>
         )}
@@ -130,7 +133,7 @@ export const MergePanel = ({ project, client }) => {
       })
       .catch((err) => {
         console.error('Load vocabulary failed:', err);
-        if (!cancelled) notifyError(humanizeError(err), 'Failed to load the vocabulary');
+        if (!cancelled) notifyError(humanizeError(err), t('Failed to load the vocabulary'));
       });
     return () => {
       cancelled = true;
@@ -237,7 +240,8 @@ export const MergePanel = ({ project, client }) => {
           {
             survivorId: survivor,
             loserIds: losers,
-            label: `Merge ${countOf(losers.length, 'lexicon entry', 'lexicon entries')} into “${survivorName}”`,
+            // i18n-ignore: an audit label, stored on the server
+            label: `Merge ${losers.length.toLocaleString()} ${losers.length === 1 ? 'lexicon entry' : 'lexicon entries'} into “${survivorName}”`,
           },
         );
         return { ...out, refPlans, seen };
@@ -254,19 +258,31 @@ export const MergePanel = ({ project, client }) => {
     // less the ones counted that were moved rather than dropped as
     // duplicates.
     const hidden = Math.max(0, res.linksMoved - (res.seen.links - res.seen.duplicates));
-    notifySuccess(
-      `${countOf(res.entriesRemoved, 'entry', 'entries')} merged. ${countOf(res.linksMoved, 'link')} moved to “${survivorName}”` +
-        (hidden ? `, ${hidden} of them in projects you cannot open.` : '.') +
-        (res.duplicatesRemoved
-          ? ` ${countOf(res.duplicatesRemoved, 'duplicate link')} removed.`
-          : '') +
-        (res.entriesRepointed
-          ? ` ${countOf(res.entriesRepointed, 'entry', 'entries')} now ${
-              res.entriesRepointed === 1 ? 'points' : 'point'
-            } at it.`
-          : ''),
-      'Merged',
-    );
+    const said = [
+      t('{n, plural, one {# entry} other {# entries}} merged.', { n: res.entriesRemoved }),
+      hidden
+        ? t(
+            '{n, plural, one {# link} other {# links}} moved to “{name}”, {hidden} of them in projects you cannot open.',
+            { n: res.linksMoved, name: survivorName, hidden },
+          )
+        : t('{n, plural, one {# link} other {# links}} moved to “{name}”.', {
+            n: res.linksMoved,
+            name: survivorName,
+          }),
+    ];
+    if (res.duplicatesRemoved)
+      said.push(
+        t('{n, plural, one {# duplicate link} other {# duplicate links}} removed.', {
+          n: res.duplicatesRemoved,
+        }),
+      );
+    if (res.entriesRepointed)
+      said.push(
+        t('{n, plural, one {# entry now points} other {# entries now point}} at it.', {
+          n: res.entriesRepointed,
+        }),
+      );
+    notifySuccess(said.join(' '), t('Merged'));
     // The maps the plan ends at, for the list on screen. The WRITE was the
     // patch against what each entry carried.
     const patched = new Map(res.refPlans.map((p) => [p.id, p.metadata]));
@@ -283,7 +299,7 @@ export const MergePanel = ({ project, client }) => {
   if (vocabs.length === 0) {
     return (
       <p className="py-10 text-center text-sm text-muted-foreground">
-        This project has no linked vocabulary.
+        {t('This project has no linked vocabulary.')}
       </p>
     );
   }
@@ -294,7 +310,7 @@ export const MergePanel = ({ project, client }) => {
         <div className="flex flex-wrap items-end gap-2">
           {vocabs.length > 1 && (
             <div className="flex flex-col gap-1">
-              <Label>Vocabulary</Label>
+              <Label>{t('Vocabulary')}</Label>
               <Select value={vocabId} onValueChange={setVocabId}>
                 <SelectTrigger className="w-[220px]">
                   <SelectValue />
@@ -310,30 +326,29 @@ export const MergePanel = ({ project, client }) => {
             </div>
           )}
           <div className="flex min-w-48 flex-1 flex-col gap-1">
-            <Label htmlFor="bulk-merge-filter">Find entries</Label>
+            <Label htmlFor="bulk-merge-filter">{t('Find entries')}</Label>
             <Input
               id="bulk-merge-filter"
               compose
               value={filter}
               onChange={(e) => setFilter(e.target.value)}
-              placeholder="filter by form"
+              placeholder={t('filter by form')}
             />
           </div>
         </div>
         <p className="text-xs text-muted-foreground">
-          Tick the entries to merge and choose which one survives. Every word and morpheme linked to
-          the others is re-linked to the survivor. The survivor’s fields are kept, it takes the
-          others’ examples from documents, and the other entries are deleted.
+          {t(
+            'Tick the entries to merge and choose which one survives. Every word and morpheme linked to the others is re-linked to the survivor. The survivor’s fields are kept, it takes the others’ examples from documents, and the other entries are deleted.',
+          )}
         </p>
         {items && !canMerge && (
           <Notice tone="info">
-            {home ? (
-              <>
-                Only a maintainer of “<span dir="auto">{home.name}</span>” can merge its entries.
-              </>
-            ) : (
-              'This vocabulary belongs to another project.'
-            )}
+            {home
+              ? tx('Only a maintainer of “<span>{name}</span>” can merge its entries.', {
+                  name: home.name,
+                  span: (c) => <span dir="auto">{c}</span>,
+                })
+              : t('This vocabulary belongs to another project.')}
           </Notice>
         )}
       </div>
@@ -341,9 +356,9 @@ export const MergePanel = ({ project, client }) => {
       {items && (
         <div className="rounded-lg border bg-card">
           <div className="grid grid-cols-[3.5rem_3rem_1fr] items-center border-b bg-muted/50 px-3 py-2 text-xs font-medium text-muted-foreground">
-            <span className="text-center">Merge</span>
-            <span className="text-center">Keep</span>
-            <span>Entry</span>
+            <span className="text-center">{t('Merge')}</span>
+            <span className="text-center">{t('Keep')}</span>
+            <span>{t('Entry')}</span>
           </div>
           <div className="divide-y">
             {shown.map((it) => {
@@ -360,7 +375,11 @@ export const MergePanel = ({ project, client }) => {
                   <Checkbox
                     checked={on}
                     onChange={(v) => pick(it.id, v)}
-                    aria-label={`Merge ${it.form}${idx ? ` ${idx}` : ''}`}
+                    aria-label={
+                      idx
+                        ? t('Merge {form} {index}', { form: it.form, index: idx })
+                        : t('Merge {form}', { form: it.form })
+                    }
                     className="h-4 w-4 cursor-pointer justify-self-center accent-primary"
                   />
                   <input
@@ -373,7 +392,7 @@ export const MergePanel = ({ project, client }) => {
                       r.setPlan(null);
                     }}
                     className="justify-self-center accent-primary disabled:opacity-30"
-                    title="Keep this entry"
+                    title={t('Keep this entry')}
                   />
                   <span className="min-w-0 truncate">
                     <FormLabel form={it.form} index={idx} className="font-medium" />
@@ -390,11 +409,13 @@ export const MergePanel = ({ project, client }) => {
               );
             })}
             {shown.length === 0 && (
-              <p className="px-3 py-4 text-center text-xs text-muted-foreground">No entries.</p>
+              <p className="px-3 py-4 text-center text-xs text-muted-foreground">
+                {t('No entries.')}
+              </p>
             )}
             {items.length > 200 && shown.length === 200 && (
               <p className="px-3 py-2 text-xs text-muted-foreground">
-                Showing the first 200. Narrow the filter to find others.
+                {t('Showing the first 200. Narrow the filter to find others.')}
               </p>
             )}
           </div>
@@ -404,15 +425,21 @@ export const MergePanel = ({ project, client }) => {
       {chosen.size > 0 && (
         <div className="flex flex-wrap items-center gap-3 rounded-lg border bg-card p-3 text-sm">
           <span>
-            {countOf(chosen.size, 'entry', 'entries')} ticked
-            {survivor && (
-              <>
-                , keeping{' '}
-                <strong>
-                  <FormLabel form={itemById.get(survivor)?.form} index={numbers.get(survivor)} />
-                </strong>
-              </>
-            )}
+            {survivor
+              ? tx(
+                  '{n, plural, one {# entry} other {# entries}} ticked, keeping <strong>{entry}</strong>',
+                  {
+                    n: chosen.size,
+                    entry: (
+                      <FormLabel
+                        form={itemById.get(survivor)?.form}
+                        index={numbers.get(survivor)}
+                      />
+                    ),
+                    strong,
+                  },
+                )
+              : t('{n, plural, one {# entry} other {# entries}} ticked', { n: chosen.size })}
           </span>
           <Button
             className="ml-auto"
@@ -420,7 +447,7 @@ export const MergePanel = ({ project, client }) => {
             onClick={preview}
             disabled={!canMerge || r.busy || !survivor || losers.length === 0}
           >
-            {r.busy && !plan ? 'Counting links…' : 'Preview'}
+            {r.busy && !plan ? t('Counting links…') : t('Preview')}
           </Button>
         </div>
       )}
@@ -431,36 +458,48 @@ export const MergePanel = ({ project, client }) => {
           count={losers.length}
           busy={r.busy}
           onApply={doApply}
-          summary={
-            <>
-              {countOf(losers.length, 'entry', 'entries')} will be merged into “
-              <FormLabel form={itemById.get(survivor)?.form} index={numbers.get(survivor)} />
-              ”: their links move to it, and the merged entries are deleted.
-            </>
-          }
+          summary={tx(
+            '{n, plural, one {# entry} other {# entries}} will be merged into “{entry}”: their links move to it, and the merged entries are deleted.',
+            {
+              n: losers.length,
+              entry: (
+                <FormLabel form={itemById.get(survivor)?.form} index={numbers.get(survivor)} />
+              ),
+            },
+          )}
         >
           <span className="text-sm">
-            {losers.map((id, i) => (
-              <Fragment key={id}>
-                {i > 0 && ', '}
-                <FormLabel form={itemById.get(id)?.form} index={numbers.get(id)} />
-              </Fragment>
-            ))}{' '}
-            →{' '}
-            <strong>
-              <FormLabel form={itemById.get(survivor)?.form} index={numbers.get(survivor)} />
-            </strong>
-            : {countOf(plan.links, 'link')} in {countOf(plan.docs, 'document')} will follow.
+            {tx(
+              '{losers} → <strong>{entry}</strong>: {n, plural, one {# link} other {# links}} in {docs, plural, one {# document} other {# documents}} will follow.',
+              {
+                losers: losers.map((id, i) => (
+                  <Fragment key={id}>
+                    {i > 0 && ', '}
+                    <FormLabel form={itemById.get(id)?.form} index={numbers.get(id)} />
+                  </Fragment>
+                )),
+                entry: (
+                  <FormLabel form={itemById.get(survivor)?.form} index={numbers.get(survivor)} />
+                ),
+                n: plan.links,
+                docs: plan.docs,
+                strong,
+              },
+            )}
           </span>
           {typing?.take && (
             <span className="block text-sm">
-              “<FormLabel form={itemById.get(survivor)?.form} index={numbers.get(survivor)} />”
-              takes the type {morphTypeLabel(typing.take)}.
+              {tx('“{entry}” takes the type {type}.', {
+                entry: (
+                  <FormLabel form={itemById.get(survivor)?.form} index={numbers.get(survivor)} />
+                ),
+                type: morphTypeLabel(typing.take),
+              })}
             </span>
           )}
           {typing?.differs && (
             <span className="block text-sm">
-              The merged entries’ morphemes will go by the survivor’s type.
+              {t('The merged entries’ morphemes will go by the survivor’s type.')}
             </span>
           )}
         </ApplyBar>

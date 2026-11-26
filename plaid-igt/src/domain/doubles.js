@@ -10,11 +10,12 @@
 import { cpSlice } from '@larc-iu/plaid-client';
 import { getIgtLayerInfo } from './layerInfo.js';
 import { isTokenIgnored, readIgnoredTokens } from './igtConfig.js';
+import { t } from '../../../plaid-ui/src/lib/i18n.js';
 
 /** How many units Validation lists for a field. */
 const SHOWN_DOUBLES = 20;
 
-const countOf = (answer) => answer?.violationCount ?? answer?.violations?.length ?? 0;
+const unitsIn = (answer) => answer?.violationCount ?? answer?.violations?.length ?? 0;
 
 /**
  * One unit as Validation shows it, or null for a unit whose every token is
@@ -26,7 +27,7 @@ const rowOf = (v, raw, layerId) => {
   const text = info.primaryTextLayer;
   const body = text?.text?.body ?? '';
   const tokenLayers = text?.tokenLayers || [];
-  const tokens = new Map(tokenLayers.flatMap((tl) => tl.tokens || []).map((t) => [t.id, t]));
+  const tokens = new Map(tokenLayers.flatMap((tl) => tl.tokens || []).map((tok) => [tok.id, tok]));
   const spans = tokenLayers
     .flatMap((tl) => tl.spanLayers || [])
     .find((sl) => sl.id === layerId)?.spans;
@@ -47,7 +48,12 @@ const rowOf = (v, raw, layerId) => {
     .map((id) => tokens.get(id))
     .sort((a, b) => (a.id === v.at ? -1 : b.id === v.at ? 1 : a.begin - b.begin));
   if (!unit.length) {
-    return { docId: v.document, docName: raw?.name || '(untitled)', sentenceId: null, begin: null };
+    return {
+      docId: v.document,
+      docName: raw?.name || t('(untitled)'),
+      sentenceId: null,
+      begin: null,
+    };
   }
   const token = unit.find(reachable);
   if (!token) return null;
@@ -60,7 +66,7 @@ const rowOf = (v, raw, layerId) => {
     token.metadata && Object.hasOwn(token.metadata, 'form') ? (token.metadata.form ?? '') : null;
   return {
     docId: v.document,
-    docName: raw?.name || '(untitled)',
+    docName: raw?.name || t('(untitled)'),
     sentenceId: sentence?.id ?? null,
     begin: token.begin,
     form: own !== null && own !== extent ? `${extent} · ${own}` : extent,
@@ -83,8 +89,8 @@ export const findDoubles = async (client, layerId, { limit = SHOWN_DOUBLES } = {
   // Core lists 100 units unless asked for more. Which of the rest are on
   // ignored tokens is known only from their tokens, so past 100 every unit
   // is listed and read (REV8-APPS-2: 125 units, 57 reachable, counted 72).
-  if (countOf(answer) > (answer?.violations?.length ?? 0)) {
-    answer = await client.spanLayers.checkConstraints(layerId, rules, { limit: countOf(answer) });
+  if (unitsIn(answer) > (answer?.violations?.length ?? 0)) {
+    answer = await client.spanLayers.checkConstraints(layerId, rules, { limit: unitsIn(answer) });
   }
   const found = (answer?.violations || []).filter(
     (v) => v.constraint === 'single-span' && v.document && v.at,
@@ -111,5 +117,5 @@ export const findDoubles = async (client, layerId, { limit = SHOWN_DOUBLES } = {
   );
   // Units written between the two asks are past the second list: counted
   // as core counts them.
-  return { count: count + Math.max(0, countOf(answer) - found.length), hidden, rows };
+  return { count: count + Math.max(0, unitsIn(answer) - found.length), hidden, rows };
 };

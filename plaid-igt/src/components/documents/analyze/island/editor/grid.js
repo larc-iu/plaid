@@ -9,12 +9,25 @@ import {
   cellTier,
   morphFormOf,
   numHtml,
+  onceInLanguage,
   provClass,
   provDisplay,
-  provTitle,
+  rowTitle,
+  tokenProvTitle,
   uncontrolledValue,
 } from './shared.js';
 import { isEnter } from '@ui/lib/chords.js';
+import { t } from '@ui/lib/i18n.js';
+
+// The chips' constant words, which every word and morpheme draws.
+const CHIP = onceInLanguage(() => ({
+  linkTitle: t('Link to a lexicon entry'),
+  link: t('link'),
+  analyzeTitle: t('Analyze every word spelled like this one, like this one'),
+  analyze: t('analyze'),
+  setTypeTitle: t('Set morpheme type'),
+  setType: t('set type'),
+}));
 
 // The cells themselves: row labels, a word's column, its morphemes, gaps
 // and inert columns, sentence annotations, and the face of a vocab chip.
@@ -29,12 +42,23 @@ export const grid = {
     const openMenu = (e) => this._openRowMenuFrom(e);
     // `kind` is what the title calls the row: an orthography's row is an
     // additional one, beside the word forms (the Baseline row above it).
+    // The labels repeat on every sentence, so their words are worked out once
+    // a render, on the render's ctx.
+    const words = (ctx.labelWords ||= {
+      titles: new Map(),
+      baselineTitle: t('Baseline: the text as typed'),
+      baseline: t('Baseline'),
+      morphemes: t('Morphemes'),
+    });
     const lbl = (cls, name, scope, key, kind = scope) => {
       const collapsed = this._isCollapsed(key);
+      const memoKey = `${kind}\u0000${collapsed}\u0000${name}`;
+      let title = words.titles.get(memoKey);
+      if (title == null) words.titles.set(memoKey, (title = rowTitle(name, kind, collapsed)));
       return html` <div
         class="igt-row-label ${cls}${this._rowCls(key)}"
         data-row=${key}
-        title=${collapsed ? `${name} (${kind}), minimized` : `${name} (${kind})`}
+        title=${title}
         role="button"
         tabindex="0"
         aria-expanded=${collapsed ? 'false' : 'true'}
@@ -52,17 +76,17 @@ export const grid = {
     };
     return html`
       <div class="igt-labels">
-        <div class="igt-row-label igt-row-label--spacer" title="Baseline: the text as typed">
-          <span class="igt-row-label__text">Baseline</span>
+        <div class="igt-row-label igt-row-label--spacer" title=${words.baselineTitle}>
+          <span class="igt-row-label__text">${words.baseline}</span>
         </div>
         ${ctx.orthographies.map((n) =>
-          lbl('igt-row-label--orth', n, 'orthography', `orth:${n}`, 'additional orthography'),
+          lbl('igt-row-label--orth', n, 'orthography', `orth:${n}`, 'additionalOrthography'),
         )}
         ${ctx.wordFields.map((n) => lbl('igt-row-label--word', n, 'word', `word:${n}`))}
         ${ctx.hasMorphemes
           ? lbl(
               'igt-row-label--morph igt-row-label--morphform',
-              'Morphemes',
+              words.morphemes,
               'morpheme',
               'morphform',
             )
@@ -88,15 +112,13 @@ export const grid = {
     // The value is put in front after the word is swapped, so a word that
     // reads "machine-made" is not the one swapped.
     const wpTitle = wp
-      ? token.content +
-        provTitle(
-          '',
+      ? tokenProvTitle(
+          token.content,
           wp,
           provOrigin(token.metadata),
           this.doc.isContributor,
-          null,
           this.readOnly,
-        ).replace('machine-made', 'machine-tokenized')
+        )
       : token.content;
     // Multi-word expressions: a member of the selection (or of the MWE whose
     // popover is open) is outlined; while gathering, every word is a target.
@@ -167,7 +189,7 @@ export const grid = {
                   ? this._commentBadge(
                       'span',
                       token.annotations[name].id,
-                      `${name} of ${token.content}`,
+                      t('{field} of {word}', { field: name, word: token.content }),
                     )
                   : null,
                 value: token.annotations?.[name]?.value ?? '',
@@ -241,7 +263,11 @@ export const grid = {
   // characters, anything between or around tokens.
   _gapCol(piece, sctx) {
     const text = (piece.content || '').trim();
-    return this._inertCol(text, `${text}: not part of any word`, this._mweGapRules(piece, sctx));
+    return this._inertCol(
+      text,
+      t('{text}: not part of any word', { text }),
+      this._mweGapRules(piece, sctx),
+    );
   },
 
   // A gap (text no word covers, such as a comma) that lies inside a
@@ -249,7 +275,7 @@ export const grid = {
   // so the line reads as one line from first word to last.
   _mweGapRules(piece, sctx) {
     const tokens = sctx.sentence.tokens;
-    let next = tokens.findIndex((t) => t.begin >= piece.end);
+    let next = tokens.findIndex((tok) => tok.begin >= piece.end);
     if (next < 0) next = tokens.length;
     const rules = [];
     for (const m of sctx.sentence.mwes || []) {
@@ -311,10 +337,10 @@ export const grid = {
     const unsent = !this.readOnly && !!this._cells.unsentOf(formKey);
     const formWhat =
       siblings.length <= 1
-        ? this._cellWhat('Morpheme form', `"${word.content}"`, index)
+        ? this._cellWhat('Morpheme form', `"${word.content}"`, index) // i18n-ignore: History's label, stored with the edit
         : this._cellWhat(
             'Form',
-            `morpheme ${morph.precedence ?? siblings.indexOf(morph) + 1} of "${word.content}"`,
+            `morpheme ${morph.precedence ?? siblings.indexOf(morph) + 1} of "${word.content}"`, // i18n-ignore: History's label, stored with the edit
             index,
           );
     // Chips linked to a stem/root lexicon entry keep the lavender accent —
@@ -338,7 +364,7 @@ export const grid = {
               data-word=${word.id}
               data-prec=${morph.precedence ?? 1}
               data-confirm-word=${word.id}
-              aria-label=${`Morpheme form${value ? ` ${value}` : ''}`}
+              aria-label=${value ? t('Morpheme form {form}', { form: value }) : t('Morpheme form')}
               aria-describedby=${this._conflictDescribedBy(formKey)}
               title=${prov
                 ? this._cellTitle(value, prov, provOrigin(morph.metadata), confidence?.note)
@@ -366,7 +392,11 @@ export const grid = {
               formText: value,
               kind: 'morpheme',
               badge: [
-                this._commentBadge('token', morph.id, value ? `morpheme ${value}` : 'morpheme'),
+                this._commentBadge(
+                  'token',
+                  morph.id,
+                  value ? t('morpheme {form}', { form: value }) : t('morpheme'),
+                ),
                 this._conflictNote(formKey),
               ],
             },
@@ -398,7 +428,9 @@ export const grid = {
                   ? this._commentBadge(
                       'span',
                       morph.annotations[name].id,
-                      value ? `${name} of morpheme ${value}` : `${name} of morpheme`,
+                      value
+                        ? t('{field} of morpheme {form}', { field: name, form: value })
+                        : t('{field} of morpheme', { field: name }),
                     )
                   : null,
                 value: morph.annotations?.[name]?.value ?? '',
@@ -424,7 +456,9 @@ export const grid = {
                         ),
                       ),
                 extraClass: 'igt-morph-field',
-                ariaLabel: `${name} for morpheme${value ? ` ${value}` : ''}`,
+                ariaLabel: value
+                  ? t('{field} for morpheme {form}', { field: name, form: value })
+                  : t('{field} for morpheme', { field: name }),
                 fieldName: name,
                 tagset,
                 guessTarget: morph.id,
@@ -470,7 +504,7 @@ export const grid = {
               <span
                 class="igt-sentence-anno__label"
                 data-row=${key}
-                title=${collapsed ? `${name} (sentence), minimized` : `${name} (sentence)`}
+                title=${rowTitle(name, 'sentence', collapsed)}
                 role="button"
                 tabindex="0"
                 aria-expanded=${collapsed ? 'false' : 'true'}
@@ -500,7 +534,7 @@ export const grid = {
                           ),
                         ),
                       sentence: true,
-                      ariaLabel: `${name} for sentence ${index + 1}`,
+                      ariaLabel: t('{field} for sentence {n}', { field: name, n: index + 1 }),
                       tagset: this._tagsetFor('sentence', name),
                       // Only worth building for a governed field: an ungoverned
                       // sentence field is free prose with no list to offer.
@@ -525,7 +559,7 @@ export const grid = {
                       ? this._commentBadge(
                           'span',
                           sentence.annotations[name].id,
-                          `${name} of sentence ${index + 1}`,
+                          t('{field} of sentence {n}', { field: name, n: index + 1 }),
                           { inline: true },
                         )
                       : nothing}
@@ -605,11 +639,11 @@ export const grid = {
         class="igt-vocab__opener igt-vocab__link"
         data-vocab-opener=${id}
         data-pop-opener=${`vocab:${id}`}
-        title="Link to a lexicon entry"
-        aria-label=${`Link ${formText ?? ''} to a lexicon entry`}
+        title=${CHIP().linkTitle}
+        aria-label=${t('Link {form} to a lexicon entry', { form: formText ?? '' })}
         @click=${openerClick}
       >
-        link
+        ${CHIP().link}
       </button>`;
     } else if (!hasVocabs && !this.readOnly && kind === 'word' && this._canSpread(id)) {
       // A project with no lexicon has no chip at all, which left "Analyze
@@ -620,11 +654,11 @@ export const grid = {
         class="igt-vocab__opener igt-vocab__link"
         data-vocab-opener=${id}
         data-pop-opener=${`vocab:${id}`}
-        title="Analyze every word spelled like this one, like this one"
-        aria-label=${`Analyze every ${formText ?? ''} like this one`}
+        title=${CHIP().analyzeTitle}
+        aria-label=${t('Analyze every {form} like this one', { form: formText ?? '' })}
         @click=${openerClick}
       >
-        analyze
+        ${CHIP().analyze}
       </button>`;
     } else if (!hasVocabs && !this.readOnly && kind === 'morpheme') {
       // With no lexicon there is no chip either, and the morpheme's type is
@@ -634,11 +668,11 @@ export const grid = {
         class="igt-vocab__opener igt-vocab__link"
         data-vocab-opener=${id}
         data-pop-opener=${`vocab:${id}`}
-        title="Set morpheme type"
-        aria-label=${`Set the type of ${formText ?? ''}`}
+        title=${CHIP().setTypeTitle}
+        aria-label=${t('Set the type of {form}', { form: formText ?? '' })}
         @click=${openerClick}
       >
-        set type
+        ${CHIP().setType}
       </button>`;
     }
     // A word's stack holds, between the word and its chip, one row per lane

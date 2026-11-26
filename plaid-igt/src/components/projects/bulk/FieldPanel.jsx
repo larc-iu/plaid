@@ -22,7 +22,8 @@ import {
 import { MATCH_TYPES, searchDomains } from '../search/searchQueries.js';
 import { blank, buildReplacer } from './bulkPlan.js';
 import { planField, applyField } from './bulkRunner.js';
-import { notifyStopped, countOf, skippedNote, useRun, useWriter } from './bulkShared.js';
+import { notifyStopped, skippedNote, useRun, useWriter } from './bulkShared.js';
+import { t, tx } from '@ui/lib/i18n.js';
 import { scopeTextClass } from '@/domain/scopeColors';
 import {
   ApplyBar,
@@ -44,32 +45,51 @@ const tagsetForTarget = (target, layerInfo, project) => {
   if (!target || target.kind !== 'span') return null;
   const layer = (layerInfo?.spanLayers?.[target.scope] || []).find((l) => l.id === target.layerId);
   if (!layer) return null;
-  const t = resolveTagset(layer.config, project?.config);
+  const ts = resolveTagset(layer.config, project?.config);
   // The name rides along so the warning can say which list refused the values.
-  return t ? { ...t, name: readTagsetName(layer.config) } : null;
+  return ts ? { ...ts, name: readTagsetName(layer.config) } : null;
 };
 
 // "3 values replaced and 2 cleared in Gloss", or with `will`, "… will be
-// replaced …". A clear is a row whose replacement leaves nothing.
+// replaced …". A clear is a row whose replacement leaves nothing. `field` is
+// the field's name as shown.
 const changeText = (replaced, cleared, field, will = false) => {
-  const be = will ? ' will be' : '';
-  const parts = [];
-  if (replaced || !cleared) parts.push(`${countOf(replaced, 'value')}${be} replaced`);
+  if (replaced && cleared)
+    return will
+      ? t(
+          '{replaced, plural, one {# value} other {# values}} will be replaced and {cleared} will be cleared in {field}',
+          { replaced, cleared, field },
+        )
+      : t(
+          '{replaced, plural, one {# value} other {# values}} replaced and {cleared} cleared in {field}',
+          { replaced, cleared, field },
+        );
   if (cleared)
-    parts.push(replaced ? `${cleared}${be} cleared` : `${countOf(cleared, 'value')}${be} cleared`);
-  return `${parts.join(' and ')} in ${field}`;
+    return will
+      ? t('{n, plural, one {# value} other {# values}} will be cleared in {field}', {
+          n: cleared,
+          field,
+        })
+      : t('{n, plural, one {# value} other {# values}} cleared in {field}', { n: cleared, field });
+  return will
+    ? t('{n, plural, one {# value} other {# values}} will be replaced in {field}', {
+        n: replaced,
+        field,
+      })
+    : t('{n, plural, one {# value} other {# values}} replaced in {field}', { n: replaced, field });
 };
 
 // One field match: the word (and morpheme) it sits under as context, then the
 // field's before → after.
 const FieldChange = ({ row, target }) => {
   const lines = [];
-  if (row.word != null) lines.push({ label: 'Word', cls: scopeTextClass('word'), from: row.word });
+  if (row.word != null)
+    lines.push({ label: t('Word'), cls: scopeTextClass('word'), from: row.word });
   if (row.morpheme != null)
-    lines.push({ label: 'Morpheme', cls: scopeTextClass('morpheme'), from: row.morpheme });
+    lines.push({ label: t('Morpheme'), cls: scopeTextClass('morpheme'), from: row.morpheme });
   const scope = target.kind === 'morpheme' ? 'morpheme' : target.scope;
   lines.push({
-    label: target.kind === 'morpheme' ? 'Morpheme form' : target.field,
+    label: target.kind === 'morpheme' ? t('Morpheme form') : target.field,
     cls: scopeTextClass(scope),
     from: row.old,
     to: row.new,
@@ -78,18 +98,20 @@ const FieldChange = ({ row, target }) => {
     <>
       <ChangeGrid lines={lines} />
       {row.invalid === 'tagset' && (
-        <p className="mt-1 text-xs text-destructive">Outside the tagset, so it will be skipped.</p>
+        <p className="mt-1 text-xs text-destructive">
+          {t('Outside the tagset, so it will be skipped.')}
+        </p>
       )}
       {row.invalid === 'empty' && (
-        <p className="mt-1 text-xs text-destructive">Empty form, so it will be skipped.</p>
+        <p className="mt-1 text-xs text-destructive">{t('Empty form, so it will be skipped.')}</p>
       )}
       {row.invalid === 'formless' && (
         <p className="mt-1 text-xs text-destructive">
-          Spelled as its word, so it will be skipped. Respell the word to change it.
+          {t('Spelled as its word, so it will be skipped. Respell the word to change it.')}
         </p>
       )}
       {!row.invalid && row.kind === 'span' && blank(row.new) && (
-        <p className="mt-1 text-xs text-muted-foreground">Clears the value.</p>
+        <p className="mt-1 text-xs text-muted-foreground">{t('Clears the value.')}</p>
       )}
     </>
   );
@@ -106,7 +128,7 @@ export const FieldPanel = ({ project, projectId, client, layerInfo }) => {
   const [params] = useSearchParams();
   const [targetId, setTargetId] = useState(() => {
     const asked = params.get('in');
-    return targets.some((t) => t.id === asked) ? asked : (targets[0]?.id ?? '');
+    return targets.some((d) => d.id === asked) ? asked : (targets[0]?.id ?? '');
   });
   const [find, setFind] = useState(() => params.get('q') || '');
   const [matchType, setMatchType] = useState(() => {
@@ -115,7 +137,7 @@ export const FieldPanel = ({ project, projectId, client, layerInfo }) => {
   });
   const [repl, setRepl] = useState(() => params.get('repl') || '');
   const r = useRun();
-  const target = targets.find((t) => t.id === targetId) ?? targets[0];
+  const target = targets.find((d) => d.id === targetId) ?? targets[0];
   const tagset = useMemo(
     () => tagsetForTarget(target, layerInfo, project),
     [target, layerInfo, project],
@@ -129,9 +151,9 @@ export const FieldPanel = ({ project, projectId, client, layerInfo }) => {
     const fields = targets.filter((d) => d.kind === 'span');
     const morph = targets.filter((d) => d.kind === 'morpheme');
     return [
-      ...(fields.length ? [{ label: 'Annotations', items: fields }] : []),
+      ...(fields.length ? [{ label: t('Annotations'), items: fields }] : []),
       ...(morph.length
-        ? [{ label: 'Forms', items: morph.map((d) => ({ ...d, label: 'Morpheme form' })) }]
+        ? [{ label: t('Forms'), items: morph.map((d) => ({ ...d, label: t('Morpheme form') })) }]
         : []),
     ];
   }, [targets]);
@@ -167,10 +189,14 @@ export const FieldPanel = ({ project, projectId, client, layerInfo }) => {
   // What an Apply sends: the selected rows a stopped Apply has not already
   // sent or skipped (`applied`), so the count and the confirm say what is left.
   const selectedRows = plan ? plan.rows.filter((x) => r.selected.has(x.id) && !x.applied) : [];
-  const targetLabel = plan?.target?.kind === 'morpheme' ? 'morpheme form' : plan?.target?.field;
+  const morphemeTarget = plan?.target?.kind === 'morpheme';
+  // The audit label's name for the field, which is stored and stays English.
+  const targetLabel = morphemeTarget ? 'morpheme form' : plan?.target?.field; // i18n-ignore: an audit label, stored on the server
+  // The same field as the person reads it.
+  const targetShown = morphemeTarget ? t('morpheme form') : plan?.target?.field;
   const writableRows = selectedRows.filter((x) => !x.invalid);
   const clearing = writableRows.filter((x) => x.kind === 'span' && blank(x.new)).length;
-  const willChange = changeText(writableRows.length - clearing, clearing, targetLabel, true);
+  const willChange = changeText(writableRows.length - clearing, clearing, targetShown, true);
 
   const doApply = async () => {
     // Ticking a flagged row by hand does not make it writable: the same rule
@@ -193,16 +219,16 @@ export const FieldPanel = ({ project, projectId, client, layerInfo }) => {
       // The plan stays, so Apply again sends what did not land.
       notifyStopped(
         res.failed,
-        changeText(res.changed - (res.cleared ?? 0), res.cleared ?? 0, targetLabel),
+        changeText(res.changed - (res.cleared ?? 0), res.cleared ?? 0, targetShown),
         skipped,
       );
       return;
     }
-    if (!res.changed && skipped) notifyWarning(skipped.trim(), 'Nothing replaced');
+    if (!res.changed && skipped) notifyWarning(skipped.trim(), t('Nothing replaced'));
     else
       notifySuccess(
-        `${changeText(res.changed - (res.cleared ?? 0), res.cleared ?? 0, targetLabel)}.${skipped}`,
-        res.cleared && res.cleared === res.changed ? 'Cleared' : 'Replaced',
+        `${changeText(res.changed - (res.cleared ?? 0), res.cleared ?? 0, targetShown)}.${skipped}`,
+        res.cleared && res.cleared === res.changed ? t('Cleared') : t('Replaced'),
       );
     r.setPlan(null);
   };
@@ -211,10 +237,10 @@ export const FieldPanel = ({ project, projectId, client, layerInfo }) => {
     <div className="flex flex-col gap-4">
       <div className="flex flex-col gap-3 rounded-lg border bg-card p-4">
         <div className="flex flex-col gap-1">
-          <Label>In</Label>
+          <Label>{t('In')}</Label>
           <Select value={target?.id ?? ''} onValueChange={setTargetId}>
             <SelectTrigger className="w-[260px]">
-              <SelectValue placeholder="Choose a field" />
+              <SelectValue placeholder={t('Choose a field')} />
             </SelectTrigger>
             <SelectContent>
               {grouped.map((g) => (
@@ -234,21 +260,25 @@ export const FieldPanel = ({ project, projectId, client, layerInfo }) => {
           {...{ find, setFind, matchType, setMatchType, repl, setRepl }}
           onEnter={preview}
         />
-        {error && <p className="text-sm text-destructive">Check your regex: {error}</p>}
+        {error && (
+          <p className="text-sm text-destructive">{t('Check your regex: {error}', { error })}</p>
+        )}
         {/* The lexicon's Replace has a fourth match, "is empty", and this one
             does not: a field has no value on a word until something writes
             one, so filling every blank means visiting every word rather than
             matching what is there. Said here because this is where people
             look for it first. No screen lists the blank cells, so the line
             names none (H6-1). */}
-        <p className="text-xs text-muted-foreground">Replaces values that are already there.</p>
+        <p className="text-xs text-muted-foreground">
+          {t('Replaces values that are already there.')}
+        </p>
         <div className="flex items-center">
           <Button
             className="ml-auto"
             onClick={preview}
             disabled={r.busy || !find || !!error || !target}
           >
-            {r.busy && !plan ? 'Searching…' : 'Preview'}
+            {r.busy && !plan ? t('Searching…') : t('Preview')}
           </Button>
         </div>
       </div>
@@ -271,13 +301,28 @@ export const FieldPanel = ({ project, projectId, client, layerInfo }) => {
           </ApplyBar>
           {plan.rows.some((x) => x.invalid === 'tagset') && (
             <p className="rounded-md border border-destructive/50 bg-destructive/5 px-3 py-2 text-sm text-destructive">
-              {countOf(plan.rows.filter((x) => x.invalid === 'tagset').length, 'value')} would fall
-              outside the <strong>{plan.tagset?.name ?? 'field'}</strong> tagset and cannot be
-              written. Those rows are marked and will be skipped.
+              {plan.tagset?.name
+                ? tx(
+                    '{n, plural, one {# value} other {# values}} would fall outside the <strong>{name}</strong> tagset and cannot be written. Those rows are marked and will be skipped.',
+                    {
+                      n: plan.rows.filter((x) => x.invalid === 'tagset').length,
+                      name: plan.tagset.name,
+                      strong: (c) => <strong>{c}</strong>,
+                    },
+                  )
+                : tx(
+                    '{n, plural, one {# value} other {# values}} would fall outside the <strong>field</strong> tagset and cannot be written. Those rows are marked and will be skipped.',
+                    {
+                      n: plan.rows.filter((x) => x.invalid === 'tagset').length,
+                      strong: (c) => <strong>{c}</strong>,
+                    },
+                  )}
             </p>
           )}
           {plan.rows.length === 0 && (
-            <p className="py-6 text-center text-sm text-muted-foreground">No matching values.</p>
+            <p className="py-6 text-center text-sm text-muted-foreground">
+              {t('No matching values.')}
+            </p>
           )}
           <MatchGroups
             selectable={(x) => !x.invalid}

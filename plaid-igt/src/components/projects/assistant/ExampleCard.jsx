@@ -6,6 +6,7 @@ import { centeredPastPinned } from '@ui/components/assistant/citations.js';
 import { glossSmallCaps } from '@ui/domain/glossCase.js';
 import { citationHighlights, citationRows, citationTitle, sentenceHref } from './cite.js';
 import { snapPastPinned } from './snapPastPinned.js';
+import { t } from '@ui/lib/i18n.js';
 
 // A cited sentence as IGT draws it: the interlinear table, with the words the
 // model named filled in and a word cited for its morphemes tinted around them.
@@ -100,7 +101,7 @@ export const ExampleCard = ({ c, projectId }) => {
           target="_blank"
           rel="noopener noreferrer"
           className="inline-flex items-center gap-1.5 font-medium text-foreground hover:underline"
-          title="Open this sentence in the editor"
+          title={t('Open this sentence in the editor')}
         >
           <ExternalLink className="h-3.5 w-3.5 text-muted-foreground" />
           {citationTitle(c)}

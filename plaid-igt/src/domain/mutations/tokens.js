@@ -63,6 +63,8 @@ import { applyReshape } from '@ui/domain/textReshape.js';
 import { reshapeVocabLinks } from './document.js';
 import { pendingId, settledId } from '@ui/domain/pendingIds.js';
 import { notSetUp } from '@ui/domain/setupGuard.js';
+import { t, msg } from '@ui/lib/i18n.js';
+import { writeLabel } from '../writeLabel.js';
 import { builtinRun } from '../builtinVersion.js';
 import { isTokenIgnored, orthographyKey, readIgnoredTokens } from '../igtConfig.js';
 import { cpSlice } from '@larc-iu/plaid-client';
@@ -70,7 +72,7 @@ import { BUILTIN_TOKENIZE_RULE_BASED } from '../serviceDefaults.js';
 
 const findCoincidentMorphemeIds = (morphemeTokens, targets) => {
   if (!Array.isArray(morphemeTokens) || morphemeTokens.length === 0) return [];
-  const ranges = new Set(targets.map((t) => `${t.begin}-${t.end}`));
+  const ranges = new Set(targets.map((tok) => `${tok.begin}-${tok.end}`));
   const ids = [];
   morphemeTokens.forEach((m) => {
     if (ranges.has(`${m.begin}-${m.end}`)) ids.push(m.id);
@@ -95,7 +97,8 @@ export const absorbedTokens = (info, body, begin, end) => {
   const layer = info.primaryTokenLayer;
   const cfg = readIgnoredTokens(layer?.config);
   return (layer?.tokens || []).filter(
-    (t) => t.begin < end && t.end > begin && isTokenIgnored(cpSlice(body, t.begin, t.end), cfg),
+    (tok) =>
+      tok.begin < end && tok.end > begin && isTokenIgnored(cpSlice(body, tok.begin, tok.end), cfg),
   );
 };
 
@@ -106,7 +109,7 @@ export const mergeAbsorbs = (info, body, words) => {
   if (list.length < 2) return [];
   const ids = new Set(list.map((w) => w.id));
   return absorbedTokens(info, body, list[0].begin, list[list.length - 1].end).filter(
-    (t) => !ids.has(t.id),
+    (tok) => !ids.has(tok.id),
   );
 };
 
@@ -116,18 +119,18 @@ export const tokenMutations = {
   // the patch is the metadata entry alone.
   async updateOrthography(tokenId, orthographyName, value) {
     const info = this.layerInfo;
-    const token = (info.primaryTokenLayer?.tokens || []).find((t) => t.id === tokenId);
+    const token = (info.primaryTokenLayer?.tokens || []).find((tok) => tok.id === tokenId);
     if (!token) {
-      this.refuse('Word not found');
+      this.refuse(t('Word not found'));
       return false;
     }
-    const label = `Failed to update ${orthographyName}`;
+    const label = writeLabel(msg('Failed to update {field}'), { field: orthographyName });
     if (!this._canWrite(label)) return false;
     // The one key, so the token's other metadata is never written from this copy.
     const ops = [{ op: 'set', path: [orthographyKey(orthographyName)], value }];
     this._applyRawPatch((next, infoNext) => {
-      const t = (infoNext.primaryTokenLayer?.tokens || []).find((x) => x.id === tokenId);
-      if (t) t.metadata = applyMetadataOps(t.metadata, ops);
+      const tok = (infoNext.primaryTokenLayer?.tokens || []).find((x) => x.id === tokenId);
+      if (tok) tok.metadata = applyMetadataOps(tok.metadata, ops);
     });
     return this._queueWrite(label, () =>
       this._client.tokens.patchMetadata(settledId(tokenId), ops),
@@ -148,14 +151,14 @@ export const tokenMutations = {
   async respellWord(tokenId, typed) {
     const info = this.layerInfo;
     const textId = info.primaryTextLayer?.text?.id;
-    const word = (info.primaryTokenLayer?.tokens || []).find((t) => t.id === tokenId);
-    if (!textId || !word) return this.refuse('Word not found');
+    const word = (info.primaryTokenLayer?.tokens || []).find((tok) => tok.id === tokenId);
+    if (!textId || !word) return this.refuse(t('Word not found'));
     const old = cpSlice(this.body, word.begin, word.end);
     const refusal = respellRefusal(old, typed, respellIgnoredRule(info));
     if (refusal === RESPELL_UNCHANGED) return true;
     if (refusal) return this.refuse(refusal);
     const value = respelling(typed);
-    const label = 'Failed to respell';
+    const label = msg('Failed to respell');
     if (!this._canWrite(label)) return false;
     const sole = soleForms(info, this.body).get(tokenId) ?? null;
     const morpheme = sole
@@ -181,7 +184,7 @@ export const tokenMutations = {
     // A respell never goes without the digest of the text it was made on.
     const send = (ops) => (base) => {
       if (!base)
-        throw new Error('The saved text could not be read. Reload the page and respell again.');
+        throw new Error(t('The saved text could not be read. Reload the page and respell again.'));
       return this._client.batched(async (b) => {
         b.texts.update(textId, ops, undefined, { base, versioned: true });
         if (formOps) b.tokens.bulkUpdate([{ id: settledId(morpheme.id), metadata: formOps }]);
@@ -192,7 +195,9 @@ export const tokenMutations = {
     this._applyRawPatch(show(ops));
     const state = { planned, send: send(ops) };
     const wordIn = (fresh) =>
-      (fresh.primaryTokenLayer?.tokens || []).find((t) => settledId(t.id) === settledId(tokenId));
+      (fresh.primaryTokenLayer?.tokens || []).find(
+        (tok) => settledId(tok.id) === settledId(tokenId),
+      );
     const reads = (fresh, w) => cpSlice(fresh.primaryTextLayer?.text?.body ?? '', w.begin, w.end);
     const write = async () => {
       const results = await this._sendOverSegmentText(state, {
@@ -200,11 +205,14 @@ export const tokenMutations = {
           const w = wordIn(fresh);
           if (!w || reads(fresh, w) !== old) {
             return {
-              refusal: Object.assign(new Error(`“${old}” was changed elsewhere. Not respelled.`), {
-                status: 409,
-                changedElsewhere: true,
-                notice: true,
-              }),
+              refusal: Object.assign(
+                new Error(t('“{word}” was changed elsewhere. Not respelled.', { word: old })),
+                {
+                  status: 409,
+                  changedElsewhere: true,
+                  notice: true,
+                },
+              ),
             };
           }
           const again = opsOn(w);
@@ -248,12 +256,12 @@ export const tokenMutations = {
   // Returns true on success / false on guard failure or server error.
   async splitToken(tokenId, splitOffset) {
     const info = this.layerInfo;
-    const token = (info.primaryTokenLayer?.tokens || []).find((t) => t.id === tokenId);
+    const token = (info.primaryTokenLayer?.tokens || []).find((tok) => tok.id === tokenId);
     if (!token) {
-      this.refuse('Word not found');
+      this.refuse(t('Word not found'));
       return false;
     }
-    const label = 'Failed to split token';
+    const label = msg('Failed to split token');
     if (!this._canWrite(label)) return false;
     // A split next to whitespace (scissors either side of the space in a word
     // merged over two) goes around the whole run of it, so neither half
@@ -284,10 +292,10 @@ export const tokenMutations = {
 
     const textId = info.primaryTextLayer?.text?.id;
     this._applyRawPatch((next, infoNext, vocabs) => {
-      const t = (infoNext.primaryTokenLayer?.tokens || []).find((x) => x.id === tokenId);
-      if (t) {
-        t.end = leftEnd;
-        if (leftPatch) t.metadata = mergeMetadata(t.metadata || {}, leftPatch);
+      const tok = (infoNext.primaryTokenLayer?.tokens || []).find((x) => x.id === tokenId);
+      if (tok) {
+        tok.end = leftEnd;
+        if (leftPatch) tok.metadata = mergeMetadata(tok.metadata || {}, leftPatch);
       }
       if (infoNext.primaryTokenLayer) {
         if (!Array.isArray(infoNext.primaryTokenLayer.tokens))
@@ -331,12 +339,12 @@ export const tokenMutations = {
     const info = this.layerInfo;
     const wordTokens = info.primaryTokenLayer?.tokens || [];
     const idSet = new Set(ids);
-    const toMerge = wordTokens.filter((t) => idSet.has(t.id)).sort((a, b) => a.begin - b.begin);
+    const toMerge = wordTokens.filter((tok) => idSet.has(tok.id)).sort((a, b) => a.begin - b.begin);
     if (toMerge.length <= 1) {
-      this.refuse('Not enough tokens to merge');
+      this.refuse(t('Not enough tokens to merge'));
       return false;
     }
-    const label = 'Failed to merge tokens';
+    const label = msg('Failed to merge tokens');
     if (!this._canWrite(label)) return false;
 
     const firstToken = toMerge[0];
@@ -361,7 +369,7 @@ export const tokenMutations = {
     const beginOf = new Map();
     for (const sl of info.spanLayers?.word || []) {
       for (const sp of sl.spans || []) {
-        const word = toMerge.find((t) => onlyOn(sp.tokens, t.id));
+        const word = toMerge.find((tok) => onlyOn(sp.tokens, tok.id));
         if (word) beginOf.set(sp.id, word.begin);
       }
     }
@@ -370,25 +378,25 @@ export const tokenMutations = {
     // its metadata and discards the rest, so merging a hand-made word with a
     // machine-made one would absorb the machine origin and leave a
     // transcription of one word standing for several.
-    const inherited = survivingProvenance(toMerge.map((t) => t.metadata));
+    const inherited = survivingProvenance(toMerge.map((tok) => tok.metadata));
     const patch = survivorPatch(firstToken.metadata, inherited, (m) => this.editStamp(m));
-    const removedWordIds = new Set(toMerge.slice(1).map((t) => t.id));
+    const removedWordIds = new Set(toMerge.slice(1).map((tok) => tok.id));
     const removedMorphIds = new Set(coincident);
     // Punctuation tokens between the words (ud's, say) read as text here, so
     // the merged word takes their place, as it would over untokenized text.
-    const absorbed = mergeAbsorbs(info, this.body, toMerge).map((t) => t.id);
+    const absorbed = mergeAbsorbs(info, this.body, toMerge).map((tok) => tok.id);
     const textId = info.primaryTextLayer?.text?.id;
 
     this._applyRawPatch((next, infoNext, vocabs) => {
       if (absorbed.length) removeTokensLocally(next, textId, absorbed, vocabs);
       if (infoNext.primaryTokenLayer?.tokens) {
-        const first = infoNext.primaryTokenLayer.tokens.find((t) => t.id === firstToken.id);
+        const first = infoNext.primaryTokenLayer.tokens.find((tok) => tok.id === firstToken.id);
         if (first) {
           first.end = lastToken.end;
           if (patch) first.metadata = mergeMetadata(first.metadata || {}, patch);
         }
         infoNext.primaryTokenLayer.tokens = infoNext.primaryTokenLayer.tokens.filter(
-          (t) => !removedWordIds.has(t.id),
+          (tok) => !removedWordIds.has(tok.id),
         );
       }
       if (removedMorphIds.size > 0 && infoNext.morphemeTokenLayer?.tokens) {
@@ -428,12 +436,12 @@ export const tokenMutations = {
   // (morpheme layer's parent is word); the cascade is mirrored locally.
   async deleteToken(tokenId) {
     const info = this.layerInfo;
-    const target = (info.primaryTokenLayer?.tokens || []).find((t) => t.id === tokenId);
+    const target = (info.primaryTokenLayer?.tokens || []).find((tok) => tok.id === tokenId);
     if (!target) {
-      this.refuse('Word not found');
+      this.refuse(t('Word not found'));
       return false;
     }
-    const label = 'Failed to delete token';
+    const label = msg('Failed to delete token');
     if (!this._canWrite(label)) return false;
     const textId = info.primaryTextLayer?.text?.id;
     const morphIds = (info.morphemeTokenLayer?.tokens || [])
@@ -459,14 +467,14 @@ export const tokenMutations = {
     if (sentenceTokens.length > 0) {
       const fits = sentenceTokens.some((s) => begin >= s.begin && end <= s.end);
       if (!fits) {
-        this.refuse('Selection must be inside an existing sentence');
+        this.refuse(t('Selection must be inside an existing sentence'));
         return false;
       }
     }
-    const label = 'Failed to create token';
+    const label = msg('Failed to create token');
     if (!this._canWrite(label)) return false;
     const id = pendingId();
-    const absorbed = absorbedTokens(info, this.body, begin, end).map((t) => t.id);
+    const absorbed = absorbedTokens(info, this.body, begin, end).map((tok) => tok.id);
     this._applyRawPatch((next, infoNext, vocabs) => {
       if (absorbed.length) removeTokensLocally(next, text.id, absorbed, vocabs);
       pushWords(infoNext, text.id, [{ id, begin, end }]);
@@ -502,10 +510,10 @@ export const tokenMutations = {
     }
     const body = this.body;
     if (!body || !body.trim()) {
-      this.refuse('No text to tokenize');
+      this.refuse(t('No text to tokenize'));
       return null;
     }
-    const label = 'Failed to tokenize';
+    const label = msg('Failed to tokenize');
     if (!this._canWrite(label)) return null;
     const ignoredTokensConfig = getIgnoredTokensConfig(this.project);
     const untokenizedRanges = findUntokenizedRanges(body, primaryTokenLayer.tokens || []);
@@ -513,11 +521,11 @@ export const tokenMutations = {
     const validation = validateTokenization(newTokens, body);
     if (!validation.isValid) {
       console.error(`Tokenization validation failed: ${validation.errors.join(', ')}`);
-      this.refuse('Could not split the text into words.');
+      this.refuse(t('Could not split the text into words.'));
       return null;
     }
     if (newTokens.length === 0) return 0;
-    const words = newTokens.map((t) => ({ id: pendingId(), begin: t.begin, end: t.end }));
+    const words = newTokens.map((tok) => ({ id: pendingId(), begin: tok.begin, end: tok.end }));
     this._applyRawPatch((next, infoNext) => pushWords(infoNext, text.id, words));
     const send = async () => {
       const result = await this._client.tokens.bulkCreate(
@@ -553,13 +561,13 @@ export const tokenMutations = {
     const cfg = readIgnoredTokens(info.primaryTokenLayer?.config);
     const body = this.body;
     const wordTokens = (info.primaryTokenLayer?.tokens || []).filter(
-      (t) => !isTokenIgnored(cpSlice(body, t.begin, t.end), cfg),
+      (tok) => !isTokenIgnored(cpSlice(body, tok.begin, tok.end), cfg),
     );
     if (wordTokens.length === 0) return true;
-    const label = 'Failed to clear tokens';
+    const label = msg('Failed to clear tokens');
     if (!this._canWrite(label)) return false;
     const textId = info.primaryTextLayer?.text?.id;
-    const wordIds = wordTokens.map((t) => t.id);
+    const wordIds = wordTokens.map((tok) => tok.id);
     const morphIds = (info.morphemeTokenLayer?.tokens || []).map((m) => m.id);
     this._applyRawPatch((next, infoNext, vocabs) =>
       removeTokensLocally(next, textId, [...wordIds, ...morphIds], vocabs),

@@ -4,6 +4,7 @@ import { humanizeError } from '../lib/errors.js';
 import { normalizeUserId } from '@larc-iu/plaid-client';
 import { isEmail, EMAIL_INVALID_MESSAGE } from '../lib/email.js';
 import { usePasswordMinimum, passwordTooShort } from './usePasswordMinimum.js';
+import { t } from '../lib/i18n.js';
 
 // Account administration, shared by every screen that does it: the Access
 // screen of a project in each app (where an admin creates the account and
@@ -55,23 +56,23 @@ export const useUserAdmin = ({ client, currentUser, onChanged, projectId, roleHi
 
   const createUser = async () => {
     if (!newUser.email || !newUser.password) {
-      notifyError('Enter an email address and a password.', 'Missing information');
+      notifyError(t('Enter an email address and a password.'), t('Missing information'));
       return;
     }
     if (!isEmail(newUser.email)) {
-      notifyError(EMAIL_INVALID_MESSAGE, 'Check the email address');
+      notifyError(t(EMAIL_INVALID_MESSAGE), t('Check the email address'));
       return;
     }
     const tooShort = passwordTooShort(newUser.password, passwordMinimum);
     if (tooShort) {
-      notifyError(tooShort, 'Check the password');
+      notifyError(tooShort, t('Check the password'));
       return;
     }
     // Typed twice because whoever types it is not the person who will use it:
     // an admin cannot tell a mistyped password from a correct one, and the
     // account is then unreachable until someone mints a reset link.
     if (newUser.password !== newUser.confirmPassword) {
-      notifyError('The two passwords do not match', 'Check the password');
+      notifyError(t('The two passwords do not match'), t('Check the password'));
       return;
     }
     // The id as the server stores it, trimmed and lowercased, so the
@@ -94,10 +95,16 @@ export const useUserAdmin = ({ client, currentUser, onChanged, projectId, roleHi
           create(b);
           b.projects[ADD_ROLE[newUser.role]](projectId, email);
         });
-        notifySuccess(`User "${email}" created and added as a ${newUser.role}`, 'User created');
+        notifySuccess(
+          t(
+            'User "{email}" created and added as a {role, select, reader {reader} writer {writer} maintainer {maintainer} other {{role}}}',
+            { email, role: newUser.role },
+          ),
+          t('User created'),
+        );
       } else {
         await create(client);
-        notifySuccess(`User "${email}" created`, 'User created');
+        notifySuccess(t('User "{email}" created', { email }), t('User created'));
       }
       setNewUser(emptyNewUser);
       setCreateOpen(false);
@@ -107,9 +114,9 @@ export const useUserAdmin = ({ client, currentUser, onChanged, projectId, roleHi
       const exists = err.status === 409 || (err.message && err.message.includes('409'));
       notifyError(
         exists
-          ? `An account already exists for ${email}.`
-          : humanizeError(err, 'Failed to create the account.'),
-        'Failed to create the account',
+          ? t('An account already exists for {email}.', { email })
+          : humanizeError(err, t('Failed to create the account.')),
+        t('Failed to create the account'),
       );
     } finally {
       setCreating(false);
@@ -129,11 +136,11 @@ export const useUserAdmin = ({ client, currentUser, onChanged, projectId, roleHi
   const updateUser = async () => {
     const tooShort = editForm.password && passwordTooShort(editForm.password, passwordMinimum);
     if (tooShort) {
-      notifyError(tooShort, 'Check the password');
+      notifyError(tooShort, t('Check the password'));
       return;
     }
     if (editForm.password !== editForm.confirmPassword) {
-      notifyError('The two passwords do not match', 'Check the password');
+      notifyError(t('The two passwords do not match'), t('Check the password'));
       return;
     }
     try {
@@ -144,12 +151,12 @@ export const useUserAdmin = ({ client, currentUser, onChanged, projectId, roleHi
       const newIsAdmin =
         editForm.isAdmin !== (editingUser.isAdmin || false) ? editForm.isAdmin : undefined;
       await client.users.update(editingUser.id, newPassword, newDisplayName, newIsAdmin);
-      notifySuccess('User updated');
+      notifySuccess(t('User updated'));
       setEditingUser(null);
       await changed();
     } catch (err) {
       console.error('Error updating user:', err);
-      notifyError(humanizeError(err), 'Failed to save the account');
+      notifyError(humanizeError(err), t('Failed to save the account'));
     } finally {
       setSavingEdit(false);
     }
@@ -165,7 +172,7 @@ export const useUserAdmin = ({ client, currentUser, onChanged, projectId, roleHi
       setResetCode(inv.code);
     } catch (err) {
       console.error('Error creating reset link:', err);
-      notifyError(humanizeError(err), 'Failed to create the reset link');
+      notifyError(humanizeError(err), t('Failed to create the reset link'));
     } finally {
       setResetting(false);
     }
@@ -176,13 +183,16 @@ export const useUserAdmin = ({ client, currentUser, onChanged, projectId, roleHi
     try {
       setDeactivating(true);
       await client.users.delete(deactivateTarget.id);
-      notifySuccess(`${deactivateTarget.displayName} deactivated`, 'User deactivated');
+      notifySuccess(
+        t('{name} deactivated', { name: deactivateTarget.displayName }),
+        t('User deactivated'),
+      );
       setDeactivateTarget(null);
       setEditingUser(null);
       await changed();
     } catch (err) {
       console.error('Error deactivating user:', err);
-      notifyError(humanizeError(err), 'Failed to deactivate the account');
+      notifyError(humanizeError(err), t('Failed to deactivate the account'));
       // The refusal is the answer (the sole maintainer of a project, say):
       // the question goes, rather than standing open behind the toast.
       setDeactivateTarget(null);
@@ -194,11 +204,11 @@ export const useUserAdmin = ({ client, currentUser, onChanged, projectId, roleHi
   const activateUser = async (target) => {
     try {
       await client.users.activate(target.id);
-      notifySuccess(`${target.displayName} reactivated`, 'User reactivated');
+      notifySuccess(t('{name} reactivated', { name: target.displayName }), t('User reactivated'));
       await changed();
     } catch (err) {
       console.error('Error reactivating user:', err);
-      notifyError(humanizeError(err), 'Failed to reactivate the account');
+      notifyError(humanizeError(err), t('Failed to reactivate the account'));
     }
   };
 

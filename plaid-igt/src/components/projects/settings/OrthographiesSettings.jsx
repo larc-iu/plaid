@@ -5,6 +5,7 @@ import { notifyError } from '@/utils/feedback';
 import { isConfigConflict, storedConfig } from '@ui/domain/configCells.js';
 import { useConfigCell } from '@ui/hooks/useConfigCell.js';
 import { notSetUp } from '@ui/domain/setupGuard.js';
+import { t } from '@ui/lib/i18n.js';
 import {
   findBaselineTextLayer,
   findWordTokenLayer,
@@ -90,18 +91,18 @@ export const OrthographiesSettings = ({ project, client, onProjectUpdate }) => {
       setHasError(false);
 
       if (!project.textLayers || project.textLayers.length === 0) {
-        throw new Error(notSetUp('No text layers found in project'));
+        throw new Error(notSetUp('No text layers found in project')); // i18n-ignore: console only
       }
 
       // Find the baseline text layer (the shared substrate).
       const textLayer = findBaselineTextLayer(project.textLayers);
       if (!textLayer) {
-        throw new Error(notSetUp('No baseline text layer found in project'));
+        throw new Error(notSetUp('No baseline text layer found in project')); // i18n-ignore: console only
       }
 
       const wordTokenLayer = findWordTokenLayer(textLayer.tokenLayers);
       if (!wordTokenLayer) {
-        throw new Error(notSetUp('No word token layer found in project'));
+        throw new Error(notSetUp('No word token layer found in project')); // i18n-ignore: console only
       }
       const tokenLayerId = wordTokenLayer.id;
 
@@ -165,7 +166,7 @@ export const OrthographiesSettings = ({ project, client, onProjectUpdate }) => {
   // Handle errors
   const handleError = (error) => {
     if (!isConfigConflict(error)) setHasError(true);
-    notifyError(error, 'Failed to save the orthographies');
+    notifyError(error, t('Failed to save the orthographies'));
   };
 
   if (hasError) {
@@ -175,9 +176,9 @@ export const OrthographiesSettings = ({ project, client, onProjectUpdate }) => {
           <AlertTriangle className="mt-0.5 h-4 w-4 text-destructive" />
           <div>
             <p className="text-sm font-medium text-destructive">
-              Failed to load or save the orthographies
+              {t('Failed to load or save the orthographies')}
             </p>
-            <p className="text-sm text-muted-foreground">Refresh the page and try again.</p>
+            <p className="text-sm text-muted-foreground">{t('Refresh the page and try again.')}</p>
           </div>
         </div>
       </div>

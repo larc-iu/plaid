@@ -4,6 +4,7 @@ import { cn } from '@ui/lib/utils';
 import { formatTime, parseTime } from './formatTime.js';
 import { keys as keymap } from '@/lib/keymap.js';
 import { isEnter } from '@ui/lib/chords.js';
+import { msg, t } from '@ui/lib/i18n.js';
 
 // A duration as a row of numbers, `m:ss.mmm` (with hours once a recording is
 // that long): one small box per number, digits only. Typing fills the number
@@ -30,10 +31,10 @@ import { isEnter } from '@ui/lib/chords.js';
 // all and the next arrow key scrolled the page.
 
 const SEGMENTS = {
-  h: { label: 'hours', width: 2, max: 99, step: 3600, shiftStep: 3600 },
-  m: { label: 'minutes', width: 2, max: 59, step: 60, shiftStep: 600 },
-  s: { label: 'seconds', width: 2, max: 59, step: 1, shiftStep: 10 },
-  ms: { label: 'milliseconds', width: 3, max: 999, step: 0.01, shiftStep: 0.1 },
+  h: { label: msg('{name} hours'), width: 2, max: 99, step: 3600, shiftStep: 3600 },
+  m: { label: msg('{name} minutes'), width: 2, max: 59, step: 60, shiftStep: 600 },
+  s: { label: msg('{name} seconds'), width: 2, max: 59, step: 1, shiftStep: 10 },
+  ms: { label: msg('{name} milliseconds'), width: 3, max: 999, step: 0.01, shiftStep: 0.1 },
 };
 const ORDER = ['h', 'm', 's', 'ms'];
 
@@ -268,7 +269,7 @@ export const TimecodeField = memo(function TimecodeField({
               type="text"
               inputMode="numeric"
               value={parts[key]}
-              aria-label={`${label} ${seg.label}`}
+              aria-label={t(seg.label, { name: label })}
               spellCheck={false}
               autoComplete="off"
               style={{ width: `${width}ch` }}

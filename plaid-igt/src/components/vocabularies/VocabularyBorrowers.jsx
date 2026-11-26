@@ -5,12 +5,10 @@ import { useConfirm } from '@ui/components/shared/ConfirmProvider';
 import { Loading } from '@ui/components/shared/Loading.jsx';
 import { isolate } from '@ui/lib/bidi.js';
 import { canEditProject, canUnlinkVocabulary } from '@ui/domain/permissions.js';
-import { countOf, plural } from '@ui/lib/plural.js';
+import { t } from '@ui/lib/i18n.js';
 import { notifyError } from '@/utils/feedback';
 import { entryMorphTypesOf } from '@/domain/vocabLookup';
 import { planKeptTypes, queueKeptTypes } from '@/domain/keptMorphType';
-
-const quoted = (name) => `“${isolate(name)}”`;
 
 // The projects that link a vocabulary of another project (its borrowers), on
 // that vocabulary's Settings tab, for a maintainer of its project. Each can be
@@ -40,14 +38,13 @@ export const VocabularyBorrowers = ({ client, user, vocabulary, home }) => {
   }, [load]);
 
   const unlink = async (borrower) => {
-    const where = borrower.name ? quoted(borrower.name) : 'another project';
     // What the unlink takes: the links in that project's documents, asked of
     // core's read of it, never the unlink itself.
     let links;
     try {
       ({ links } = await client.projects.vocabUnlinking(borrower.id, vocabId));
     } catch (err) {
-      notifyError(err, 'Failed to unlink the vocabulary');
+      notifyError(err, t('Failed to unlink the vocabulary'));
       return;
     }
     const n = links ?? 0;
@@ -59,12 +56,29 @@ export const VocabularyBorrowers = ({ client, user, vocabulary, home }) => {
       writable = canEditProject(await client.projects.get(borrower.id).catch(() => null), user);
     }
     const ok = await confirm({
-      title: `Unlink ${quoted(vocabulary.name)} from ${where}?`,
+      title: borrower.name
+        ? t('Unlink “{vocabulary}” from “{project}”?', {
+            vocabulary: isolate(vocabulary.name),
+            project: isolate(borrower.name),
+          })
+        : t('Unlink “{vocabulary}” from another project?', {
+            vocabulary: isolate(vocabulary.name),
+          }),
       description: n
-        ? `${countOf(n, 'word')}/${plural(n, 'morpheme')} in ${borrower.name ? where : 'that project'} ${n === 1 ? 'is' : 'are'} linked to its entries. Those links will be removed.` +
-          (writable ? '' : ' Morphemes there that took their type from an entry will have none.')
+        ? (borrower.name
+            ? t(
+                '{n, plural, one {# word/morpheme in “{project}” is} other {# words/morphemes in “{project}” are}} linked to its entries. Those links will be removed.',
+                { n, project: isolate(borrower.name) },
+              )
+            : t(
+                '{n, plural, one {# word/morpheme in that project is} other {# words/morphemes in that project are}} linked to its entries. Those links will be removed.',
+                { n },
+              )) +
+          (writable
+            ? ''
+            : ` ${t('Morphemes there that took their type from an entry will have none.')}`)
         : '',
-      confirmLabel: 'Unlink',
+      confirmLabel: t('Unlink'),
       destructive: true,
     });
     if (!ok) return;
@@ -89,7 +103,7 @@ export const VocabularyBorrowers = ({ client, user, vocabulary, home }) => {
       );
     } catch (err) {
       console.error('Error unlinking the vocabulary:', err);
-      notifyError(err, 'Failed to unlink the vocabulary');
+      notifyError(err, t('Failed to unlink the vocabulary'));
     }
     await load();
   };
@@ -97,15 +111,17 @@ export const VocabularyBorrowers = ({ client, user, vocabulary, home }) => {
   return (
     <div className="rounded-lg border bg-card p-4">
       <div className="flex flex-col gap-4">
-        <h3 className="text-base font-semibold">Used by other projects</h3>
+        <h3 className="text-base font-semibold">{t('Used by other projects')}</h3>
         {failed ? (
           <p className="text-sm text-muted-foreground">
-            The projects that use it could not be read.
+            {t('The projects that use it could not be read.')}
           </p>
         ) : borrowers === null ? (
           <Loading />
         ) : borrowers.length === 0 ? (
-          <p className="text-sm text-muted-foreground">No other project uses this vocabulary.</p>
+          <p className="text-sm text-muted-foreground">
+            {t('No other project uses this vocabulary.')}
+          </p>
         ) : (
           <ul className="divide-y rounded-md border">
             {borrowers.map((b) => (
@@ -118,16 +134,20 @@ export const VocabularyBorrowers = ({ client, user, vocabulary, home }) => {
                     {b.name}
                   </Link>
                 ) : (
-                  <span className="text-muted-foreground">Another project</span>
+                  <span className="text-muted-foreground">{t('Another project')}</span>
                 )}
                 {canUnlinkVocabulary(vocabulary, { id: b.id }, home, user) && (
                   <Button
                     variant="ghost"
                     size="sm"
-                    aria-label={b.name ? `Unlink from ${b.name}` : 'Unlink from another project'}
+                    aria-label={
+                      b.name
+                        ? t('Unlink from {project}', { project: b.name })
+                        : t('Unlink from another project')
+                    }
                     onClick={() => unlink(b)}
                   >
-                    Unlink
+                    {t('Unlink')}
                   </Button>
                 )}
               </li>

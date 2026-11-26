@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { humanizeError, statusOf } from '@ui/lib/errors.js';
+import { t } from '@ui/lib/i18n.js';
 
 // How many rows each read asks for: core's largest page.
 export const CHANGE_ROWS_PAGE = 1000;
@@ -67,7 +68,7 @@ export function useChangeRows(client, entryId, streams) {
             // may read. Refused or failed after rows were read, it is a
             // failure: what was read is part of the rows.
             if (statusOf(err) !== 403 || cursor) {
-              errors[s.key] = humanizeError(err, 'Failed to read the changes.');
+              errors[s.key] = humanizeError(err, t('Failed to read the changes.'));
             }
             mine = [];
             break;

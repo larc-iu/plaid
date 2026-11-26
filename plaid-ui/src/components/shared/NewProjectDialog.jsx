@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useAuth } from '../../contexts/useAuth.js';
 import { humanizeError } from '../../lib/errors.js';
+import { t } from '../../lib/i18n.js';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { Label } from '../ui/label';
@@ -30,7 +31,7 @@ export const NewProjectDialog = ({ isOpen, onClose, onSuccess, title, create, ch
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!projectName.trim()) {
-      setError('Name the project.');
+      setError(t('Name the project.'));
       return;
     }
     setLoading(true);
@@ -39,7 +40,7 @@ export const NewProjectDialog = ({ isOpen, onClose, onSuccess, title, create, ch
       onSuccess(await create(getClient(), projectName, mint));
     } catch (err) {
       console.error('Error creating project:', err);
-      setError(humanizeError(err, 'Failed to create the project.'));
+      setError(humanizeError(err, t('Failed to create the project.')));
     } finally {
       setLoading(false);
     }
@@ -62,7 +63,7 @@ export const NewProjectDialog = ({ isOpen, onClose, onSuccess, title, create, ch
           )}
 
           <div className="flex flex-col gap-1.5">
-            <Label htmlFor="project-name">Project name</Label>
+            <Label htmlFor="project-name">{t('Project name')}</Label>
             <Input
               id="project-name"
               value={projectName}
@@ -78,10 +79,10 @@ export const NewProjectDialog = ({ isOpen, onClose, onSuccess, title, create, ch
 
           <DialogFooter>
             <Button type="button" variant="outline" onClick={onClose} disabled={loading}>
-              Cancel
+              {t('Cancel')}
             </Button>
             <Button type="submit" disabled={loading}>
-              {loading ? 'Creating…' : 'Create project'}
+              {loading ? t('Creating…') : t('Create project')}
             </Button>
           </DialogFooter>
         </form>

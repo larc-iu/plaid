@@ -13,6 +13,7 @@
 import { useRef, useState } from 'react';
 import { notifyError, notifyWarning } from '@/utils/feedback';
 import { transcodeToMp3 } from '@/domain/media/transcodeToMp3';
+import { t } from '@ui/lib/i18n.js';
 
 export function useRecordingConversion(setMediaFiles) {
   // {name, fraction, index, total, stopping} while a conversion runs, else null.
@@ -50,13 +51,19 @@ export function useRecordingConversion(setMediaFiles) {
     setConverting(null);
     if (failed.length) {
       notifyError(
-        `${failed.join(', ')} ${failed.length === 1 ? 'is' : 'are'} unchanged.`,
-        'Failed to convert',
+        t('{n, plural, one {{names} is unchanged.} other {{names} are unchanged.}}', {
+          n: failed.length,
+          names: failed.join(', '),
+        }),
+        t('Failed to convert'),
       );
     } else if (controller.signal.aborted) {
-      notifyWarning(`Converted ${done} of ${files.length}.`, 'Conversion stopped');
+      notifyWarning(
+        t('Converted {done} of {total}.', { done, total: files.length }),
+        t('Conversion stopped'),
+      );
     } else if (files.length > 1) {
-      notifyWarning(`Converted ${files.length} recordings.`, 'Recordings');
+      notifyWarning(t('Converted {n} recordings.', { n: files.length }), t('Recordings'));
     }
   };
 

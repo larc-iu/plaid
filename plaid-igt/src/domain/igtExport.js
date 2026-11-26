@@ -25,13 +25,16 @@ import { displayWidth, padToWidth } from '../../../plaid-ui/src/lib/displayWidth
 import { htmlText } from '../../../plaid-ui/src/lib/html.js';
 import { tsvCell } from '../export/vocabTsv.js';
 import { translationFieldOf } from './sentenceRole.js';
+import { msg } from '@ui/lib/i18n.js';
+
+// The formats' labels are messages, shown through t().
 
 export const COPY_FORMATS = [
-  { id: 'plain', label: 'Plain text (aligned)' },
-  { id: 'tsv', label: 'Tab-separated (spreadsheet)' },
-  { id: 'gb4e', label: 'LaTeX: gb4e' },
-  { id: 'expex', label: 'LaTeX: ExPex' },
-  { id: 'leipzig', label: 'HTML: leipzig.js' },
+  { id: 'plain', label: msg('Plain text (aligned)') },
+  { id: 'tsv', label: msg('Tab-separated (spreadsheet)') },
+  { id: 'gb4e', label: msg('LaTeX: gb4e') },
+  { id: 'expex', label: msg('LaTeX: ExPex') },
+  { id: 'leipzig', label: msg('HTML: leipzig.js') },
 ];
 
 export const COPY_FORMAT_STORAGE_KEY = 'plaid_igt_copy_format';
@@ -51,10 +54,10 @@ export const morphFormOf = (m) => {
  * is empty rather than a bare run of joints ("-"/"--"), which read as a stray
  * gloss in exports/copy. */
 export const joinMorphemeTexts = (morphemes, texts) =>
-  texts.some((t) => (t ?? '').trim() !== '')
+  texts.some((tok) => (tok ?? '').trim() !== '')
     ? joinMorphemes(
-        texts.map((t, i) => ({
-          text: t,
+        texts.map((tok, i) => ({
+          text: tok,
           morphType: morphemes[i]?.morphType,
           equalsBefore: i > 0 && equalsBefore(morphemes[i]?.metadata),
         })),
@@ -98,7 +101,8 @@ export function wordCells(token, { morphFields, wordFields, orthographies = [] }
 // A sentence without derived `pieces` (a test fixture) falls back to its
 // token list.
 function columnCells(sentence, fields) {
-  const pieces = sentence.pieces || (sentence.tokens || []).map((t) => ({ type: 'token', ...t }));
+  const pieces =
+    sentence.pieces || (sentence.tokens || []).map((tok) => ({ type: 'token', ...tok }));
   const cells = [];
   for (const piece of pieces) {
     if (piece.type === 'token') {
@@ -176,7 +180,7 @@ function sentenceLines(sentence, fields) {
       value: sentence.annotations?.[f]?.value ?? '',
       translation: f === translated,
     }))
-    .filter((t) => t.value !== '');
+    .filter((tok) => tok.value !== '');
 }
 
 // ---- plain ----------------------------------------------------------------
@@ -192,8 +196,8 @@ export function formatPlain(sentence, fields) {
       .join('  ')
       .trimEnd(),
   );
-  for (const t of sentenceLines(sentence, fields)) {
-    out.push(t.translation ? `‘${t.value}’` : `${t.label}: ${t.value}`);
+  for (const tok of sentenceLines(sentence, fields)) {
+    out.push(tok.translation ? `‘${tok.value}’` : `${tok.label}: ${tok.value}`);
   }
   return out.join('\n');
 }
@@ -203,8 +207,8 @@ export function formatPlain(sentence, fields) {
 
 export function formatTsv(sentence, fields) {
   const out = tiers(sentence, fields).map((l) => l.cells.map(tsvCell).join('\t'));
-  for (const t of sentenceLines(sentence, fields)) {
-    out.push(t.translation ? tsvCell(t.value) : `${tsvCell(t.label)}\t${tsvCell(t.value)}`);
+  for (const tok of sentenceLines(sentence, fields)) {
+    out.push(tok.translation ? tsvCell(tok.value) : `${tsvCell(tok.label)}\t${tsvCell(tok.value)}`);
   }
   return out.join('\n');
 }
@@ -253,7 +257,7 @@ export const texCell = texWord(texEscape);
 // (a word field's line has none, and each cell is one word's gloss).
 const texGlossCells = (line, n) =>
   (line?.cells ?? Array.from({ length: n }, () => '')).map((c, i) =>
-    texWord((t) => texGloss(t, line?.pieces?.[i]))(c),
+    texWord((tok) => texGloss(tok, line?.pieces?.[i]))(c),
   );
 
 export function formatGb4e(sentence, fields) {

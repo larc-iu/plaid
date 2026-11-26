@@ -7,6 +7,7 @@
 // speechTimestamps.js, which is instant. That is the whole reason this
 // returns probabilities rather than segments.
 
+import { t } from '@ui/lib/i18n.js';
 import { decodeShared } from './sharedDecode.js';
 
 /**
@@ -41,7 +42,7 @@ export async function speechProbabilities(blob, { onProgress, signal, channel = 
         else if (data.type === 'cancelled') resolve(null);
         else if (data.type === 'error') reject(new Error(data.message));
       };
-      worker.onerror = (event) => reject(new Error(event.message || 'Speech detection failed.'));
+      worker.onerror = (event) => reject(new Error(event.message || t('Speech detection failed.')));
 
       // Transferred, not copied: an hour of audio is not worth duplicating.
       worker.postMessage({ type: 'run', samples }, [samples.buffer]);

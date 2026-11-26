@@ -22,7 +22,8 @@ import { pendingMutations } from './mutations/pending.js';
 import { linkFootprint, linksUntouched, tokenIdsOf } from './linkRebase.js';
 import { linkChangedTo } from '@ui/lib/cellConflict.js';
 import { buildItemNumbers, itemLabel } from './vocabDictionary.js';
-import { countOf } from '../../../plaid-ui/src/lib/plural.js';
+import { t } from '@ui/lib/i18n.js';
+import { operationOf, shownLabel } from './writeLabel.js';
 
 // The mutation mixins whose public methods are the writes (WRITES).
 // pendingMutations holds only the pending-id helpers and is not among them.
@@ -115,6 +116,15 @@ export class IgtDocument extends DocumentModel {
     this._unsavedSeq = 0;
   }
 
+  // A write's label is the English message (writeLabel.js): the screen is
+  // shown its translation, and the audit log told the English operation.
+  _queueWrite(label, send, named = operationOf(label), options) {
+    return super._queueWrite(shownLabel(label), send, named, options);
+  }
+  _canWrite(label) {
+    return super._canWrite(shownLabel(label));
+  }
+
   // The refused row edits, `{ id, typed, timeBegin, timeEnd }`, listed until
   // dismissed. Kept on the document and not on the transcript's screen, so a
   // switch of view keeps them, and a reload or a closed tab asks first while
@@ -173,9 +183,12 @@ export class IgtDocument extends DocumentModel {
     next.onError = this.onError;
     if (failed.length && next.onError) {
       next.onError(
-        `${countOf(failed.length, 'vocabulary')} could not be read as of that time. Entries show as they are now.`,
+        t(
+          '{n, plural, one {# vocabulary} other {# vocabularies}} could not be read as of that time. Entries show as they are now.',
+          { n: failed.length },
+        ),
         null,
-        'Failed to read the vocabularies',
+        t('Failed to read the vocabularies'),
       );
     }
     return next;
@@ -276,8 +289,8 @@ export class IgtDocument extends DocumentModel {
   // speaker of the document too: suggested, and coloured like the others.
   get knownSpeakers() {
     const set = new Set(readSpeakers(this._project?.config));
-    for (const t of this.alignmentTokens) {
-      const s = t.metadata?.speaker;
+    for (const tok of this.alignmentTokens) {
+      const s = tok.metadata?.speaker;
       if (s) set.add(s);
     }
     for (const s of readChannelSpeakers(this.storedMetadata) || []) if (s) set.add(s);
@@ -556,18 +569,21 @@ export class IgtDocument extends DocumentModel {
       this._vocabsUnread = failedCount > 0;
       if (failedCount > 0 && this.onError) {
         this.onError(
-          `${countOf(failedCount, 'vocabulary')} could not be refreshed. Linked entries may show old values until the page is reloaded.`,
+          t(
+            '{n, plural, one {# vocabulary} other {# vocabularies}} could not be refreshed. Linked entries may show old values until the page is reloaded.',
+            { n: failedCount },
+          ),
           null,
-          'Failed to refresh the vocabularies',
+          t('Failed to refresh the vocabularies'),
         );
       }
     } catch (err) {
       console.warn('Vocab reload failed:', err);
       if (this.onError)
         this.onError(
-          'Linked entries may show old values until the page is reloaded.',
+          t('Linked entries may show old values until the page is reloaded.'),
           null,
-          'Failed to refresh the vocabularies',
+          t('Failed to refresh the vocabularies'),
         );
     }
   }

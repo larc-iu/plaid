@@ -3,6 +3,7 @@ import { compareNames } from '../../domain/collation.js';
 import { flattenOptions, normalizeOptions } from '../shared/comboboxOptions.js';
 import { activeMention, filterMentions, insertMention, withMentionIds } from './mentions.js';
 import { isEnter } from '../../lib/chords.js';
+import { t } from '../../lib/i18n.js';
 
 // `@` in the composer: a typeahead over the reference spellings the model
 // already reads, so a reader can name a sentence they are not looking at, or
@@ -62,7 +63,7 @@ export const useMentions = ({ client, projectId, enabled, text, setText, inputRe
     if (!open) return [];
     const own = offer?.(mention.query) || [];
     const docs = (documents || []).map((d) => ({ value: d.name, label: d.name }));
-    const all = [...own, ...(docs.length ? [{ group: 'Documents', items: docs }] : [])];
+    const all = [...own, ...(docs.length ? [{ group: t('Documents'), items: docs }] : [])];
     // Ids before filtering: a value is not unique (two documents may share a
     // name), and the row the arrows are on has to be one row.
     return filterMentions(withMentionIds(normalizeOptions(all)), mention.query);

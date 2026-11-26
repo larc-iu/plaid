@@ -20,6 +20,7 @@ import { ServiceSummary } from '../services/ServiceSummary.jsx';
 import { Loading } from './Loading.jsx';
 import { notifySuccess, notifyError } from '../../lib/notify.js';
 import { humanizeError } from '../../lib/errors.js';
+import { t } from '../../lib/i18n.js';
 import {
   expectStored,
   isConfigConflict,
@@ -44,18 +45,18 @@ const thresholdText = (config) => String(Math.round(readConfidenceThreshold(conf
 // The field's text as a stored threshold, or null when it is not a whole
 // number from 0 to 100.
 const parseThreshold = (text) => {
-  const t = text.trim();
-  if (!/^\d{1,3}$/.test(t)) return null;
-  const n = Number(t);
+  const trimmed = text.trim();
+  if (!/^\d{1,3}$/.test(trimmed)) return null;
+  const n = Number(trimmed);
   return n <= 100 ? n / 100 : null;
 };
 
 const lastSeenText = (svc) => {
-  if (!svc.lastSeenAt) return 'never seen online';
+  if (!svc.lastSeenAt) return t('never seen online');
   try {
-    return `last seen ${new Date(svc.lastSeenAt).toLocaleString()}`;
+    return t('last seen {when}', { when: new Date(svc.lastSeenAt).toLocaleString() });
   } catch {
-    return `last seen ${svc.lastSeenAt}`;
+    return t('last seen {when}', { when: svc.lastSeenAt });
   }
 };
 
@@ -70,7 +71,7 @@ const ServiceStatus = ({ service }) => (
           : 'border-border bg-muted text-muted-foreground'
       }
     >
-      {service.online ? 'online' : 'offline'}
+      {service.online ? t('online') : t('offline')}
     </Badge>
     {!service.online && (
       <span className="text-xs text-muted-foreground">{lastSeenText(service)}</span>
@@ -84,8 +85,8 @@ const ForgetButton = ({ service, onDiscard }) => (
     variant="ghost"
     size="icon"
     className="h-7 w-7 text-muted-foreground hover:text-destructive"
-    title="Forget this service. It reappears if it reconnects."
-    aria-label={`Forget ${service.serviceName || service.serviceId}`}
+    title={t('Forget this service. It reappears if it reconnects.')}
+    aria-label={t('Forget {name}', { name: service.serviceName || service.serviceId })}
     onClick={() => onDiscard(service.serviceId)}
   >
     <Trash2 className="h-4 w-4" />
@@ -207,20 +208,20 @@ function SpotCard({
   return (
     <Card>
       <CardHeader className="pb-3">
-        <CardTitle>{spot.label}</CardTitle>
-        <CardDescription>{spot.description}</CardDescription>
+        <CardTitle>{t(spot.label)}</CardTitle>
+        <CardDescription>{spot.description && t(spot.description)}</CardDescription>
       </CardHeader>
       <CardContent className="space-y-2">
         {spot.builtins.length === 0 && spotServices.length === 0 ? (
           <p className="text-sm text-muted-foreground">
-            No service for this task has connected to this project.
+            {t('No service for this task has connected to this project.')}
           </p>
         ) : (
           <div className="space-y-2">
             <OptionRow
               spotKey={spot.key}
               value="none"
-              label="No default (pick per use)"
+              label={t('No default (pick per use)')}
               checked={selection === 'none'}
               onSelect={setSelection}
               disabled={!canManage}
@@ -230,11 +231,11 @@ function SpotCard({
                 key={b.name}
                 spotKey={spot.key}
                 value={encodeBuiltinSelection(b.name)}
-                label={b.label}
+                label={t(b.label)}
                 checked={selection === encodeBuiltinSelection(b.name)}
                 onSelect={setSelection}
                 disabled={!canManage}
-                badge={<Badge variant="secondary">built-in</Badge>}
+                badge={<Badge variant="secondary">{t('built-in')}</Badge>}
               />
             ))}
             {spotServices.map((svc) => (
@@ -257,7 +258,7 @@ function SpotCard({
 
         {fieldSchema.length > 0 && fieldIds && (
           <div className="mt-3 border-t pt-3">
-            <p className="mb-2 text-xs font-medium text-muted-foreground">Default fields</p>
+            <p className="mb-2 text-xs font-medium text-muted-foreground">{t('Default fields')}</p>
             <ServiceParamForm
               schema={fieldSchema}
               values={fieldValues}
@@ -270,7 +271,9 @@ function SpotCard({
         {selectedService && paramSchema.length > 0 && (
           <div className="mt-3 border-t pt-3">
             <p className="mb-2 text-xs font-medium text-muted-foreground">
-              Default options for {selectedService.serviceName || selectedService.serviceId}
+              {t('Default options for {name}', {
+                name: selectedService.serviceName || selectedService.serviceId,
+              })}
             </p>
             <ServiceParamForm
               schema={paramSchema}
@@ -372,7 +375,7 @@ export const ServiceDefaultsSettings = ({
         setDirty(false);
       } catch (error) {
         if (!isCurrent()) return;
-        notifyError(humanizeError(error), 'Failed to load the services');
+        notifyError(humanizeError(error), t('Failed to load the services'));
       } finally {
         if (isCurrent()) setLoading(false);
       }
@@ -451,9 +454,9 @@ export const ServiceDefaultsSettings = ({
       }
       if (extraDirty) onExtraSaved?.();
       setDirty(!sameConfig(draftNow.current, draft));
-      notifySuccess('Settings saved');
+      notifySuccess(t('Settings saved'));
     } catch (error) {
-      notifyError(humanizeError(error), 'Failed to save the defaults');
+      notifyError(humanizeError(error), t('Failed to save the defaults'));
       // Someone else saved since: show what is stored now.
       if (isConfigConflict(error)) load();
     } finally {
@@ -467,7 +470,7 @@ export const ServiceDefaultsSettings = ({
       await client.messages.discardService(projectId, serviceId);
       await load(unsavedRef.current);
     } catch (error) {
-      notifyError(humanizeError(error), 'Failed to forget the service');
+      notifyError(humanizeError(error), t('Failed to forget the service'));
     }
   };
 
@@ -486,7 +489,7 @@ export const ServiceDefaultsSettings = ({
     <div className="space-y-4">
       <div className="flex items-start justify-between gap-4">
         <p className="max-w-xl text-sm text-muted-foreground">
-          Set a default service and its options for each task.
+          {t('Set a default service and its options for each task.')}
         </p>
         <Button
           variant="outline"
@@ -495,13 +498,13 @@ export const ServiceDefaultsSettings = ({
           disabled={loading}
         >
           <RefreshCw className={`mr-1.5 h-3.5 w-3.5 ${loading ? 'animate-spin' : ''}`} />
-          Refresh
+          {t('Refresh')}
         </Button>
       </div>
 
       {!canManage && (
         <p className="rounded-md border bg-muted/40 px-3 py-2 text-sm text-muted-foreground">
-          Read-only. Only project maintainers can change defaults.
+          {t('Read-only. Only project maintainers can change defaults.')}
         </p>
       )}
 
@@ -525,8 +528,10 @@ export const ServiceDefaultsSettings = ({
       {unmatched.length > 0 && (
         <Card>
           <CardHeader className="pb-3">
-            <CardTitle>Other services</CardTitle>
-            <CardDescription>Seen on this project, not used by any task here.</CardDescription>
+            <CardTitle>{t('Other services')}</CardTitle>
+            <CardDescription>
+              {t('Seen on this project, not used by any task here.')}
+            </CardDescription>
           </CardHeader>
           <CardContent className="space-y-2">
             {unmatched.map((svc) => (
@@ -544,14 +549,14 @@ export const ServiceDefaultsSettings = ({
       {showConfidence && (
         <Card>
           <CardHeader className="pb-3">
-            <CardTitle>Low confidence</CardTitle>
+            <CardTitle>{t('Low confidence')}</CardTitle>
             <CardDescription>
-              A machine value below this confidence gets a heavier underline.
+              {t('A machine value below this confidence gets a heavier underline.')}
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-1.5">
             <div className="flex items-center gap-2">
-              <Label htmlFor="confidence-threshold">Threshold</Label>
+              <Label htmlFor="confidence-threshold">{t('Threshold')}</Label>
               <Input
                 id="confidence-threshold"
                 inputMode="numeric"
@@ -565,7 +570,9 @@ export const ServiceDefaultsSettings = ({
               <span className="text-sm text-muted-foreground">%</span>
             </div>
             {thresholdValue == null && (
-              <p className="text-xs text-destructive-strong">Enter a whole number from 0 to 100.</p>
+              <p className="text-xs text-destructive-strong">
+                {t('Enter a whole number from 0 to 100.')}
+              </p>
             )}
           </CardContent>
         </Card>
@@ -580,7 +587,7 @@ export const ServiceDefaultsSettings = ({
             saving
           }
         >
-          {saving ? 'Saving…' : 'Save defaults'}
+          {saving ? t('Saving…') : t('Save defaults')}
         </Button>
       )}
     </div>

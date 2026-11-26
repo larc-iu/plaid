@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { TASKS, filterServicesByTask } from '@larc-iu/plaid-client';
 import { serviceCache } from './jobs.js';
 import { discoverServices } from '../../lib/discoverServices.js';
+import { t } from '../../lib/i18n.js';
 
 // Whether any assistant is online for a project, for the screens that offer to
 // open one.
@@ -42,7 +43,11 @@ export const assistantsAmong = (services, app) =>
 // Who runs an assistant, for the line beside its name: "run by Ana", or "run
 // by you". Nothing when discovery did not say.
 export const runByLine = (service) =>
-  service?.runByYou ? 'run by you' : service?.runnerName ? `run by ${service.runnerName}` : '';
+  service?.runByYou
+    ? t('run by you')
+    : service?.runnerName
+      ? t('run by {name}', { name: service.runnerName })
+      : '';
 
 export const useAssistantAvailable = (client, projectId, app) => {
   const cached = serviceCache.get(projectId);

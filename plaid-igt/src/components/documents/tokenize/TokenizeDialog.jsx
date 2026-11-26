@@ -1,6 +1,7 @@
 import { Scissors } from 'lucide-react';
 import { ServiceSpotDialog } from '@ui/components/services/ServiceSpotDialog.jsx';
 import { useDocumentCtx } from '../contexts/DocumentContext.jsx';
+import { t } from '@ui/lib/i18n.js';
 
 // Tokenization: the button in the Tokens header and the dialog behind it.
 // Results are the words in the panel underneath, so the dialog carries nothing
@@ -13,12 +14,14 @@ export function TokenizeDialog({ ops, blockedHint = null }) {
   const { spot, handleTokenize } = ops;
   return (
     <ServiceSpotDialog
-      label="Tokenize"
+      label={t('Tokenize')}
       icon={Scissors}
       description={
         spot.service
-          ? "Where the service splits a sentence differently, that sentence's words are made again."
-          : 'Existing words are kept.'
+          ? t(
+              "Where the service splits a sentence differently, that sentence's words are made again.",
+            )
+          : t('Existing words are kept.')
       }
       spot={spot}
       onRun={handleTokenize}

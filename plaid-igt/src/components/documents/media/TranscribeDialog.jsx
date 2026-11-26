@@ -3,6 +3,7 @@ import { ServiceSpotDialog } from '@ui/components/services/ServiceSpotDialog.jsx
 import { useDocumentCtx } from '../contexts/DocumentContext.jsx';
 import { ChannelChecklist } from './ChannelChecklist.jsx';
 import { useChosenChannels } from './useChosenChannels.js';
+import { t } from '@ui/lib/i18n.js';
 
 // Transcription: the button in the Transcript header and the dialog behind it.
 // Results are segments with text, which is what the transcript itself shows,
@@ -24,15 +25,15 @@ export function TranscribeDialog({ mediaOps, readOnly = false }) {
   const channels = useChosenChannels(channelSpeakers, channelCount);
   return (
     <ServiceSpotDialog
-      label="Transcribe"
+      label={t('Transcribe')}
       icon={Mic}
-      description="Segments and their text are written to this document."
+      description={t('Segments and their text are written to this document.')}
       spot={transcribeSpot}
       onRun={() => handleTranscribe({ channels: channels.chosen })}
       writeLock={writeLock}
       blockedHint={
         isProcessing && !writeLock
-          ? 'Speech detection is running. One run at a time on a document.'
+          ? t('Speech detection is running. One run at a time on a document.')
           : null
       }
       noun="transcription"

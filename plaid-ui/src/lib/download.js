@@ -3,7 +3,8 @@
 //
 // No static imports: plain node loads this file (igt's runExport, in the
 // fidelity runs), and the toast library is the apps' dependency, not this
-// package's. copyText reaches notify.js when it has something to say.
+// package's. copyText reaches notify.js, and the language, when it has
+// something to say.
 
 /**
  * `name` as a file name every system takes (no extension handling): the
@@ -44,13 +45,16 @@ export function saveBlob(blob, name) {
  * `navigator.clipboard` is undefined, and a denied permission rejects: either
  * way `failure` is said, with the title `title`.
  */
-export async function copyText(text, failure, title = 'Failed to copy') {
+export async function copyText(text, failure, title) {
   try {
     await navigator.clipboard.writeText(text);
     return true;
   } catch {
-    const { notifyError } = await import('./notify.js');
-    notifyError(failure, title);
+    const [{ notifyError }, { t }] = await Promise.all([
+      import('./notify.js'),
+      import('./i18n.js'),
+    ]);
+    notifyError(failure, title ?? t('Failed to copy'));
     return false;
   }
 }

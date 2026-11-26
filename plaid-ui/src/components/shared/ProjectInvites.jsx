@@ -20,8 +20,12 @@ import { notifySuccess, notifyError } from '../../lib/notify.js';
 import { humanizeError } from '../../lib/errors.js';
 import { ROW_DELETE_CLASS } from '../../lib/destructive.js';
 import { useLatestCall } from '../../hooks/useLatestCall.js';
-import { GRANT_ROLES, cap, fmtDate, inviteRevocable } from '../../domain/invites.js';
+import { GRANT_ROLES, fmtDate, inviteRevocable } from '../../domain/invites.js';
 import { TYPE } from '../../lib/typeScale.js';
+import { msg, t, tx } from '../../lib/i18n.js';
+
+const ROLE_LABELS = { reader: msg('Reader'), writer: msg('Writer'), maintainer: msg('Maintainer') };
+const roleLabel = (role) => (ROLE_LABELS[role] ? t(ROLE_LABELS[role]) : (role ?? ''));
 
 const EMPTY_FORM = { role: 'writer', maxUses: '1', ttlDays: '14', note: '' };
 
@@ -56,7 +60,7 @@ export const ProjectInvites = ({ projectId, projectName, client, canManage, role
     } catch (err) {
       if (!isCurrent()) return;
       console.error('Error loading invites:', err);
-      notifyError(humanizeError(err), 'Failed to load the invitation links');
+      notifyError(humanizeError(err), t('Failed to load the invitation links'));
     } finally {
       if (isCurrent()) setLoading(false);
     }
@@ -72,11 +76,11 @@ export const ProjectInvites = ({ projectId, projectName, client, canManage, role
     const maxUses = parseInt(form.maxUses, 10);
     const ttlDays = parseInt(form.ttlDays, 10);
     if (!Number.isInteger(maxUses) || maxUses < 1) {
-      notifyError('Number of uses must be at least 1.');
+      notifyError(t('Number of uses must be at least 1.'));
       return;
     }
     if (!Number.isInteger(ttlDays) || ttlDays < 1) {
-      notifyError('Expiry must be at least 1 day.');
+      notifyError(t('Expiry must be at least 1 day.'));
       return;
     }
     try {
@@ -94,7 +98,7 @@ export const ProjectInvites = ({ projectId, projectName, client, canManage, role
       await load();
     } catch (err) {
       console.error('Error creating invite:', err);
-      notifyError(humanizeError(err), 'Failed to create the link');
+      notifyError(humanizeError(err), t('Failed to create the link'));
     } finally {
       setCreating(false);
     }
@@ -102,19 +106,19 @@ export const ProjectInvites = ({ projectId, projectName, client, canManage, role
 
   const handleRevoke = async (inv) => {
     const ok = await confirm({
-      title: 'Revoke this invitation link?',
-      description: 'The link stops working immediately. Accounts made with it are unchanged.',
-      confirmLabel: 'Revoke link',
+      title: t('Revoke this invitation link?'),
+      description: t('The link stops working immediately. Accounts made with it are unchanged.'),
+      confirmLabel: t('Revoke link'),
       destructive: true,
     });
     if (!ok) return;
     try {
       await client.invites.revoke(inv.id);
-      notifySuccess('Invitation link revoked');
+      notifySuccess(t('Invitation link revoked'));
       await load();
     } catch (err) {
       console.error('Error revoking invite:', err);
-      notifyError(humanizeError(err), 'Failed to revoke the invitation link');
+      notifyError(humanizeError(err), t('Failed to revoke the invitation link'));
     }
   };
 
@@ -123,31 +127,31 @@ export const ProjectInvites = ({ projectId, projectName, client, canManage, role
   const columns = [
     {
       key: 'note',
-      label: 'Label',
+      label: t('Label'),
       sort: (inv) => (inv.note || '').toLowerCase(),
-      render: (inv) => inv.note || <em className="text-muted-foreground">Untitled</em>,
+      render: (inv) => inv.note || <em className="text-muted-foreground">{t('Untitled')}</em>,
     },
     {
       key: 'grants',
-      label: 'Grants',
+      label: t('Grants'),
       sort: (inv) => inv.projectRole || '',
-      render: (inv) => cap(inv.projectRole),
+      render: (inv) => roleLabel(inv.projectRole),
     },
     {
       key: 'uses',
-      label: 'Used',
+      label: t('Used'),
       sort: (inv) => inv.uses,
       render: (inv) => `${inv.uses} / ${inv.maxUses}`,
     },
     {
       key: 'expires',
-      label: 'Expires',
+      label: t('Expires'),
       sort: (inv) => (inv.expiresAt ? new Date(inv.expiresAt).getTime() : null),
       render: (inv) => fmtDate(inv.expiresAt),
     },
     {
       key: 'status',
-      label: 'Status',
+      label: t('Status'),
       sort: (inv) => inv.status,
       render: (inv) => <InviteStatusBadge status={inv.status} />,
     },
@@ -162,7 +166,7 @@ export const ProjectInvites = ({ projectId, projectName, client, canManage, role
             variant="ghost"
             size="icon"
             className={`h-8 w-8 ${ROW_DELETE_CLASS}`}
-            aria-label="Revoke invitation link"
+            aria-label={t('Revoke invitation link')}
             onClick={() => handleRevoke(inv)}
           >
             <Trash2 className="h-4 w-4" />
@@ -175,15 +179,20 @@ export const ProjectInvites = ({ projectId, projectName, client, canManage, role
     <div className="flex flex-col gap-3">
       <div className="flex items-start justify-between gap-4">
         <div>
-          <h2 className={TYPE.card}>Invitation links</h2>
+          <h2 className={TYPE.card}>{t('Invitation links')}</h2>
           <p className="text-sm text-muted-foreground">
-            Links that let someone create an account and join{' '}
-            {projectName ? <strong>{projectName}</strong> : 'this project'}. Anyone with a link can
-            use it.
+            {projectName
+              ? tx(
+                  'Links that let someone create an account and join <strong>{name}</strong>. Anyone with a link can use it.',
+                  { name: projectName, strong: (c) => <strong>{c}</strong> },
+                )
+              : t(
+                  'Links that let someone create an account and join this project. Anyone with a link can use it.',
+                )}
           </p>
         </div>
         <Button size="sm" onClick={() => setCreateOpen(true)}>
-          <Link2 className="h-4 w-4" /> New link
+          <Link2 className="h-4 w-4" /> {t('New link')}
         </Button>
       </div>
 
@@ -194,30 +203,31 @@ export const ProjectInvites = ({ projectId, projectName, client, canManage, role
         id="project-invites"
         scope={projectId}
         defaultSort={{ key: 'expires', dir: 'desc' }}
-        noun="link"
+        countLabel={(v) => t('{total} {n, plural, one {link} other {links}}', v)}
+        noMatch={t('No links match.')}
         loading={loading}
-        empty="No invitation links yet."
+        empty={t('No invitation links yet.')}
       />
 
       <Dialog open={createOpen} onOpenChange={setCreateOpen}>
         <DialogContent className="max-w-md">
           <DialogHeader>
-            <DialogTitle>New invitation link</DialogTitle>
+            <DialogTitle>{t('New invitation link')}</DialogTitle>
             <DialogDescription>
-              Anyone with the link can create one account and join this project.
+              {t('Anyone with the link can create one account and join this project.')}
             </DialogDescription>
           </DialogHeader>
           <div className="flex flex-col gap-4">
             <div className="flex flex-col gap-1.5">
-              <Label htmlFor="invite-role">They join as</Label>
+              <Label htmlFor="invite-role">{t('They join as')}</Label>
               <Select value={form.role} onValueChange={(v) => setForm({ ...form, role: v })}>
                 <SelectTrigger id="invite-role">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
                   {GRANT_ROLES.map((r) => (
-                    <SelectItem key={r} value={r} hint={roleHints[r]}>
-                      {cap(r)}
+                    <SelectItem key={r} value={r} hint={roleHints[r] && t(roleHints[r])}>
+                      {roleLabel(r)}
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -225,7 +235,7 @@ export const ProjectInvites = ({ projectId, projectName, client, canManage, role
             </div>
             <div className="flex gap-3">
               <div className="flex flex-1 flex-col gap-1.5">
-                <Label htmlFor="invite-uses">Number of uses</Label>
+                <Label htmlFor="invite-uses">{t('Number of uses')}</Label>
                 <Input
                   id="invite-uses"
                   type="number"
@@ -233,10 +243,12 @@ export const ProjectInvites = ({ projectId, projectName, client, canManage, role
                   value={form.maxUses}
                   onChange={(e) => setForm({ ...form, maxUses: e.target.value })}
                 />
-                <p className="text-xs text-muted-foreground">Each use creates one account.</p>
+                <p className="text-xs text-muted-foreground">
+                  {t('Each use creates one account.')}
+                </p>
               </div>
               <div className="flex flex-1 flex-col gap-1.5">
-                <Label htmlFor="invite-ttl">Expires in (days)</Label>
+                <Label htmlFor="invite-ttl">{t('Expires in (days)')}</Label>
                 <Input
                   id="invite-ttl"
                   type="number"
@@ -247,22 +259,22 @@ export const ProjectInvites = ({ projectId, projectName, client, canManage, role
               </div>
             </div>
             <div className="flex flex-col gap-1.5">
-              <Label htmlFor="invite-note">Label (optional)</Label>
+              <Label htmlFor="invite-note">{t('Label (optional)')}</Label>
               <Input
                 id="invite-note"
-                placeholder="e.g. Fall 2026 field methods"
+                placeholder={t('e.g. Fall 2026 field methods')}
                 value={form.note}
                 onChange={(e) => setForm({ ...form, note: e.target.value })}
               />
-              <p className="text-xs text-muted-foreground">Seen only by maintainers.</p>
+              <p className="text-xs text-muted-foreground">{t('Seen only by maintainers.')}</p>
             </div>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setCreateOpen(false)} disabled={creating}>
-              Cancel
+              {t('Cancel')}
             </Button>
             <Button onClick={handleCreate} disabled={creating}>
-              {creating ? 'Creating…' : 'Create link'}
+              {creating ? t('Creating…') : t('Create link')}
             </Button>
           </DialogFooter>
         </DialogContent>

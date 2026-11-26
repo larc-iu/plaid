@@ -21,9 +21,10 @@ import { Panel } from './ImportPanels.jsx';
 import { useMaintainersOnly } from './useMaintainersOnly.js';
 import { UnfinishedImportScreen } from './UnfinishedImport.jsx';
 import { readImportState } from '@/domain/igtConfig';
+import { t } from '@ui/lib/i18n.js';
 
 export const ProjectSetup = () => {
-  useDocumentTitle('Project setup');
+  useDocumentTitle(t('Project setup'));
   const { projectId } = useParams();
   const { client } = useAuth();
 
@@ -73,7 +74,7 @@ export const ProjectSetup = () => {
       ? [
           {
             id: 'basic-info',
-            title: 'Basic information',
+            title: t('Basic information'),
             icon: Info,
             component: BasicInfoStep,
           },
@@ -83,7 +84,7 @@ export const ProjectSetup = () => {
       ? [
           {
             id: 'layer-selection',
-            title: 'Text layer',
+            title: t('Text layer'),
             icon: Layers,
             component: LayerSelectionStep,
           },
@@ -91,31 +92,31 @@ export const ProjectSetup = () => {
       : []),
     {
       id: 'document-metadata',
-      title: 'Document metadata',
+      title: t('Document metadata'),
       icon: FileText,
       component: DocumentMetadataStep,
     },
     {
       id: 'orthographies',
-      title: 'Orthographies',
+      title: t('Orthographies'),
       icon: Languages,
       component: OrthographiesStep,
     },
     {
       id: 'fields',
-      title: 'Fields',
+      title: t('Fields'),
       icon: List,
       component: FieldsStep,
     },
     {
       id: 'vocabulary',
-      title: 'Vocabulary',
+      title: t('Vocabulary'),
       icon: BookOpen,
       component: VocabularyStep,
     },
     {
       id: 'confirmation',
-      title: 'Confirmation',
+      title: t('Confirmation'),
       icon: Check,
       component: ConfirmationStep,
     },
@@ -180,7 +181,7 @@ export const ProjectSetup = () => {
   if (!isNewProject && allowed !== true) {
     return (
       <div className={FORM_PAGE_WIDTH}>
-        {loadError && <Panel tone="error" title="This project could not be loaded." />}
+        {loadError && <Panel tone="error" title={t('This project could not be loaded.')} />}
       </div>
     );
   }
@@ -197,19 +198,21 @@ export const ProjectSetup = () => {
           items={
             isNewProject
               ? [
-                  { label: 'Projects', to: '/projects', fixed: true },
-                  { label: 'New project', to: '/projects/new', fixed: true },
+                  { label: t('Projects'), to: '/projects', fixed: true },
+                  { label: t('New project'), to: '/projects/new', fixed: true },
                 ]
-              : [{ label: 'Projects', to: '/projects', fixed: true }]
+              : [{ label: t('Projects'), to: '/projects', fixed: true }]
           }
         />
 
         <div>
-          <h1 className={TYPE.page}>{isNewProject ? 'Start from scratch' : 'Project setup'}</h1>
+          <h1 className={TYPE.page}>
+            {isNewProject ? t('Start from scratch') : t('Project setup')}
+          </h1>
           <p className="text-sm text-muted-foreground">
             {isNewProject
-              ? 'Set up a new Plaid IGT project.'
-              : 'Set this project up for Plaid IGT.'}
+              ? t('Set up a new Plaid IGT project.')
+              : t('Set this project up for Plaid IGT.')}
           </p>
         </div>
 
@@ -290,7 +293,7 @@ export const ProjectSetup = () => {
                 {currentStep < steps.length - 1 && (
                   <div className="flex items-center justify-between gap-2 pt-4">
                     <Button variant="outline" onClick={handlePrevious} disabled={currentStep === 0}>
-                      Previous
+                      {t('Previous')}
                     </Button>
 
                     {/* No Next on the last step. It used to render there,
@@ -299,7 +302,7 @@ export const ProjectSetup = () => {
                     its own row above the footer. The first read of that is
                     that the wizard is stuck. */}
                     <Button onClick={handleNext} disabled={!isCurrentStepValid()}>
-                      Next
+                      {t('Next')}
                     </Button>
                   </div>
                 )}

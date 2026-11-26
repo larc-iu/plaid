@@ -39,6 +39,7 @@ import { LongDocumentNotice } from './LongDocumentNotice.jsx';
 import { isLongDocument } from '../../domain/longDocument.js';
 import { DOC_GUTTER } from '../../lib/pageWidth.js';
 import { cn } from '../../lib/utils.js';
+import { t } from '../../lib/i18n.js';
 
 // The screen of an open document in every app. It owns the project and
 // document load and renders the breadcrumbs and the tab strip, so a tab switch
@@ -122,12 +123,11 @@ const toast = () => (msg, err, label) => notifyError(err ?? msg, label);
 
 // Core answers an id it cannot place 403 to a member (so a non-member learns
 // nothing) and 404 to an admin, and a link to a deleted document meets either.
-const NOT_OPENABLE = 'This document does not exist or you cannot open it.';
 const loadErrorText = (err) => {
   const status = statusOf(err);
   return status === 403 || status === 404 || isGone(err)
-    ? NOT_OPENABLE
-    : humanizeError(err, 'This document could not be loaded.');
+    ? t('This document does not exist or you cannot open it.')
+    : humanizeError(err, t('This document could not be loaded.'));
 };
 
 // Keyed by document, so opening another document starts from nothing: no
@@ -167,7 +167,7 @@ const DocumentEditor = ({ app, documentClient }) => {
   // it is not in charge (`ready`) where the tab is the path's, so it leaves a
   // `?tab=` it does not know alone.
   const query = app.tabs.query;
-  const tabValues = useMemo(() => app.tabs.list.map((t) => t.value), [app]);
+  const tabValues = useMemo(() => app.tabs.list.map((entry) => entry.value), [app]);
   const [queryTab, setQueryTab, queryHref] = useTabParam(
     tabValues,
     query?.fallback ?? tabValues[0],
@@ -249,15 +249,15 @@ const DocumentEditor = ({ app, documentClient }) => {
   const confirm = useConfirm();
   const stopJob = async () => {
     const yes = await confirm({
-      title: 'Stop the job?',
-      description: 'What it wrote stays.',
-      confirmLabel: 'Stop',
+      title: t('Stop the job?'),
+      description: t('What it wrote stays.'),
+      confirmLabel: t('Stop'),
     });
     if (!yes) return;
     try {
       await client.jobs.cancel(job.id);
     } catch (err) {
-      notifyError(err, 'Failed to stop the job');
+      notifyError(err, t('Failed to stop the job'));
     }
     refreshJob();
   };
@@ -307,6 +307,7 @@ const DocumentEditor = ({ app, documentClient }) => {
         setLoadError('');
       } catch (err) {
         if (cancelled) return;
+        // i18n-ignore: the client's own error message, matched, never shown
         if (err.status === 401 || err.message === 'Not authenticated') {
           logout('expired');
           return;
@@ -383,7 +384,7 @@ const DocumentEditor = ({ app, documentClient }) => {
       try {
         const page = await client.documents.auditPage(documentId, { entryId: id, opsLimit: 1 });
         const entry = page?.entries?.[0];
-        if (!entry) throw new Error('This document has no such history entry.');
+        if (!entry) throw new Error(t('This document has no such history entry.'));
         await history.selectEntry({
           id: entry.id,
           time: entry.endTime || entry.time,
@@ -398,7 +399,7 @@ const DocumentEditor = ({ app, documentClient }) => {
           logout('expired');
           return;
         }
-        notifyError(err, 'Failed to open that history entry');
+        notifyError(err, t('Failed to open that history entry'));
         historyParam.clear();
       }
     },
@@ -464,7 +465,7 @@ const DocumentEditor = ({ app, documentClient }) => {
   useSavingGuard(comments);
 
   // The tab first, as in every app, then the document and its project.
-  const tabLabel = app.tabs.list.find((t) => t.value === tab)?.label;
+  const tabLabel = app.tabs.list.find((entry) => entry.value === tab)?.label;
   useDocumentTitle(tabLabel, shown?.raw?.name, project?.name);
 
   // Every document tab is full width in `Layout`, so the breadcrumb and the
@@ -535,7 +536,7 @@ const DocumentEditor = ({ app, documentClient }) => {
         const hint = app.sentenceHint ? app.sentenceHint(sentence, doc) : sentence.text;
         return { value: ref, label: ref, hint };
       });
-      return items.length ? [{ group: 'Sentences', items }] : [];
+      return items.length ? [{ group: t('Sentences'), items }] : [];
     },
   });
   // "Ask" under a sentence hands the panel a {ref, label} and opens it. It goes
@@ -588,8 +589,8 @@ const DocumentEditor = ({ app, documentClient }) => {
       {!history.drawerOpen && doc && !chromeBusy && (
         <EdgeRail
           side="left"
-          label="Open history"
-          title="Open history"
+          label={t('Open history')}
+          title={t('Open history')}
           onClick={history.openHistory}
           className="z-30"
         >
@@ -607,12 +608,12 @@ const DocumentEditor = ({ app, documentClient }) => {
         project={project}
         document={shown?.raw}
         failed={!loading && !doc}
-        tabs={app.tabs.list.map((t) => ({
-          ...t,
+        tabs={app.tabs.list.map((entry) => ({
+          ...entry,
           // What an entry changed is no tab's: a tab leaves it for the
           // document as of the entry, on that tab.
-          to: showChanges ? withDocumentView(tabHref(t.value)) : tabHref(t.value),
-          count: t.value === 'comments' ? (comments?.count ?? 0) : 0,
+          to: showChanges ? withDocumentView(tabHref(entry.value)) : tabHref(entry.value),
+          count: entry.value === 'comments' ? (comments?.count ?? 0) : 0,
         }))}
         active={tab}
         onPick={() => {
@@ -635,7 +636,7 @@ const DocumentEditor = ({ app, documentClient }) => {
               aria-expanded={history.drawerOpen}
               disabled={!doc || chromeBusy}
             >
-              <History className="h-4 w-4" /> History
+              <History className="h-4 w-4" /> {t('History')}
             </Button>
           </>
         }
@@ -671,7 +672,7 @@ const DocumentEditor = ({ app, documentClient }) => {
       {!loading && (loadError || !doc || !project) && (
         <div className={wide ? DOC_GUTTER : cn('max-w-[1320px]', DOC_GUTTER)}>
           <Notice tone="error" icon={null} role="alert">
-            {loadError || 'Document or project not found'}
+            {loadError || t('Document or project not found')}
           </Notice>
         </div>
       )}
@@ -688,7 +689,7 @@ const DocumentEditor = ({ app, documentClient }) => {
               {app.historyChanges(context)}
             </div>
           ) : pastEntry && !onPastTab ? (
-            <p className="pt-2 text-sm text-muted-foreground">Not shown at a past state.</p>
+            <p className="pt-2 text-sm text-muted-foreground">{t('Not shown at a past state.')}</p>
           ) : query ? (
             app.renderTab(tab, context)
           ) : (

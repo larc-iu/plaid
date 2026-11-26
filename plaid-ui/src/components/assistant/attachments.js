@@ -23,6 +23,7 @@
 import { statusOf } from '../../lib/errors.js';
 import { decodeText, NotUtf8FileError } from '../../lib/textFile.js';
 import { pdfText } from './pdfText.js';
+import { t } from '../../lib/i18n.js';
 import { uuidv4 } from '../../../../plaid-client-js/src/ids.js';
 
 // What can be attached. Text, in the sense that a person could open it in an
@@ -93,15 +94,26 @@ export const refuse = (file) => {
   const name = file?.name || '';
   const suffix = suffixOf(name);
   if (!ACCEPT.includes(suffix)) {
-    return `${name || 'That file'} is not a kind the assistant can read. It reads ${ACCEPT.join(', ')}.`;
+    // The kinds are file extensions, listed as they are written.
+    const kinds = ACCEPT.join(', ');
+    return name
+      ? t('{name} is not a kind the assistant can read. It reads {kinds}.', { name, kinds })
+      : t('That file is not a kind the assistant can read. It reads {kinds}.', { kinds });
   }
   if (suffix === '.pdf') {
     return (file?.size ?? 0) > MAX_PDF_BYTES
-      ? `${name} is ${Math.round(file.size / 1_000_000)} MB, over the ${MAX_PDF_BYTES / 1_000_000} MB limit for a PDF.`
+      ? t('{name} is {size} MB, over the {max} MB limit for a PDF.', {
+          name,
+          size: Math.round(file.size / 1_000_000),
+          max: MAX_PDF_BYTES / 1_000_000,
+        })
       : null;
   }
   if ((file?.size ?? 0) > MAX_BYTES) {
-    return `${name} is ${Math.round(file.size / 1_000_000)} MB, over the ${MAX_BYTES / 1_000_000} MB limit for an attachment. Import a file this size from the project's import screen instead.`;
+    return t(
+      "{name} is {size} MB, over the {max} MB limit for an attachment. Import a file this size from the project's import screen instead.",
+      { name, size: Math.round(file.size / 1_000_000), max: MAX_BYTES / 1_000_000 },
+    );
   }
   return null;
 };
@@ -163,9 +175,9 @@ export const chunk = (text, budget) => {
 // and the answer beside it say the same number the same way.
 export const fileSize = (n) => {
   if (!n) return '';
-  if (n < 1000) return `${n} bytes`;
-  if (n < 1_000_000) return `${Math.round(n / 1000)} KB`;
-  return `${(n / 1_000_000).toFixed(1)} MB`;
+  if (n < 1000) return t('{n} bytes', { n });
+  if (n < 1_000_000) return t('{n} KB', { n: Math.round(n / 1000) });
+  return t('{n} MB', { n: (n / 1_000_000).toFixed(1) });
 };
 
 // How many lines a person would say the file has: one that ends in a newline
@@ -186,7 +198,11 @@ const newId = uuidv4;
 // file. So the decode is strict and the file is refused by name.
 export class NotUtf8Error extends Error {
   constructor(name) {
-    super(`${name} is not UTF-8 text. Save it as UTF-8 and attach it again.`);
+    super(
+      name
+        ? t('{name} is not UTF-8 text. Save it as UTF-8 and attach it again.', { name })
+        : t('That file is not UTF-8 text. Save it as UTF-8 and attach it again.'),
+    );
     this.name = 'NotUtf8Error';
   }
 }
@@ -199,7 +215,7 @@ const decodeFile = (buffer, name) => {
   try {
     return decodeText(buffer, name);
   } catch (e) {
-    if (e instanceof NotUtf8FileError) throw new NotUtf8Error(name || 'That file');
+    if (e instanceof NotUtf8FileError) throw new NotUtf8Error(name || null);
     throw e;
   }
 };
@@ -227,8 +243,8 @@ const loadPdfjs = async () => {
 // else most of its pages are empty, which a scan is not the word for.
 export const scanRefusal = (name, { pages, empty }) =>
   empty >= pages
-    ? `${name} has no text in it (a scan). Only PDFs with text can be read.`
-    : `${name} has no text on most of its pages. Only PDFs with text can be read.`;
+    ? t('{name} has no text in it (a scan). Only PDFs with text can be read.', { name })
+    : t('{name} has no text on most of its pages. Only PDFs with text can be read.', { name });
 
 // A PDF's text, with its pages and sections marked, or a refusal naming the
 // file: a scan has no text to read, and the text is held to MAX_BYTES.
@@ -245,9 +261,9 @@ const readPdfText = async (buffer, name, loadPdf = loadPdfjs) => {
     }).promise;
   } catch (e) {
     if (e?.name === 'PasswordException') {
-      throw new PdfAttachError(`${name} is locked with a password.`);
+      throw new PdfAttachError(t('{name} is locked with a password.', { name }));
     }
-    throw new PdfAttachError(`${name} could not be opened as a PDF.`);
+    throw new PdfAttachError(t('{name} could not be opened as a PDF.', { name }));
   }
   try {
     const got = await pdfText(doc);
@@ -255,7 +271,11 @@ const readPdfText = async (buffer, name, loadPdf = loadPdfjs) => {
     const bytes = new TextEncoder().encode(got.text).length;
     if (bytes > MAX_BYTES) {
       throw new PdfAttachError(
-        `${name} holds ${(bytes / 1_000_000).toFixed(1)} MB of text, over the ${MAX_BYTES / 1_000_000} MB limit for an attachment.`,
+        t('{name} holds {size} MB of text, over the {max} MB limit for an attachment.', {
+          name,
+          size: (bytes / 1_000_000).toFixed(1),
+          max: MAX_BYTES / 1_000_000,
+        }),
       );
     }
     return got.text;
@@ -325,7 +345,9 @@ export const readStoredFile = async (store, convId, file) => {
         if (statusOf(e) === 404) return null;
         throw e;
       });
-    if (typeof got?.value !== 'string') throw new Error(`${file.name} is no longer stored.`);
+    if (typeof got?.value !== 'string') {
+      throw new Error(t('{name} is no longer stored.', { name: file.name }));
+    }
     parts.push(got.value);
   }
   return parts.join('');

@@ -26,6 +26,7 @@ import { VadDetection } from './VadDetection.jsx';
 import { ChannelList } from './ChannelList.jsx';
 import { PLAYBACK_RATE_MIN, PLAYBACK_RATE_MAX, PLAYBACK_RATE_STEP } from './useMediaOperations.js';
 import { useClockTime } from './playbackClock.js';
+import { t } from '@ui/lib/i18n.js';
 
 // MediaError codes, named here since jsdom has no MediaError.
 const MEDIA_ERR_NETWORK = 2;
@@ -148,7 +149,7 @@ export const MediaPlayer = ({ mediaOps, readOnly = false, canWrite = false, past
         if (error?.name === 'AbortError' || error?.name === 'NotAllowedError') return;
         console.error('Media playback error:', error);
         setMediaError({
-          message: 'This browser cannot play this format. Use MP4, WebM, MP3, or WAV.',
+          message: t('This browser cannot play this format. Use MP4, WebM, MP3, or WAV.'),
           retry: false,
         });
       }
@@ -177,11 +178,11 @@ export const MediaPlayer = ({ mediaOps, readOnly = false, canWrite = false, past
       <div className="rounded-lg border bg-card p-4">
         <div className="flex items-center justify-between mb-4">
           <div className="flex items-center gap-2">
-            <h3 className="text-base font-semibold">Recording</h3>
+            <h3 className="text-base font-semibold">{t('Recording')}</h3>
             <MediaHelpButton open={helpOpen} onToggle={() => setHelpOpen((v) => !v)} />
             {past && (
               <span className="text-xs text-muted-foreground">
-                The document’s current recording
+                {t('The document’s current recording')}
               </span>
             )}
           </div>
@@ -202,12 +203,12 @@ export const MediaPlayer = ({ mediaOps, readOnly = false, canWrite = false, past
                     className="h-9 w-9"
                     onClick={onDeleteMedia}
                     disabled={readOnly}
-                    aria-label="Delete media file"
+                    aria-label={t('Delete media file')}
                   >
                     <Trash2 className="h-4 w-4" />
                   </Button>
                 </TooltipTrigger>
-                <TooltipContent>Delete media file</TooltipContent>
+                <TooltipContent>{t('Delete media file')}</TooltipContent>
               </Tooltip>
             </div>
           )}
@@ -221,9 +222,11 @@ export const MediaPlayer = ({ mediaOps, readOnly = false, canWrite = false, past
               what the link gave it, after a new link was tried. */}
           {(mediaLoadError || mediaError) && (
             <div className="rounded-md border border-destructive/50 bg-destructive/5 p-3">
-              <p className="text-sm font-medium text-destructive">Playback error</p>
+              <p className="text-sm font-medium text-destructive">{t('Playback error')}</p>
               <p className="text-sm text-muted-foreground">
-                {mediaLoadError ? `Failed to load media: ${mediaLoadError}` : mediaError.message}
+                {mediaLoadError
+                  ? t('Failed to load media: {error}', { error: mediaLoadError })
+                  : mediaError.message}
               </p>
               {/* A link refused while signed out works again once signed
                   back in, a dropped connection once it is back, and nothing
@@ -239,14 +242,14 @@ export const MediaPlayer = ({ mediaOps, readOnly = false, canWrite = false, past
                     mediaOps.retryMedia();
                   }}
                 >
-                  Try again
+                  {t('Try again')}
                 </Button>
               )}
             </div>
           )}
 
           {/* Until the link arrives the player is inert, so say so. */}
-          {isLoadingMedia && <p className="text-sm text-muted-foreground">Loading media…</p>}
+          {isLoadingMedia && <p className="text-sm text-muted-foreground">{t('Loading media…')}</p>}
 
           {/* Media Element - Use video element for everything since it can play both video and audio */}
           <video
@@ -306,9 +309,9 @@ export const MediaPlayer = ({ mediaOps, readOnly = false, canWrite = false, past
               console.error('Media error:', e);
               setMediaError(
                 code === MEDIA_ERR_NETWORK
-                  ? { message: 'The recording stopped loading.', retry: true }
+                  ? { message: t('The recording stopped loading.'), retry: true }
                   : {
-                      message: 'Failed to load media. This format may not be supported.',
+                      message: t('Failed to load media. This format may not be supported.'),
                       retry: code !== MEDIA_ERR_DECODE,
                     },
               );
@@ -326,12 +329,12 @@ export const MediaPlayer = ({ mediaOps, readOnly = false, canWrite = false, past
                   className="h-10 w-10"
                   onClick={onSkipToBeginning}
                   disabled={!ready}
-                  aria-label="Skip to beginning"
+                  aria-label={t('Skip to beginning')}
                 >
                   <SkipBack className="h-5 w-5" />
                 </Button>
               </TooltipTrigger>
-              <TooltipContent>Skip to beginning</TooltipContent>
+              <TooltipContent>{t('Skip to beginning')}</TooltipContent>
             </Tooltip>
 
             <Tooltip>
@@ -342,12 +345,12 @@ export const MediaPlayer = ({ mediaOps, readOnly = false, canWrite = false, past
                   className="h-10 w-10"
                   onClick={() => skipTime(-5)}
                   disabled={!ready}
-                  aria-label="Skip back 5 seconds"
+                  aria-label={t('Skip back 5 seconds')}
                 >
                   <Rewind className="h-5 w-5" />
                 </Button>
               </TooltipTrigger>
-              <TooltipContent>Skip back 5 seconds</TooltipContent>
+              <TooltipContent>{t('Skip back 5 seconds')}</TooltipContent>
             </Tooltip>
 
             <Tooltip>
@@ -357,12 +360,12 @@ export const MediaPlayer = ({ mediaOps, readOnly = false, canWrite = false, past
                   className="h-12 w-12"
                   onClick={togglePlayback}
                   disabled={!ready}
-                  aria-label={isPlaying ? 'Pause' : 'Play'}
+                  aria-label={isPlaying ? t('Pause') : t('Play')}
                 >
                   {isPlaying ? <Pause className="h-6 w-6" /> : <Play className="h-6 w-6" />}
                 </Button>
               </TooltipTrigger>
-              <TooltipContent>{isPlaying ? 'Pause' : 'Play'}</TooltipContent>
+              <TooltipContent>{isPlaying ? t('Pause') : t('Play')}</TooltipContent>
             </Tooltip>
 
             <Tooltip>
@@ -373,12 +376,12 @@ export const MediaPlayer = ({ mediaOps, readOnly = false, canWrite = false, past
                   className="h-10 w-10"
                   onClick={() => skipTime(5)}
                   disabled={!ready}
-                  aria-label="Skip forward 5 seconds"
+                  aria-label={t('Skip forward 5 seconds')}
                 >
                   <FastForward className="h-5 w-5" />
                 </Button>
               </TooltipTrigger>
-              <TooltipContent>Skip forward 5 seconds</TooltipContent>
+              <TooltipContent>{t('Skip forward 5 seconds')}</TooltipContent>
             </Tooltip>
 
             <Tooltip>
@@ -389,12 +392,12 @@ export const MediaPlayer = ({ mediaOps, readOnly = false, canWrite = false, past
                   className="h-10 w-10"
                   onClick={onSkipToEnd}
                   disabled={!ready}
-                  aria-label="Skip to end"
+                  aria-label={t('Skip to end')}
                 >
                   <SkipForward className="h-5 w-5" />
                 </Button>
               </TooltipTrigger>
-              <TooltipContent>Skip to end</TooltipContent>
+              <TooltipContent>{t('Skip to end')}</TooltipContent>
             </Tooltip>
 
             <Tooltip>
@@ -404,13 +407,15 @@ export const MediaPlayer = ({ mediaOps, readOnly = false, canWrite = false, past
                   size="icon"
                   className={cn('ml-2 h-10 w-10', loopSegment && 'text-primary')}
                   onClick={() => setLoopSegment(!loopSegment)}
-                  aria-label="Loop segment"
+                  aria-label={t('Loop segment')}
                   aria-pressed={!!loopSegment}
                 >
                   <Repeat className="h-5 w-5" />
                 </Button>
               </TooltipTrigger>
-              <TooltipContent>{loopSegment ? 'Loop segment: on' : 'Loop segment'}</TooltipContent>
+              <TooltipContent>
+                {loopSegment ? t('Loop segment: on') : t('Loop segment')}
+              </TooltipContent>
             </Tooltip>
           </div>
 
@@ -452,7 +457,7 @@ export const MediaPlayer = ({ mediaOps, readOnly = false, canWrite = false, past
               keep it, and the speed slider must not sit in its place. */}
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div className="flex items-center gap-2">
-              <span className="text-sm text-muted-foreground">Speed</span>
+              <span className="text-sm text-muted-foreground">{t('Speed')}</span>
               <Slider
                 value={[playbackRate ?? 1]}
                 min={PLAYBACK_RATE_MIN}
@@ -460,7 +465,7 @@ export const MediaPlayer = ({ mediaOps, readOnly = false, canWrite = false, past
                 step={PLAYBACK_RATE_STEP}
                 onValueChange={([v]) => onPlaybackRateChange(v)}
                 className="w-[160px]"
-                aria-label="Playback speed"
+                aria-label={t('Playback speed')}
               />
               <Tooltip>
                 <TooltipTrigger asChild>
@@ -468,12 +473,12 @@ export const MediaPlayer = ({ mediaOps, readOnly = false, canWrite = false, past
                     type="button"
                     className="w-14 text-right text-sm tabular-nums text-foreground hover:text-primary"
                     onClick={() => onPlaybackRateChange(1)}
-                    aria-label="Reset speed"
+                    aria-label={t('Reset speed')}
                   >
                     {(playbackRate ?? 1).toFixed(2)}×
                   </button>
                 </TooltipTrigger>
-                <TooltipContent>Reset to 1×</TooltipContent>
+                <TooltipContent>{t('Reset to 1×')}</TooltipContent>
               </Tooltip>
             </div>
             <div className="flex items-center gap-2">
@@ -485,7 +490,7 @@ export const MediaPlayer = ({ mediaOps, readOnly = false, canWrite = false, past
                 max={1}
                 step={0.1}
                 className="w-[150px]"
-                aria-label="Volume"
+                aria-label={t('Volume')}
               />
             </div>
           </div>

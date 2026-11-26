@@ -3,6 +3,7 @@ import PlaidClient from '@larc-iu/plaid-client';
 import { reportIntegrityFindings } from '../lib/integrityToast.js';
 import { humanizeError, isConstraintViolation, isUnknownOutcome, statusOf } from '../lib/errors.js';
 import { notifyError } from '../lib/notify.js';
+import { msg, t } from '../lib/i18n.js';
 
 // How long one request of a repair may wait for its answer before the repair
 // gives up. A repair is small, and the editor is shut behind the gate while it
@@ -29,7 +30,7 @@ const tokenCount = (raw) => {
 export const repairTimeout = (doc) =>
   REPAIR_TIMEOUT_MS + REPAIR_MS_PER_TOKEN * tokenCount(doc?.raw);
 
-const REPAIR_FAILED = 'Failed to repair the document';
+const REPAIR_FAILED = msg('Failed to repair the document');
 const withStop = (text) => (/[.!?]$/.test(text) ? text : `${text}.`);
 
 // What a repair that failed says. A conflict (409) is another person's edit
@@ -47,17 +48,19 @@ const timedOut = (error) =>
 // server that is down, not from an answer lost on the way back.
 export const repairFailure = (error, { reachable = true } = {}) => {
   if (statusOf(error) === 409) {
-    return 'The document changed while it was being checked. Reload to check it again.';
+    return t('The document changed while it was being checked. Reload to check it again.');
   }
   if (isUnknownOutcome(error)) {
     if (timedOut(error)) {
-      return 'The server did not answer in time. Reload to check the document again.';
+      return t('The server did not answer in time. Reload to check the document again.');
     }
     return reachable
-      ? "The server's answer was lost. Reload to check the document again."
-      : 'Failed to reach the server. Reload to check the document again.';
+      ? t("The server's answer was lost. Reload to check the document again.")
+      : t('Failed to reach the server. Reload to check the document again.');
   }
-  return `${withStop(humanizeError(error))} Reload to check the document again.`;
+  return t('{error} Reload to check the document again.', {
+    error: withStop(humanizeError(error)),
+  });
 };
 
 // Whether the server behind `client` answers now: its unauthenticated limits
@@ -160,7 +163,7 @@ export function useReconcileOnOpen({ doc, asOf, canWrite, enterStrictMode, onFai
             timedOut(result.error) ||
             (await serverAnswers(doc.client));
           if (cancelled) return;
-          notifyError(repairFailure(result.error, { reachable }), REPAIR_FAILED);
+          notifyError(repairFailure(result.error, { reachable }), t(REPAIR_FAILED));
           latest.current.onFailed?.(result.error);
           return;
         }
@@ -170,8 +173,8 @@ export function useReconcileOnOpen({ doc, asOf, canWrite, enterStrictMode, onFai
         // was before it.
         if (result.refreshError) {
           notifyError(
-            `${withStop(humanizeError(result.refreshError))} Try reloading.`,
-            'Failed to reload the repaired document',
+            t('{error} Try reloading.', { error: withStop(humanizeError(result.refreshError)) }),
+            t('Failed to reload the repaired document'),
           );
           return;
         }

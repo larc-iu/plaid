@@ -1,6 +1,7 @@
 import { Fragment } from 'react';
 import { Link } from 'react-router-dom';
 import { cn } from '../../lib/utils.js';
+import { t } from '../../lib/i18n.js';
 
 /**
  * The way back from a page, one look in every app: the places above it, each
@@ -26,7 +27,7 @@ import { cn } from '../../lib/utils.js';
  * itself stays left to right like the rest of the chrome.
  */
 export const Breadcrumb = ({ items, className }) => (
-  <nav aria-label="Breadcrumb" className={cn('min-w-0 text-sm', className)}>
+  <nav aria-label={t('Breadcrumb')} className={cn('min-w-0 text-sm', className)}>
     <ol className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
       {items.map((item, i) => (
         <Fragment key={i}>

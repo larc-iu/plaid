@@ -1,6 +1,7 @@
 import { FileText, X } from 'lucide-react';
 import { cn } from '../../lib/utils.js';
 import { fileSize } from './attachments.js';
+import { t } from '../../lib/i18n.js';
 
 // One attached file, in the composer before it is sent and on the message
 // after. Name and size, which is all the browser honestly knows: what SHAPE a
@@ -33,8 +34,8 @@ export const AttachmentChip = ({
       <button
         type="button"
         onClick={() => onRemove(file.id)}
-        title="Remove"
-        aria-label={`Remove ${file.name}`}
+        title={t('Remove')}
+        aria-label={t('Remove {name}', { name: file.name })}
         className="rounded-full p-0.5 text-muted-foreground hover:bg-muted hover:text-foreground"
       >
         <X className="h-3 w-3" />

@@ -3,11 +3,9 @@ import { isReviewed, writerPolicy } from '@larc-iu/plaid-client';
 import { useAuth } from '@/contexts/AuthContext';
 import { notifyError, notifyWarning, humanizeError } from '@/utils/feedback';
 import { isUnknownOutcome } from '@ui/lib/errors.js';
-import { countOf } from '@ui/lib/plural.js';
+import { msg, t } from '@ui/lib/i18n.js';
 
-// What every Bulk Edit panel shares: the run state machine, the scope
-// badge classes, and the one count-and-noun helper (plaid-ui's, re-exported).
-export { countOf };
+// What every Bulk Edit panel shares: the run state machine and the toasts.
 
 // The person's writerPolicy in `project`, the stamp on every value a Bulk
 // Edit changes, as in the editor.
@@ -22,13 +20,39 @@ export const useWriter = (project) => {
   );
 };
 
+// One sentence per kind of thing an apply skips.
+const SKIPPED = {
+  value: msg('Skipped {n, plural, one {# value} other {# values}} changed since the preview.'),
+  word: msg('Skipped {n, plural, one {# word} other {# words}} changed since the preview.'),
+  'lexicon entry': msg(
+    'Skipped {n, plural, one {# lexicon entry} other {# lexicon entries}} changed since the preview.',
+  ),
+  occurrence: msg(
+    'Skipped {n, plural, one {# occurrence} other {# occurrences}} changed since the preview.',
+  ),
+};
+
 // The sentence an apply's toast ends with when some of the preview's changes
 // were skipped because their word, value or entry changed after the preview.
-// `counts` is [[n, word, words?], ...]. The empty string when all are zero.
+// `counts` is [[n, kind], ...], each kind a key of SKIPPED, with at most
+// words and lexicon entries together. A leading space, or the empty string
+// when all are zero.
 export const skippedNote = (counts) => {
-  const parts = counts.filter(([n]) => n > 0).map(([n, word, words]) => countOf(n, word, words));
-  if (!parts.length) return '';
-  return ` Skipped ${parts.join(' and ')} changed since the preview.`;
+  const live = counts.filter(([n]) => n > 0);
+  if (!live.length) return '';
+  if (live.length === 1) {
+    const [n, kind] = live[0];
+    if (!SKIPPED[kind]) throw new Error(`skippedNote: unknown kind ${kind}`);
+    return ` ${t(SKIPPED[kind], { n })}`;
+  }
+  const words = live.find(([, kind]) => kind === 'word')?.[0];
+  const entries = live.find(([, kind]) => kind === 'lexicon entry')?.[0];
+  if (live.length !== 2 || words == null || entries == null)
+    throw new Error('skippedNote: only words and lexicon entries go together');
+  return ` ${t(
+    'Skipped {words, plural, one {# word} other {# words}} and {entries, plural, one {# lexicon entry} other {# lexicon entries}} changed since the preview.',
+    { words, entries },
+  )}`;
 };
 
 // The toasts for a run that stopped partway after something landed:
@@ -38,18 +62,23 @@ export const skippedNote = (counts) => {
 // A document whose answer was lost may well have landed, so it is not called
 // failed: Apply again counts it as sent if it did.
 export const notifyStopped = (failed, done, skipped = '') => {
-  notifyError(humanizeError(failed.error), 'Failed to apply');
+  notifyError(humanizeError(failed.error), t('Failed to apply'));
   const lost = isUnknownOutcome(failed.error);
-  notifyWarning(
-    failed.docName
-      ? lost
-        ? `${done}. No answer for “${failed.docName}”, which may or may not be changed. The documents after it were not changed.${skipped}`
-        : `${done} before “${failed.docName}” failed. The remaining documents were not changed.${skipped}`
-      : lost
-        ? `${done}. No answer for the lexicon entries, which may or may not be changed.${skipped}`
-        : `${done} before the lexicon entries failed.${skipped}`,
-    'Stopped early',
-  );
+  const name = failed.docName;
+  const said = name
+    ? lost
+      ? t(
+          '{done}. No answer for “{name}”, which may or may not be changed. The documents after it were not changed.',
+          { done, name },
+        )
+      : t('{done} before “{name}” failed. The remaining documents were not changed.', {
+          done,
+          name,
+        })
+    : lost
+      ? t('{done}. No answer for the lexicon entries, which may or may not be changed.', { done })
+      : t('{done} before the lexicon entries failed.', { done });
+  notifyWarning(`${said}${skipped}`, t('Stopped early'));
 };
 
 // ---- shared bits ----------------------------------------------------------------
@@ -75,7 +104,7 @@ export const useRun = () => {
     const applying = label === 'Apply';
     setBusy(true);
     setStartedAt(Date.now());
-    setProgress(applying ? 'Applying…' : 'Searching…');
+    setProgress(applying ? t('Applying…') : t('Searching…'));
     if (reset) {
       setPlan(null);
       setSelected(new Set());
@@ -85,14 +114,14 @@ export const useRun = () => {
         typeof done === 'string'
           ? done
           : applying
-            ? `Applying to document ${done} of ${total}…`
-            : `Loading document ${done} of ${total}…`,
+            ? t('Applying to document {done} of {total}…', { done, total })
+            : t('Loading document {done} of {total}…', { done, total }),
       );
     try {
       return await fn(onProgress);
     } catch (err) {
       console.error(`${label}:`, err);
-      notifyError(humanizeError(err), `Failed to ${label.toLowerCase()}`);
+      notifyError(humanizeError(err), applying ? t('Failed to apply') : t('Failed to preview'));
       return null;
     } finally {
       setBusy(false);

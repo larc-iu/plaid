@@ -13,10 +13,12 @@ export const moveItem = (list, from, to) => {
 // data its parent hands down and saves. With no list in `initialData` it is
 // read through `onLoadData`, and failing that it is `defaults()`, which the
 // setup wizard (`autoSaveDefaults`) saves at once so its review shows them.
-// A load that fails shows the defaults. `noun` names the list in errors.
+// A load that fails shows the defaults. `loadFailed` and `saveFailed` are
+// the messages for a failed load and save.
 export const useListManager = ({
   listKey,
-  noun,
+  loadFailed,
+  saveFailed,
   defaults,
   initialData,
   onLoadData,
@@ -43,10 +45,10 @@ export const useListManager = ({
         setIsInitialized(true);
         if (usedDefaults && autoSaveDefaults && onSaveChanges) await onSaveChanges(data);
       } catch (error) {
-        console.error(`Failed to load the ${noun}:`, error);
+        console.error(`${loadFailed}:`, error);
         setItems(defaults());
         setIsInitialized(true);
-        report(error, `Failed to load the ${noun}`);
+        report(error, loadFailed);
       }
     };
     load();
@@ -63,8 +65,8 @@ export const useListManager = ({
       setItems(next);
       return true;
     } catch (error) {
-      console.error(`Failed to save the ${noun}:`, error);
-      report(error, `Failed to save the ${noun}`);
+      console.error(`${saveFailed}:`, error);
+      report(error, saveFailed);
       return false;
     }
   };

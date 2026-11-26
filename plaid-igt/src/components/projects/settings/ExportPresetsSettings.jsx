@@ -42,8 +42,12 @@ import {
   EXPORT_FORMATS,
 } from '@/export/presets';
 import { isEnter } from '@ui/lib/chords.js';
+import { t } from '@ui/lib/i18n.js';
 
-const formatLabel = (id) => EXPORT_FORMATS.find((f) => f.id === id)?.label ?? id;
+const formatLabel = (id) => {
+  const label = EXPORT_FORMATS.find((f) => f.id === id)?.label;
+  return label ? t(label) : id;
+};
 
 // The lower half of the project's Export tab: the project's named export
 // presets, persisted at config.igt.export.presets. This is the list: create
@@ -127,7 +131,7 @@ export const ExportPresetsSettings = ({ projectId, client, onProjectUpdate }) =>
       const preset = { ...made, id: creatingId.current };
       await persist(
         (list) => [...list.filter((p) => p.id !== preset.id), preset],
-        `Create export preset “${name}”`,
+        `Create export preset “${name}”`, // i18n-ignore: an audit label, stored on the server
       );
       creatingId.current = null;
       setCreateOpen(false);
@@ -136,7 +140,7 @@ export const ExportPresetsSettings = ({ projectId, client, onProjectUpdate }) =>
       navigate(`/projects/${projectId}/export/${preset.id}`);
     } catch (err) {
       console.error('Failed to create export preset:', err);
-      notifyError(err, 'Failed to create the preset');
+      notifyError(err, t('Failed to create the preset'));
     } finally {
       setCreating(false);
     }
@@ -147,12 +151,12 @@ export const ExportPresetsSettings = ({ projectId, client, onProjectUpdate }) =>
     try {
       await persist(
         (list) => list.filter((p) => p.id !== id),
-        `Delete export preset “${target?.name}”`,
-        `Deleted preset “${target?.name}”.`,
+        `Delete export preset “${target?.name}”`, // i18n-ignore: an audit label, stored on the server
+        t('Deleted preset “{name}”.', { name: target?.name }),
       );
     } catch (err) {
       console.error('Failed to delete export preset:', err);
-      notifyError(err, 'Failed to delete the preset');
+      notifyError(err, t('Failed to delete the preset'));
     } finally {
       setDeletingId(null);
     }
@@ -162,9 +166,9 @@ export const ExportPresetsSettings = ({ projectId, client, onProjectUpdate }) =>
     return (
       <div>
         <div className="flex items-center gap-2 rounded-md border border-destructive/40 p-4 text-sm text-destructive">
-          <AlertTriangle className="h-4 w-4" /> Failed to load the export presets.
+          <AlertTriangle className="h-4 w-4" /> {t('Failed to load the export presets.')}
           <Button variant="outline" size="sm" onClick={load}>
-            Retry
+            {t('Retry')}
           </Button>
         </div>
       </div>
@@ -178,17 +182,19 @@ export const ExportPresetsSettings = ({ projectId, client, onProjectUpdate }) =>
     <div className="flex flex-col gap-4">
       <SectionHeader
         className="mb-2"
-        title="Export"
-        description="A preset fixes an export format and which orthographies, fields and options it includes. Open one to edit it and to run it."
+        title={t('Export')}
+        description={t(
+          'A preset fixes an export format and which orthographies, fields and options it includes. Open one to edit it and to run it.',
+        )}
         actions={
           <Button onClick={openCreate}>
-            <Plus className="h-4 w-4" /> New preset
+            <Plus className="h-4 w-4" /> {t('New preset')}
           </Button>
         }
       />
 
       {presets.length === 0 ? (
-        <p className="text-sm text-muted-foreground">No export presets yet.</p>
+        <p className="text-sm text-muted-foreground">{t('No export presets yet.')}</p>
       ) : (
         <div className="divide-y border-t">
           {presets.map((p) => (
@@ -204,7 +210,7 @@ export const ExportPresetsSettings = ({ projectId, client, onProjectUpdate }) =>
                 variant="ghost"
                 size="icon"
                 className="h-7 w-7"
-                aria-label={`Delete ${p.name}`}
+                aria-label={t('Delete {name}', { name: p.name })}
                 onClick={() => setDeletingId(p.id)}
               >
                 <Trash2 className="h-3.5 w-3.5" />
@@ -217,17 +223,17 @@ export const ExportPresetsSettings = ({ projectId, client, onProjectUpdate }) =>
       <Dialog open={createOpen} onOpenChange={setCreateOpen}>
         <DialogContent className="max-w-md">
           <DialogHeader>
-            <DialogTitle>New export preset</DialogTitle>
+            <DialogTitle>{t('New export preset')}</DialogTitle>
             <DialogDescription>
-              Pick a name and a format. You will configure what it includes next.
+              {t('Pick a name and a format. You will configure what it includes next.')}
             </DialogDescription>
           </DialogHeader>
           <div className="flex flex-col gap-4">
             <div className="flex flex-col gap-1.5">
-              <Label htmlFor="new-preset-name">Name</Label>
+              <Label htmlFor="new-preset-name">{t('Name')}</Label>
               <Input
                 id="new-preset-name"
-                placeholder="e.g. Plain text for the course"
+                placeholder={t('e.g. Plain text for the course')}
                 value={newName}
                 onChange={(e) => {
                   setNewName(e.target.value);
@@ -240,7 +246,7 @@ export const ExportPresetsSettings = ({ projectId, client, onProjectUpdate }) =>
               />
             </div>
             <div className="flex flex-col gap-1.5">
-              <Label htmlFor="new-preset-format">Format</Label>
+              <Label htmlFor="new-preset-format">{t('Format')}</Label>
               <Select
                 value={newFormat}
                 onValueChange={(f) => {
@@ -254,7 +260,7 @@ export const ExportPresetsSettings = ({ projectId, client, onProjectUpdate }) =>
                 <SelectContent>
                   {EXPORT_FORMATS.map((f) => (
                     <SelectItem key={f.id} value={f.id}>
-                      {f.label}
+                      {t(f.label)}
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -263,10 +269,10 @@ export const ExportPresetsSettings = ({ projectId, client, onProjectUpdate }) =>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setCreateOpen(false)} disabled={creating}>
-              Cancel
+              {t('Cancel')}
             </Button>
             <Button onClick={create} disabled={!newName.trim() || creating}>
-              {creating ? 'Creating…' : 'Create'}
+              {creating ? t('Creating…') : t('Create')}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -280,14 +286,16 @@ export const ExportPresetsSettings = ({ projectId, client, onProjectUpdate }) =>
       >
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Delete preset?</AlertDialogTitle>
+            <AlertDialogTitle>{t('Delete preset?')}</AlertDialogTitle>
             <AlertDialogDescription>
-              “{deleting?.name}” will be removed from this project’s export presets.
+              {t('“{name}” will be removed from this project’s export presets.', {
+                name: deleting?.name,
+              })}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction onClick={() => remove(deletingId)}>Delete</AlertDialogAction>
+            <AlertDialogCancel>{t('Cancel')}</AlertDialogCancel>
+            <AlertDialogAction onClick={() => remove(deletingId)}>{t('Delete')}</AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>

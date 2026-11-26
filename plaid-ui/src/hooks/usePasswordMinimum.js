@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { authService } from '../services/auth.js';
+import { t } from '../lib/i18n.js';
 
 // The shortest password the server accepts on any path (an account an admin
 // creates, a password change, an invite or reset link). Core holds the one
@@ -32,4 +33,6 @@ export const usePasswordMinimum = () => {
 
 /** The refusal for a password under `minimum` characters, or null. */
 export const passwordTooShort = (password, minimum) =>
-  minimum && password.length < minimum ? `Password must be at least ${minimum} characters` : null;
+  minimum && password.length < minimum
+    ? t('Password must be at least {n} characters', { n: minimum })
+    : null;

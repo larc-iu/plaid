@@ -1,3 +1,5 @@
+import { msg } from './i18n.js';
+
 // A user's ID in Plaid IS their email address. The server is the authority
 // (`plaid.sql.user/assert-valid-email!`); this mirrors its rule only so the
 // person typing hears about a typo before a round trip.
@@ -16,6 +18,6 @@ const EDGES = /^[\p{Z}\p{Cc}\p{Cf}]+|[\p{Z}\p{Cc}\p{Cf}]+$/gu;
 export const isEmail = (value) => EMAIL_PATTERN.test((value ?? '').replace(EDGES, ''));
 
 // One wording everywhere, so the rule reads the same at whichever form you
-// happen to meet it.
-export const EMAIL_REQUIRED_MESSAGE = 'Enter an email address';
-export const EMAIL_INVALID_MESSAGE = 'That does not look like an email address';
+// happen to meet it. Messages: the place that shows one calls t() on it.
+export const EMAIL_REQUIRED_MESSAGE = msg('Enter an email address');
+export const EMAIL_INVALID_MESSAGE = msg('That does not look like an email address');

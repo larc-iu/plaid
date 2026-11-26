@@ -9,19 +9,25 @@
 
 import { markdownText } from './citations.js';
 import { PlainCitationCard } from './PlainCitationCard.jsx';
+import { msg, t } from '../../lib/i18n.js';
 
 // A cite tag of any app, plus the older brace form. Deliberately looser than
 // either app's: it matches the syntax, not the addressing inside it.
 const PLAIN_CITE_RE =
   /<\s*cite\b[^<>]*?\/?\s*>(?:[ \t]*<\s*\/\s*cite\s*>)?|\{\{?\s*[^{}\n]+?\s+s\d+(?:\.[\w-]+)*\s*\}\}?/g;
 
+// The document and sentence a citation names.
+const plainTitle = (c) =>
+  c.documentName
+    ? t('{name}, sentence {n}', { name: c.documentName, n: c.sentence })
+    : t('document, sentence {n}', { n: c.sentence });
+
 export const PLAIN_CITATIONS = {
   CITE_RE: PLAIN_CITE_RE,
-  citationTitle: (c) => `${c.documentName || 'document'}, sentence ${c.sentence}`,
+  citationTitle: (c) => plainTitle(c),
   // No link: this app does not know where another app's editor lives.
   citationHref: () => '',
-  citationToMarkdown: (c) =>
-    `**${markdownText(`${c.documentName || 'document'}, sentence ${c.sentence}`)}**`,
+  citationToMarkdown: (c) => `**${markdownText(plainTitle(c))}**`,
 };
 
 // Everything `Turn` reads from an adapter (adapterContract.js), for a
@@ -35,7 +41,10 @@ export const PLAIN_ASSISTANT = {
   app: '',
   intro: '',
   examples: [],
-  textName: 'the text',
+  textName: 'the text', // i18n-ignore: the old member, read only where textRewrites is missing
+  textRewrites: msg(
+    '{n, plural, one {# change rewrites the text.} other {# changes rewrite the text.}}',
+  ),
   convHref: () => '',
   ExampleCard: PlainCitationCard,
   groupOf: (_projectId, where) =>
@@ -45,7 +54,7 @@ export const PLAIN_ASSISTANT = {
           title: where.documentName || where.documentId,
           href: null,
         }
-      : { key: 'other', title: 'Other changes', href: null },
+      : { key: 'other', title: t('Other changes'), href: null },
   // The word a change lands on and its reference, as the service located it,
   // unlinked, so rows that change the same thing in different places are told
   // apart.

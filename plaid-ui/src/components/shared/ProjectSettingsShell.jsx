@@ -5,6 +5,7 @@ import { useDocumentTitle } from '../../hooks/useDocumentTitle.js';
 import { useLatestCall } from '../../hooks/useLatestCall.js';
 import { ProjectSettingsLayout } from './ProjectSettingsLayout.jsx';
 import { SectionHeader } from './SectionHeader.jsx';
+import { t } from '../../lib/i18n.js';
 
 const endsWith = (path, slug) => path.endsWith(`/${slug}`);
 
@@ -34,7 +35,7 @@ export const ProjectSettingsShell = ({ tabs: Tabs, sections, href }) => {
   // names, and nothing while that one loads.
   const current = project?.id === projectId ? project : null;
 
-  useDocumentTitle(active.label, current?.name);
+  useDocumentTitle(t(active.label), current?.name);
 
   // The full project drives the tab strip (breadcrumb and permission gating);
   // the active section's child fetches whatever else it needs.
@@ -61,7 +62,7 @@ export const ProjectSettingsShell = ({ tabs: Tabs, sections, href }) => {
   return (
     <>
       <Tabs projectId={projectId} project={current} />
-      <SectionHeader title="Settings" />
+      <SectionHeader title={t('Settings')} />
       <ProjectSettingsLayout
         sections={sections}
         active={active}

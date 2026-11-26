@@ -158,6 +158,7 @@ export const withTextDirection = (metadata, value) => {
   const current = out[METADATA_NAMESPACE];
   if (current !== undefined && !isObject(current)) {
     throw new Error(
+      // i18n-ignore: the server's own refusal, as it words it, for a developer
       `Metadata path ${JSON.stringify([METADATA_NAMESPACE])} holds a value that is not an object`,
     );
   }

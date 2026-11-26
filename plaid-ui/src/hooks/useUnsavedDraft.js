@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef } from 'react';
 import { useConfirm } from '../components/shared/ConfirmProvider.jsx';
+import { t } from '../lib/i18n.js';
 
 // Text typed and not yet saved, and the one question asked before it is lost.
 //
@@ -27,8 +28,9 @@ import { useConfirm } from '../components/shared/ConfirmProvider.jsx';
 // that is what makes the extra history entry invisible: it carries the SAME
 // url, so landing on it re-renders the page instead of navigating anywhere.
 
-// token -> `{ what, several }`, the call site's names for what it would lose,
-// one and many. A map rather than one slot, because a screen can hold two
+// token -> `{ what, several, said }`, the call site's names for what it would
+// lose, one and many, and its whole sentences for the question (`said`, a box
+// holding `{ one, several }` or null). A map rather than one slot, because a screen can hold two
 // half-typed editors at once (UMR puts a text editor on each sentence) and the
 // second to mount must not silence the first.
 const drafts = new Map();
@@ -53,21 +55,31 @@ export const hasUnsavedDraft = () => {
 // Two DIFFERENT things typed on one screen is not a shape any screen has
 // today, since a tab holding one is unmounted when another is open, and naming
 // what they have in common is honest about all of them either way.
+//
+// A caller's own sentence is used where it gave one (`said`). A caller that
+// gave only a noun phrase has it put into a sentence here, which reads right
+// in English only: such callers are to move to `said`.
 const several = (drafted) => {
+  const n = drafted.length;
   const nouns = new Set(drafted.map((d) => d.several).filter(Boolean));
-  return `${drafted.length} ${nouns.size === 1 ? [...nouns][0] : 'things you have typed'}`;
+  if (nouns.size !== 1) {
+    return t('{n} things you have typed are not saved. Leaving loses them.', { n });
+  }
+  const own = drafted.find((d) => d.said?.current?.several)?.said.current.several;
+  if (own) return own(n);
+  return t('{n} {what} are not saved. Leaving loses them.', { n, what: [...nouns][0] });
 };
+
+const one = (draft) =>
+  draft.said?.current?.one ?? t('{what} is not saved. Leaving loses it.', { what: draft.what });
 
 // One question, wherever it is asked from. It states the fact.
 const question = () => {
   const drafted = [...drafts.values()];
   return {
-    title: 'Leave without saving?',
-    description:
-      drafted.length === 1
-        ? `${drafted[0].what} is not saved. Leaving loses it.`
-        : `${several(drafted)} are not saved. Leaving loses them.`,
-    confirmLabel: 'Leave',
+    title: t('Leave without saving?'),
+    description: drafted.length === 1 ? one(drafted[0]) : several(drafted),
+    confirmLabel: t('Leave'),
     destructive: true,
   };
 };
@@ -391,11 +403,11 @@ const askToLeave = async (confirm) => {
  * `useUnsavedDraft` for a screen that is not React (a lit-html island). Set
  * what `token`, any object the caller keeps, has typed and not saved, or null
  * once nothing is. Every way out asks about it as it does about a React
- * draft, with the app's confirm.
+ * draft, with the app's confirm. `said` as `useUnsavedDraft`'s.
  */
-export const setUnsavedDraft = (token, what, plural = null) => {
+export const setUnsavedDraft = (token, what, plural = null, said = null) => {
   if (what) {
-    drafts.set(token, { what, several: plural });
+    drafts.set(token, { what, several: plural, said: { current: said } });
     install(() => (appConfirm ? askToLeave(appConfirm) : true));
     return;
   }
@@ -420,12 +432,18 @@ export const dropUnsavedDrafts = async () => {
 /**
  * Register a half-typed value, so that leaving asks first.
  *
- * `what` names it in the question ("The baseline text you have typed"), and is
- * null while there is nothing to lose. `plural` names them in the plural
- * ("graphs"), for a screen that can hold several at once: the question counts
- * those rather than naming the first of them, because Leave loses all of them.
+ * `what` names it ("The baseline text you have typed"), and is null while
+ * there is nothing to lose. `plural` names them in the plural ("graphs"), for
+ * a screen that can hold several at once: the question counts those rather
+ * than naming the first of them, because Leave loses all of them.
+ *
+ * `said` is the question's sentence, whole, as the caller words it:
+ * `{ one, several }`, `one` the sentence for this one alone ("The graph you
+ * have typed is not saved. Leaving loses it.") and `several(n)` the one for n
+ * of them. Without it the sentence is built around `what` and `plural`, which
+ * only English can do.
  */
-export const useUnsavedDraft = (what, plural = null) => {
+export const useUnsavedDraft = (what, plural = null, said = null) => {
   const guard = useUnsavedGuard();
   // The blocker outlives any one render, so it asks through a box rather than
   // through the callback it happened to be installed with.
@@ -434,10 +452,14 @@ export const useUnsavedDraft = (what, plural = null) => {
   const tokenRef = useRef(null);
   if (!tokenRef.current) tokenRef.current = {};
   const token = tokenRef.current;
+  // Read when the question is asked, so a caller's new sentence each render
+  // does not register the draft again.
+  const saidRef = useRef(said);
+  saidRef.current = said;
 
   useEffect(() => {
     if (!what) return undefined;
-    drafts.set(token, { what, several: plural });
+    drafts.set(token, { what, several: plural, said: saidRef });
     install(() => guardRef.current());
     return () => {
       drafts.delete(token);

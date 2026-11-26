@@ -26,27 +26,28 @@ import { extractAnalysis, analysisSignature } from '../../../domain/analysisMemo
 import { equalsBefore, morphemeJoiner } from '../../../domain/affixMarkers.js';
 import { morphemeGlossReading } from '../../../domain/tagsets.js';
 import { RESPELL_UNCHANGED, respellIgnoredRule, respellRefusal } from '../../../domain/respell.js';
+import { msg, t } from '@ui/lib/i18n.js';
 
 export const OPERATIONS = [
   {
     id: 'respell',
-    label: 'Respell words',
-    blurb: 'Change the spelling of words across every document, keeping their analyses.',
+    label: msg('Respell words'),
+    blurb: msg('Change the spelling of words across every document, keeping their analyses.'),
   },
   {
     id: 'field',
-    label: 'Replace in a field',
-    blurb: 'Find and replace inside one annotation field, or inside morpheme forms.',
+    label: msg('Replace in a field'),
+    blurb: msg('Find and replace inside one annotation field, or inside morpheme forms.'),
   },
   {
     id: 'reanalyze',
-    label: 'Re-analyze a word',
-    blurb: 'Give every occurrence of a word the same segmentation, glosses, and links.',
+    label: msg('Re-analyze a word'),
+    blurb: msg('Give every occurrence of a word the same segmentation, glosses, and links.'),
   },
   {
     id: 'merge',
-    label: 'Merge lexicon entries',
-    blurb: 'Fold duplicate entries into one. Every linked word or morpheme follows.',
+    label: msg('Merge lexicon entries'),
+    blurb: msg('Fold duplicate entries into one. Every linked word or morpheme follows.'),
   },
 ];
 
@@ -107,12 +108,12 @@ export function collectRespellRows(doc, apply) {
     return refusal && refusal !== RESPELL_UNCHANGED ? { invalid: 'refused', refusal } : {};
   };
   (doc.sentences || []).forEach((s, idx) => {
-    for (const t of s.tokens || []) {
-      const next = apply(t.content);
+    for (const tok of s.tokens || []) {
+      const next = apply(tok.content);
       if (next == null) continue;
       const morphemes = [];
       const chain = [];
-      const ms = t.morphemes || [];
+      const ms = tok.morphemes || [];
       ms.forEach((m, i) => {
         const joiner =
           i > 0 ? morphemeJoiner(ms[i - 1]?.morphType, m.morphType, equalsBefore(m.metadata)) : '';
@@ -122,22 +123,22 @@ export function collectRespellRows(doc, apply) {
             morphemes.push({ id: m.id, old: m.metadata.form, new: nf, metadata: m.metadata });
           chain.push({ joiner, own: true, old: m.metadata.form, new: nf ?? m.metadata.form });
         } else {
-          chain.push({ joiner, own: false, old: t.content, new: next });
+          chain.push({ joiner, own: false, old: tok.content, new: next });
         }
       });
       rows.push({
-        id: t.id,
+        id: tok.id,
         kind: 'word',
         textId,
-        begin: t.begin,
-        end: t.end,
-        old: t.content,
+        begin: tok.begin,
+        end: tok.end,
+        old: tok.content,
         new: next,
         morphemes,
         chain: chain.length > 1 || chain.some((c) => c.own) ? chain : null,
-        ...barred(t.content, next),
+        ...barred(tok.content, next),
         ...(morphemes.some((m) => blank(m.new)) ? { emptiesForm: true } : {}),
-        ...sentenceContext(doc, s, idx, [{ begin: t.begin, end: t.end }]),
+        ...sentenceContext(doc, s, idx, [{ begin: tok.begin, end: tok.end }]),
       });
     }
   });
@@ -245,14 +246,15 @@ export function collectFieldRows(doc, target, apply) {
       if (span?.id) push(s, idx, span, span.value ?? '', [], { kind: 'span' });
       return;
     }
-    for (const t of s.tokens || []) {
-      const mark = [{ begin: t.begin, end: t.end }];
+    for (const tok of s.tokens || []) {
+      const mark = [{ begin: tok.begin, end: tok.end }];
       if (target.kind === 'span' && target.scope === 'word') {
-        const span = t.annotations?.[target.field];
-        if (span?.id) push(s, idx, span, span.value ?? '', mark, { kind: 'span', word: t.content });
+        const span = tok.annotations?.[target.field];
+        if (span?.id)
+          push(s, idx, span, span.value ?? '', mark, { kind: 'span', word: tok.content });
         continue;
       }
-      for (const m of t.morphemes || []) {
+      for (const m of tok.morphemes || []) {
         if (target.kind === 'morpheme') {
           // Only a morpheme's own form can be rewritten; a derived one is the
           // word's surface and belongs to the respell operation. A stored one
@@ -260,11 +262,11 @@ export function collectFieldRows(doc, target, apply) {
           // so it is listed and barred (`invalid: 'formless'`). A virtual one
           // is not stored, and Search does not find it.
           if (hasOwnForm(m)) {
-            push(s, idx, m, m.metadata.form, mark, { kind: 'morphForm', word: t.content }, true);
-          } else if (!m.virtual && t.morphemes.length === 1) {
+            push(s, idx, m, m.metadata.form, mark, { kind: 'morphForm', word: tok.content }, true);
+          } else if (!m.virtual && tok.morphemes.length === 1) {
             push(s, idx, m, morphFormOf(m), mark, {
               kind: 'morphForm',
-              word: t.content,
+              word: tok.content,
               invalid: 'formless',
             });
           }
@@ -273,9 +275,9 @@ export function collectFieldRows(doc, target, apply) {
           if (span?.id) {
             push(s, idx, span, span.value ?? '', mark, {
               kind: 'span',
-              word: t.content,
+              word: tok.content,
               morpheme: morphFormOf(m),
-              reading: glossReadingAfter(t.morphemes, m, target.field, apply),
+              reading: glossReadingAfter(tok.morphemes, m, target.field, apply),
             });
           }
         }
@@ -295,15 +297,15 @@ export function collectOccurrenceRows(doc, form, ignoredCfg = null) {
   const rows = [];
   const wanted = form.normalize('NFC');
   (doc.sentences || []).forEach((s, idx) => {
-    for (const t of s.tokens || []) {
-      if ((t.content ?? '').normalize('NFC') !== wanted) continue;
-      const analysis = extractAnalysis(t);
+    for (const tok of s.tokens || []) {
+      if ((tok.content ?? '').normalize('NFC') !== wanted) continue;
+      const analysis = extractAnalysis(tok);
       rows.push({
-        id: t.id,
+        id: tok.id,
         kind: 'word',
         analysis,
         signature: analysis ? analysisSignature(analysis) : null,
-        ...sentenceContext(doc, s, idx, [{ begin: t.begin, end: t.end }]),
+        ...sentenceContext(doc, s, idx, [{ begin: tok.begin, end: tok.end }]),
       });
     }
   });
@@ -329,8 +331,11 @@ export function tallyCandidates(rows) {
 // A one-line rendering of an analysis for the candidate picker:
 // forms, then each morpheme field aligned with them, then word fields.
 //   ka-ra · go-PST · Word POS: V · links: ka, ra
-export function analysisLabel(analysis, itemFormById = new Map()) {
-  if (!analysis) return '(unanalyzed)';
+//
+// `shown` words it for the screen. Without it the label is the audit label's
+// English, which is stored.
+export function analysisLabel(analysis, itemFormById = new Map(), shown = false) {
+  if (!analysis) return shown ? t('(unanalyzed)') : '(unanalyzed)'; // i18n-ignore: the audit label's form, stored
   const ms = analysis.morphemes || [];
   const parts = [];
   parts.push(ms.map((m) => m.form ?? '').join('-') || '∅');
@@ -346,7 +351,10 @@ export function analysisLabel(analysis, itemFormById = new Map()) {
     ...(analysis.word?.vocabItemId ? [analysis.word.vocabItemId] : []),
     ...ms.map((m) => m.vocabItemId).filter(Boolean),
   ].map((id) => itemFormById.get(id) ?? '?');
-  if (links.length) parts.push(`links: ${links.join(', ')}`);
+  if (links.length)
+    parts.push(
+      shown ? t('links: {forms}', { forms: links.join(', ') }) : `links: ${links.join(', ')}`, // i18n-ignore: the audit label's form, stored
+    );
   return parts.join(' · ');
 }
 

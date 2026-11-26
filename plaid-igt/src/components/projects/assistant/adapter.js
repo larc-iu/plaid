@@ -12,6 +12,7 @@ import { ExampleCard } from './ExampleCard.jsx';
 import { JobCard } from './JobCard.jsx';
 import { citationToMarkdown } from './citationMarkdown.js';
 import { citationHighlights, citationRows, citationTitle, sentenceHref } from './cite.js';
+import { msg, t } from '@ui/lib/i18n.js';
 
 // Cite tags, plus the older `{{Doc sN}}` braces and bare "s32.w16" references
 // (the service resolves those only when the turn read a single document).
@@ -52,10 +53,17 @@ export const changeRef = (where) => {
 export const changeTitle = (where) => {
   if (!where) return '';
   if (where.kind === 'token') {
-    let s = `${where.documentName}, sentence ${where.sentence}`;
-    if (where.word) s += `, word ${where.word}`;
-    if (where.morpheme) s += `, morpheme ${where.morpheme}`;
-    return s;
+    const v = {
+      name: where.documentName,
+      sentence: where.sentence,
+      word: where.word,
+      morpheme: where.morpheme,
+    };
+    if (where.word && where.morpheme)
+      return t('{name}, sentence {sentence}, word {word}, morpheme {morpheme}', v);
+    if (where.word) return t('{name}, sentence {sentence}, word {word}', v);
+    if (where.morpheme) return t('{name}, sentence {sentence}, morpheme {morpheme}', v);
+    return t('{name}, sentence {sentence}', v);
   }
   if (where.kind === 'document') return where.documentName || '';
   if (where.kind === 'entry')
@@ -66,11 +74,11 @@ export const changeTitle = (where) => {
 // The heading a change is filed under: its document, or the lexicon for an
 // entry. Changes with no location share one untitled group.
 const groupOf = (projectId, where) => {
-  if (!where) return { key: 'other', title: 'Other changes', href: null };
+  if (!where) return { key: 'other', title: t('Other changes'), href: null };
   if (where.kind === 'entry')
     return {
       key: `entry:${where.vocabId || ''}`,
-      title: where.vocabName || 'Lexicon',
+      title: where.vocabName || t('Lexicon'),
       href: changeHref(projectId, where),
     };
   return {
@@ -90,7 +98,12 @@ const changePlace = (projectId, where) => {
   if (where.kind === 'token')
     return where.word
       ? { href, title, name: where.surface, detail: changeRef(where) }
-      : { href, title, name: `Sentence ${where.sentence}`, detail: where.surface };
+      : {
+          href,
+          title,
+          name: t('Sentence {sentence}', { sentence: where.sentence }),
+          detail: where.surface,
+        };
   if (where.kind === 'entry') return { href, title, name: where.form, detail: null };
   return null;
 };
@@ -111,10 +124,19 @@ export const assistantTabPath = (projectId) => `/projects/${projectId}?tab=assis
 export const IGT_ASSISTANT = {
   app: 'igt',
   command: 'plaid-igt-agent',
-  intro: 'Ask about the corpus or the lexicon, or ask for changes.',
+  // The tab's opening line, read when the tab is drawn: a getter, so the
+  // message is looked up in the language of the page, not at module load.
+  get intro() {
+    return t('Ask about the corpus or the lexicon, or ask for changes.');
+  },
   // What a plan is rewriting when it changes the text rather than an
-  // annotation of it. This app's word for it, on the tab it is edited on.
-  textName: 'your baseline text',
+  // annotation of it. This app's word for it, on the tab it is edited on, as
+  // the whole sentence the plan card shows (`textRewrites`). `textName` is
+  // the contract's older member, read only where `textRewrites` is missing.
+  textRewrites: msg(
+    '{n, plural, one {# change rewrites your baseline text.} other {# changes rewrite your baseline text.}}',
+  ),
+  textName: 'your baseline text', // i18n-ignore: the old member, read only where textRewrites is missing
   convHref: (projectId, id) => `/projects/${projectId}?tab=assistant&conversation=${id}`,
   CITE_RE,
   citationTitle,
@@ -158,9 +180,11 @@ export const IGT_ASSISTANT = {
     }
     return wrote;
   },
+  // Each is sent to the model as the person's message when clicked, so it
+  // stays as written.
   examples: [
-    'Which words in this project are still unglossed?',
-    'Are the glosses for the most common suffix consistent?',
-    'Summarize the noun morphology you can see in the corpus.',
+    'Which words in this project are still unglossed?', // i18n-ignore: sent to the model
+    'Are the glosses for the most common suffix consistent?', // i18n-ignore: sent to the model
+    'Summarize the noun morphology you can see in the corpus.', // i18n-ignore: sent to the model
   ],
 };

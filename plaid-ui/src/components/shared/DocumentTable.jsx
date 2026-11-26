@@ -8,6 +8,7 @@ import { compareNames, textIncludes } from '../../domain/collation.js';
 import { wordCountsByDocument } from '../../domain/layerCounts.js';
 import { PendingCell } from './PendingCell.jsx';
 import { EmptyState } from './EmptyState.jsx';
+import { t } from '../../lib/i18n.js';
 
 /**
  * A project's documents, with what both apps show about one: how many words it
@@ -91,8 +92,8 @@ export const DocumentTable = ({
           setHasWordLayer(false);
           setWordCounts({});
           notifyWarning(
-            'Failed to load word counts for the document list.',
-            'Word counts unavailable',
+            t('Failed to load word counts for the document list.'),
+            t('Word counts unavailable'),
           );
         }
       } finally {
@@ -121,8 +122,8 @@ export const DocumentTable = ({
         if (!cancelled) {
           setMyLastEdits({});
           notifyWarning(
-            'Failed to load your last edits for the document list.',
-            'Column unavailable',
+            t('Failed to load your last edits for the document list.'),
+            t('Column unavailable'),
           );
         }
       } finally {
@@ -169,7 +170,7 @@ export const DocumentTable = ({
   const columns = [
     {
       key: 'name',
-      label: 'Document',
+      label: t('Document'),
       sort: (d) => d.name ?? '',
       compare: compareNames,
       className: 'p-0',
@@ -193,7 +194,7 @@ export const DocumentTable = ({
     },
     {
       key: 'words',
-      label: 'Words',
+      label: t('Words'),
       sort: (d) => (hasWordLayer ? (wordCounts[d.id] ?? 0) : null),
       align: 'right',
       className: 'p-0',
@@ -207,7 +208,7 @@ export const DocumentTable = ({
     },
     {
       key: 'updated',
-      label: 'Updated',
+      label: t('Updated'),
       sort: (d) => (d.timeModified ? new Date(d.timeModified).getTime() : null),
       align: 'right',
       className: 'p-0',
@@ -230,7 +231,7 @@ export const DocumentTable = ({
     },
     {
       key: 'mine',
-      label: 'Your last edit',
+      label: t('Your last edit'),
       // Never touched is null, which orders as the smallest, so descending
       // puts the documents this reader has actually worked on at the top.
       sort: (d) => (myLastEdits[d.id] ? new Date(myLastEdits[d.id]).getTime() : null),
@@ -258,12 +259,12 @@ export const DocumentTable = ({
         pageParam="page"
         defaultSort={defaultSort}
         search={{
-          placeholder: 'Search documents…',
+          placeholder: t('Search documents…'),
           match: (d, q) => textIncludes(d.name || '', q),
         }}
-        noun="document"
-        empty={<EmptyState project={project} title="No documents yet." />}
-        noMatch={(q) => `No documents match “${q}”.`}
+        countLabel={(v) => t('{total} {n, plural, one {document} other {documents}}', v)}
+        empty={<EmptyState project={project} title={t('No documents yet.')} />}
+        noMatch={(q) => t('No documents match “{query}”.', { query: q })}
       />
     </TooltipProvider>
   );

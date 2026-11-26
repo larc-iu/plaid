@@ -1,4 +1,5 @@
 import { notifyWarning } from './notify.js';
+import { t } from './i18n.js';
 
 // Re-reading a document after a service run, when the run has already been
 // reported as finished.
@@ -18,8 +19,8 @@ export const reloadAfterRun = async (reload) => {
   } catch (error) {
     console.error('Could not reload after a service run:', error);
     notifyWarning(
-      'The run finished but the document could not be reloaded. Reload the page to see it.',
-      'Results not shown',
+      t('The run finished but the document could not be reloaded. Reload the page to see it.'),
+      t('Results not shown'),
     );
     return false;
   }

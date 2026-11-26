@@ -8,6 +8,8 @@
 // decoded input at a time. mixRecordings.js does the decoding and calls into
 // here.
 
+import { t } from '@ui/lib/i18n.js';
+
 /** The rate of the "Smaller" mix: mono speech needs no more. */
 export const SMALL_RATE = 16000;
 
@@ -73,6 +75,7 @@ const stem = (name) => String(name || '').replace(/\.[^./\\]*$/, '') || 'recordi
 
 /** The mix's file name: the first file's, said to be mixed. */
 export function mixName(firstName, count) {
+  // i18n-ignore: the uploaded file's name, kept with the document
   return `${stem(firstName)} (mixed, ${count} speakers).wav`;
 }
 
@@ -168,8 +171,8 @@ export function writeChannel(bytes, channel, sources, offset = 0) {
  * them, and its rate.
  */
 export function trackNote({ channels, sampleRate }) {
-  const rate = `${Math.round(sampleRate / 100) / 10} kHz`;
-  if (channels === 1) return `mono · ${rate}`;
-  const what = channels === 2 ? 'stereo' : `${channels} channels`;
-  return `${what}, mixed to one channel · ${rate}`;
+  const khz = Math.round(sampleRate / 100) / 10;
+  if (channels === 1) return t('mono · {khz} kHz', { khz });
+  if (channels === 2) return t('stereo, mixed to one channel · {khz} kHz', { khz });
+  return t('{n} channels, mixed to one channel · {khz} kHz', { n: channels, khz });
 }

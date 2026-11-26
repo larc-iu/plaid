@@ -8,10 +8,13 @@
 // The client's reader of a layer rule's refusal. By its real path: this file
 // is reached from plain node, and that module imports nothing of the page.
 import { violationsOf } from '../../../plaid-client-js/src/constraints.js';
+import { msg, t } from './i18n.js';
 
-// A write refused because the document moved on since it was read.
-export const CHANGED_ELSEWHERE =
-  'Changed elsewhere. Now showing the latest version. Redo your edit.';
+// A write refused because the document moved on since it was read. A
+// message: the place that shows it calls t().
+export const CHANGED_ELSEWHERE = msg(
+  'Changed elsewhere. Now showing the latest version. Redo your edit.',
+);
 
 // Pull an HTTP status off an error object or its message ("HTTP 423 …").
 export const statusOf = (error) => {
@@ -34,11 +37,11 @@ export const UUID_RE = /\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-
 export const isPermissionError = (error) => {
   const s = statusOf(error);
   if (s === 401 || s === 403) return true;
-  const msg = String((error && error.message) || error || '');
-  return /no accessible projects|lacks sufficient privileges|not authoriz/i.test(msg);
+  const text = String((error && error.message) || error || '');
+  return /no accessible projects|lacks sufficient privileges|not authoriz/i.test(text);
 };
 
-const UNREACHABLE = 'Failed to reach the server. Check your connection and try again.';
+const UNREACHABLE = msg('Failed to reach the server. Check your connection and try again.');
 
 // A failure that is the network's and passes once it is back. The write queue
 // (domain/WriteQueue.js) waits out exactly these, so what a toast calls "Could
@@ -47,10 +50,10 @@ const UNREACHABLE = 'Failed to reach the server. Check your connection and try a
 export const isUnreachable = (error) => {
   const s = statusOf(error);
   if (s === 0 || s === 502 || s === 503 || s === 504) return true;
-  const msg = String((error && error.message) || error || '');
+  const text = String((error && error.message) || error || '');
   // fetch's TypeError, an aborted or timed-out request, or the dev proxy's
   // bodyless 500.
-  return /Failed to fetch|NetworkError|timed out|Unable to read error response/i.test(msg);
+  return /Failed to fetch|NetworkError|timed out|Unable to read error response/i.test(text);
 };
 
 // A write whose answer never came back: the connection dropped, the answer
@@ -98,8 +101,8 @@ export const isGone = (error) => {
   if (s !== 403) return false;
   if (error?.responseData?.unresolved === true) return true;
   if (String(error?.responseData?.error ?? '').trim()) return false;
-  const msg = String(error?.message || '').replace(/\s+at\s+https?:\/\/\S+$/i, '');
-  return GONE_403.test(msg.trim());
+  const text = String(error?.message || '').replace(/\s+at\s+https?:\/\/\S+$/i, '');
+  return GONE_403.test(text.trim());
 };
 
 // A create refused because the id it names was used before (409 with
@@ -133,15 +136,17 @@ export const isConstraintViolation = (error) => violationsOf(error) !== null;
 export const isChangedElsewhere = (error) =>
   (statusOf(error) === 409 && !isIdTaken(error)) || isGone(error);
 
-export const UNKNOWN_OUTCOME_TITLE = 'Not confirmed';
-const GONE = 'Changed or removed by someone else.';
-const UNKNOWN_OUTCOME =
-  'The server did not answer in time. This change may or may not have been saved.';
+// A message: the place that shows it calls t().
+export const UNKNOWN_OUTCOME_TITLE = msg('Not confirmed');
+const GONE = msg('Changed or removed by someone else.');
+const UNKNOWN_OUTCOME = msg(
+  'The server did not answer in time. This change may or may not have been saved.',
+);
 
 // The sentence humanizeError words an unknown outcome with, read back: most
 // callers hand notifyError that string, not the error.
 export const saysUnknownOutcome = (message) =>
-  typeof message === 'string' && message.includes(UNKNOWN_OUTCOME);
+  typeof message === 'string' && message.includes(t(UNKNOWN_OUTCOME));
 
 // A message that names a record by its id was written for a developer. A
 // sentence with the id swapped for a stand-in word reads broken ("Vocab item
@@ -149,7 +154,7 @@ export const saysUnknownOutcome = (message) =>
 // record is "Not found.", anything else is the caller's fallback (itself
 // passed over when it too names an id). The toast's title already names the
 // action that failed.
-const namesAnId = (msg) => msg.search(UUID_RE) !== -1;
+const namesAnId = (text) => text.search(UUID_RE) !== -1;
 
 const errorText = (error) => String((error && error.message) || error || '');
 
@@ -173,8 +178,8 @@ export const isQueryTimeout = (error) =>
 const QUERY = /\/api\/v1\/query(?:[?#]|$)/;
 const urlOf = (error) =>
   String(error?.url || String(error?.message || '').match(/\bat (\S+)$/)?.[1] || '');
-const TOO_LONG = 'The search took too long. Narrow it and try again.';
-const BUSY = 'The server is busy. Try again in a moment.';
+const TOO_LONG = msg('The search took too long. Narrow it and try again.');
+const BUSY = msg('The server is busy. Try again in a moment.');
 
 // The server's own sentence on a refusal (403), where it is one a reader can
 // act on: it names no id. Null otherwise.
@@ -206,21 +211,23 @@ const signedInAs = () => {
   }
 };
 
-export const humanizeError = (error, fallback = 'Something went wrong.') => {
-  if (isUnknownOutcome(error)) return UNKNOWN_OUTCOME;
-  if (isQueryTimeout(error)) return TOO_LONG;
-  if (statusOf(error) === 503 && QUERY.test(urlOf(error))) return BUSY;
-  if (isUnreachable(error)) return UNREACHABLE;
-  if (isGone(error)) return GONE;
-  if (isLockLost(error)) return 'The lock on this document lapsed.';
+// The client's own words for an error are messages. A sentence the server
+// wrote is shown as it came.
+export const humanizeError = (error, fallback = t('Something went wrong.')) => {
+  if (isUnknownOutcome(error)) return t(UNKNOWN_OUTCOME);
+  if (isQueryTimeout(error)) return t(TOO_LONG);
+  if (statusOf(error) === 503 && QUERY.test(urlOf(error))) return t(BUSY);
+  if (isUnreachable(error)) return t(UNREACHABLE);
+  if (isGone(error)) return t(GONE);
+  if (isLockLost(error)) return t('The lock on this document lapsed.');
   if (isIdTaken(error)) {
-    return error.responseData?.deleted ? 'This was deleted.' : 'This was saved already.';
+    return error.responseData?.deleted ? t('This was deleted.') : t('This was saved already.');
   }
-  if (isKeyReused(error)) return 'This change was not sent: try it again.';
+  if (isKeyReused(error)) return t('This change was not sent: try it again.');
   // An upload over a recording someone else added since this page read the
   // document. Not "Redo your edit": redoing it would mean deleting theirs.
   if (statusOf(error) === 409 && error?.responseData?.['media-exists'] === true) {
-    return 'Another recording was added elsewhere. Now showing it.';
+    return t('Another recording was added elsewhere. Now showing it.');
   }
   // A vocabulary or project delete refused while other projects use the
   // vocabulary: core counts them and says so. Nothing changed elsewhere.
@@ -231,21 +238,21 @@ export const humanizeError = (error, fallback = 'Something went wrong.') => {
   // The server words the first violation by layer name, never by app.
   if (isConstraintViolation(error)) {
     const said = String(error.responseData.error ?? '').trim();
-    return said && !namesAnId(said) ? said : 'Not allowed by the rules of this layer.';
+    return said && !namesAnId(said) ? said : t('Not allowed by the rules of this layer.');
   }
   // An edit that names a row whose create was refused, held back unsent by
   // the document model (DocumentModel.js `dependencyError`).
   if (statusOf(error) === 400 && /\bdepends on was not saved\b/i.test(errorText(error))) {
-    return 'Depends on an edit that was not saved.';
+    return t('Depends on an edit that was not saved.');
   }
   // A link picked on a page opened before the vocabulary was unlinked.
   if (statusOf(error) === 400 && /\bnot linked to the vocab layer\b/.test(errorText(error))) {
-    return 'This vocabulary is no longer linked to the project.';
+    return t('This vocabulary is no longer linked to the project.');
   }
   // A request the server could not read (a malformed id, a missing field): a
   // fault of the page, which nothing on screen can explain.
   if (statusOf(error) === 400 && /\bRequest validation failed\b/i.test(errorText(error))) {
-    return namesAnId(String(fallback)) ? 'Something went wrong.' : fallback;
+    return namesAnId(String(fallback)) ? t('Something went wrong.') : fallback;
   }
   // A save refused because two rows of a layer that forbids overlap would
   // share text. Nothing changed elsewhere, so "Redo your edit" is wrong.
@@ -257,45 +264,49 @@ export const humanizeError = (error, fallback = 'Something went wrong.') => {
         said,
       )
     ) {
-      return 'Overlaps another row on this layer. Nothing was saved.';
+      return t('Overlaps another row on this layer. Nothing was saved.');
     }
   }
   switch (statusOf(error)) {
     case 401:
-      return 'Your sign-in is no longer valid.';
+      return t('Your sign-in is no longer valid.');
     case 403:
-      return "You don't have permission to do that.";
+      return t("You don't have permission to do that.");
     case 404:
-      return 'Not found.';
+      return t('Not found.');
     case 409:
       // Both apps resync a document after a conflict, so the user is never
       // told to reload by hand.
-      return CHANGED_ELSEWHERE;
+      return t(CHANGED_ELSEWHERE);
     case 413:
       // Over the server's cap on a request's body. A document that long is
       // to be split (the huge-documents ruling), not sent in pieces.
-      return 'This document is too large to save. Split it into shorter documents.';
+      return t('This document is too large to save. Split it into shorter documents.');
     case 423: {
       const holder = lockHolder(error);
       if (holder && holder === signedInAs()) {
-        return 'This document is being edited in another tab of yours. Try again in a moment.';
+        return t('This document is being edited in another tab of yours. Try again in a moment.');
       }
       return holder
-        ? `This document is being edited right now by ${holder}. Try again in a moment.`
-        : 'This document is being edited right now (by another user or a service). Try again in a moment.';
+        ? t('This document is being edited right now by {name}. Try again in a moment.', {
+            name: holder,
+          })
+        : t(
+            'This document is being edited right now (by another user or a service). Try again in a moment.',
+          );
     }
     case 500:
-      return 'The server hit an unexpected error. Try again in a moment.';
+      return t('The server hit an unexpected error. Try again in a moment.');
     default:
       break;
   }
-  const msg = String((error && error.message) || error || '')
+  const said = String((error && error.message) || error || '')
     .replace(/\s*at\s+https?:\/\/\S+/gi, '') // " at http://…/api/v1/…"
     .replace(/^HTTP \d+\s*/i, '')
     .trim();
-  const fallbackSaid = namesAnId(String(fallback)) ? 'Something went wrong.' : fallback;
-  if (namesAnId(msg)) return /\bnot found\b/i.test(msg) ? 'Not found.' : fallbackSaid;
-  return msg || fallbackSaid;
+  const fallbackSaid = namesAnId(String(fallback)) ? t('Something went wrong.') : fallback;
+  if (namesAnId(said)) return /\bnot found\b/i.test(said) ? t('Not found.') : fallbackSaid;
+  return said || fallbackSaid;
 };
 
 // A sign-in that fails says one thing to the person typing, so the general
@@ -304,9 +315,9 @@ export const humanizeError = (error, fallback = 'Something went wrong.') => {
 // password (a 403 with `deactivated`). Everything else reads as it does
 // everywhere: a server that is down, a 500.
 export const signInError = (error) => {
-  if (statusOf(error) === 401) return 'Email or password is incorrect.';
+  if (statusOf(error) === 401) return t('Email or password is incorrect.');
   if (statusOf(error) === 403 && error?.responseData?.deactivated === true) {
-    return 'This account is deactivated.';
+    return t('This account is deactivated.');
   }
-  return humanizeError(error, 'Failed to sign in.');
+  return humanizeError(error, t('Failed to sign in.'));
 };

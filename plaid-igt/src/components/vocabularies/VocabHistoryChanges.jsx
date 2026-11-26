@@ -3,7 +3,7 @@ import { Link, useLocation } from 'react-router-dom';
 import { Button } from '@ui/components/ui/button';
 import { Loading } from '@ui/components/shared/Loading.jsx';
 import { Notice } from '@ui/components/shared/Notice.jsx';
-import { countOf } from '@ui/lib/plural.js';
+import { t } from '@ui/lib/i18n.js';
 import { TYPE } from '@ui/lib/typeScale.js';
 import { documentViewSearch, historyHref } from '@ui/hooks/useHistoryParam.js';
 import { entryChanges, linkCounts } from '@/domain/historyChanges.js';
@@ -70,13 +70,13 @@ export const VocabHistoryChanges = ({
     if (self?.before && self?.after) {
       if ((self.before.name ?? '') !== (self.after.name ?? '')) {
         settings.push({
-          label: 'Name',
+          label: t('Name'),
           before: self.before.name ?? '',
           after: self.after.name ?? '',
         });
       }
       if (JSON.stringify(self.before.config ?? {}) !== JSON.stringify(self.after.config ?? {})) {
-        settings.push({ label: 'Settings', before: '', after: 'Changed' });
+        settings.push({ label: t('Settings'), before: '', after: t('Changed') });
       }
     }
     return {
@@ -106,9 +106,9 @@ export const VocabHistoryChanges = ({
     });
   }, [data.rows.own, vocabularyId, past, docs]);
 
-  if (!past) return <Loading label="Loading changes…" />;
+  if (!past) return <Loading label={t('Loading changes…')} />;
   if (data.reading) {
-    return <Loading label={`Reading changes, ${data.read.toLocaleString()} so far`} />;
+    return <Loading label={t('Reading changes, {n} so far', { n: data.read.toLocaleString() })} />;
   }
   if (errors.length) {
     return (
@@ -125,10 +125,10 @@ export const VocabHistoryChanges = ({
     return (
       <div className="flex flex-col items-start gap-2" data-testid="history-changes">
         <p className="text-sm" data-testid="change-count">
-          Too many changes to show here.
+          {t('Too many changes to show here.')}
         </p>
         <Button asChild variant="outline" size="sm">
-          <Link to={{ search: documentViewSearch(search) }}>Show vocabulary</Link>
+          <Link to={{ search: documentViewSearch(search) }}>{t('Show vocabulary')}</Link>
         </Button>
       </div>
     );
@@ -140,17 +140,20 @@ export const VocabHistoryChanges = ({
   return (
     <div className="flex flex-col gap-4" data-testid="history-changes">
       {nothing ? (
-        <p className="text-sm text-muted-foreground">No changes to show.</p>
+        <p className="text-sm text-muted-foreground">{t('No changes to show.')}</p>
       ) : (
         <div className="flex flex-wrap items-center justify-between gap-2">
           <p className="text-sm" data-testid="change-count">
-            {countOf(view.entries.length, 'entry', 'entries')}
-            {linkTotal > 0 &&
-              `, ${countOf(linkTotal, 'link')} in ${countOf(links.length, 'document')}`}
+            {linkTotal > 0
+              ? t(
+                  '{n, plural, one {# entry} other {# entries}}, {links, plural, one {# link} other {# links}} in {docs, plural, one {# document} other {# documents}}',
+                  { n: view.entries.length, links: linkTotal, docs: links.length },
+                )
+              : t('{n, plural, one {# entry} other {# entries}}', { n: view.entries.length })}
           </p>
           {canUndo && (
             <Button variant="outline" size="sm" onClick={() => setUndoOpen(true)}>
-              Undo
+              {t('Undo')}
             </Button>
           )}
         </div>
@@ -185,23 +188,23 @@ export const VocabHistoryChanges = ({
 
       {!view.links && (
         <section>
-          <h3 className={`${TYPE.card} mb-2`}>Links</h3>
+          <h3 className={`${TYPE.card} mb-2`}>{t('Links')}</h3>
           <p className="text-sm text-muted-foreground" data-testid="link-counts">
-            Too many changes in documents to count.
+            {t('Too many changes in documents to count.')}
           </p>
         </section>
       )}
 
       {links.length > 0 && (
         <section>
-          <h3 className={`${TYPE.card} mb-2`}>Links</h3>
+          <h3 className={`${TYPE.card} mb-2`}>{t('Links')}</h3>
           <table className="text-sm" data-testid="link-counts">
             <thead className="text-left text-muted-foreground">
               <tr>
-                <th className="py-1 pr-6 font-medium">Document</th>
-                <th className="py-1 pr-6 text-right font-medium">Moved</th>
-                <th className="py-1 pr-6 text-right font-medium">Removed</th>
-                <th className="py-1 text-right font-medium">Made</th>
+                <th className="py-1 pr-6 font-medium">{t('Document')}</th>
+                <th className="py-1 pr-6 text-right font-medium">{t('Moved')}</th>
+                <th className="py-1 pr-6 text-right font-medium">{t('Removed')}</th>
+                <th className="py-1 text-right font-medium">{t('Made')}</th>
               </tr>
             </thead>
             <tbody>
@@ -219,7 +222,7 @@ export const VocabHistoryChanges = ({
                           {doc.name}
                         </Link>
                       ) : (
-                        <span className="text-muted-foreground">Document</span>
+                        <span className="text-muted-foreground">{t('Document')}</span>
                       )}
                     </td>
                     <td className="py-1 pr-6 text-right tabular-nums">{c.moved || ''}</td>
@@ -232,7 +235,9 @@ export const VocabHistoryChanges = ({
           </table>
           {links.length > LINK_DOCUMENTS_SHOWN && (
             <p className="mt-1 text-sm text-muted-foreground">
-              And {countOf(links.length - LINK_DOCUMENTS_SHOWN, 'more document')}.
+              {t('And {n, plural, one {# more document} other {# more documents}}.', {
+                n: links.length - LINK_DOCUMENTS_SHOWN,
+              })}
             </p>
           )}
         </section>

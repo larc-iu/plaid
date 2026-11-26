@@ -8,6 +8,7 @@
 // writes it into the WAV on the common clock (mixdown.js) and drops it before
 // the next. Nothing about the offsets is kept once the file is made.
 
+import { msg, t } from '@ui/lib/i18n.js';
 import { readSampleRate } from './mediaSampleRate.js';
 import { readWavInfo } from './wavAdpcm.js';
 import {
@@ -33,7 +34,7 @@ function withDecoded(file, rate, signal, use) {
   const run = turn.then(async () => {
     signal?.throwIfAborted();
     const Ctx = OfflineCtx();
-    if (!Ctx) throw new Error('This browser has no OfflineAudioContext.');
+    if (!Ctx) throw new Error(t('This browser has no OfflineAudioContext.'));
     const bytes = await file.arrayBuffer();
     signal?.throwIfAborted();
     const decoded = await new Ctx(1, 1, rate).decodeAudioData(bytes);
@@ -121,9 +122,12 @@ export async function mixTracks(tracks, { quality = 'full', onProgress, signal }
 export async function mixFiles(entries, { quality = 'full', onProgress, read = readTrack } = {}) {
   const tracks = [];
   for (const { file, offset } of entries) {
-    onProgress?.(`Decoding ${file.name}`);
+    // Said with the file's name, so in the interface's language already: the
+    // progress line's t() finds no message for it and shows it as it is.
+    onProgress?.(t('Decoding {name}', { name: file.name }));
     tracks.push({ ...(await read(file)), file, offset: offset || 0 });
   }
-  onProgress?.('Writing the mix');
+  // A step as the engines name theirs, translated where it is shown.
+  onProgress?.(msg('Writing the mix'));
   return mixTracks(tracks, { quality });
 }

@@ -20,19 +20,19 @@ import { Breadcrumb } from '@ui/components/shared/Breadcrumb.jsx';
 import { Loading } from '@ui/components/shared/Loading.jsx';
 import { notifySuccess } from '@/utils/feedback';
 import { TYPE } from '@ui/lib/typeScale.js';
-import { countOf } from '@ui/lib/plural.js';
+import { t } from '@ui/lib/i18n.js';
 import { UnfinishedImport } from './UnfinishedImport.jsx';
 
-const NEW_PROJECT_CRUMBS = [
-  { label: 'Projects', to: '/projects', fixed: true },
-  { label: 'New project', to: '/projects/new', fixed: true },
+const newProjectCrumbs = () => [
+  { label: t('Projects'), to: '/projects', fixed: true },
+  { label: t('New project'), to: '/projects/new', fixed: true },
 ];
 
 /**
  * The top of an import page: where it sits (`crumbs`, by default under New
  * project), its title, and what it does (`children`, one paragraph).
  */
-export const ImportHeader = ({ crumbs = NEW_PROJECT_CRUMBS, title, children }) => (
+export const ImportHeader = ({ crumbs = newProjectCrumbs(), title, children }) => (
   <>
     <Breadcrumb items={crumbs} />
     <div>
@@ -127,22 +127,27 @@ export const WarningLog = ({ log }) => {
   const hidden = log.length - Math.min(log.length, LOG_RENDER_LIMIT);
   // Copy takes the whole log, not just the part on screen: the cap is about
   // what is readable, not about what was recorded.
-  const asText = () => log.map((e) => `${e.document ?? 'Corpus'}\t${e.text}`).join('\n');
+  const asText = () => log.map((e) => `${e.document ?? t('Corpus')}\t${e.text}`).join('\n');
   return (
-    <Panel tone="warning" title={`${countOf(log.length, 'warning')}`}>
+    <Panel
+      tone="warning"
+      title={t('{n, plural, one {# warning} other {# warnings}}', { n: log.length })}
+    >
       <div className="mt-2 max-h-64 overflow-y-auto rounded-md border bg-background/60 p-2">
         {groups.map((g, gi) => (
           <div key={gi} className={gi ? 'mt-2' : ''}>
-            <p className="text-xs font-medium">{g.document ?? 'The corpus as a whole'}</p>
+            <p className="text-xs font-medium">{g.document ?? t('The corpus as a whole')}</p>
             <ul className="list-inside list-disc text-xs text-muted-foreground">
-              {g.items.map((t, i) => (
-                <li key={i}>{t}</li>
+              {g.items.map((text, i) => (
+                <li key={i}>{text}</li>
               ))}
             </ul>
           </div>
         ))}
         {hidden > 0 && (
-          <p className="mt-2 text-xs font-medium">and {hidden} more, which Copy includes.</p>
+          <p className="mt-2 text-xs font-medium">
+            {t('and {n} more, which Copy includes.', { n: hidden })}
+          </p>
         )}
       </div>
       <Button
@@ -151,10 +156,10 @@ export const WarningLog = ({ log }) => {
         className="mt-2"
         onClick={() => {
           navigator.clipboard?.writeText(asText());
-          notifySuccess('Warnings copied');
+          notifySuccess(t('Warnings copied'));
         }}
       >
-        Copy
+        {t('Copy')}
       </Button>
     </Panel>
   );
@@ -164,7 +169,7 @@ export const WarningLog = ({ log }) => {
 export const ProjectNameField = ({ id, value, onChange, disabled }) => (
   <div className="rounded-lg border bg-card p-4">
     <Label className="mb-1 block text-sm font-medium" htmlFor={id}>
-      Project name
+      {t('Project name')}
     </Label>
     <Input id={id} value={value} onChange={(e) => onChange(e.target.value)} disabled={disabled} />
   </div>
@@ -177,7 +182,7 @@ export const ProjectNameField = ({ id, value, onChange, disabled }) => (
 export const FinishPending = ({ onRetry }) => {
   const [busy, setBusy] = useState(false);
   return (
-    <Panel tone="error" title="The import finished but could not be marked done.">
+    <Panel tone="error" title={t('The import finished but could not be marked done.')}>
       <Button
         variant="outline"
         size="sm"
@@ -192,7 +197,7 @@ export const FinishPending = ({ onRetry }) => {
           }
         }}
       >
-        Try again
+        {t('Try again')}
       </Button>
     </Panel>
   );
@@ -229,7 +234,7 @@ export const ImportRunPanel = ({
 }) => (
   <>
     {runError && stage !== 'running' && (
-      <Panel tone="error" title={stopped ? 'Import stopped' : 'Failed to import'}>
+      <Panel tone="error" title={stopped ? t('Import stopped') : t('Failed to import')}>
         {!stopped && <p className="mt-1 text-xs">{runError}</p>}
         {unfinished && (
           <div className="mt-2 text-xs">
@@ -253,10 +258,10 @@ export const ImportRunPanel = ({
           />
         </div>
         <div className="flex items-center justify-between gap-2">
-          <p className="text-sm text-muted-foreground">{progress?.label ?? 'Starting…'}</p>
+          <p className="text-sm text-muted-foreground">{progress?.label ?? t('Starting…')}</p>
           {onStop && (
             <Button variant="outline" size="sm" onClick={onStop}>
-              <Square className="h-3.5 w-3.5" /> Stop
+              <Square className="h-3.5 w-3.5" /> {t('Stop')}
             </Button>
           )}
         </div>

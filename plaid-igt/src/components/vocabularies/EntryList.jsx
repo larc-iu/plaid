@@ -27,7 +27,7 @@ import { ANY_FIELD } from '@/domain/vocabItemFilter';
 import { FormLabel } from './FormLabel';
 import { NEW_ID } from './vocabItemsState';
 import { SegmentedControl } from '@ui/components/shared/SegmentedControl.jsx';
-import { countOf } from '@ui/lib/plural.js';
+import { t } from '@ui/lib/i18n.js';
 
 // The left pane: the search box and its scope, the view toggle, the paged
 // rows, and the footer's bulk actions. `list` is a useEntryList; `scope` and
@@ -76,11 +76,11 @@ export const EntryList = ({
     >
       <div className="flex flex-col gap-2 border-b p-3">
         <div className="flex items-center justify-between">
-          <span className="text-sm font-medium">Entries</span>
+          <span className="text-sm font-medium">{t('Entries')}</span>
           {canEdit && (
             <Button size="sm" className="h-7" asChild>
               <Link to={itemTo(NEW_ID)}>
-                <Plus className="h-3.5 w-3.5" /> New
+                <Plus className="h-3.5 w-3.5" /> {t('New')}
               </Link>
             </Button>
           )}
@@ -89,7 +89,7 @@ export const EntryList = ({
           <SearchInput
             className="min-w-0 flex-1"
             inputClassName="h-8"
-            placeholder="Search entries…"
+            placeholder={t('Search entries…')}
             value={scope.search}
             onChange={(search) => dispatch({ type: 'scope/search', search })}
           />
@@ -97,12 +97,12 @@ export const EntryList = ({
             value={scope.field}
             onValueChange={(field) => dispatch({ type: 'scope/field', field })}
           >
-            <SelectTrigger className="h-8 w-28 shrink-0 text-xs" aria-label="Search in">
+            <SelectTrigger className="h-8 w-28 shrink-0 text-xs" aria-label={t('Search in')}>
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value={ANY_FIELD}>All fields</SelectItem>
-              <SelectItem value="form">Form</SelectItem>
+              <SelectItem value={ANY_FIELD}>{t('All fields')}</SelectItem>
+              <SelectItem value="form">{t('Form')}</SelectItem>
               {fieldNames.map((name) => (
                 <SelectItem key={name} value={name}>
                   {humanizeFieldName(name)}
@@ -111,11 +111,17 @@ export const EntryList = ({
             </SelectContent>
           </Select>
           {items.length > 0 && (
-            <ListCount shown={filteredItems.length} total={items.length} noun="entry" />
+            <ListCount
+              shown={filteredItems.length}
+              total={items.length}
+              countLabel={({ n, total }) =>
+                t('{total} {n, plural, one {entry} other {entries}}', { n, total })
+              }
+            />
           )}
         </div>
         <SegmentedControl
-          label="View"
+          label={t('View')}
           value={treeView ? 'tree' : 'flat'}
           onChange={(v) => setTreeView(v === 'tree')}
           options={[
@@ -123,7 +129,7 @@ export const EntryList = ({
               value: 'flat',
               label: (
                 <>
-                  <List className="h-3.5 w-3.5" /> Flat
+                  <List className="h-3.5 w-3.5" /> {t('Flat')}
                 </>
               ),
             },
@@ -131,7 +137,7 @@ export const EntryList = ({
               value: 'tree',
               label: (
                 <>
-                  <ListTree className="h-3.5 w-3.5" /> By entry
+                  <ListTree className="h-3.5 w-3.5" /> {t('By entry')}
                 </>
               ),
             },
@@ -147,7 +153,10 @@ export const EntryList = ({
               emptyOnly ? 'bg-accent' : 'bg-muted',
             )}
           >
-            {emptyCount.toLocaleString()} without {humanizeFieldName(emptyField)}
+            {t('{n} without {field}', {
+              n: emptyCount.toLocaleString(),
+              field: humanizeFieldName(emptyField),
+            })}
           </button>
         )}
         {offTagsetIds.size > 0 && (
@@ -157,8 +166,8 @@ export const EntryList = ({
             onClick={() => dispatch({ type: 'scope/toggleOffTagsetOnly' })}
             title={
               scope.offTagsetOnly
-                ? 'Show every entry'
-                : 'Show only the entries with a value outside its tagset'
+                ? t('Show every entry')
+                : t('Show only the entries with a value outside its tagset')
             }
             className={cn(
               'inline-flex w-fit items-center gap-1 rounded-md px-1.5 py-0.5 text-xs text-destructive hover:underline',
@@ -166,28 +175,28 @@ export const EntryList = ({
             )}
           >
             <AlertTriangle className="h-3 w-3" />
-            {offTagsetIds.size.toLocaleString()} outside tagset
+            {t('{n} outside tagset', { n: offTagsetIds.size.toLocaleString() })}
           </button>
         )}
         {machineCount > 0 && machineTo && (
           <Link
             to={machineTo(!machineOnly)}
             aria-current={machineOnly ? 'true' : undefined}
-            title={machineOnly ? 'Show every entry' : 'Show only the machine drafts'}
+            title={machineOnly ? t('Show every entry') : t('Show only the machine drafts')}
             className={cn(
               'inline-flex w-fit items-center gap-1 rounded-md px-1.5 py-0.5 text-xs text-muted-foreground no-underline hover:underline',
               machineOnly ? 'bg-accent' : 'bg-muted',
             )}
           >
             <Bot className="h-3 w-3" />
-            {countOf(machineCount, 'machine draft')}
+            {t('{n, plural, one {# machine draft} other {# machine drafts}}', { n: machineCount })}
           </Link>
         )}
         {machineOnly && (onMarkReviewed || onDeleteDrafts) && (
           <div className="flex flex-wrap items-center gap-2">
             {onMarkReviewed && (
               <Button variant="outline" size="sm" className="h-7" onClick={onMarkReviewed}>
-                <Check className="h-3.5 w-3.5" /> Mark reviewed
+                <Check className="h-3.5 w-3.5" /> {t('Mark reviewed')}
               </Button>
             )}
             {onDeleteDrafts && (
@@ -197,7 +206,7 @@ export const EntryList = ({
                 className="h-7 text-destructive hover:text-destructive"
                 onClick={onDeleteDrafts}
               >
-                <Trash2 className="h-3.5 w-3.5" /> Delete
+                <Trash2 className="h-3.5 w-3.5" /> {t('Delete')}
               </Button>
             )}
           </div>
@@ -213,11 +222,11 @@ export const EntryList = ({
             listCols,
           )}
         >
-          <SortHeader field="form" label="Form" sort={sort} onSort={onSort} />
-          {hasGloss && <SortHeader field="gloss" label="Gloss" sort={sort} onSort={onSort} />}
+          <SortHeader field="form" label={t('Form')} sort={sort} onSort={onSort} />
+          {hasGloss && <SortHeader field="gloss" label={t('Gloss')} sort={sort} onSort={onSort} />}
           <SortHeader
             field="uses"
-            label="Uses"
+            label={t('Uses')}
             sort={sort}
             onSort={onSort}
             className="justify-self-end"
@@ -228,13 +237,13 @@ export const EntryList = ({
       <div ref={listRef} className="min-h-0 flex-1 overflow-y-auto">
         {items.length === 0 ? (
           <p className="px-3 py-6 text-center text-sm text-muted-foreground">
-            No entries yet. Click “New”.
+            {t('No entries yet. Click “New”.')}
           </p>
         ) : filteredItems.length === 0 ? (
           <p className="px-3 py-6 text-center text-sm text-muted-foreground">
             {scope.search.trim()
-              ? `No entries match “${scope.search.trim()}”.`
-              : 'No entries match.'}
+              ? t('No entries match “{search}”.', { search: scope.search.trim() })
+              : t('No entries match.')}
           </p>
         ) : (
           <ul className="divide-y">
@@ -263,7 +272,9 @@ export const EntryList = ({
                     {(comments?.countFor(item.id) ?? 0) > 0 && (
                       <span
                         className="inline-flex shrink-0 items-center gap-0.5 text-[10px] tabular-nums text-muted-foreground"
-                        title={countOf(comments.countFor(item.id), 'comment')}
+                        title={t('{n, plural, one {# comment} other {# comments}}', {
+                          n: comments.countFor(item.id),
+                        })}
                       >
                         <MessageSquare className="h-3 w-3" />
                         {comments.countFor(item.id)}
@@ -277,7 +288,7 @@ export const EntryList = ({
                   )}
                   <span className="text-right text-xs tabular-nums text-muted-foreground">
                     {offTagsetIds.has(item.id) && (
-                      <span title="A value is outside its tagset">
+                      <span title={t('A value is outside its tagset')}>
                         <AlertTriangle className="mr-1 inline h-3 w-3 text-destructive" />
                       </span>
                     )}
@@ -295,7 +306,7 @@ export const EntryList = ({
       <div className="flex items-center gap-2 border-t p-2">
         {canEdit && (
           <Button variant="ghost" size="sm" className="h-7 flex-1" onClick={onBulkAdd}>
-            <Upload className="h-3.5 w-3.5" /> Bulk Add
+            <Upload className="h-3.5 w-3.5" /> {t('Bulk Add')}
           </Button>
         )}
         {canEdit && (
@@ -306,7 +317,7 @@ export const EntryList = ({
             onClick={onReplace}
             disabled={!items.length || !canReplace}
           >
-            <Replace className="h-3.5 w-3.5" /> Replace
+            <Replace className="h-3.5 w-3.5" /> {t('Replace')}
           </Button>
         )}
         <Button
@@ -316,7 +327,7 @@ export const EntryList = ({
           onClick={onExport}
           disabled={!items.length}
         >
-          <Download className="h-3.5 w-3.5" /> Export
+          <Download className="h-3.5 w-3.5" /> {t('Export')}
         </Button>
       </div>
     </div>

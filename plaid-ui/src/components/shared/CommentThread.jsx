@@ -11,6 +11,7 @@ import { isPending, withReturnedDraft } from '../../domain/CommentStore.js';
 import { useUnsavedDraft } from '../../hooks/useUnsavedDraft.js';
 import { useSavingGuard } from '../../hooks/useSavingGuard.js';
 import { isEnter } from '../../lib/chords.js';
+import { t, msg } from '../../lib/i18n.js';
 
 // One thread: its comments oldest first, and a box to add to it.
 //
@@ -29,8 +30,8 @@ const onMetaEnter = (fn) => (event) => {
 };
 
 // What leaving asks about while a comment is typed and not yet saved.
-const TYPED = 'The comment you have typed';
-const TYPED_SEVERAL = 'comments you have typed';
+const TYPED = msg('The comment you have typed');
+const TYPED_SEVERAL = msg('comments you have typed');
 
 // False once the component has unmounted, for a write that answers later.
 const useMounted = () => {
@@ -53,8 +54,8 @@ const Comment = ({ comment, store, canWrite, canDeleteAny, onEdit, onRemove }) =
   const [sending, setSending] = useState(false);
   const mounted = useMounted();
   useUnsavedDraft(
-    sending || (draft !== null && draft.trim() && draft.trim() !== comment.body) ? TYPED : null,
-    TYPED_SEVERAL,
+    sending || (draft !== null && draft.trim() && draft.trim() !== comment.body) ? t(TYPED) : null,
+    t(TYPED_SEVERAL),
   );
   const pending = isPending(comment);
   const mine = comment.authorId === store.currentUserId;
@@ -71,9 +72,9 @@ const Comment = ({ comment, store, canWrite, canDeleteAny, onEdit, onRemove }) =
   const confirm = useConfirm();
   const askThenRemove = async () => {
     const ok = await confirm({
-      title: mine ? 'Delete your comment?' : `Delete ${name}'s comment?`,
-      description: 'This cannot be undone.',
-      confirmLabel: 'Delete',
+      title: mine ? t('Delete your comment?') : t("Delete {name}'s comment?", { name }),
+      description: t('This cannot be undone.'),
+      confirmLabel: t('Delete'),
       destructive: true,
     });
     if (ok) onRemove(comment);
@@ -98,7 +99,7 @@ const Comment = ({ comment, store, canWrite, canDeleteAny, onEdit, onRemove }) =
         <Textarea
           rows={3}
           maxLength={store.bodyMax}
-          aria-label="Edit your comment"
+          aria-label={t('Edit your comment')}
           value={draft}
           autoFocus
           onChange={(e) => setDraft(e.target.value)}
@@ -113,10 +114,10 @@ const Comment = ({ comment, store, canWrite, canDeleteAny, onEdit, onRemove }) =
         />
         <div className="mt-1.5 flex justify-end gap-2">
           <Button size="sm" variant="ghost" onClick={() => setDraft(null)}>
-            Cancel
+            {t('Cancel')}
           </Button>
           <Button size="sm" disabled={unchanged} onClick={save}>
-            Save
+            {t('Save')}
           </Button>
         </div>
       </li>
@@ -143,19 +144,23 @@ const Comment = ({ comment, store, canWrite, canDeleteAny, onEdit, onRemove }) =
         </span>
         <span className="font-medium text-foreground">
           {name}
-          {mine && <span className="font-normal text-muted-foreground"> (you)</span>}
+          {mine && <span className="font-normal text-muted-foreground"> {t('(you)')}</span>}
         </span>
         <time dateTime={comment.createdAt} title={fullTimestamp(comment.createdAt)}>
-          {pending ? 'sending…' : timeAgo(comment.createdAt)}
+          {pending ? t('sending…') : timeAgo(comment.createdAt)}
         </time>
-        {comment.edited && <span title={`Edited ${fullTimestamp(comment.updatedAt)}`}>edited</span>}
+        {comment.edited && (
+          <span title={t('Edited {when}', { when: fullTimestamp(comment.updatedAt) })}>
+            {t('edited')}
+          </span>
+        )}
         {(mayEdit || mayDelete) && (
           <span className="ml-auto flex items-center gap-0.5">
             {mayEdit && (
               <button
                 type="button"
-                title="Edit"
-                aria-label="Edit this comment"
+                title={t('Edit')}
+                aria-label={t('Edit this comment')}
                 className="rounded p-1 hover:bg-muted hover:text-foreground"
                 onClick={() => setDraft(comment.body)}
               >
@@ -165,8 +170,8 @@ const Comment = ({ comment, store, canWrite, canDeleteAny, onEdit, onRemove }) =
             {mayDelete && (
               <button
                 type="button"
-                title="Delete"
-                aria-label="Delete this comment"
+                title={t('Delete')}
+                aria-label={t('Delete this comment')}
                 className="rounded p-1 hover:bg-muted hover:text-destructive"
                 onClick={askThenRemove}
               >
@@ -197,7 +202,7 @@ export const CommentThread = ({
   // Posts on their way. What was typed is kept until the server has it.
   const [sending, setSending] = useState(0);
   const mounted = useMounted();
-  useUnsavedDraft(composer.trim() || sending ? TYPED : null, TYPED_SEVERAL);
+  useUnsavedDraft(composer.trim() || sending ? t(TYPED) : null, t(TYPED_SEVERAL));
   // Closing the tab asks while a post is on its way, even once this thread
   // has left the screen.
   useSavingGuard(store);
@@ -234,7 +239,7 @@ export const CommentThread = ({
         </ul>
       ) : (
         <p className="px-3 py-2 text-sm text-muted-foreground">
-          {canWrite ? 'No comments yet.' : 'No comments.'}
+          {canWrite ? t('No comments yet.') : t('No comments.')}
         </p>
       )}
       {canWrite && (
@@ -242,17 +247,19 @@ export const CommentThread = ({
           <Textarea
             rows={2}
             maxLength={store.bodyMax}
-            placeholder="Add a comment…"
-            aria-label="Add a comment"
+            placeholder={t('Add a comment…')}
+            aria-label={t('Add a comment')}
             autoFocus={autoFocusComposer}
             value={composer}
             onChange={(e) => setComposer(e.target.value)}
             onKeyDown={onMetaEnter(submit)}
           />
           <div className="mt-1.5 flex items-center justify-between">
-            <span className="text-xs text-muted-foreground">Markdown · {metaKeyLabel()}+Enter</span>
+            <span className="text-xs text-muted-foreground">
+              {t('Markdown · {key}+Enter', { key: metaKeyLabel() })}
+            </span>
             <Button size="sm" disabled={!composer.trim()} onClick={submit}>
-              Comment
+              {t('Comment')}
             </Button>
           </div>
         </div>

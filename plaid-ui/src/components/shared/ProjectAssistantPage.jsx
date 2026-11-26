@@ -3,6 +3,7 @@ import { useAuth } from '../../contexts/useAuth.js';
 import { canEditProject } from '../../domain/permissions.js';
 import { AssistantTab } from '../assistant/AssistantTab.jsx';
 import { ProjectTabPage } from './ProjectTabPage.jsx';
+import { t } from '../../lib/i18n.js';
 
 // The Assistant tab: a chat with whatever `assist` service the operator runs
 // (see plaid-agent). Open to everyone who can open the project, since the
@@ -12,7 +13,7 @@ import { ProjectTabPage } from './ProjectTabPage.jsx';
 export const ProjectAssistantPage = ({ tabs, adapter }) => {
   const { user } = useAuth();
   return (
-    <ProjectTabPage title="Assistant" tabs={tabs}>
+    <ProjectTabPage title={t('Assistant')} tabs={tabs}>
       {({ project, projectId, client }) => (
         <AssistantTab
           adapter={adapter}

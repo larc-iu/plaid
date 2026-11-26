@@ -14,6 +14,7 @@ import '@/components/documents/analyze/island/igt-editor.css';
 import { cn } from '@ui/lib/utils';
 import { cliticSideOfJoint, shownMorphemeJoiner } from '@/domain/affixMarkers';
 import { EQUALS_BEFORE_KEY } from '@/domain/mutations/equalsRule';
+import { t } from '@ui/lib/i18n.js';
 
 // Mirror of IgtEditor._fieldSize: the cross-browser fallback for field-sizing.
 const fieldSize = (v) => Math.max(5, [...(v ?? '')].length + 1);
@@ -44,7 +45,7 @@ const Hint = ({ itemId, itemFormById }) => {
       type="button"
       className="igt-vocab__opener igt-vocab__hint"
       disabled
-      title={`Linked to "${form}"`}
+      title={t('Linked to "{form}"', { form })}
     >
       {form}
     </button>
@@ -58,7 +59,14 @@ export const AnalysisCard = ({ word, analysis, rows, itemFormById, labels = true
     : [{ form: word, morphType: null, vocabItemId: null, fields: {} }];
 
   const label = (cls, name, scope) => (
-    <div key={`${scope}:${name}`} className={cn('igt-row-label', cls)} title={`${name} (${scope})`}>
+    <div
+      key={`${scope}:${name}`}
+      className={cn('igt-row-label', cls)}
+      title={t('{name} ({scope, select, word {word} morpheme {morpheme} other {sentence}})', {
+        name,
+        scope,
+      })}
+    >
       <span className="igt-row-label__text">{name}</span>
     </div>
   );
@@ -75,7 +83,7 @@ export const AnalysisCard = ({ word, analysis, rows, itemFormById, labels = true
               <div className="igt-row-label igt-row-label--spacer" />
               {wordFields.map((n) => label('igt-row-label--word', n, 'word'))}
               {hasMorphemes &&
-                label('igt-row-label--morph igt-row-label--morphform', 'Morphemes', 'morpheme')}
+                label('igt-row-label--morph igt-row-label--morphform', t('Morphemes'), 'morpheme')}
               {hasMorphemes && morphFields.map((n) => label('igt-row-label--morph', n, 'morpheme'))}
             </div>
           )}
@@ -88,7 +96,10 @@ export const AnalysisCard = ({ word, analysis, rows, itemFormById, labels = true
             </div>
             {wordFields.map((name) => (
               <div key={name} className="igt-cell">
-                <Field value={analysis?.word?.fields?.[name]} label={`${name} for ${word}`} />
+                <Field
+                  value={analysis?.word?.fields?.[name]}
+                  label={t('{name} for {word}', { name, word })}
+                />
               </div>
             ))}
             {hasMorphemes && (
@@ -117,7 +128,7 @@ export const AnalysisCard = ({ word, analysis, rows, itemFormById, labels = true
                           <Field
                             value={m.form}
                             className="igt-morph-field"
-                            label={`Morpheme form ${m.form ?? ''}`}
+                            label={t('Morpheme form {form}', { form: m.form ?? '' })}
                           />
                           <Hint itemId={m.vocabItemId} itemFormById={itemFormById} />
                         </span>
@@ -127,7 +138,7 @@ export const AnalysisCard = ({ word, analysis, rows, itemFormById, labels = true
                           <Field
                             value={m.fields?.[name]}
                             className="igt-morph-field"
-                            label={`${name} for morpheme ${m.form ?? ''}`}
+                            label={t('{name} for morpheme {form}', { name, form: m.form ?? '' })}
                           />
                         </div>
                       ))}

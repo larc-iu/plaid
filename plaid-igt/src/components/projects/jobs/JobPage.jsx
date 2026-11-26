@@ -20,6 +20,7 @@ import { historyHref } from '@ui/hooks/useHistoryParam.js';
 import { useTabParam } from '@ui/hooks/useTabParam.js';
 import { TALL_LIST_PAGE_SIZE } from '@ui/hooks/usePagedList.js';
 import { compareNames, textIncludes } from '@ui/domain/collation.js';
+import { t, tx } from '@ui/lib/i18n.js';
 import { UndoDialog } from '../../documents/history/UndoDialog.jsx';
 import { jobPlacer } from '@/domain/undoPlaces.js';
 import { jobUndoError } from '@/domain/undoSummary.js';
@@ -228,9 +229,9 @@ export const JobPage = ({ project, projectId, jobId, client }) => {
 
   const stop = useCallback(async () => {
     const ok = await confirm({
-      title: 'Stop the job?',
-      description: 'What it wrote stays.',
-      confirmLabel: 'Stop',
+      title: t('Stop the job?'),
+      description: t('What it wrote stays.'),
+      confirmLabel: t('Stop'),
     });
     if (!ok) return;
     setStopping(true);
@@ -238,7 +239,7 @@ export const JobPage = ({ project, projectId, jobId, client }) => {
       setJob(await client.jobs.cancel(jobId));
       setReadAt(Date.now());
     } catch (err) {
-      notifyError(err, 'Failed to stop the job');
+      notifyError(err, t('Failed to stop the job'));
     } finally {
       setStopping(false);
     }
@@ -261,7 +262,7 @@ export const JobPage = ({ project, projectId, jobId, client }) => {
       to={jobsTabPath(projectId)}
       className="mb-4 inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
     >
-      <ArrowLeft className="h-4 w-4" /> All jobs
+      <ArrowLeft className="h-4 w-4" /> {t('All jobs')}
     </Link>
   );
 
@@ -270,9 +271,11 @@ export const JobPage = ({ project, projectId, jobId, client }) => {
       <div>
         {back}
         {projectNotFound(error) ? (
-          <LoadError>Job not found.</LoadError>
+          <LoadError>{t('Job not found.')}</LoadError>
         ) : (
-          <LoadError onRetry={() => setAttempt((n) => n + 1)}>Failed to load the job</LoadError>
+          <LoadError onRetry={() => setAttempt((n) => n + 1)}>
+            {t('Failed to load the job')}
+          </LoadError>
         )}
       </div>
     );
@@ -305,7 +308,7 @@ export const JobPage = ({ project, projectId, jobId, client }) => {
       setJob(await client.jobs.get(jobId));
       setReadAt(Date.now());
     } catch (err) {
-      notifyError(err, 'Failed to read the job again');
+      notifyError(err, t('Failed to read the job again'));
     }
   };
 
@@ -316,14 +319,14 @@ export const JobPage = ({ project, projectId, jobId, client }) => {
     const res = await client.jobs.undo(jobId, { dryRun });
     if (dryRun || res?.operation) return res;
     const now = await client.jobs.get(jobId).catch(() => null);
-    return now?.undone ? { ...res, already: 'This job was already undone.' } : res;
+    return now?.undone ? { ...res, already: t('This job was already undone.') } : res;
   };
 
   return (
     <div>
       {back}
       <SectionHeader
-        title="Job"
+        title={t('Job')}
         className="mb-3"
         actions={
           (stoppable || discussable || undoable) && (
@@ -331,12 +334,12 @@ export const JobPage = ({ project, projectId, jobId, client }) => {
               {discussable && <Discuss client={client} projectId={projectId} />}
               {undoable && (
                 <Button variant="outline" onClick={() => setUndoOpen(true)}>
-                  Undo job
+                  {t('Undo job')}
                 </Button>
               )}
               {stoppable && (
                 <Button variant="outline" onClick={stop} disabled={stopping}>
-                  Stop
+                  {t('Stop')}
                 </Button>
               )}
             </div>
@@ -364,7 +367,7 @@ export const JobPage = ({ project, projectId, jobId, client }) => {
       )}
       <Tabs value={view} onValueChange={setView}>
         <div className="mb-6 border-b">
-          <TabsList className="border-b-0" aria-label="Sections">
+          <TabsList className="border-b-0" aria-label={t('Sections')}>
             {sections.map((s) => (
               <TabsTrigger key={s.key} value={s.key} to={viewHref(at, s.key)}>
                 {s.label}
@@ -388,7 +391,7 @@ export const JobPage = ({ project, projectId, jobId, client }) => {
                   <JobProgress job={job} readAt={readAt} />
                   {plan && (
                     <p className="mt-3 max-w-3xl text-sm" data-testid="job-plan">
-                      <span className="text-muted-foreground">Plan </span>
+                      <span className="text-muted-foreground">{t('Plan')} </span>
                       <IsolatedLabel parts={planParts(plan)} />
                     </p>
                   )}
@@ -433,7 +436,7 @@ const Instructions = ({ text = '' }) => {
   return (
     <div className="max-w-3xl text-sm" data-testid="job-instructions">
       <p className={`whitespace-pre-wrap ${long && !open ? 'line-clamp-2' : ''}`}>
-        <span className="text-muted-foreground">Instructions </span>
+        <span className="text-muted-foreground">{t('Instructions')} </span>
         <bdi>{text}</bdi>
       </p>
       {long && (
@@ -443,7 +446,7 @@ const Instructions = ({ text = '' }) => {
           aria-expanded={open}
           onClick={() => setOpen((o) => !o)}
         >
-          {open ? 'Show less' : 'Show all'}
+          {open ? t('Show less') : t('Show all')}
         </button>
       )}
     </div>
@@ -492,13 +495,13 @@ const Discuss = ({ client, projectId }) => {
   return wide ? (
     <Button variant="outline" className="gap-1.5" onClick={() => discuss()}>
       <AssistantMark className="h-4 w-4" />
-      Discuss with the assistant
+      {t('Discuss with the assistant')}
     </Button>
   ) : (
     <Button variant="outline" className="gap-1.5" asChild>
       <Link to={assistantTabPath(projectId)}>
         <AssistantMark className="h-4 w-4" />
-        Assistant
+        {t('Assistant')}
       </Link>
     </Button>
   );
@@ -519,9 +522,8 @@ const JobSetup = ({ job, projectId, user }) => {
   const gone = Array.isArray(planGone) ? planGone.map((g) => g?.id) : [];
   return (
     <p className="mt-1 max-w-3xl text-sm text-muted-foreground" data-testid="job-setup">
-      Set up to fill <FillsNames fills={setup.fills} none="nothing" gone={gone} />
-      {setup.onlynew === true && ', only on the words it adds'}.{' '}
-      {setup.text === true ? 'Text may be edited.' : 'Text unchanged.'}
+      {setupFillsText(setup, gone)}{' '}
+      {setup.text === true ? t('Text may be edited.') : t('Text unchanged.')}
       {conversation && (
         <>
           {' '}
@@ -529,12 +531,26 @@ const JobSetup = ({ job, projectId, user }) => {
             to={IGT_ASSISTANT.convHref(projectId, conversation)}
             className="text-primary hover:underline"
           >
-            Open conversation
+            {t('Open conversation')}
           </Link>
         </>
       )}
     </p>
   );
+};
+
+// What a setup fills, as the setup line's first sentence.
+const setupFillsText = (setup, gone) => {
+  const only = setup.onlynew === true;
+  if (!setup.fills?.length) {
+    return only
+      ? t('Set up to fill nothing, only on the words it adds.')
+      : t('Set up to fill nothing.');
+  }
+  const fills = <FillsNames fills={setup.fills} gone={gone} />;
+  return only
+    ? tx('Set up to fill {fills}, only on the words it adds.', { fills })
+    : tx('Set up to fill {fills}.', { fills });
 };
 
 // The state, what the worker is doing, its last line, and for a waiting job
@@ -554,7 +570,7 @@ const JobStatus = ({ job, user, names, undoneHref }) => {
       <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
         {/* Once undone, what the chat card says (RP4-4 finding 6). */}
         <Badge variant={failed ? 'destructive' : 'secondary'}>
-          {job.undone ? 'Undone' : jobStateText(job.state)}
+          {job.undone ? t('Undone') : jobStateText(job.state)}
         </Badge>
         {running && job.phase && <span>{jobPhaseText(job.phase)}</span>}
         {job.state === 'waiting' && job.ahead > 0 && (
@@ -564,12 +580,17 @@ const JobStatus = ({ job, user, names, undoneHref }) => {
           <span className="text-muted-foreground" data-testid="job-ended">
             {job.finishedAt && (
               <>
-                Ended <When at={job.finishedAt} />
+                {tx('Ended {when}', { when: <When at={job.finishedAt} /> })}
                 {' · '}
               </>
             )}
-            {took !== null && `took ${took < 60000 ? 'under a minute' : durationText(took)} · `}
-            started by {whoText(job.startedBy, job, user, names)}
+            {took !== null &&
+              `${
+                took < 60000
+                  ? t('took under a minute')
+                  : t('took {duration}', { duration: durationText(took) })
+              } · `}
+            {t('started by {who}', { who: whoText(job.startedBy, job, user, names) })}
           </span>
         )}
       </div>
@@ -577,18 +598,25 @@ const JobStatus = ({ job, user, names, undoneHref }) => {
       {/* Who stopped it and when, as core records the stop (RPF3-D2). */}
       {job.state === 'cancelled' && job.cancelledBy && (
         <p data-testid="job-stopped-by">
-          Stopped by {whoText(job.cancelledBy, job, user, names)}
-          {job.finishedAt ? `, ${fullTimestamp(job.finishedAt)}` : ''}.
+          {job.finishedAt
+            ? t('Stopped by {who}, {time}.', {
+                who: whoText(job.cancelledBy, job, user, names),
+                time: fullTimestamp(job.finishedAt),
+              })
+            : t('Stopped by {who}.', { who: whoText(job.cancelledBy, job, user, names) })}
         </p>
       )}
       {job.undone && (
         <p data-testid="job-undone">
-          Undone by {whoText(job.undone.user, job, user, names)}, {fullTimestamp(job.undone.time)}.
+          {t('Undone by {who}, {time}.', {
+            who: whoText(job.undone.user, job, user, names),
+            time: fullTimestamp(job.undone.time),
+          })}
           {undoneHref && (
             <>
               {' '}
               <Link to={undoneHref} className="text-primary hover:underline">
-                Show in History
+                {t('Show in History')}
               </Link>
             </>
           )}
@@ -637,7 +665,9 @@ const PlannedInstructions = ({ text }) => {
   if (text.length <= PLANNED_SHOWN_CHARS) return body;
   return (
     <details onToggle={(e) => setOpen(e.currentTarget.open)}>
-      <summary className="cursor-pointer text-muted-foreground">{open ? 'Hide' : 'Show'}</summary>
+      <summary className="cursor-pointer text-muted-foreground">
+        {open ? t('Hide') : t('Show')}
+      </summary>
       {body}
     </details>
   );
@@ -646,7 +676,7 @@ const PlannedInstructions = ({ text }) => {
 // Instructions the planning gave past their cap, kept up to a whole sentence
 // (`instructionsCut`, the length given): "Cut to 3,990 of 5,210 characters."
 const cutText = (text, given) =>
-  `Cut to ${[...text].length.toLocaleString()} of ${given.toLocaleString()} characters.`;
+  t('Cut to {n, number} of {given, number} characters.', { n: [...text].length, given });
 
 // How far a job still waiting or running has got, on its Overview (REV-RP-5):
 // its documents done of how many, from its own rows, when it started (or
@@ -659,18 +689,20 @@ const JobProgress = ({ job, readAt }) => {
       className="mt-3 grid max-w-2xl grid-cols-[auto_1fr] gap-x-6 gap-y-1 text-sm"
       data-testid="job-progress"
     >
-      <Fact label="Documents done">
-        {done.toLocaleString()} of {docs.length.toLocaleString()}
+      <Fact label={t('Documents done')}>
+        {t('{done, number} of {n, number}', { done, n: docs.length })}
       </Fact>
       {job.startedAt ? (
         <>
-          <Fact label="Started">
+          <Fact label={t('Started')}>
             <When at={job.startedAt} />
           </Fact>
-          <Fact label="Elapsed">{durationText(readAt - new Date(job.startedAt).getTime())}</Fact>
+          <Fact label={t('Elapsed')}>
+            {durationText(readAt - new Date(job.startedAt).getTime())}
+          </Fact>
         </>
       ) : (
-        <Fact label="Waiting since">
+        <Fact label={t('Waiting since')}>
           <When at={job.createdAt} />
         </Fact>
       )}
@@ -686,12 +718,12 @@ const JobFacts = ({ job, readAt, plan }) => {
   return (
     <dl className="grid max-w-2xl grid-cols-[auto_1fr] gap-x-6 gap-y-1 text-sm">
       {plan && (
-        <Fact label="Plan">
+        <Fact label={t('Plan')}>
           <IsolatedLabel parts={planParts(plan)} />
         </Fact>
       )}
       {job.report?.plan?.pieceInstructions && (
-        <Fact label="Assistant’s instructions">
+        <Fact label={t('Assistant’s instructions')}>
           {job.report.plan.instructionsCut > 0 && (
             <>
               <span className="block text-muted-foreground">
@@ -702,31 +734,31 @@ const JobFacts = ({ job, readAt, plan }) => {
           <PlannedInstructions text={job.report.plan.pieceInstructions} />
         </Fact>
       )}
-      <Fact label="Documents">{(job.documents || []).length.toLocaleString()}</Fact>
-      <Fact label="Started by">{job.startedByName}</Fact>
+      <Fact label={t('Documents')}>{(job.documents || []).length.toLocaleString()}</Fact>
+      <Fact label={t('Started by')}>{job.startedByName}</Fact>
       {/* A job waits from its start until a worker takes it: never
           "Started" before then (RPF-P5). */}
       {job.startedAt ? (
-        <Fact label="Started">
+        <Fact label={t('Started')}>
           <When at={job.startedAt} />
         </Fact>
       ) : (
         job.state === 'waiting' && (
-          <Fact label="Waiting since">
+          <Fact label={t('Waiting since')}>
             <When at={job.createdAt} />
           </Fact>
         )
       )}
-      {waited !== null && <Fact label="Waited">{durationText(waited)}</Fact>}
+      {waited !== null && <Fact label={t('Waited')}>{durationText(waited)}</Fact>}
       {job.finishedAt && (
-        <Fact label="Ended">
+        <Fact label={t('Ended')}>
           <When at={job.finishedAt} />
         </Fact>
       )}
       {job.startedAt && (
-        <Fact label="Elapsed">{durationText(end - new Date(job.startedAt).getTime())}</Fact>
+        <Fact label={t('Elapsed')}>{durationText(end - new Date(job.startedAt).getTime())}</Fact>
       )}
-      {job.model && <Fact label="Model">{job.model}</Fact>}
+      {job.model && <Fact label={t('Model')}>{job.model}</Fact>}
     </dl>
   );
 };
@@ -781,13 +813,13 @@ const JobDocuments = ({ job, projectId, plan }) => {
   }, [dropped, setParams]);
   const stateOf = (d) =>
     leftOut.has(d.documentId)
-      ? 'Left out by the plan'
+      ? t('Left out by the plan')
       : stoppedPartway(d)
-        ? 'Stopped partway'
+        ? t('Stopped partway')
         : nothingFound(d)
-          ? 'Nothing found'
+          ? t('Nothing found')
           : allSkipped(d)
-            ? 'Skipped'
+            ? t('Skipped')
             : (jobDocumentStateText(d.state) ?? d.state);
   const order = new Map((job.documents || []).map((d, i) => [d.documentId, i + 1]));
   const columns = [
@@ -802,22 +834,22 @@ const JobDocuments = ({ job, projectId, plan }) => {
     },
     {
       key: 'name',
-      label: 'Document',
+      label: t('Document'),
       sort: (d) => d.name ?? '',
       compare: compareNames,
       render: (d) =>
         d.name === null || d.name === undefined ? (
-          <span className="text-muted-foreground">Deleted document</span>
+          <span className="text-muted-foreground">{t('Deleted document')}</span>
         ) : (
           <Link className="hover:underline" to={`/projects/${projectId}/documents/${d.documentId}`}>
             {d.name}
           </Link>
         ),
     },
-    { key: 'state', label: 'State', sort: stateOf, render: stateOf },
+    { key: 'state', label: t('State'), sort: stateOf, render: stateOf },
     {
       key: 'done',
-      label: 'Sentences',
+      label: t('Sentences'),
       align: 'right',
       sort: (d) => d.done ?? -1,
       render: (d) => documentSentencesText(d, plan),
@@ -826,7 +858,7 @@ const JobDocuments = ({ job, projectId, plan }) => {
   if ([...reported.values()].some((d) => leftText(d) !== null)) {
     columns.push({
       key: 'left',
-      label: 'Left blank',
+      label: t('Left blank'),
       align: 'right',
       render: (d) => leftText(reported.get(d.documentId)) ?? '',
     });
@@ -838,7 +870,7 @@ const JobDocuments = ({ job, projectId, plan }) => {
   if (some('translations', 'refreshed')) {
     columns.push({
       key: 'translations',
-      label: 'Translations',
+      label: t('Translations'),
       align: 'right',
       sort: (d) => (d.counts?.translations ?? 0) + (d.counts?.refreshed ?? 0),
       render: (d) => ((d.counts?.translations ?? 0) + (d.counts?.refreshed ?? 0)).toLocaleString(),
@@ -850,21 +882,21 @@ const JobDocuments = ({ job, projectId, plan }) => {
       key: 'history',
       // Its links are named "Changes": the column is too, and the count
       // beside it "Changes written", as the report's totals say (RPF3-E).
-      label: 'Changes',
+      label: t('Changes'),
       render: (d) => (
         <JobHistoryLinks projectId={projectId} document={d} running={isJobActive(job)} />
       ),
     });
   }
   for (const [key, label] of [
-    ['words', 'Words'],
-    ['links', 'Links'],
-    ['entries', 'Entries'],
-    ['changes', 'Changes written'],
-    ['deletions', 'Deletions'],
-    ['peoplesValuesChanged', 'People’s values, morphemes and links changed or removed'],
-    ['textChanges', 'Changes to the text'],
-    ['proposed', 'Proposed'],
+    ['words', t('Words')],
+    ['links', t('Links')],
+    ['entries', t('Entries')],
+    ['changes', t('Changes written')],
+    ['deletions', t('Deletions')],
+    ['peoplesValuesChanged', t('People’s values, morphemes and links changed or removed')],
+    ['textChanges', t('Changes to the text')],
+    ['proposed', t('Proposed')],
   ]) {
     if (some(key)) {
       columns.push({
@@ -879,7 +911,7 @@ const JobDocuments = ({ job, projectId, plan }) => {
   if (toCheck.length) {
     columns.push({
       key: 'check',
-      label: 'To check',
+      label: t('To check'),
       // Wide enough that a row stays a line or two where the table scrolls.
       className: 'min-w-[18rem]',
       render: (d) =>
@@ -908,27 +940,28 @@ const JobDocuments = ({ job, projectId, plan }) => {
       defaultSort={{ key: 'order', dir: 'asc' }}
       pageParam="page"
       search={{
-        placeholder: 'Search documents…',
+        placeholder: t('Search documents…'),
         match: (d, q) => textIncludes(d.name ?? '', q),
       }}
-      noun="document"
+      countLabel={(v) => t('{total} {n, plural, one {document} other {documents}}', v)}
+      noMatch={t('No documents match.')}
       // The filter says how many it shows once the job has ended.
       showCount={!ended}
-      empty="Nothing."
+      empty={t('Nothing.')}
       actions={
         ended && (
           <SegmentedControl
-            label="Show"
+            label={t('Show')}
             value={filter}
             onChange={setFilter}
             options={[
-              { value: 'all', label: 'All', count: rows.length.toLocaleString() },
-              { value: 'check', label: 'To check', count: toCheck.length.toLocaleString() },
+              { value: 'all', label: t('All'), count: rows.length.toLocaleString() },
+              { value: 'check', label: t('To check'), count: toCheck.length.toLocaleString() },
               ...(CHECK_KINDS[filter]
                 ? [
                     {
                       value: filter,
-                      label: CHECK_KINDS[filter],
+                      label: t(CHECK_KINDS[filter]),
                       count: ofKind(filter).length.toLocaleString(),
                     },
                   ]

@@ -8,6 +8,8 @@
 // key) that sends a message: it asks for permission the first time, and wakes
 // the audio the chime will play on.
 
+import { t } from '../../lib/i18n.js';
+
 export const TITLE_MARK = '● ';
 
 let audio = null;
@@ -41,7 +43,7 @@ const chime = () => {
     const Ctx = AudioCtx();
     if (!Ctx) return;
     audio ??= new Ctx();
-    const t = audio.currentTime;
+    const now = audio.currentTime;
     [
       [880, 0],
       [1318.5, 0.12],
@@ -50,13 +52,13 @@ const chime = () => {
       const gain = audio.createGain();
       osc.type = 'sine';
       osc.frequency.value = hz;
-      gain.gain.setValueAtTime(0, t + at);
-      gain.gain.linearRampToValueAtTime(0.08, t + at + 0.02);
-      gain.gain.exponentialRampToValueAtTime(0.0001, t + at + 0.45);
+      gain.gain.setValueAtTime(0, now + at);
+      gain.gain.linearRampToValueAtTime(0.08, now + at + 0.02);
+      gain.gain.exponentialRampToValueAtTime(0.0001, now + at + 0.45);
       osc.connect(gain);
       gain.connect(audio.destination);
-      osc.start(t + at);
-      osc.stop(t + at + 0.5);
+      osc.start(now + at);
+      osc.stop(now + at + 0.5);
     });
   } catch {
     // No audio here.
@@ -100,7 +102,7 @@ const notify = (title, body, tag, onOpen) => {
 // notification is clicked. Answers whether it signalled.
 export const signalTurnEnded = ({ title, body, tag, onOpen }) => {
   if (typeof document === 'undefined' || !document.hidden) return false;
-  notify(title || 'Assistant', body, tag, onOpen);
+  notify(title || t('Assistant'), body, tag, onOpen);
   chime();
   markTitle();
   return true;
@@ -111,8 +113,8 @@ export const signalTurnEnded = ({ title, body, tag, onOpen }) => {
 // only lost contact with, and one turned down before it began.
 export const turnEnding = (j) => {
   if (j.kind !== 'turn' || j.stopping || j.declined || j.gone) return null;
-  if (j.error) return j.error.pending ? null : 'Failed';
-  if (j.outcome?.kind === 'turn') return 'Finished';
-  if (j.outcome?.kind === 'stopped') return 'Stopped';
+  if (j.error) return j.error.pending ? null : t('Failed');
+  if (j.outcome?.kind === 'turn') return t('Finished');
+  if (j.outcome?.kind === 'stopped') return t('Stopped');
   return null;
 };

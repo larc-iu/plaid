@@ -3,10 +3,13 @@
 // Nothing about the document changes while a send is retried, so a pill
 // repaints on the browser's `online` and `offline` events (`onOnlineChange`)
 // to keep the wording true.
-// Imports nothing.
+// Imports nothing but the language.
+import { t } from './i18n.js';
 
 export const retryingText = () =>
-  globalThis.navigator?.onLine === false ? 'Offline, retrying' : "Can't reach the server, retrying";
+  globalThis.navigator?.onLine === false
+    ? t('Offline, retrying')
+    : t("Can't reach the server, retrying");
 
 /** Run `fn` when the browser goes offline or comes back. Returns the unsubscribe. */
 export const onOnlineChange = (fn) => {

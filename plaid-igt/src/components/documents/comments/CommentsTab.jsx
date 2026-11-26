@@ -5,6 +5,7 @@ import { useDocumentModel } from '@ui/domain/useDocumentModel.js';
 import { buildAnchorIndex } from '@/domain/commentAnchors';
 import { CommentsBrowser } from '@ui/components/shared/CommentsBrowser';
 import { APP_ROUTES } from '@/appRoutes';
+import { t } from '@ui/lib/i18n.js';
 
 // The document's Comments tab: every thread in the document, described by the
 // shared IgtDocument, with the document's own thread pinned first.
@@ -38,9 +39,11 @@ export const CommentsTab = () => {
       // Deep-link into the interlinear editor, focused on the sentence the
       // thread hangs off.
       jumpHref={(sentenceId) => APP_ROUTES.sentence(projectId, documentId, sentenceId)}
-      jumpTitle="Show in the interlinear editor"
-      emptyText="Nothing else in this document has comments yet. Add one from the Analyze tab by hovering a word or a sentence."
-      positionLabel="In text order"
+      jumpTitle={t('Show in the interlinear editor')}
+      emptyText={t(
+        'Nothing else in this document has comments yet. Add one from the Analyze tab by hovering a word or a sentence.',
+      )}
+      positionLabel={t('In text order')}
     />
   );
 };

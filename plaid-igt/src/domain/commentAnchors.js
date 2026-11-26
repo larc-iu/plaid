@@ -14,6 +14,7 @@
 // Framework-agnostic, like everything else under domain/.
 
 import { anchorExcerpt, anchorName, documentAnchor, quoted } from '@ui/domain/commentAnchors';
+import { t } from '@ui/lib/i18n.js';
 
 /**
  * Build `entityId -> { kind, label, detail, sentenceIndex, sentenceId, jumpId }`
@@ -44,7 +45,7 @@ export function buildAnchorIndex(doc) {
   if (textId) {
     index.set(textId, {
       kind: 'text',
-      label: 'Baseline text',
+      label: t('Baseline text'),
       detail: '',
       sentenceIndex: null,
       sentenceId: null,
@@ -55,12 +56,13 @@ export function buildAnchorIndex(doc) {
 
   const sentences = doc.sentences || [];
   sentences.forEach((sentence, sIdx) => {
-    const where = `sentence ${sIdx + 1}`;
+    const n = sIdx + 1;
+    const where = t('sentence {n}', { n });
     const at = { sentenceIndex: sIdx, sentenceId: sentence.id, jumpId: sentence.id };
 
     index.set(sentence.id, {
       kind: 'sentence',
-      label: `Sentence ${sIdx + 1}`,
+      label: t('Sentence {n}', { n }),
       detail: quoted(anchorExcerpt(sentenceText(sentence))),
       excerpt: anchorExcerpt(sentenceText(sentence)),
       ...at,
@@ -71,7 +73,7 @@ export function buildAnchorIndex(doc) {
       if (span?.id) {
         index.set(span.id, {
           kind: 'annotation',
-          label: `${field} of sentence ${sIdx + 1}`,
+          label: t('{field} of sentence {n}', { field, n }),
           detail: quoted(anchorExcerpt(span.value)),
           excerpt: anchorExcerpt(span.value),
           ...at,
@@ -84,7 +86,7 @@ export function buildAnchorIndex(doc) {
     (sentence.tokens || []).forEach((token, wIdx) => {
       index.set(token.id, {
         kind: 'word',
-        label: anchorName(token.content) || 'Word',
+        label: anchorName(token.content) || t('Word'),
         detail: where,
         ...at,
         order: [sIdx, wIdx, -1, 0],
@@ -95,7 +97,7 @@ export function buildAnchorIndex(doc) {
         if (span?.id) {
           index.set(span.id, {
             kind: 'annotation',
-            label: `${field} of ${anchorName(token.content)}`,
+            label: t('{field} of {name}', { field, name: anchorName(token.content) }),
             detail: where,
             ...at,
             order: [sIdx, wIdx, -1, 1],
@@ -108,8 +110,8 @@ export function buildAnchorIndex(doc) {
         const form = anchorName(morph.metadata?.form || morph.content);
         index.set(morph.id, {
           kind: 'morpheme',
-          label: form || 'Morpheme',
-          detail: `in ${anchorName(token.content)}, ${where}`,
+          label: form || t('Morpheme'),
+          detail: t('in {word}, sentence {n}', { word: anchorName(token.content), n }),
           ...at,
           order: [sIdx, wIdx, mIdx, 0],
           parentId: token.id,
@@ -119,8 +121,8 @@ export function buildAnchorIndex(doc) {
           if (span?.id) {
             index.set(span.id, {
               kind: 'annotation',
-              label: `${field} of ${form}`,
-              detail: `in ${anchorName(token.content)}, ${where}`,
+              label: t('{field} of {name}', { field, name: form }),
+              detail: t('in {word}, sentence {n}', { word: anchorName(token.content), n }),
               ...at,
               order: [sIdx, wIdx, mIdx, 1],
               parentId: morph.id,
@@ -139,7 +141,7 @@ export function buildAnchorIndex(doc) {
 function sentenceText(sentence) {
   const pieces = sentence.pieces || [];
   if (pieces.length) return pieces.map((p) => p.content ?? '').join('');
-  return (sentence.tokens || []).map((t) => t.content).join(' ');
+  return (sentence.tokens || []).map((token) => token.content).join(' ');
 }
 
 /**
@@ -153,7 +155,7 @@ export function buildEntryAnchorIndex(items, { glossField = 'gloss' } = {}) {
     if (!item?.id) continue;
     index.set(item.id, {
       kind: 'entry',
-      label: anchorName(item.form) || 'Entry',
+      label: anchorName(item.form) || t('Entry'),
       detail: quoted(anchorExcerpt(item.metadata?.[glossField])),
       sentenceIndex: null,
       sentenceId: null,

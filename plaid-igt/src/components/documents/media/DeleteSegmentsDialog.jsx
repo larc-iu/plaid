@@ -3,7 +3,7 @@ import { ConfirmDeleteDialog } from '@ui/components/shared/ConfirmDeleteDialog';
 import { Input } from '@ui/components/ui/input';
 import { notifySuccess } from '@/utils/feedback';
 import { segmentsWithText } from '@/domain/segments.js';
-import { plural } from '@ui/lib/plural.js';
+import { msg, t } from '@ui/lib/i18n.js';
 
 // Deleting segments in bulk: all of them, the ones with no text, or the ones
 // whose text is a given value. The baseline text is left alone whichever is
@@ -11,9 +11,9 @@ import { plural } from '@ui/lib/plural.js';
 // do is never a surprise. Placeholders a person makes and never types into
 // were the first request, from transcribing by ear.
 const SCOPES = [
-  ['empty', 'Segments with no text'],
-  ['text', 'Segments whose text is'],
-  ['all', 'All segments'],
+  ['empty', msg('Segments with no text')],
+  ['text', msg('Segments whose text is')],
+  ['all', msg('All segments')],
 ];
 
 export function DeleteSegmentsDialog({ open, onOpenChange, doc, alignmentTokens }) {
@@ -26,7 +26,6 @@ export function DeleteSegmentsDialog({ open, onOpenChange, doc, alignmentTokens 
     return value.trim() === '' ? [] : segmentsWithText(alignmentTokens, doc.body, value);
   }, [scope, value, alignmentTokens, doc.body]);
   const count = targets.length;
-  const noun = plural(count, 'segment');
 
   const confirm = async () => {
     onOpenChange(false);
@@ -34,21 +33,32 @@ export function DeleteSegmentsDialog({ open, onOpenChange, doc, alignmentTokens 
       scope === 'all'
         ? await doc.clearAlignments()
         : await doc.deleteAlignments(targets.map((t) => t.id));
-    if (ok) notifySuccess(`Deleted ${count} ${noun}`, 'Segments deleted');
+    if (ok)
+      notifySuccess(
+        t('{n, plural, one {Deleted {n} segment} other {Deleted {n} segments}}', { n: count }),
+        t('Segments deleted'),
+      );
   };
 
   return (
     <ConfirmDeleteDialog
       open={open}
       onOpenChange={onOpenChange}
-      title="Delete segments?"
-      confirmLabel={count ? `Delete ${count} ${noun}` : 'Delete'}
+      title={t('Delete segments?')}
+      confirmLabel={
+        count
+          ? t('{n, plural, one {Delete {n} segment} other {Delete {n} segments}}', { n: count })
+          : t('Delete')
+      }
       confirmDisabled={count === 0}
       onConfirm={confirm}
       description={
         count === 0
-          ? 'No segments match.'
-          : `${count} ${noun}. Times and speakers are removed. The baseline text is unchanged.`
+          ? t('No segments match.')
+          : t(
+              '{n, plural, one {{n} segment} other {{n} segments}}. Times and speakers are removed. The baseline text is unchanged.',
+              { n: count },
+            )
       }
     >
       <div role="radiogroup" className="flex flex-col gap-2 text-foreground">
@@ -61,10 +71,10 @@ export function DeleteSegmentsDialog({ open, onOpenChange, doc, alignmentTokens 
               checked={scope === key}
               onChange={() => setScope(key)}
             />
-            <span className="shrink-0">{label}</span>
+            <span className="shrink-0">{t(label)}</span>
             {key === 'text' && (
               <Input
-                aria-label="Segment text"
+                aria-label={t('Segment text')}
                 value={value}
                 onFocus={() => setScope('text')}
                 onChange={(e) => setValue(e.target.value)}

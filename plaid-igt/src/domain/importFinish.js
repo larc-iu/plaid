@@ -3,8 +3,9 @@
 import { markImportFinished, readImportState, readInitialized } from './igtConfig.js';
 import { declareIgtRules } from './igtConstraints.js';
 import { notInForceText } from '../components/projects/settings/refusedValues.js';
+import { t } from '../../../plaid-ui/src/lib/i18n.js';
 
-/** The import record's kind for a Plaid IGT archive (ImportNativeProject.jsx). */
+/** The import record's kind for a Plaid IGT archive (ImportNativeProject.jsx). Stored, not shown. */
 export const NATIVE_IMPORT_KIND = 'Plaid IGT archive';
 
 /**
@@ -36,7 +37,7 @@ export const finishImport = async (client, projectId) => {
     warnings.push(...notInForce.map((f) => notInForceText([f])));
   } catch (err) {
     console.error('Could not put the annotation rules in force:', err);
-    warnings.push('The annotation rules were not set.');
+    warnings.push(t('The annotation rules were not set.'));
   }
   return { cleared: await markImportFinished(client, projectId), warnings };
 };

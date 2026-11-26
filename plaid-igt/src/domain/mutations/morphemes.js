@@ -32,6 +32,7 @@ import {
   virtualMorphemeWordId,
 } from '../virtualMorpheme.js';
 import { notSetUp } from '@ui/domain/setupGuard.js';
+import { t, msg } from '@ui/lib/i18n.js';
 
 // A person's edit of a morpheme carries the writer's edit stamp (provenance
 // write-contract rule 3): a verifier's edit confirms a machine-made or
@@ -74,7 +75,7 @@ const resolveMorpheme = (doc, morphemeId) => {
   }
   if (!isVirtualMorphemeId(morphemeId)) return null;
   const wordId = settledId(virtualMorphemeWordId(morphemeId));
-  const word = (info.primaryTokenLayer?.tokens || []).find((t) => t.id === wordId);
+  const word = (info.primaryTokenLayer?.tokens || []).find((tok) => tok.id === wordId);
   return word ? { virtual: true, word } : null;
 };
 
@@ -105,8 +106,8 @@ const nullSlots = (siblings) => {
 // on the layer and sent in the edit's batch: `[morpheme, change]` pairs.
 const applyChanges = (layer, pairs) =>
   pairs.forEach(([m, change]) => {
-    const t = layer.tokens.find((x) => x.id === m.id);
-    if (t) t.metadata = mergeMetadata(t.metadata, change);
+    const tok = layer.tokens.find((x) => x.id === m.id);
+    if (tok) tok.metadata = mergeMetadata(tok.metadata, change);
   });
 const sendChanges = (b, pairs) =>
   pairs.forEach(([m, change]) => b.tokens.patchMetadata(settledId(m.id), metadataOps(change)));
@@ -141,12 +142,13 @@ export const morphemeMutations = {
       this.refuse(notSetUp('Morpheme layer not configured'));
       return false;
     }
-    const word = (info.primaryTokenLayer?.tokens || []).find((t) => t.id === wordTokenId);
+    const word = (info.primaryTokenLayer?.tokens || []).find((tok) => tok.id === wordTokenId);
     if (!word) {
-      this.refuse('Word not found');
+      this.refuse(t('Word not found'));
       return false;
     }
-    const label = forms.length === 1 ? 'Failed to create morpheme' : 'Failed to create morphemes';
+    const label =
+      forms.length === 1 ? msg('Failed to create morpheme') : msg('Failed to create morphemes');
     if (!this._canWrite(label)) return false;
     const { next: base, slots } = nullSlots(
       sortByPrecedence(morphemesInWord(morphemeLayer.tokens, word)),
@@ -241,7 +243,7 @@ export const morphemeMutations = {
   async splitMorphemeMulti(morphemeId, segments, { joiners = [] } = {}) {
     if (!Array.isArray(segments) || segments.length < 2) {
       console.error('splitMorphemeMulti needs at least two segments', segments);
-      this.refuse('Could not split the morpheme.');
+      this.refuse(t('Could not split the morpheme.'));
       return false;
     }
     const info = this.layerInfo;
@@ -253,10 +255,10 @@ export const morphemeMutations = {
     }
     const resolved = resolveMorpheme(this, morphemeId);
     if (!resolved) {
-      this.refuse('Morpheme not found');
+      this.refuse(t('Morpheme not found'));
       return false;
     }
-    const label = 'Failed to split morpheme';
+    const label = msg('Failed to split morpheme');
     if (!this._canWrite(label)) return false;
 
     // Splitting a word nobody has analyzed makes the morpheme being split,
@@ -339,8 +341,8 @@ export const morphemeMutations = {
       if (resolved.virtual) {
         layer.tokens.push({ ...target, text: textId, metadata: firstMeta });
       } else {
-        const t = layer.tokens.find((m) => m.id === target.id);
-        if (t) t.metadata = mergeMetadata(t.metadata, firstMeta);
+        const tok = layer.tokens.find((m) => m.id === target.id);
+        if (tok) tok.metadata = mergeMetadata(tok.metadata, firstMeta);
         layer.tokens.forEach((m) => {
           if (slots.has(m.id)) {
             m.precedence = slots.get(m.id);
@@ -426,14 +428,14 @@ export const morphemeMutations = {
     if (isVirtualMorphemeId(morphemeId)) return false;
     const target = (morphemeLayer?.tokens || []).find((m) => m.id === morphemeId);
     if (!target) {
-      this.refuse('Morpheme not found');
+      this.refuse(t('Morpheme not found'));
       return false;
     }
     const siblings = sortByPrecedence(morphemesInWord(morphemeLayer.tokens, target));
     const idx = siblings.findIndex((m) => m.id === morphemeId);
     if (idx <= 0) return false;
     const previous = siblings[idx - 1];
-    const label = 'Failed to merge morphemes';
+    const label = msg('Failed to merge morphemes');
     if (!this._canWrite(label)) return false;
 
     const body = this.body;
@@ -509,20 +511,20 @@ export const morphemeMutations = {
     // A virtual morpheme is its word's last one, and it holds nothing to throw
     // away, the same refusal a sole real morpheme gets, for the same reason.
     if (isVirtualMorphemeId(morphemeId)) {
-      this.refuse('Cannot delete the last morpheme of a word');
+      this.refuse(t('Cannot delete the last morpheme of a word'));
       return false;
     }
     const target = (morphemeLayer?.tokens || []).find((m) => m.id === morphemeId);
     if (!target) {
-      this.refuse('Morpheme not found');
+      this.refuse(t('Morpheme not found'));
       return false;
     }
     const siblings = sortByPrecedence(morphemesInWord(morphemeLayer.tokens, target));
     if (siblings.length <= 1) {
-      this.refuse('Cannot delete the last morpheme of a word');
+      this.refuse(t('Cannot delete the last morpheme of a word'));
       return false;
     }
-    const label = 'Failed to delete morpheme';
+    const label = msg('Failed to delete morpheme');
     if (!this._canWrite(label)) return false;
     // A sibling storing a precedence past the target's moves down one. One
     // storing none reads last, so deleting it moves nothing.
@@ -569,10 +571,10 @@ export const morphemeMutations = {
   async updateMorphemeForm(morphemeId, form) {
     const resolved = resolveMorpheme(this, morphemeId);
     if (!resolved) {
-      this.refuse('Morpheme not found');
+      this.refuse(t('Morpheme not found'));
       return false;
     }
-    return this._writeMorphemeMeta(resolved, 'Failed to update morpheme form', (target) => ({
+    return this._writeMorphemeMeta(resolved, msg('Failed to update morpheme form'), (target) => ({
       patch: formStamped(this, target, form),
       created: { form },
     }));
@@ -584,12 +586,12 @@ export const morphemeMutations = {
   // be violated; display-side affix joints react automatically.
   async setMorphemeType(morphemeId, morphType) {
     if (!isValidMorphType(morphType)) {
-      this.refuse(`Unknown morpheme type "${morphType}"`);
+      this.refuse(t('Unknown morpheme type "{type}"', { type: morphType }));
       return false;
     }
     const resolved = resolveMorpheme(this, morphemeId);
     if (!resolved) {
-      this.refuse('Morpheme not found');
+      this.refuse(t('Morpheme not found'));
       return false;
     }
     // Clearing the type of a morpheme that has none asks for nothing, so it
@@ -632,7 +634,7 @@ export const morphemeMutations = {
       .map((id) => [{ id }, { ...(dropped.has(id) ? unkey : {}), ...changeOf(id) }]);
     return this._writeMorphemeMeta(
       resolved,
-      'Failed to set morpheme type',
+      msg('Failed to set morpheme type'),
       (target) => ({
         // A cleared type is a delete op. A type chosen here is the person's, so
         // the record that "=" set the type goes with it (R47).

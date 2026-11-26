@@ -5,6 +5,7 @@ import { appRoutes } from '../../lib/uiConfig.js';
 import { notifySuccess } from '../../lib/notify.js';
 import { DELETE_BUTTON_CLASS } from '../../lib/destructive.js';
 import { DeleteProjectDialog } from './DeleteProjectDialog.jsx';
+import { t, tx } from '../../lib/i18n.js';
 import { Button } from '../ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '../ui/card';
 
@@ -27,19 +28,22 @@ export const DeleteProjectCard = ({ project, note = null }) => {
   const navigate = useNavigate();
   const [open, setOpen] = useState(false);
 
-  const consequence = (
-    <>
-      <strong className="font-text text-foreground" dir="auto">
-        {project.name}
-      </strong>{' '}
-      and all of its documents, annotations and settings are deleted. This cannot be undone.
-    </>
+  const consequence = tx(
+    '<strong>{name}</strong> and all of its documents, annotations and settings are deleted. This cannot be undone.',
+    {
+      name: project.name,
+      strong: (c) => (
+        <strong className="font-text text-foreground" dir="auto">
+          {c}
+        </strong>
+      ),
+    },
   );
 
   return (
     <Card className="border-destructive/40">
       <CardHeader>
-        <CardTitle>Delete</CardTitle>
+        <CardTitle>{t('Delete')}</CardTitle>
       </CardHeader>
       <CardContent className="flex flex-col gap-4">
         <p className="text-sm text-muted-foreground">{consequence}</p>
@@ -48,7 +52,7 @@ export const DeleteProjectCard = ({ project, note = null }) => {
           className={`self-start ${DELETE_BUTTON_CLASS}`}
           onClick={() => setOpen(true)}
         >
-          Delete project
+          {t('Delete project')}
         </Button>
       </CardContent>
 
@@ -68,7 +72,7 @@ export const DeleteProjectCard = ({ project, note = null }) => {
         }
         onDelete={async () => {
           await getClient().projects.delete(project.id);
-          notifySuccess(`Deleted “${project.name}”`);
+          notifySuccess(t('Deleted “{name}”', { name: project.name }));
           navigate(appRoutes().projects);
         }}
       />

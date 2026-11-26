@@ -4,6 +4,7 @@ import { Turn } from './Turn.jsx';
 import { AssistantMark } from './PlaidMarks.jsx';
 import { ExportContext } from './exportContext.js';
 import { turnContext } from './transcript.js';
+import { t } from '../../lib/i18n.js';
 
 // A table the reply made, as the export shows it under the file's chip: open
 // when it is short, folded when it is not.
@@ -15,7 +16,7 @@ const FileTable = ({ file, table }) => (
       <Table2 className="h-3 w-3" />
       <span>
         <bdi>{file.name}</bdi>
-        {`, ${table.rows.length === 1 ? '1 row' : `${table.rows.length} rows`}`}
+        {`, ${t('{n, plural, one {{n} row} other {{n} rows}}', { n: table.rows.length })}`}
       </span>
     </summary>
     <div className="mt-1 max-h-96 overflow-auto rounded border">
@@ -87,7 +88,9 @@ export const ExportPage = ({
         </header>
         <div className="px-4 py-4">
           <div className="mx-auto flex max-w-3xl flex-col gap-5">
-            {display.length === 0 && <p className="text-sm text-muted-foreground">No messages.</p>}
+            {display.length === 0 && (
+              <p className="text-sm text-muted-foreground">{t('No messages.')}</p>
+            )}
             {display.map((d, i) => (
               <Turn
                 key={i}

@@ -46,10 +46,10 @@ import { mixFiles } from '@/domain/media/mixRecordings';
 import { useRecordingConversion } from './elan/useRecordingConversion';
 import { useServerLimits } from '@/hooks/useServerLimits';
 import { FORM_PAGE_WIDTH } from '@ui/lib/pageWidth.js';
-import { countOf } from '@ui/lib/plural.js';
+import { t, tx } from '@ui/lib/i18n.js';
 
 export const ImportElanProject = () => {
-  useDocumentTitle('Import from ELAN or Praat');
+  useDocumentTitle(t('Import from ELAN or Praat'));
   const { client: session } = useAuth();
   // The run's own client, so a write made elsewhere in the tab meanwhile is
   // neither stamped with its document version nor filed under its operation.
@@ -91,11 +91,11 @@ export const ImportElanProject = () => {
     if (partitionPicked(fileList).eafs.length) setStage('parsing');
     try {
       await batch.readFiles(fileList);
-      setProjectName((name) => name || 'ELAN corpus');
+      setProjectName((name) => name || 'ELAN corpus'); // i18n-ignore: a default project name, stored
       setStage('review');
     } catch (e) {
       console.error('ELAN read failed:', e);
-      notifyError(humanizeError(e), 'Failed to read the files');
+      notifyError(humanizeError(e), t('Failed to read the files'));
       setStage(batch.files ? 'review' : 'pick');
     }
   };
@@ -118,7 +118,9 @@ export const ImportElanProject = () => {
             const n = (p.index ?? 0) + 1;
             const total = p.total ?? batch.build.documents.length;
             setProgress({
-              label: `${p.doc}${p.step ? `: ${p.step}` : ''} (${n}/${total})`,
+              label: p.step
+                ? t('{doc}: {step} ({n}/{total})', { doc: p.doc, step: t(p.step), n, total })
+                : t('{doc} ({n}/{total})', { doc: p.doc, n, total }),
               pct: 15 + (n / total) * 85,
             });
           },
@@ -146,37 +148,45 @@ export const ImportElanProject = () => {
         }}
       />
       <div className="flex flex-col gap-6">
-        <ImportHeader title="Import from ELAN or Praat">
-          Create a project from a set of{' '}
-          <a
-            href="https://archive.mpi.nl/tla/elan"
-            target="_blank"
-            rel="noreferrer"
-            className="underline underline-offset-2"
-          >
-            ELAN
-          </a>{' '}
-          annotation files or Praat TextGrids. Every file becomes one document. A tier must mean the
-          same thing in every file.
+        <ImportHeader title={t('Import from ELAN or Praat')}>
+          {tx(
+            'Create a project from a set of <a>ELAN</a> annotation files or Praat TextGrids. Every file becomes one document. A tier must mean the same thing in every file.',
+            {
+              a: (c) => (
+                <a
+                  href="https://archive.mpi.nl/tla/elan"
+                  target="_blank"
+                  rel="noreferrer"
+                  className="underline underline-offset-2"
+                >
+                  {c}
+                </a>
+              ),
+            },
+          )}
         </ImportHeader>
 
         {stage === 'pick' && (
           <FileDropZone
             onFiles={handleFiles}
-            hint="Drop your .eaf or Praat .TextGrid files and their recordings here, or choose them below."
+            hint={t(
+              'Drop your .eaf or Praat .TextGrid files and their recordings here, or choose them below.',
+            )}
             onChoose={() => fileInputRef.current?.click()}
-            chooseLabel="Choose .eaf or .TextGrid files and recordings"
+            chooseLabel={t('Choose .eaf or .TextGrid files and recordings')}
           />
         )}
 
         {stage === 'parsing' && (
           <p className="text-sm text-muted-foreground" aria-live="polite">
-            {batch.decoding ? `Converting ${batch.decoding} to PCM WAV.` : 'Reading files…'}
+            {batch.decoding
+              ? t('Converting {name} to PCM WAV.', { name: batch.decoding })
+              : t('Reading files…')}
           </p>
         )}
         {stage !== 'parsing' && batch.decoding && (
           <p className="text-sm text-muted-foreground" aria-live="polite">
-            Converting {batch.decoding} to PCM WAV.
+            {t('Converting {name} to PCM WAV.', { name: batch.decoding })}
           </p>
         )}
 
@@ -244,7 +254,7 @@ export const ImportElanProject = () => {
                 <div className="flex items-center gap-2">
                   {!unfinished && (
                     <Button onClick={startImport} disabled={!canRun}>
-                      Import
+                      {t('Import')}
                     </Button>
                   )}
                   <span className="ms-2 text-xs text-muted-foreground">
@@ -259,14 +269,19 @@ export const ImportElanProject = () => {
         {stage === 'done' && results && (
           <div className="flex flex-col gap-4">
             {finishPending && <FinishPending onRetry={retryFinish} />}
-            <Panel tone="success" title="Import complete">
-              <p className="mt-1 text-xs">{results.imported} imported.</p>
+            <Panel tone="success" title={t('Import complete')}>
+              <p className="mt-1 text-xs">{t('{n} imported.', { n: results.imported })}</p>
             </Panel>
             {log.length > 0 ? (
               <WarningLog log={log} />
             ) : (
               results.warnings.length > 0 && (
-                <Panel tone="warning" title={`${countOf(results.warnings.length, 'warning')}`}>
+                <Panel
+                  tone="warning"
+                  title={t('{n, plural, one {# warning} other {# warnings}}', {
+                    n: results.warnings.length,
+                  })}
+                >
                   <ul className="mt-1 list-inside list-disc text-xs">
                     {results.warnings.map((w, i) => (
                       <li key={i}>{w}</li>
@@ -278,7 +293,7 @@ export const ImportElanProject = () => {
             {!finishPending && (
               <div>
                 <Button asChild>
-                  <Link to={`/projects/${projectIdRef.current}`}>Open project</Link>
+                  <Link to={`/projects/${projectIdRef.current}`}>{t('Open project')}</Link>
                 </Button>
               </div>
             )}

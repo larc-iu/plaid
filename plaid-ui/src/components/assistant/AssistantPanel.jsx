@@ -5,6 +5,7 @@ import { Button } from '../ui/button.jsx';
 import { AssistantChat } from './AssistantChat.jsx';
 import { AssistantPicker, ConversationHistory } from './ConversationList.jsx';
 import { runByLine } from './useAssistantAvailable.js';
+import { t } from '../../lib/i18n.js';
 
 // The assistant in the shell's dock: the same chat, a third of a screen wide,
 // beside whatever the reader is working on.
@@ -91,7 +92,7 @@ export const AssistantPanel = ({
               variant="ghost"
               size="sm"
               onClick={startNew}
-              title="New conversation"
+              title={t('New conversation')}
             >
               <Plus className="h-4 w-4" />
             </Button>
@@ -101,7 +102,7 @@ export const AssistantPanel = ({
               // drawing it twice.
               <Link
                 to={adapter.convHref(projectId, conversation.id)}
-                title="Open in Assistant"
+                title={t('Open in Assistant')}
                 className="rounded p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground"
               >
                 <Maximize2 className="h-4 w-4" />
@@ -115,11 +116,11 @@ export const AssistantPanel = ({
               {/* The panel reaches screens that are about no one thing (the
                   project's own tabs, a vocabulary list), where the old fallback
                   to "this document" named something that was not on screen. */}
-              {subjectName ? (
-                <>Ask about {subjectName}, or about the rest of the project.</>
-              ) : (
-                <>Ask about {projectName || 'this project'}.</>
-              )}
+              {subjectName
+                ? t('Ask about {name}, or about the rest of the project.', { name: subjectName })
+                : projectName
+                  ? t('Ask about {name}.', { name: projectName })
+                  : t('Ask about this project.')}
             </div>
           </div>
         )}

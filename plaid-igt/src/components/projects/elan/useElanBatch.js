@@ -21,6 +21,7 @@ import {
 import { buildElanBatch, defaultFieldName, matchMediaFiles } from '@/import/elan/buildDocuments';
 import { fieldWorksFieldNames } from '@/import/elan/tierNaming';
 import { readyRecordings } from '@/utils/readyRecordings';
+import { t } from '@ui/lib/i18n.js';
 
 // An annotation file: an .eaf, or a Praat TextGrid, which readTextGrid reads
 // into the same shape.
@@ -177,7 +178,7 @@ export function useElanBatch({
     }
     if (!eafs.length) {
       if (chosen.length) return false; // media added to an existing batch
-      throw new Error('Choose one or more .eaf or .TextGrid files.');
+      throw new Error(t('Choose one or more .eaf or .TextGrid files.'));
     }
     const parsed = [];
     for (const file of eafs) {

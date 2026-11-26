@@ -5,6 +5,7 @@ import { useAuth } from '../../contexts/useAuth.js';
 import { useDocumentTitle } from '../../hooks/useDocumentTitle.js';
 import { appRoutes } from '../../lib/uiConfig.js';
 import { notifyWarning } from '../../lib/notify.js';
+import { t } from '../../lib/i18n.js';
 import { Button } from '../ui/button';
 import { LinkedListPage, CountCell, TimeCell, NewLinkButton } from './LinkedListPage.jsx';
 import { wordCountsByProject } from '../../domain/layerCounts.js';
@@ -35,7 +36,7 @@ export const ProjectListPage = ({
   form: NewProject,
   newProjectTo,
 }) => {
-  useDocumentTitle('Projects');
+  useDocumentTitle(t('Projects'));
   const [projects, setProjects] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -62,7 +63,7 @@ export const ProjectListPage = ({
         logout('expired');
         return;
       }
-      setError('Failed to load the projects');
+      setError(t('Failed to load the projects'));
       console.error('Error fetching projects:', err);
     } finally {
       setLoading(false);
@@ -97,8 +98,8 @@ export const ProjectListPage = ({
         if (!cancelled) {
           setWordCounts({}); // leave counts unknown -> "—"
           notifyWarning(
-            'Failed to load word counts for the project list.',
-            'Word counts unavailable',
+            t('Failed to load word counts for the project list.'),
+            t('Word counts unavailable'),
           );
         }
       } finally {
@@ -121,7 +122,7 @@ export const ProjectListPage = ({
   const columns = [
     {
       key: 'name',
-      label: 'Project',
+      label: t('Project'),
       fill: true,
       sort: (p) => p.name ?? '',
       compare: compareNames,
@@ -137,7 +138,7 @@ export const ProjectListPage = ({
     },
     {
       key: 'documents',
-      label: 'Documents',
+      label: t('Documents'),
       sort: (p) => p.documentCount ?? 0,
       align: 'right',
       nowrap: true,
@@ -145,7 +146,7 @@ export const ProjectListPage = ({
     },
     {
       key: 'words',
-      label: 'Words',
+      label: t('Words'),
       // A project with no word layer counts as the smallest, which is what a
       // blank means here.
       sort: (p) => wordCounts[p.id] ?? null,
@@ -155,7 +156,7 @@ export const ProjectListPage = ({
     },
     {
       key: 'updated',
-      label: 'Updated',
+      label: t('Updated'),
       sort: (p) => (p.lastModified ? new Date(p.lastModified).getTime() : null),
       align: 'right',
       nowrap: true,
@@ -174,7 +175,7 @@ export const ProjectListPage = ({
       )}
 
       <LinkedListPage
-        title="Projects"
+        title={t('Projects')}
         action={
           newProjectTo ? (
             <NewLinkButton to={newProjectTo}>
@@ -193,14 +194,19 @@ export const ProjectListPage = ({
         error={error}
         onRetry={fetchProjects}
         empty={{
-          title: 'No projects yet',
-          hint: `Create one with ${newProject}, or ask a project's maintainer for an invitation link.`,
+          title: t('No projects yet'),
+          hint: t(
+            "Create one with {action}, or ask a project's maintainer for an invitation link.",
+            { action: newProject },
+          ),
         }}
         tableId="projects"
         noun="project"
+        countLabel={(v) => t('{total} {n, plural, one {project} other {projects}}', v)}
+        noMatch={t('No projects match.')}
         defaultSort={{ key: 'updated', dir: 'desc' }}
         search={{
-          placeholder: 'Search projects…',
+          placeholder: t('Search projects…'),
           match: (p, q) => textIncludes(p.name || '', q),
         }}
       />

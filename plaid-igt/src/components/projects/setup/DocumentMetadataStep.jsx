@@ -1,3 +1,4 @@
+import { t } from '@ui/lib/i18n.js';
 import { DocumentMetadataManager } from '../settings/DocumentMetadataManager.jsx';
 
 export const DocumentMetadataStep = ({ data, onDataChange }) => {
@@ -11,7 +12,9 @@ export const DocumentMetadataStep = ({ data, onDataChange }) => {
       {/* Explanatory header */}
       <div>
         <p className="text-sm">
-          Configure which metadata fields you want to collect for each document in your project.
+          {t(
+            'Configure which metadata fields you want to collect for each document in your project.',
+          )}
         </p>
       </div>
 

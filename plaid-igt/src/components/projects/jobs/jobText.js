@@ -6,21 +6,22 @@
 import { isJobActive, planEndedText } from '@ui/domain/jobs.js';
 import { createOnce } from '@ui/lib/createOnce.js';
 import { statusOf } from '@ui/lib/errors.js';
-import { andList, countOf, plural } from '@ui/lib/plural.js';
+import { listOf, msg, t } from '@ui/lib/i18n.js';
 
 // Instructions a job can start from, which fill the Start job dialog's box
 // and can be edited there. Plain text: nothing knows them once the job is
 // started. Two kinds of work, since a job is not glossing alone: a
 // translation and a check that writes nothing. None holds a blank to fill
-// in: Start takes whatever the box holds.
+// in: Start takes whatever the box holds. The labels are messages, the texts
+// stay English: they are instructions to the model.
 export const STARTER_TEXTS = [
   {
-    label: 'Translate',
-    text: 'Write a free translation of every sentence whose translation is empty.',
+    label: msg('Translate'),
+    text: 'Write a free translation of every sentence whose translation is empty.', // i18n-ignore: instructions sent to the model
   },
   {
-    label: 'Check',
-    text: 'List every value that does not follow the guidelines. Change nothing.',
+    label: msg('Check'),
+    text: 'List every value that does not follow the guidelines. Change nothing.', // i18n-ignore: instructions sent to the model
   },
 ];
 
@@ -28,37 +29,54 @@ export const STARTER_TEXTS = [
 // JG, JH and EW): "Worked in stretches of sentences, only those with something
 // empty, 2 in smaller parts."
 const PIECES_TEXT = {
-  sentences: 'Worked in stretches of sentences',
-  document: 'Worked one document at a time',
-  selection: 'Worked on all the documents at once',
+  sentences: msg('Worked in stretches of sentences'),
+  document: msg('Worked one document at a time'),
+  selection: msg('Worked on all the documents at once'),
 };
 
+// Stands for the search in the Plan line's message, where the line is cut in
+// two around it. A character no translation holds.
+const SEARCH_MARK = String.fromCharCode(0xe000);
+
 // The Plan line in parts, as IsolatedLabel (plaid-ui) draws them: strings,
-// and `{isolate: [value]}` for a value drawn in a `<bdi>`.
+// and `{isolate: [value]}` for a value drawn in a `<bdi>`. Its first sentence
+// is how the work was cut, then each clause that qualifies it, after a comma.
 export const planParts = (plan) => {
   if (!plan) return null;
   // Planning ended with no plan: the job ended writing nothing (REV-DF3-2),
   // worded by why it ended (REV-DF4-2).
-  if (plan.by === 'none') return [`${planEndedText(plan)} Nothing was written.`];
+  if (plan.by === 'none') {
+    return [t('{ended} Nothing was written.', { ended: planEndedText(plan) })];
+  }
   const parts = [];
-  let text = PIECES_TEXT[plan.pieces] ?? plan.pieces;
+  let head = PIECES_TEXT[plan.pieces] ? t(PIECES_TEXT[plan.pieces]) : plan.pieces;
+  const clauses = [];
   // A one-step plan over some of the job's documents (the worker's
   // `documents_named`, S2-2).
-  if (plan.pieces === 'selection' && plan.documentsNamed > 0)
-    text = `Worked on ${countOf(plan.documentsNamed, 'document')} in one part`;
+  if (plan.pieces === 'selection' && plan.documentsNamed > 0) {
+    head = t('Worked on {n, plural, one {# document} other {# documents}} in one part', {
+      n: plan.documentsNamed,
+    });
+  }
   if (plan.pieces === 'sentences' && plan.search) {
     // Only the sentences the plan's search matched, said by the worker's
     // words for it (`search.said`, CONTRACT, added by SF), as read_job says it.
     // Isolated in a `<bdi>`, as the page isolates every value it shows: a
     // pattern in a right-to-left script keeps its place in the line
     // (REV-SF-2), and its text holds no invisible character (REV-G4-1).
-    parts.push(`${text}, only the sentences matching `, { isolate: [plan.search.said] });
-    text =
-      `: ` +
-      `${countOf(plan.search.sentences ?? 0, 'sentence')} in ${countOf(plan.search.documents ?? 0, 'document')}`;
-    if (plan.onlyEmpty) text += ', of them only those with something empty';
+    const [before, after] = t(
+      'Worked in stretches of sentences, only the sentences matching {search}: {sentences, plural, one {# sentence} other {# sentences}} in {documents, plural, one {# document} other {# documents}}',
+      {
+        search: SEARCH_MARK,
+        sentences: plan.search.sentences ?? 0,
+        documents: plan.search.documents ?? 0,
+      },
+    ).split(SEARCH_MARK);
+    parts.push(before, { isolate: [plan.search.said] });
+    head = after;
+    if (plan.onlyEmpty) clauses.push(t('of them only those with something empty'));
   } else if (plan.pieces === 'sentences' && plan.onlyEmpty) {
-    text += ', only those with something empty';
+    clauses.push(t('only those with something empty'));
   }
   // The documents worked apart, in stretches of sentences, whatever the
   // fallback's reason (too long for one piece, its piece failed, its write
@@ -68,19 +86,24 @@ export const planParts = (plan) => {
   if (plan.pieces === 'selection' && fallback.length) {
     const failed = fallback.some((f) => f.documentId === null || f.documentId === undefined);
     const apart = fallback.filter((f) => f.documentId).length;
-    if (failed) text += ', then in stretches of sentences';
-    else if (apart) text += `, then ${apart.toLocaleString()} in stretches of sentences`;
+    if (failed) clauses.push(t('then in stretches of sentences'));
+    else if (apart) clauses.push(t('then {n, number} in stretches of sentences', { n: apart }));
   } else if (fallback.length) {
-    text += `, ${fallback.length.toLocaleString()} in smaller parts`;
+    clauses.push(t('{n, number} in smaller parts', { n: fallback.length }));
   }
-  text += '.';
+  const sentences = [[head, ...clauses].join(', ') + '.'];
   // What the plan fills, by the names the report gives (REV-DF-D-1).
   if (Array.isArray(plan.fillsNames)) {
-    text += plan.fillsNames.length ? ` Fills: ${plan.fillsNames.join(', ')}.` : ' Fills nothing.';
+    sentences.push(
+      plan.fillsNames.length
+        ? t('Fills: {names}.', { names: plan.fillsNames.join(', ') })
+        : t('Fills nothing.'),
+    );
   }
   // The plan says the instructions ask for the text itself to change
   // (plan_work's edits_text): only then may the job edit it.
-  return [...parts, plan.editsText ? `${text} Text may be edited.` : text];
+  if (plan.editsText) sentences.push(t('Text may be edited.'));
+  return [...parts, sentences.join(' ')];
 };
 
 // What each kind of change a job counts is called (the worker's
@@ -89,12 +112,12 @@ export const planParts = (plan) => {
 // beside one, a value is one set on its own (the analyses' values are theirs:
 // REV-RPF2-2).
 const CHANGE_PART_WORDS = {
-  values: ['value', 'values'],
-  analyses: ['word analysis', 'word analyses'],
-  links: ['link', 'links'],
-  entries: ['lexicon entry', 'lexicon entries'],
-  text: ['text edit', 'text edits'],
-  other: ['other change', 'other changes'],
+  values: msg('{n, plural, one {# value} other {# values}}'),
+  analyses: msg('{n, plural, one {# word analysis} other {# word analyses}}'),
+  links: msg('{n, plural, one {# link} other {# links}}'),
+  entries: msg('{n, plural, one {# lexicon entry} other {# lexicon entries}}'),
+  text: msg('{n, plural, one {# text edit} other {# text edits}}'),
+  other: msg('{n, plural, one {# other change} other {# other changes}}'),
 };
 const PART_ORDER = Object.keys(CHANGE_PART_WORDS);
 const HELD = ['morphemes', 'values'];
@@ -123,21 +146,31 @@ export const changesText = (n, parts) => {
   const shown = (parts || []).filter((p) => p.n > 0);
   const analysed = shown.some((p) => p.kind === 'analyses');
   const said = shown.map((p) => {
+    // A kind the worker added since: its own code, after the count.
     if (!CHANGE_PART_WORDS[p.kind]) return `${p.n.toLocaleString()} ${p.kind}`;
-    const base = countOf(p.n, ...CHANGE_PART_WORDS[p.kind]);
-    if (p.kind === 'values' && analysed)
-      return `${base} ${p.n === 1 ? 'on its own' : 'on their own'}`;
+    if (p.kind === 'values' && analysed) {
+      return t('{n, plural, one {# value on its own} other {# values on their own}}', { n: p.n });
+    }
     if (p.kind === 'analyses') {
       const held = [
-        ...(p.morphemes > 0 ? [countOf(p.morphemes, 'morpheme')] : []),
-        ...(p.values > 0 ? [countOf(p.values, 'value')] : []),
+        ...(p.morphemes > 0
+          ? [t('{n, plural, one {# morpheme} other {# morphemes}}', { n: p.morphemes })]
+          : []),
+        ...(p.values > 0
+          ? [t('{n, plural, one {# value} other {# values}}', { n: p.values })]
+          : []),
       ];
-      if (held.length) return `${base} holding ${held.join(' and ')}`;
+      if (held.length) {
+        return t('{n, plural, one {# word analysis} other {# word analyses}} holding {held}', {
+          n: p.n,
+          held: listOf(held),
+        });
+      }
     }
-    return base;
+    return t(CHANGE_PART_WORDS[p.kind], { n: p.n });
   });
-  const count = (n ?? 0).toLocaleString();
-  return said.length ? `${count} (${andList(said)})` : count;
+  const total = (n ?? 0).toLocaleString();
+  return said.length ? t('{total} ({parts})', { total, parts: listOf(said) }) : total;
 };
 
 // Whether a job edited the text, by its report's counts or its documents'.
@@ -165,9 +198,10 @@ export const serverEndLine = (job) => {
   const failed =
     ['worker-lost', 'starter-access'].includes(job.reason) && report.notice === undefined;
   if (!stopped && !failed) return null;
-  const hedge = job.wrote ? 'The counts are what its worker recorded before it stopped.' : null;
+  const hedge = job.wrote ? t('The counts are what its worker recorded before it stopped.') : null;
   if (!stopped) return hedge;
-  return hedge ? `Stopped with no worker running. ${hedge}` : 'Stopped with no worker running.';
+  const line = t('Stopped with no worker running.');
+  return hedge ? `${line} ${hedge}` : line;
 };
 
 export const wroteNothing = (job) => {
@@ -190,108 +224,159 @@ export const wroteNothing = (job) => {
 // apostrophe included. Null when the job
 // changed nothing people wrote and nothing of the text.
 export const noticeText = (totals) => {
-  const t = totals || {};
+  const c = totals || {};
   const out = [];
-  const people = t.peoplesValuesChanged || 0;
+  const people = c.peoplesValuesChanged || 0;
   if (people) {
     // Those a lexicon change took or moved outside the job's documents (S6-2).
-    const elsewhere = t.peoplesOutside || 0;
+    const elsewhere = c.peoplesOutside || 0;
     out.push(
-      `People's work: ${countOf(people, 'value, morpheme or link', 'values, morphemes or links')} ` +
-        `people wrote ${people === 1 ? 'was' : 'were'} changed or removed` +
-        (elsewhere ? `, ${elsewhere.toLocaleString()} of them outside the job's documents` : '') +
-        '. What the job wrote in their place is unverified.',
+      elsewhere
+        ? t(
+            "People's work: {n, plural, one {# value, morpheme or link people wrote was} other {# values, morphemes or links people wrote were}} changed or removed, {elsewhere, number} of them outside the job's documents. What the job wrote in their place is unverified.",
+            { n: people, elsewhere },
+          )
+        : t(
+            "People's work: {n, plural, one {# value, morpheme or link people wrote was} other {# values, morphemes or links people wrote were}} changed or removed. What the job wrote in their place is unverified.",
+            { n: people },
+          ),
     );
   }
-  const added = t.wordsAdded || 0;
-  const changed = t.tokensChanged || 0;
+  const added = c.wordsAdded || 0;
+  const changed = c.tokensChanged || 0;
   const said = [
-    ...(added ? [`${countOf(added, 'word')} added`] : []),
+    ...(added ? [t('{n, plural, one {# word} other {# words}} added', { n: added })] : []),
     ...(changed
       ? [
-          `${countOf(changed, 'existing word or punctuation mark', 'existing words or punctuation marks')} changed or removed`,
+          t(
+            '{n, plural, one {# existing word or punctuation mark} other {# existing words or punctuation marks}} changed or removed',
+            { n: changed },
+          ),
         ]
       : []),
   ];
-  if (said.length) out.push(`Text: ${said.join(', ')}.`);
-  else if (t.textChanges) {
-    out.push(`Text: ${countOf(t.textChanges, 'text edit')}, no word added, changed or removed.`);
+  if (said.length) out.push(t('Text: {parts}.', { parts: said.join(', ') }));
+  else if (c.textChanges) {
+    out.push(
+      t(
+        'Text: {n, plural, one {# text edit} other {# text edits}}, no word added, changed or removed.',
+        { n: c.textChanges },
+      ),
+    );
   }
   // What the whole-selection step did, after which nothing more is worked
   // (the lead's ruling after RP4-5), and that it did not read every sentence
   // where it did not.
-  const one = t.documentsInOneStep || 0;
+  const one = c.documentsInOneStep || 0;
   if (one) {
-    const k = t.documentsChangedInOneStep || 0;
-    const of = t.documentsInJob || one;
+    const k = c.documentsChangedInOneStep || 0;
+    const of = c.documentsInJob || one;
     // "All" and "its one" only when the step ended every document of the
     // job (REV-SF2-2).
     let did;
     if (of > one) {
-      const what =
-        one === 1
-          ? k
-            ? 'changed it'
-            : 'did not change it'
-          : `changed ${k ? k.toLocaleString() : 'none'} of them`;
-      did = `The job worked on ${one.toLocaleString()} of its ${of.toLocaleString()} documents in one step and ${what}.`;
+      if (one === 1) {
+        did = k
+          ? t('The job worked on 1 of its {of, number} documents in one step and changed it.', {
+              of,
+            })
+          : t(
+              'The job worked on 1 of its {of, number} documents in one step and did not change it.',
+              { of },
+            );
+      } else {
+        did = k
+          ? t(
+              'The job worked on {one, number} of its {of, number} documents in one step and changed {k, number} of them.',
+              { one, of, k },
+            )
+          : t(
+              'The job worked on {one, number} of its {of, number} documents in one step and changed none of them.',
+              { one, of },
+            );
+      }
+    } else if (one === 1) {
+      did = k
+        ? t('The job worked on its one document in one step and changed it.')
+        : t('The job worked on its one document in one step and did not change it.');
     } else {
-      did =
-        one === 1
-          ? `The job worked on its one document in one step and ${k ? 'changed it' : 'did not change it'}.`
-          : `The job worked on all ${one.toLocaleString()} documents in one step and changed ${k ? k.toLocaleString() : 'none'} of them.`;
+      did = k
+        ? t(
+            'The job worked on all {one, number} documents in one step and changed {k, number} of them.',
+            { one, k },
+          )
+        : t('The job worked on all {one, number} documents in one step and changed none of them.', {
+            one,
+          });
     }
-    out.push(did + (t.documentsNotAllRead ? ' It did not read every sentence.' : ''));
+    out.push(did);
+    if (c.documentsNotAllRead) out.push(t('It did not read every sentence.'));
   }
   // Documents a big piece did not finish, nothing walked after it there,
   // by what happened in each (the worker's `ran_out`, REV-RW-R2-2).
-  const ranOut = t.documentsRanOut || 0;
+  const ranOut = c.documentsRanOut || 0;
   if (ranOut) {
     out.push(
-      `${countOf(ranOut, 'document')} ended before the job had done its work there: what it had staged there was written, and the rest was not done.`,
+      t(
+        '{n, plural, one {# document} other {# documents}} ended before the job had done its work there: what it had staged there was written, and the rest was not done.',
+        { n: ranOut },
+      ),
     );
   }
-  const unchanged = t.documentsStepUnchanged || 0;
+  const unchanged = c.documentsStepUnchanged || 0;
   if (unchanged) {
-    const one = unchanged === 1;
     out.push(
-      `${countOf(unchanged, 'document')} ${one ? 'was' : 'were'} read in part and not changed: the job's step over the documents ended before it finished ${one ? 'it' : 'them'}.`,
+      t(
+        "{n, plural, one {# document was read in part and not changed: the job's step over the documents ended before it finished it.} other {# documents were read in part and not changed: the job's step over the documents ended before it finished them.}}",
+        { n: unchanged },
+      ),
     );
   }
-  const notRead = t.documentsStepNotRead || 0;
+  const notRead = c.documentsStepNotRead || 0;
   if (notRead) {
-    const one = notRead === 1;
     out.push(
-      `${countOf(notRead, 'document')} ${one ? 'was' : 'were'} not read: the job's step over the documents ended before ${one ? 'it' : 'them'}.`,
+      t(
+        "{n, plural, one {# document was not read: the job's step over the documents ended before it.} other {# documents were not read: the job's step over the documents ended before them.}}",
+        { n: notRead },
+      ),
     );
   }
-  const failedHere = t.documentsStepFailed || 0;
+  const failedHere = c.documentsStepFailed || 0;
   if (failedHere) {
-    const one = failedHere === 1;
     out.push(
-      `${countOf(failedHere, 'document')} ${one ? 'was' : 'were'} not worked: the job's step over ${one ? 'it' : 'them'} failed.`,
+      t(
+        "{n, plural, one {# document was not worked: the job's step over it failed.} other {# documents were not worked: the job's step over them failed.}}",
+        { n: failedHere },
+      ),
     );
   }
-  const partFailed = t.documentsPartFailed || 0;
+  const partFailed = c.documentsPartFailed || 0;
   if (partFailed) {
-    const one = partFailed === 1;
     out.push(
-      `${countOf(partFailed, 'document')} ${one ? 'was' : 'were'} not worked: ${one ? 'its part' : 'the part for each'} failed.`,
+      t(
+        '{n, plural, one {# document was not worked: its part failed.} other {# documents were not worked: the part for each failed.}}',
+        { n: partFailed },
+      ),
     );
   }
-  const putOff = t.documentsPutOff || 0;
+  const putOff = c.documentsPutOff || 0;
   if (putOff) {
-    const one = putOff === 1;
     out.push(
-      `${countOf(putOff, 'document')} ${one ? 'was' : 'were'} not changed: someone was editing ${one ? 'it' : 'them'} when the job's changes there were to be written.`,
+      t(
+        "{n, plural, one {# document was not changed: someone was editing it when the job's changes there were to be written.} other {# documents were not changed: someone was editing them when the job's changes there were to be written.}}",
+        { n: putOff },
+      ),
     );
   }
   // Documents the server never answered for, ended unworked (the worker's
   // `unanswered`, REV-JR2-3).
-  const unanswered = t.documentsUnanswered || 0;
+  const unanswered = c.documentsUnanswered || 0;
   if (unanswered) {
     out.push(
-      `${unanswered.toLocaleString()} ${unanswered === 1 ? 'document was' : 'documents were'} not worked: the server did not answer.`,
+      t(
+        '{n, plural, one {# document was} other {# documents were}} not worked: the server did not answer.',
+        { n: unanswered },
+      ),
     );
   }
   return out.join(' ') || null;
@@ -300,46 +385,46 @@ export const noticeText = (totals) => {
 // The counts the top line is made of, for a report: its totals', and where
 // core's own report has no total of the text's words, its documents' summed.
 export const noticeCounts = (report) => {
-  const t = report?.totals || {};
+  const totals = report?.totals || {};
   const sum = (k) =>
-    t[k] ?? (report?.documents || []).reduce((n, d) => n + (d.counts?.[k] ?? 0), 0);
+    totals[k] ?? (report?.documents || []).reduce((n, d) => n + (d.counts?.[k] ?? 0), 0);
   return {
     // People's work outside the job's documents is in no row's own count,
     // and part of the whole (REV-SJ3-4, the worker's `build_report`).
     peoplesValuesChanged:
-      t.peoplesValuesChanged ?? sum('peoplesValuesChanged') + sum('peoplesOutside'),
+      totals.peoplesValuesChanged ?? sum('peoplesValuesChanged') + sum('peoplesOutside'),
     peoplesOutside: sum('peoplesOutside'),
     wordsAdded: sum('wordsAdded'),
     tokensChanged: sum('tokensChanged'),
     textChanges: sum('textChanges'),
     documentsRanOut:
-      t.documentsRanOut ??
+      totals.documentsRanOut ??
       (report?.documents || []).filter((d) => d.counts?.ranOut === 'written').length,
     documentsStepUnchanged:
-      t.documentsStepUnchanged ??
+      totals.documentsStepUnchanged ??
       (report?.documents || []).filter((d) => d.counts?.ranOut === 'unchanged').length,
     documentsStepNotRead:
-      t.documentsStepNotRead ??
+      totals.documentsStepNotRead ??
       (report?.documents || []).filter((d) => d.counts?.ranOut === 'not-read').length,
     documentsStepFailed:
-      t.documentsStepFailed ??
+      totals.documentsStepFailed ??
       (report?.documents || []).filter((d) => d.counts?.ranOut === 'failed').length,
     documentsPartFailed:
-      t.documentsPartFailed ??
+      totals.documentsPartFailed ??
       (report?.documents || []).filter((d) => d.counts?.ranOut === 'part-failed').length,
     documentsPutOff:
-      t.documentsPutOff ??
+      totals.documentsPutOff ??
       (report?.documents || []).filter((d) => d.counts?.ranOut === 'put-off').length,
     documentsUnanswered:
-      t.documentsUnanswered ??
+      totals.documentsUnanswered ??
       (report?.documents || []).filter((d) => d.counts?.unanswered === true).length,
     // Core's own report: the whole-selection step's documents from their rows.
-    ...(t.documentsInOneStep !== undefined
+    ...(totals.documentsInOneStep !== undefined
       ? {
-          documentsInOneStep: t.documentsInOneStep,
-          documentsInJob: t.documentsInJob,
-          documentsChangedInOneStep: t.documentsChangedInOneStep,
-          documentsNotAllRead: t.documentsNotAllRead,
+          documentsInOneStep: totals.documentsInOneStep,
+          documentsInJob: totals.documentsInJob,
+          documentsChangedInOneStep: totals.documentsChangedInOneStep,
+          documentsNotAllRead: totals.documentsNotAllRead,
         }
       : oneStepCounts(report?.documents || [])),
   };
@@ -368,11 +453,14 @@ const oneStepCounts = (docs) => {
 // report (a single piece's, or the final context's from them all).
 export const findingsPiecesText = (pieces, cut) => {
   if (!(pieces > 1)) return null;
-  if (!(cut > 0)) return `Findings of ${countOf(pieces, 'part')}, each under its heading.`;
-  return (
-    `Findings of ${(pieces - cut).toLocaleString()} of ${pieces.toLocaleString()} parts are shown ` +
-    `here, each under its heading. ${cut.toLocaleString()} ${cut === 1 ? 'is' : 'are'} left out: ` +
-    'each part’s findings are on its row of the work list.'
+  if (!(cut > 0)) {
+    return t('Findings of {n, plural, one {# part} other {# parts}}, each under its heading.', {
+      n: pieces,
+    });
+  }
+  return t(
+    'Findings of {shown, number} of {pieces, number} parts are shown here, each under its heading. {cut, plural, one {# is} other {# are}} left out: each part’s findings are on its row of the work list.',
+    { shown: pieces - cut, pieces, cut },
   );
 };
 
@@ -380,42 +468,52 @@ export const findingsPiecesText = (pieces, cut) => {
 // piece's line say it: "8 values (7 in word analyses)", the values word
 // analyses carried (the worker's `in_analyses`, REV-RPF-W-5) said, and one
 // written outside the setup said so.
-export const fieldValuesText = (f) =>
-  `${f.values.toLocaleString()} ${plural(f.values, 'value')}` +
-  (f.inAnalyses > 0 ? ` (${f.inAnalyses.toLocaleString()} in word analyses)` : '') +
-  (f.outside === true ? ', not in the setup' : '');
+export const fieldValuesText = (f) => {
+  const values =
+    f.inAnalyses > 0
+      ? t('{n, plural, one {# value} other {# values}} ({inAnalyses, number} in word analyses)', {
+          n: f.values,
+          inAnalyses: f.inAnalyses,
+        })
+      : t('{n, plural, one {# value} other {# values}}', { n: f.values });
+  return f.outside === true ? t('{values}, not in the setup', { values }) : values;
+};
 
 // What one piece of a job wrote, in the report's words for its totals, in
 // their order: "Sentences written in: 2, Changes written: 6, Words analyzed: 4,
 // Gloss: 2 values." Each target's values as the report's rows say them, one
 // written outside the setup said so. "Nothing written." when it wrote nothing.
 const PIECE_COUNTS_BEFORE = [
-  ['analyzed', 'Sentences written in'],
-  ['changes', 'Changes written'],
-  ['deletions', 'Deletions'],
-  ['peoplesValuesChanged', 'People’s values, morphemes and links changed or removed'],
-  ['textChanges', 'Changes to the text'],
-  ['wordsAdded', 'Words added'],
-  ['tokensChanged', 'Existing words or punctuation marks changed or removed'],
-  ['translations', 'Translations written'],
-  ['refreshed', 'Translations replaced'],
-  ['words', 'Words analyzed'],
+  ['analyzed', msg('Sentences written in')],
+  ['changes', msg('Changes written')],
+  ['deletions', msg('Deletions')],
+  ['peoplesValuesChanged', msg('People’s values, morphemes and links changed or removed')],
+  ['textChanges', msg('Changes to the text')],
+  ['wordsAdded', msg('Words added')],
+  ['tokensChanged', msg('Existing words or punctuation marks changed or removed')],
+  ['translations', msg('Translations written')],
+  ['refreshed', msg('Translations replaced')],
+  ['words', msg('Words analyzed')],
 ];
 const PIECE_COUNTS_AFTER = [
-  ['links', 'Lexicon links made'],
-  ['entries', 'Entries created'],
-  ['changed', 'Changes not written, changed during the job'],
-  ['repeated', 'Changes left out, sentence written before an interruption'],
+  ['links', msg('Lexicon links made')],
+  ['entries', msg('Entries created')],
+  ['changed', msg('Changes not written, changed during the job')],
+  ['repeated', msg('Changes left out, sentence written before an interruption')],
 ];
+
+// A label and its value, as the totals and a piece's line say them.
+export const labelled = (label, value) => t('{label}: {value}', { label, value });
 export const pieceWrittenText = (piece) => {
   const counts = piece?.counts || {};
   const said = (pairs) =>
     pairs
       .filter(([k]) => counts[k] > 0)
       .map(([k, label]) =>
-        k === 'changes'
-          ? `${label}: ${changesText(counts[k], piece.changesParts)}`
-          : `${label}: ${counts[k].toLocaleString()}`,
+        labelled(
+          t(label),
+          k === 'changes' ? changesText(counts[k], piece.changesParts) : counts[k].toLocaleString(),
+        ),
       );
   // A target written outside the setup reads its outside row's count, as the
   // report's rows do, in the order of their names.
@@ -426,9 +524,9 @@ export const pieceWrittenText = (piece) => {
   const fields = [...byId.values()]
     .filter((f) => f.values > 0)
     .sort((a, b) => (a.field < b.field ? -1 : a.field > b.field ? 1 : 0))
-    .map((f) => `${f.field}: ${fieldValuesText(f)}`);
+    .map((f) => labelled(f.field, fieldValuesText(f)));
   const parts = [...said(PIECE_COUNTS_BEFORE), ...fields, ...said(PIECE_COUNTS_AFTER)];
-  return parts.length ? `${parts.join(', ')}.` : 'Nothing written.';
+  return parts.length ? `${parts.join(', ')}.` : t('Nothing written.');
 };
 
 // Whether the pieces' rows count less than the documents' rows do, in any of
@@ -471,10 +569,10 @@ export const stoppedPartway = (d) =>
 // raw user id (REV-RPF3-6).
 export const whoText = (userId, job, user, names = {}) =>
   user?.id && userId === user.id
-    ? 'you'
+    ? t('you')
     : userId && userId === job?.startedBy && job.startedByName
       ? job.startedByName
-      : (names[userId] ?? 'another user');
+      : (names[userId] ?? t('another user'));
 
 // How many of a document's sentences the job skipped (its rows' skipped list,
 // and those past the list's cap). Its `done` counts them with the sentences
@@ -500,7 +598,7 @@ export const nothingFound = (d) => d?.state === 'done' && d.counts?.matched === 
 // the whole-selection step ended reads "Worked in the one step", never a
 // count of sentences it may not have opened (RP4-4 finding 2, RP4-5 F3).
 export const documentSentencesText = (d, plan = null) => {
-  if (oneStep(d)) return 'Worked in the one step';
+  if (oneStep(d)) return t('Worked in the one step');
   if (d.targets === null || d.targets === undefined) return '';
   // Under a plan limited by a search, those worked of the sentences the walk
   // takes, then the document's others as not found by the search (SF,
@@ -510,29 +608,39 @@ export const documentSentencesText = (d, plan = null) => {
   // plan's search".
   if (plan?.pieces === 'sentences' && plan.search && typeof d.counts?.matched === 'number') {
     const all = Math.max(d.sentences ?? 0, d.targets);
-    if (d.counts.matched === 0)
-      return `0 of ${all.toLocaleString()}, none found by the plan’s search`;
+    if (d.counts.matched === 0) {
+      return t('0 of {all, number}, none found by the plan’s search', { all });
+    }
     const skippedHere = Math.min(skippedCount(d), d.done ?? 0);
     const others = all - d.targets;
     return [
-      `${((d.done ?? 0) - skippedHere).toLocaleString()} of ${d.targets.toLocaleString()} matching`,
-      ...(skippedHere > 0 ? [`${skippedHere.toLocaleString()} skipped`] : []),
-      ...(tooLongCount(d) > 0 ? [`${tooLongCount(d).toLocaleString()} too long`] : []),
+      t('{done, number} of {n, number} matching', {
+        done: (d.done ?? 0) - skippedHere,
+        n: d.targets,
+      }),
+      ...(skippedHere > 0 ? [t('{n, number} skipped', { n: skippedHere })] : []),
+      ...(tooLongCount(d) > 0 ? [t('{n, number} too long', { n: tooLongCount(d) })] : []),
       ...(others > 0
         ? [
-            `${others.toLocaleString()} not found by the plan’s search` +
-              (plan.onlyEmpty ? ' or with nothing to fill' : ''),
+            plan.onlyEmpty
+              ? t('{n, number} not found by the plan’s search or with nothing to fill', {
+                  n: others,
+                })
+              : t('{n, number} not found by the plan’s search', { n: others }),
           ]
         : []),
     ].join(', ');
   }
   const skipped = Math.min(skippedCount(d), d.done ?? 0);
-  const worked = `${((d.done ?? 0) - skipped).toLocaleString()} of ${d.targets.toLocaleString()}`;
+  const worked = t('{done, number} of {n, number}', {
+    done: (d.done ?? 0) - skipped,
+    n: d.targets,
+  });
   const tooLong = tooLongCount(d);
   return [
     worked,
-    ...(skipped > 0 ? [`${skipped.toLocaleString()} skipped`] : []),
-    ...(tooLong > 0 ? [`${tooLong.toLocaleString()} too long`] : []),
+    ...(skipped > 0 ? [t('{n, number} skipped', { n: skipped })] : []),
+    ...(tooLong > 0 ? [t('{n, number} too long', { n: tooLong })] : []),
   ].join(', ');
 };
 
@@ -546,7 +654,7 @@ export const documentSentencesText = (d, plan = null) => {
 // `document_counts`, pinned equal by its test_document_counts_mirror.
 export const documentCounts = (report) => {
   const docs = report?.documents || [];
-  const t = report?.totals || {};
+  const totals = report?.totals || {};
   const changed = docs.filter((d) => d.state === 'done' && (d.counts?.changes ?? 0) > 0).length;
   const unmatched = docs.filter(nothingFound).length;
   const skipped = docs.filter(allSkipped).length;
@@ -564,16 +672,16 @@ export const documentCounts = (report) => {
   );
   const partway = unfinished.filter(stoppedPartway).length;
   return {
-    done: Math.max(0, (t.documentsDone ?? 0) - skipped - unmatched),
+    done: Math.max(0, (totals.documentsDone ?? 0) - skipped - unmatched),
     changed,
     withNothingFoundByTheSearch: unmatched,
     skipped,
     stoppedPartway: partway,
     notReached: report?.documents
       ? Math.max(0, unfinished.length - partway - leftMore)
-      : Math.max(0, (t.documentsNotReached ?? 0) - left - (t.documentsUnanswered ?? 0)),
+      : Math.max(0, (totals.documentsNotReached ?? 0) - left - (totals.documentsUnanswered ?? 0)),
     leftOut: left,
-    unanswered: report?.documents ? unanswered : (t.documentsUnanswered ?? 0),
+    unanswered: report?.documents ? unanswered : (totals.documentsUnanswered ?? 0),
   };
 };
 
@@ -587,25 +695,33 @@ export const leftText = (d) => {
   if (!d?.counts?.blank || d.leftUnread || never) return null;
   const units = d.counts.leftUnits || [];
   if (!units.length) return '0';
-  return units.map((u) => `${u.left.toLocaleString()} ${plural(u.left, u.unit)}`).join(', ');
+  return units.map((u) => unitCount(u.left, u.unit)).join(', ');
 };
 
+// A count of places in the unit Left blank lists them by (the worker's
+// `unit`: a word, a morpheme or a sentence): "4 words".
+export const unitCount = (n, unit) =>
+  t(
+    '{unit, select, word {{n, plural, one {# word} other {# words}}} morpheme {{n, plural, one {# morpheme} other {# morphemes}}} sentence {{n, plural, one {# sentence} other {# sentences}}} other {{n, number} {unit}}}',
+    { n, unit },
+  );
+
 const FAILURE_TEXT = {
-  budget: 'over budget',
-  context: 'prompt too long',
-  output: 'answer too long',
-  repeating: 'model repeated itself',
+  budget: msg('Failed: over budget'),
+  context: msg('Failed: prompt too long'),
+  output: msg('Failed: answer too long'),
+  repeating: msg('Failed: model repeated itself'),
   // The model's provider refused the call (S1-2).
-  refused: 'refused by the model',
+  refused: msg('Failed: refused by the model'),
 };
 
 // What follows a piece of the whole document or of all the documents in
 // stretches is not done in a document that ended in use, deleted or not
 // reached: those say so (REV-RW-7).
 const NOT_AGAIN = {
-  'in-use': 'Not worked again: in use.',
-  gone: 'Not worked again: deleted.',
-  'not-reached': 'Not worked again: the job ended.',
+  'in-use': msg('Not worked again: in use.'),
+  gone: msg('Not worked again: deleted.'),
+  'not-reached': msg('Not worked again: the job ended.'),
 };
 
 // How a piece that did not finish ended and what followed it, each line
@@ -617,23 +733,24 @@ export const pieceEndLines = (piece, states = new Map(), active = false) => {
   if (piece.failed) {
     out.push(
       piece.failed === 'no-answer'
-        ? 'No answer from the assistant.'
+        ? t('No answer from the assistant.')
         : `${skippedText({ reason: 'failed', kind: piece.failed })}.`,
     );
   }
   if (piece.ended) {
     // `repeating`: the same tool call failed or was repeated three times in
     // a row (REV-JR1-6), in the words a skipped sentence uses for it.
-    const what =
-      piece.ended === 'output'
-        ? 'Answer too long'
-        : piece.ended === 'repeating'
-          ? 'Model repeated itself'
-          : 'Steps used up';
+    const why = piece.ended;
     out.push(
       (piece.counts?.changes ?? 0) > 0
-        ? `${what}: written as staged.`
-        : `${what}: what it had staged was not written.`,
+        ? t(
+            '{why, select, output {Answer too long} repeating {Model repeated itself} other {Steps used up}}: written as staged.',
+            { why },
+          )
+        : t(
+            '{why, select, output {Answer too long} repeating {Model repeated itself} other {Steps used up}}: what it had staged was not written.',
+            { why },
+          ),
     );
   }
   // Its documents then worked in stretches (`rest`, how many, and
@@ -642,24 +759,47 @@ export const pieceEndLines = (piece, states = new Map(), active = false) => {
   if (piece.rest > 0 && !active) {
     const listed = piece.restDocuments || [];
     const going = listed.filter((d) => !NOT_AGAIN[states.get(d)]).length;
-    const what = piece.failed ? 'Worked again' : 'The rest worked';
+    // Worked again after a failure, or the rest of a piece that ended.
+    const again = piece.failed ? 'yes' : 'no';
     if (!piece.document && listed.length < piece.rest) {
       // Past the documents the summary lists, no outcome is claimed: only
       // how many the rest went to (REV-RW-R3-3).
       out.push(
         piece.failed
-          ? `Then ${countOf(piece.rest, 'document')} went to stretches of sentences.`
-          : `The rest went to stretches of sentences in ${countOf(piece.rest, 'document')}.`,
+          ? t(
+              'Then {n, plural, one {# document} other {# documents}} went to stretches of sentences.',
+              { n: piece.rest },
+            )
+          : t(
+              'The rest went to stretches of sentences in {n, plural, one {# document} other {# documents}}.',
+              { n: piece.rest },
+            ),
       );
     } else if (piece.document) {
-      out.push(NOT_AGAIN[states.get(piece.document)] ?? `${what} in stretches of sentences.`);
+      const notAgain = NOT_AGAIN[states.get(piece.document)];
+      out.push(
+        notAgain
+          ? t(notAgain)
+          : t(
+              '{again, select, yes {Worked again} other {The rest worked}} in stretches of sentences.',
+              { again },
+            ),
+      );
     } else if (going === 0) {
-      out.push('Not worked again.');
+      out.push(t('Not worked again.'));
     } else if (going === piece.rest) {
-      out.push(`${what} in stretches of sentences in ${countOf(going, 'document')}.`);
+      out.push(
+        t(
+          '{again, select, yes {Worked again} other {The rest worked}} in stretches of sentences in {n, plural, one {# document} other {# documents}}.',
+          { again, n: going },
+        ),
+      );
     } else {
       out.push(
-        `${what} in stretches of sentences in ${countOf(going, 'document')} of ${piece.rest.toLocaleString()}.`,
+        t(
+          '{again, select, yes {Worked again} other {The rest worked}} in stretches of sentences in {n, plural, one {# document} other {# documents}} of {rest, number}.',
+          { again, n: going, rest: piece.rest },
+        ),
       );
     }
   }
@@ -668,12 +808,13 @@ export const pieceEndLines = (piece, states = new Map(), active = false) => {
 
 // Why a sentence was left: `{reason, kind}` of a skipped entry.
 export const skippedText = ({ reason, kind }) => {
-  if (reason === 'too-long') return 'Too long';
-  if (reason === 'changed') return 'Changed during the job';
-  if (reason === 'interrupted') return 'Write interrupted';
+  if (reason === 'too-long') return t('Too long');
+  if (reason === 'changed') return t('Changed during the job');
+  if (reason === 'interrupted') return t('Write interrupted');
   // The piece's model answered twice with nothing staged and nothing said.
-  if (reason === 'no-answer') return 'No answer from the assistant';
-  if (reason === 'failed') return FAILURE_TEXT[kind] ? `Failed: ${FAILURE_TEXT[kind]}` : 'Failed';
+  if (reason === 'no-answer') return t('No answer from the assistant');
+  if (reason === 'failed') return FAILURE_TEXT[kind] ? t(FAILURE_TEXT[kind]) : t('Failed');
+  // A reason the worker added since: its own code.
   return reason;
 };
 
@@ -682,70 +823,74 @@ export const skippedText = ({ reason, kind }) => {
 // person reads under "Not done, refused:", naming the change not made
 // (REV-DF-S-4, REV-DF3-5).
 const REFUSED_TEXT = {
-  text: 'Change to words the job retyped, split, merged or deleted',
-  shape: 'Retype, split, merge or delete of words the job also changed',
-  'entry-new': 'Change that uses an entry the job made',
-  'entry-gone': 'Change that uses an entry the job deleted or merged',
-  expression: 'Link inside a multi-word expression the job made',
+  text: msg('Change to words the job retyped, split, merged or deleted'),
+  shape: msg('Retype, split, merge or delete of words the job also changed'),
+  'entry-new': msg('Change that uses an entry the job made'),
+  'entry-gone': msg('Change that uses an entry the job deleted or merged'),
+  expression: msg('Link inside a multi-word expression the job made'),
   // A job set up to fill only the words it adds (R3).
-  'not-added': 'Value on a word or sentence the job did not add',
+  'not-added': msg('Value on a word or sentence the job did not add'),
   // An analysis of a word in a sentence the piece's own plan retyped (RPF3-B).
-  retyped: 'Analysis of a word in a sentence the job retyped',
+  retyped: msg('Analysis of a word in a sentence the job retyped'),
   // A change outside the piece's own sentences (RP3-2), a text edit too
   // under onlynew (REV-RPF3B-5). Named by where, as it was never made
   // (REV-RPF3B-10).
-  outside: 'Outside the part’s own sentences',
+  outside: msg('Outside the part’s own sentences'),
   // A change in a sentence too long for a job (S8-1).
-  'too-long': 'Change in a sentence too long for a job',
+  'too-long': msg('Change in a sentence too long for a job'),
 };
-export const refusedText = (code) => REFUSED_TEXT[code] ?? 'Refused';
+export const refusedText = (code) => (REFUSED_TEXT[code] ? t(REFUSED_TEXT[code]) : t('Refused'));
 
 // Why a change the job applied is listed among the proposed changes: its
 // write was cut short (a lost answer, a crash, a refusal) and it was not
 // written. The one reason there is.
 export const changeReasonText = (reason) =>
-  reason === 'interrupted' ? 'Not written, the write was interrupted' : reason;
+  reason === 'interrupted' ? t('Not written, the write was interrupted') : reason;
 
 // Why a form the job wrote is left inconsistent, by the worker's code (a
 // closed set, each true of every analysis listed, CONTRACT, added by RPF).
 export const HARMONIZE_LEFT_TEXT = {
-  'job-differs-people-differ': 'The job’s analyses differ, and so do people’s',
-  'job-differs-no-majority': 'The job’s analyses differ, none by two thirds',
-  changed: 'Changed after the job wrote it',
-  verified: 'A person verified it after the job wrote it',
-  'beside-others': 'Also holds work that is not the job’s',
-  unvouched: 'Not checked',
-  commented: 'Has a comment',
-  'in-mwe': 'In a multi-word expression',
-  'in-use': 'Document in use',
-  refused: 'Could not be written',
+  'job-differs-people-differ': msg('The job’s analyses differ, and so do people’s'),
+  'job-differs-no-majority': msg('The job’s analyses differ, none by two thirds'),
+  changed: msg('Changed after the job wrote it'),
+  verified: msg('A person verified it after the job wrote it'),
+  'beside-others': msg('Also holds work that is not the job’s'),
+  unvouched: msg('Not checked'),
+  commented: msg('Has a comment'),
+  'in-mwe': msg('In a multi-word expression'),
+  'in-use': msg('Document in use'),
+  refused: msg('Could not be written'),
 };
 
 export const HARMONIZE_BY_TEXT = {
-  person: 'A person’s analysis',
-  majority: 'Majority',
+  person: msg('A person’s analysis'),
+  majority: msg('Majority'),
 };
 
 // What is ahead of a waiting job in the queue, from core's `ahead`. Core lets a
 // project hold one active job, so each of them is another project's.
 export const aheadText = (n) =>
-  n === 1 ? '1 job of another project ahead' : `${n.toLocaleString()} jobs of other projects ahead`;
+  t('{n, plural, one {# job of another project ahead} other {# jobs of other projects ahead}}', {
+    n,
+  });
 
 // A stretch of time for a job, which runs for minutes or hours: "Under a
 // minute", "12 min", "2 h 5 min".
 export const durationText = (ms) => {
   const minutes = Math.floor(Math.max(0, ms) / 60000);
-  if (minutes < 1) return 'Under a minute';
+  if (minutes < 1) return t('Under a minute');
   const hours = Math.floor(minutes / 60);
   const rest = minutes % 60;
-  if (!hours) return `${minutes} min`;
-  return rest ? `${hours} h ${rest} min` : `${hours} h`;
+  if (!hours) return t('{minutes} min', { minutes });
+  return rest ? t('{hours} h {minutes} min', { hours, minutes: rest }) : t('{hours} h', { hours });
 };
 
 // What the assistant panel calls a job, on the messages asked from its page
 // and in the conversation list: when it was started, by the reader's clock.
-// "Job of Nov 13, 2026, 3:10 AM".
+// "Job of Nov 13, 2026, 3:10 AM". Stored with the conversation's messages
+// (their `about`), so it stays English.
 export const jobName = (job) =>
+  // i18n-ignore: stored on the conversation's messages, as data
   `Job of ${new Date(job.createdAt).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })}`;
 
 // Where a job's page is.
@@ -807,7 +952,7 @@ export const readableSetup = (setup) =>
   );
 
 // What a card's Text row says of a setup's `text`.
-export const setupTextText = (text) => (text ? 'May be edited' : 'Unchanged');
+export const setupTextText = (text) => (text ? t('May be edited') : t('Unchanged'));
 
 // The project's job that stood in the way of a start (core's 409 `job-active`),
 // or null for any other error.

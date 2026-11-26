@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { t } from '../lib/i18n.js';
 
 // Progress for one run of one service, in the shape every spot reports it.
 //
@@ -80,7 +81,7 @@ export function useRunProgress() {
     stepCount,
     percent: overall,
     // The line under the bar: what the worker last said, else the step's name.
-    message: message || steps[stepIndex] || 'Working…',
+    message: message || steps[stepIndex] || t('Working…'),
     elapsedMs,
     start,
     step,

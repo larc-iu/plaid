@@ -316,7 +316,7 @@ export class WriteQueue {
           console.error('Reload after a refused write also failed:', refetchErr);
         }
         if (!shown) return false;
-        if (resync) await this._refetch(resync, 'Reload after a refused write');
+        if (resync) await this._refetch(resync, 'Reload after a refused write'); // i18n-ignore: names the refetch in the console
         this._behindRefusal(resync);
         return false;
       } finally {
@@ -407,11 +407,11 @@ export class WriteQueue {
   async _refetchDrained() {
     if (this.reloadWhenDrained && this._reloadDrained) {
       this._resyncWhenDrained = null;
-      await this._refetch(this._reloadDrained, 'Reload after a write');
+      await this._refetch(this._reloadDrained, 'Reload after a write'); // i18n-ignore: names the refetch in the console
     } else if (this._resyncWhenDrained) {
       const resync = this._resyncWhenDrained;
       this._resyncWhenDrained = null;
-      await this._refetch(resync, 'Reload after the writes behind a refusal');
+      await this._refetch(resync, 'Reload after the writes behind a refusal'); // i18n-ignore: names the refetch in the console
     }
   }
 

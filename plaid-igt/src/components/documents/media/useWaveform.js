@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { notifyWarning } from '@/utils/feedback';
+import { t } from '@ui/lib/i18n.js';
 import { decodeShared } from '../../../domain/vad/sharedDecode.js';
 import { readWavInfo } from '../../../domain/media/wavAdpcm.js';
 import {
@@ -130,7 +131,7 @@ export function useWaveform({ mediaBlob, mediaKey, duration, perChannel = false 
         if (failedRef.current !== mediaBlob) {
           failedRef.current = mediaBlob;
           console.error('Failed to generate waveform:', error);
-          notifyWarning('The timeline shows a flat line.', 'Waveform unavailable');
+          notifyWarning(t('The timeline shows a flat line.'), t('Waveform unavailable'));
         }
         if (!cancelled) {
           setState({

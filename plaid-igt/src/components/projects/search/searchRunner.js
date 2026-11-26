@@ -15,6 +15,7 @@ import { buildMatchSpec, hitsQueries, hitsByDocQueries, freqQueries } from './se
 import { buildItemNumbers, itemLabel } from '@/domain/vocabDictionary';
 import { readVocabulary } from '@/domain/vocabCache';
 import { readLayerIds } from '@/domain/documentReads';
+import { t } from '@ui/lib/i18n.js';
 
 const MAX_DOCS = 12;
 const MAX_FREQ_ROWS = 200;
@@ -84,30 +85,30 @@ export function locateHits(doc, domain, hitIds) {
       }
       return;
     }
-    for (const t of s.tokens || []) {
-      if ((domain.kind === 'token' || domain.kind === 'lexicon') && hitIds.has(t.id)) {
-        mark(row(s, idx), t);
+    for (const tok of s.tokens || []) {
+      if ((domain.kind === 'token' || domain.kind === 'lexicon') && hitIds.has(tok.id)) {
+        mark(row(s, idx), tok);
       }
       if (domain.kind === 'span' && domain.scope === 'word') {
-        const span = t.annotations?.[domain.field];
+        const span = tok.annotations?.[domain.field];
         if (span?.id && hitIds.has(span.id)) {
           const r = row(s, idx);
-          mark(r, t);
+          mark(r, tok);
           r.notes.push([`${domain.field}: `, { isolate: [String(span.value ?? '')] }]);
         }
       }
-      for (const m of t.morphemes || []) {
+      for (const m of tok.morphemes || []) {
         if ((domain.kind === 'morpheme' || domain.kind === 'lexicon') && hitIds.has(m.id)) {
           const r = row(s, idx);
-          mark(r, t, m);
+          mark(r, tok, m);
           if (domain.kind === 'morpheme')
-            r.notes.push(['morpheme: ', { isolate: [morphFormOf(m)] }]);
+            r.notes.push([`${t('morpheme:')} `, { isolate: [morphFormOf(m)] }]);
         }
         if (domain.kind === 'span' && domain.scope === 'morpheme') {
           const span = m.annotations?.[domain.field];
           if (span?.id && hitIds.has(span.id)) {
             const r = row(s, idx);
-            mark(r, t);
+            mark(r, tok);
             r.notes.push([
               { isolate: [morphFormOf(m)] },
               ` · ${domain.field}: `,

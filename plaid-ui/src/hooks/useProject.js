@@ -60,6 +60,7 @@ export const useProject = ({ withDocuments = false, logoutOnAuthError = false } 
       try {
         if (!quiet) setLoading(true);
         const client = getClient();
+        // i18n-ignore: never shown, a 401 reads as humanizeError's own words
         if (!client) throw Object.assign(new Error('Not authenticated'), { status: 401 });
         const listing = !withDocuments
           ? null

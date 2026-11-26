@@ -21,16 +21,18 @@
 import { PatternError, translatePattern } from '@ui/domain/javaRegex.js';
 import { readIgnoredTokens, wordValueSpec } from '@/domain/igtConfig.js';
 import { metadataFreqQuery } from '@/domain/refusedMetadata.js';
+import { msg, t } from '@ui/lib/i18n.js';
 
 // The case behaviour differs between these and it changes what comes back, so
 // the label says it rather than leaving it to be discovered: `contains` folds
 // case (buildMatchSpec gives it the `i` flag), the other two do not. Searching
 // `the` found 17 matches under one and 3 under the other with nothing on screen
-// to explain the gap, and on Bulk Edit that gap is a write.
+// to explain the gap, and on Bulk Edit that gap is a write. Each label is a
+// message: the place that shows it calls t().
 export const MATCH_TYPES = [
-  { id: 'contains', label: 'contains (any case)' },
-  { id: 'exact', label: 'is exactly (same case)' },
-  { id: 'regex', label: 'matches regex (same case)' },
+  { id: 'contains', label: msg('contains (any case)') },
+  { id: 'exact', label: msg('is exactly (same case)') },
+  { id: 'regex', label: msg('matches regex (same case)') },
 ];
 
 /**
@@ -59,7 +61,7 @@ export function searchDomains(layerInfo, vocabs) {
   if (layerInfo.primaryTokenLayer) {
     domains.push({
       id: 'words',
-      label: 'Words',
+      label: t('Words'),
       kind: 'token',
       layerId: layerInfo.primaryTokenLayer.id,
       // A token the ignored-tokens rule excludes is no word (punctuation ud's
@@ -70,7 +72,7 @@ export function searchDomains(layerInfo, vocabs) {
   if (layerInfo.morphemeTokenLayer) {
     domains.push({
       id: 'morphemes',
-      label: 'Morphemes',
+      label: t('Morphemes'),
       kind: 'morpheme',
       layerId: layerInfo.morphemeTokenLayer.id,
     });
@@ -79,7 +81,10 @@ export function searchDomains(layerInfo, vocabs) {
     for (const sl of layerInfo.spanLayers?.[scope] || []) {
       domains.push({
         id: `span:${sl.id}`,
-        label: `${sl.name} (${scope})`,
+        label: t('{name} ({scope, select, word {word} morpheme {morpheme} other {sentence}})', {
+          name: sl.name,
+          scope,
+        }),
         kind: 'span',
         layerId: sl.id,
         scope,
@@ -90,7 +95,7 @@ export function searchDomains(layerInfo, vocabs) {
   if ((vocabs || []).length > 0) {
     domains.push({
       id: 'lexicon',
-      label: 'Lexicon (linked entries)',
+      label: t('Lexicon (linked entries)'),
       kind: 'lexicon',
       vocabIds: vocabs.map((v) => v.id),
       tokenLayerIds: [layerInfo.primaryTokenLayer?.id, layerInfo.morphemeTokenLayer?.id].filter(

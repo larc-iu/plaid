@@ -10,6 +10,7 @@ import { Loading } from './Loading.jsx';
 import { Notice } from './Notice.jsx';
 import { useSlide, SLIDE_CLASSES } from '../../hooks/useSlide.js';
 import { TYPE } from '../../lib/typeScale.js';
+import { t } from '../../lib/i18n.js';
 
 // The audit log arrives already folded into logical units by the server: a
 // labeled operation ("Merge morphemes"), else an atomic batch, else a lone
@@ -28,7 +29,7 @@ import { TYPE } from '../../lib/typeScale.js';
 // description naming two layer ids ran to three lines here and crowded out the
 // entries a reader is looking for.
 const unitLabel = (entry) =>
-  entry.message || readableDescription(entry.ops?.[0]?.description) || 'No description';
+  entry.message || readableDescription(entry.ops?.[0]?.description) || t('No description');
 
 // What kind of operation the entry is (a review, an import, the assistant),
 // when it says. A neutral chip: color on a row means provenance elsewhere.
@@ -49,8 +50,13 @@ export const KindChip = ({ kind }) => {
   );
 };
 
-const actor = (user, apiToken) =>
-  user ? ` · by ${user.displayName}${apiToken ? ` (via ${apiToken.name})` : ''}` : '';
+const actor = (user, apiToken) => {
+  if (!user) return '';
+  const by = apiToken
+    ? t('by {name} (via {token})', { name: user.displayName, token: apiToken.name })
+    : t('by {name}', { name: user.displayName });
+  return ` · ${by}`;
+};
 
 // How many actions an entry has, and how many of them it does not hold.
 const opTotal = (entry) => entry?.opCount ?? (entry?.ops || []).length;
@@ -259,9 +265,9 @@ export const HistoryDrawer = ({
           if (!busy) onLoadMoreOps(entry.id);
         }}
       >
-        {busy ? 'Loading…' : 'Show later actions'}
+        {busy ? t('Loading…') : t('Show later actions')}
         <span className="mt-0.5 block text-xs text-muted-foreground">
-          {notShown(entry).toLocaleString()} not shown
+          {t('{n, plural, one {# not shown} other {# not shown}}', { n: notShown(entry) })}
         </span>
       </button>
     );
@@ -296,7 +302,7 @@ export const HistoryDrawer = ({
             <button
               type="button"
               tabIndex={-1}
-              aria-label={isExpanded ? 'Collapse' : 'Expand'}
+              aria-label={isExpanded ? t('Collapse') : t('Expand')}
               aria-expanded={isExpanded}
               className="mt-0.5 h-5 w-5 shrink-0 rounded hover:bg-muted"
               onClick={(e) => {
@@ -329,9 +335,9 @@ export const HistoryDrawer = ({
                 <span
                   className="mr-1.5 inline-block rounded bg-primary/10 px-1.5 py-px align-[1px] text-[11px] font-semibold text-primary"
                   data-testid="history-action-count"
-                  title="The actions recorded in this entry, each listed when it is open"
+                  title={t('The actions recorded in this entry, each listed when it is open')}
                 >
-                  {total.toLocaleString()} actions
+                  {t('{n, plural, one {# action} other {# actions}}', { n: total })}
                 </span>
               )}
               <KindChip kind={entry.kind} />
@@ -360,7 +366,7 @@ export const HistoryDrawer = ({
     <div
       ref={rootRef}
       role="region"
-      aria-label="History"
+      aria-label={t('History')}
       inert={!isOpen}
       onKeyDown={onDrawerKeyDown}
       className={cn(
@@ -374,21 +380,21 @@ export const HistoryDrawer = ({
       <div className="flex h-[var(--plaid-sticky-top)] shrink-0 items-center justify-between border-b px-4">
         <div className="flex items-center gap-2">
           <History className="h-4 w-4" />
-          <span className={TYPE.panel}>History</span>
+          <span className={TYPE.panel}>{t('History')}</span>
         </div>
         <Button ref={closeRef} variant="ghost" size="sm" onClick={onClose}>
-          <X className="h-4 w-4" /> Close
+          <X className="h-4 w-4" /> {t('Close')}
         </Button>
       </div>
 
       {/* Content */}
       <div className="flex min-h-0 flex-1 flex-col">
-        {loading && <Loading label="Loading history…" className="py-10 text-center" />}
+        {loading && <Loading label={t('Loading history…')} className="py-10 text-center" />}
 
         {error && (
           <div className="p-4">
             <Notice tone="error">
-              <p className="font-medium">Failed to load the history</p>
+              <p className="font-medium">{t('Failed to load the history')}</p>
               <p className="text-muted-foreground">{error}</p>
             </Notice>
           </div>
@@ -396,16 +402,16 @@ export const HistoryDrawer = ({
 
         {!loading && !error && reversedAuditEntries.length === 0 && (
           <div className="py-10 text-center">
-            <p className="text-sm text-muted-foreground">No entries</p>
+            <p className="text-sm text-muted-foreground">{t('No entries')}</p>
           </div>
         )}
 
         {!loading && !error && reversedAuditEntries.length > 0 && (
           <div className="flex min-h-0 flex-1 flex-col p-4">
             <p className="mb-4 text-xs text-muted-foreground">
-              {reversedAuditEntries.length === 1
-                ? '1 entry'
-                : `${reversedAuditEntries.length.toLocaleString()} entries`}
+              {t('{n, plural, one {# entry} other {# entries}}', {
+                n: reversedAuditEntries.length,
+              })}
             </p>
             <div
               ref={listRef}
@@ -426,7 +432,7 @@ export const HistoryDrawer = ({
               variant="outline"
               className="border-warning/40 bg-warning/10 text-warning-foreground"
             >
-              Historical state
+              {t('Historical state')}
             </Badge>
             {selectedEntry.label && (
               <p dir="auto" className="line-clamp-2 text-xs font-medium">
@@ -436,11 +442,11 @@ export const HistoryDrawer = ({
             <p className="text-xs text-muted-foreground">{fullTimestamp(selectedEntry.time)}</p>
             <div className="flex flex-wrap gap-2">
               <Button size="sm" onClick={() => onSelectEntry(null)}>
-                Return to current
+                {t('Return to current')}
               </Button>
               {canRestore && (
                 <Button size="sm" variant="outline" onClick={() => onRestore?.(selectedEntry)}>
-                  Restore
+                  {t('Restore')}
                 </Button>
               )}
             </div>

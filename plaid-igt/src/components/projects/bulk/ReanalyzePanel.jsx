@@ -8,10 +8,13 @@ import { analysisViolations, governedFields } from '@/domain/tagsets';
 import { tallyCandidates, analysisLabel, cardRowsFor } from './bulkPlan.js';
 import { planReanalyze, applyReanalyze } from './bulkRunner.js';
 import { AnalysisCard } from './AnalysisCard.jsx';
-import { countOf, skippedNote, useRun } from './bulkShared.js';
+import { skippedNote, useRun } from './bulkShared.js';
+import { t, tx } from '@ui/lib/i18n.js';
 import { ApplyBar, MatchGroups, Progress, SelectionSummary } from './parts.jsx';
 import { usePreviewFocus } from './usePreviewFocus.js';
 import { isEnter } from '@ui/lib/chords.js';
+
+const strong = (c) => <strong>{c}</strong>;
 
 // Re-analyze: replace one analysis of a word form with another everywhere.
 export const ReanalyzePanel = ({ project, projectId, client, layerInfo }) => {
@@ -52,10 +55,12 @@ export const ReanalyzePanel = ({ project, projectId, client, layerInfo }) => {
   const plan = r.plan;
   const target = plan?.candidates.find((c) => c.signature === targetSig) ?? null;
   const targetBad = target ? analysisViolations(target.analysis, tagsetFor) : [];
-  const targetName = target
-    ? `Analysis ${plan.candidates.findIndex((c) => c.signature === targetSig) + 1}`
-    : '';
+  const targetNumber = target
+    ? plan.candidates.findIndex((c) => c.signature === targetSig) + 1
+    : null;
+  // The audit label's wording, stored, and the screen's.
   const label = (a) => analysisLabel(a, plan?.itemFormById);
+  const shownLabel = (a) => analysisLabel(a, plan?.itemFormById, true);
 
   // Switching the target re-derives the default selection: everything that
   // doesn't already carry it.
@@ -76,8 +81,8 @@ export const ReanalyzePanel = ({ project, projectId, client, layerInfo }) => {
         { rows: selectedRows, docs: plan.docs },
         {
           analysis: target.analysis,
-          label: `Re-analyze “${plan.form}” as ${label(target.analysis)}`,
-          onError: (msg) => notifyError(msg, 'Failed to re-analyze'),
+          label: `Re-analyze “${plan.form}” as ${label(target.analysis)}`, // i18n-ignore: an audit label, stored on the server
+          onError: (message) => notifyError(message, t('Failed to re-analyze')),
           onProgress,
         },
       ),
@@ -86,15 +91,21 @@ export const ReanalyzePanel = ({ project, projectId, client, layerInfo }) => {
     const skipped = skippedNote([[res.skipped, 'occurrence']]);
     if (res.failedDoc) {
       notifyWarning(
-        `${countOf(res.changed, 'occurrence')} re-analyzed before “${res.failedDoc}” failed. The remaining documents were not changed.${skipped}`,
-        'Stopped early',
+        `${t(
+          '{n, plural, one {# occurrence} other {# occurrences}} re-analyzed before “{name}” failed. The remaining documents were not changed.',
+          { n: res.changed, name: res.failedDoc },
+        )}${skipped}`,
+        t('Stopped early'),
       );
     } else if (!res.changed && skipped) {
-      notifyWarning(skipped.trim(), 'Nothing re-analyzed');
+      notifyWarning(skipped.trim(), t('Nothing re-analyzed'));
     } else {
       notifySuccess(
-        `${countOf(res.changed, 'occurrence')} of “${plan.form}” re-analyzed.${skipped}`,
-        'Re-analyzed',
+        `${t('{n, plural, one {# occurrence} other {# occurrences}} of “{form}” re-analyzed.', {
+          n: res.changed,
+          form: plan.form,
+        })}${skipped}`,
+        t('Re-analyzed'),
       );
     }
     r.setPlan(null);
@@ -105,24 +116,24 @@ export const ReanalyzePanel = ({ project, projectId, client, layerInfo }) => {
       <div className="flex flex-col gap-3 rounded-lg border bg-card p-4">
         <div className="flex flex-wrap items-end gap-2">
           <div className="flex min-w-48 flex-1 flex-col gap-1">
-            <Label htmlFor="bulk-form">Word form</Label>
+            <Label htmlFor="bulk-form">{t('Word form')}</Label>
             <Input
               id="bulk-form"
               compose
               value={form}
               onChange={(e) => setForm(e.target.value)}
               onKeyDown={(e) => isEnter(e) && preview()}
-              placeholder="exactly as it appears in the baseline"
+              placeholder={t('exactly as it appears in the baseline')}
             />
           </div>
           <Button onClick={preview} disabled={r.busy || !form.trim()}>
-            {r.busy && !plan ? 'Searching…' : 'Find occurrences'}
+            {r.busy && !plan ? t('Searching…') : t('Find occurrences')}
           </Button>
         </div>
         <p className="text-xs text-muted-foreground">
-          Lists every occurrence of the word with the analysis it carries now. Pick the analysis
-          that should win. The ticked occurrences get it (segmentation, glosses, and links) in place
-          of their own.
+          {t(
+            'Lists every occurrence of the word with the analysis it carries now. Pick the analysis that should win. The ticked occurrences get it (segmentation, glosses, and links) in place of their own.',
+          )}
         </p>
       </div>
       <Progress text={r.progress} startedAt={r.startedAt} />
@@ -131,12 +142,15 @@ export const ReanalyzePanel = ({ project, projectId, client, layerInfo }) => {
           {plan.candidates.length === 0 ? (
             <p className="py-6 text-center text-sm text-muted-foreground">
               {plan.rows.length === 0
-                ? `No occurrences of “${plan.form}”.`
-                : `“${plan.form}” occurs ${countOf(plan.rows.length, 'time')}, and none is analyzed. Analyze one in a document first.`}
+                ? t('No occurrences of “{form}”.', { form: plan.form })
+                : t(
+                    '“{form}” occurs {n, plural, one {# time} other {# times}}, and none is analyzed. Analyze one in a document first.',
+                    { form: plan.form, n: plan.rows.length },
+                  )}
             </p>
           ) : (
             <div className="rounded-lg border bg-card p-4">
-              <p className="mb-2 text-sm font-medium">Apply this analysis</p>
+              <p className="mb-2 text-sm font-medium">{t('Apply this analysis')}</p>
               <div className="flex flex-col gap-2">
                 {plan.candidates.map((c, i) => (
                   <label
@@ -155,9 +169,13 @@ export const ReanalyzePanel = ({ project, projectId, client, layerInfo }) => {
                     />
                     <div className="min-w-0 flex-1">
                       <div className="mb-1 flex items-baseline gap-2">
-                        <span className="text-sm font-semibold">Analysis {i + 1}</span>
+                        <span className="text-sm font-semibold">
+                          {t('Analysis {i}', { i: i + 1 })}
+                        </span>
                         <span className="text-xs text-muted-foreground">
-                          {countOf(c.count, 'occurrence')}
+                          {t('{n, plural, one {# occurrence} other {# occurrences}}', {
+                            n: c.count,
+                          })}
                         </span>
                       </div>
                       <div className="overflow-x-auto">
@@ -176,15 +194,20 @@ export const ReanalyzePanel = ({ project, projectId, client, layerInfo }) => {
           )}
           {targetBad.length > 0 && (
             <p className="rounded-md border border-destructive/50 bg-destructive/5 px-3 py-2 text-sm text-destructive">
-              This analysis holds{' '}
-              {targetBad.map((b, i) => (
-                <Fragment key={`${b.scope}:${b.field}`}>
-                  {i > 0 && ', '}
-                  <strong>{b.value}</strong> in {b.field} ({b.scope})
-                </Fragment>
-              ))}
-              , which its tagset does not allow. Pick another analysis, or fix this one in its
-              document.
+              {tx(
+                'This analysis holds {values}, which its tagset does not allow. Pick another analysis, or fix this one in its document.',
+                {
+                  values: targetBad.map((b, i) => (
+                    <Fragment key={`${b.scope}:${b.field}`}>
+                      {i > 0 && ', '}
+                      {tx(
+                        '<strong>{value}</strong> in {field} ({scope, select, word {word} morpheme {morpheme} other {sentence}})',
+                        { value: b.value, field: b.field, scope: b.scope, strong },
+                      )}
+                    </Fragment>
+                  )),
+                },
+              )}
             </p>
           )}
           {target && (
@@ -193,7 +216,10 @@ export const ReanalyzePanel = ({ project, projectId, client, layerInfo }) => {
               count={targetBad.length ? 0 : selectedRows.length}
               busy={r.busy}
               onApply={doApply}
-              summary={`${countOf(selectedRows.length, 'occurrence')} of “${plan.form}” will be re-analyzed as ${label(target.analysis)}, replacing their current analyses.`}
+              summary={t(
+                '{n, plural, one {# occurrence} other {# occurrences}} of “{form}” will be re-analyzed as {analysis}, replacing their current analyses.',
+                { n: selectedRows.length, form: plan.form, analysis: shownLabel(target.analysis) },
+              )}
             >
               <SelectionSummary
                 rows={plan.rows.filter((x) => x.signature !== targetSig)}
@@ -202,8 +228,10 @@ export const ReanalyzePanel = ({ project, projectId, client, layerInfo }) => {
                 extra={
                   <>
                     {' '}
-                    ({countOf(target.count, 'occurrence')} {target.count === 1 ? 'has' : 'have'}{' '}
-                    {targetName})
+                    {t(
+                      '({n, plural, one {# occurrence has} other {# occurrences have}} Analysis {i})',
+                      { n: target.count, i: targetNumber },
+                    )}
                   </>
                 }
               />
@@ -219,7 +247,9 @@ export const ReanalyzePanel = ({ project, projectId, client, layerInfo }) => {
               dim={(row) => row.signature === targetSig}
               renderRow={(row) =>
                 row.signature === targetSig ? (
-                  <span className="text-xs text-muted-foreground">has {targetName}</span>
+                  <span className="text-xs text-muted-foreground">
+                    {t('has Analysis {i}', { i: targetNumber })}
+                  </span>
                 ) : (
                   <div className="min-w-0 max-w-full overflow-x-auto">
                     <AnalysisCard

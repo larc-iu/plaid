@@ -68,10 +68,11 @@ import { statusFieldSeed } from '../../../domain/vocabDictionary.js';
 import { proposeServiceFieldDefaults } from '../../../domain/serviceFieldDefaults.js';
 import { entryRolesByKey } from '../../../domain/lexiconField.js';
 import { withSentenceRoles } from '../../../domain/sentenceRole.js';
+import { t } from '../../../../../plaid-ui/src/lib/i18n.js';
 
 // The text layer's name is internal (it is matched by role, never surfaced),
 // so it is also what identifies one this setup made before it was tagged.
-const BASELINE_LAYER_NAME = 'Main Text';
+const BASELINE_LAYER_NAME = 'Main Text'; // i18n-ignore: a layer name, stored
 
 // ONE RULE FOR "COMPLETE". A vocabulary takes two requests: a create, and the
 // link that says it is this project's. A lost response between the two leaves
@@ -86,9 +87,9 @@ const BASELINE_LAYER_NAME = 'Main Text';
 // operation in the audit log; each write keeps its own description underneath.
 export async function executeProjectSetup(args) {
   const name = args.setupData?.basicInfo?.projectName?.trim();
-  return args.client.withOperation(name ? `Set up project "${name}"` : 'Set up project', () =>
-    executeProjectSetupImpl(args),
-  );
+  // i18n-ignore: an audit label, stored on the server
+  const label = name ? `Set up project "${name}"` : 'Set up project';
+  return args.client.withOperation(label, () => executeProjectSetupImpl(args));
 }
 
 async function executeProjectSetupImpl({
@@ -135,9 +136,12 @@ async function executeProjectSetupImpl({
       // Substrate adoption and retry dedup both read existingProject —
       // proceeding without it could duplicate role-tagged layers (which
       // breaks findPrimaryLayers) or re-create vocabs. Fail the attempt.
-      throw new Error(`Could not load the project to set up: ${checkError.message}`, {
-        cause: checkError,
-      });
+      throw new Error(
+        t('Could not load the project to set up: {error}', { error: checkError.message }),
+        {
+          cause: checkError,
+        },
+      );
     }
   }
 
@@ -150,7 +154,7 @@ async function executeProjectSetupImpl({
 
   // Step 1: Create project if new (skip if a prior attempt already did).
   if (isNewProject && !resumeProjectId && setupData.basicInfo?.projectName) {
-    updateProgress(10, 'Creating new project…');
+    updateProgress(10, t('Creating new project…'));
     // Keyed by the name, as the vocabularies are: a name changed in review
     // after a lost answer mints a fresh id rather than opening the old one.
     const projectName = setupData.basicInfo.projectName;
@@ -170,7 +174,7 @@ async function executeProjectSetupImpl({
 
   // A text layer made here is made in one batch with its role.
   const createBaseline = async () => {
-    updateProgress(20, 'Creating text layer…');
+    updateProgress(20, t('Creating text layer…'));
     const id = uuidv7();
     await client.batched((b) => {
       b.textLayers.create(currentProjectId, BASELINE_LAYER_NAME, undefined, { id });
@@ -183,7 +187,7 @@ async function executeProjectSetupImpl({
   let textLayerId = adoptedBaseline?.id ?? null;
   let needsBaselineTag = false;
   if (adoptedBaseline) {
-    updateProgress(20, 'Using shared text layer…');
+    updateProgress(20, t('Using shared text layer…'));
     // Adopted baseline already carries role=baseline — no re-stamp needed.
   } else if (isNewProject || setupData.layerSelection?.textLayerType === 'new') {
     textLayerId = await createBaseline();
@@ -192,7 +196,7 @@ async function executeProjectSetupImpl({
     setupData.layerSelection?.selectedTextLayerId
   ) {
     textLayerId = setupData.layerSelection.selectedTextLayerId;
-    updateProgress(20, 'Using existing text layer…');
+    updateProgress(20, t('Using existing text layer…'));
     needsBaselineTag = true;
   }
   if (needsBaselineTag && textLayerId) {
@@ -269,22 +273,22 @@ async function executeProjectSetupImpl({
       findSentenceTokenLayer(existingTokenLayers),
       ROLES.SENTENCE,
       'sentenceTokenLayer',
-      'Sentences',
+      'Sentences', // i18n-ignore: a layer name, stored
       'partitioning',
       undefined,
       28,
-      'Creating sentence layer…',
+      t('Creating sentence layer…'),
     );
 
     tokenLayerId = await ensureTokenLayer(
       findWordTokenLayer(existingTokenLayers),
       ROLES.WORD,
       'tokenLayer',
-      'Main Tokens',
+      'Main Tokens', // i18n-ignore: a layer name, stored
       'non-overlapping',
       sentenceTokenLayerId,
       32,
-      'Creating token layer…',
+      t('Creating token layer…'),
       wordLayerConstraints(),
     );
 
@@ -292,11 +296,11 @@ async function executeProjectSetupImpl({
       findMorphemeTokenLayer(existingTokenLayers),
       ROLES.MORPHEME,
       'morphemeLayer',
-      'Main Morphemes',
+      'Main Morphemes', // i18n-ignore: a layer name, stored
       'any',
       tokenLayerId,
       35,
-      'Creating morpheme layer…',
+      t('Creating morpheme layer…'),
       morphemeLayerConstraints(),
     );
 
@@ -304,17 +308,17 @@ async function executeProjectSetupImpl({
       findAlignmentTokenLayer(existingTokenLayers),
       ROLES.TIME_ALIGNMENT,
       'alignmentTokenLayer',
-      'Time Alignment',
+      'Time Alignment', // i18n-ignore: a layer name, stored
       'non-overlapping',
       undefined,
       38,
-      'Creating alignment token layer…',
+      t('Creating alignment token layer…'),
     );
   }
 
   // Step 5: Configure orthographies on the word token layer
   if (igt && tokenLayerId && setupData.orthographies?.orthographies) {
-    updateProgress(40, 'Configuring orthographies…');
+    updateProgress(40, t('Configuring orthographies…'));
     const orthographiesConfig = setupData.orthographies.orthographies
       .filter((orth) => !orth.isBaseline)
       .map((orth) => ({ name: orth.name }));
@@ -337,7 +341,7 @@ async function executeProjectSetupImpl({
   // it is called (another app's, or one made through the API): the field gets
   // a layer of its own beside it.
   if (igt && tokenLayerId && sentenceTokenLayerId) {
-    updateProgress(50, 'Creating annotation field layers…');
+    updateProgress(50, t('Creating annotation field layers…'));
     const createdSpanLayers = [];
 
     const existingSpanLayersByParent = new Map();
@@ -365,7 +369,13 @@ async function executeProjectSetupImpl({
             word: tokenLayerId,
           });
 
-          updateProgress(50, `Creating span layer: ${field.name} (${field.scope})…`);
+          updateProgress(
+            50,
+            t(
+              'Creating span layer: {name} ({scope, select, Sentence {Sentence} Word {Word} Morpheme {Morpheme} other {{scope}}})…',
+              { name: field.name, scope: field.scope },
+            ),
+          );
           const existing = (existingSpanLayersByParent.get(parentLayerId) || []).find(
             // name-ok: within one project, a layer igt's own scope already marks
             (sl) => readScope(sl.config) === field.scope && sl.name === field.name,
@@ -402,7 +412,10 @@ async function executeProjectSetupImpl({
         } catch (fieldError) {
           console.warn(`Failed to create span layer for field ${field.name}:`, fieldError);
           failures.push(
-            `Annotation field "${field.name}" could not be created: ${fieldError.message}`,
+            t('Annotation field "{name}" could not be created: {error}', {
+              name: field.name,
+              error: fieldError.message,
+            }),
           );
         }
       }
@@ -429,7 +442,9 @@ async function executeProjectSetupImpl({
             } catch (shiftError) {
               console.warn('Failed to order the annotation fields:', shiftError);
               failures.push(
-                `The annotation fields could not be put in order: ${shiftError.message}`,
+                t('The annotation fields could not be put in order: {error}', {
+                  error: shiftError.message,
+                }),
               );
               break;
             }
@@ -462,7 +477,7 @@ async function executeProjectSetupImpl({
 
   // Step 7: Configure ignored tokens on the word token layer
   if (igt && tokenLayerId && setupData.fields?.ignoredTokens) {
-    updateProgress(60, 'Configuring ignored tokens…');
+    updateProgress(60, t('Configuring ignored tokens…'));
     await client.tokenLayers.setConfig(
       tokenLayerId,
       PLAID_NAMESPACE,
@@ -477,7 +492,7 @@ async function executeProjectSetupImpl({
   // a press after an answer that never came opens what the first made
   // (createOnce).
   if (setupData.vocabulary?.vocabularies?.length > 0) {
-    updateProgress(70, 'Configuring vocabularies…');
+    updateProgress(70, t('Configuring vocabularies…'));
     const enabledVocabs = setupData.vocabulary.vocabularies.filter((vocab) => vocab.enabled);
     const linkedVocabs = existingProject?.vocabs || [];
     const vocabulariesProcessed = [];
@@ -490,7 +505,7 @@ async function executeProjectSetupImpl({
             vocabulariesProcessed.push(alreadyLinked);
             continue;
           }
-          updateProgress(70, `Creating vocabulary: ${vocab.name}…`);
+          updateProgress(70, t('Creating vocabulary: {name}…', { name: vocab.name }));
           const newVocab = await createOnce(mintOf(`vocab:${nameKey(vocab.name)}`), (id) =>
             client.vocabLayers.create(currentProjectId, vocab.name, undefined, { id }),
           );
@@ -518,13 +533,18 @@ async function executeProjectSetupImpl({
             vocabulariesProcessed.push(vocab);
             continue;
           }
-          updateProgress(70, `Linking vocabulary: ${vocab.name}…`);
+          updateProgress(70, t('Linking vocabulary: {name}…', { name: vocab.name }));
           await client.projects.linkVocab(currentProjectId, vocab.id);
           vocabulariesProcessed.push(vocab);
         }
       } catch (vocabError) {
         console.warn(`Failed to process vocabulary ${vocab.name}:`, vocabError);
-        failures.push(`Vocabulary "${vocab.name}" could not be set up: ${vocabError.message}`);
+        failures.push(
+          t('Vocabulary "{name}" could not be set up: {error}', {
+            name: vocab.name,
+            error: vocabError.message,
+          }),
+        );
       }
     }
     resources.vocabularies = vocabulariesProcessed;
@@ -534,16 +554,17 @@ async function executeProjectSetupImpl({
   if (!igt) return { projectId: currentProjectId, resources, failures, alreadyInitialized: false };
 
   // Step 9: Configure document metadata
-  updateProgress(80, 'Configuring document metadata…');
+  updateProgress(80, t('Configuring document metadata…'));
   let enabledFields =
     setupData.documentMetadata?.enabledFields?.filter((field) => field.enabled) || [];
   if (!setupData.documentMetadata?.enabledFields) {
+    // i18n-ignore: default metadata field names, stored in the project
     const defaultFields = [
       { name: 'Date', enabled: true, isCustom: false },
       { name: 'Speakers', enabled: true, isCustom: false },
       { name: 'Location', enabled: true, isCustom: false },
       { name: 'Genre', enabled: false, isCustom: false },
-      { name: 'Recording Quality', enabled: false, isCustom: false },
+      { name: 'Recording Quality', enabled: false, isCustom: false }, // i18n-ignore: stored
       { name: 'Transcriber', enabled: false, isCustom: false },
     ];
     enabledFields = defaultFields.filter((field) => field.enabled);
@@ -563,18 +584,20 @@ async function executeProjectSetupImpl({
   // rule forbids: the server repairs what it can first, and a rule the data
   // still breaks (an off-list value) is left out, which is not a failed step.
   // Nothing declares it later on its own.
-  updateProgress(85, 'Setting up annotation rules…');
+  updateProgress(85, t('Setting up annotation rules…'));
   try {
     const rules = await declareIgtRules(client, currentProjectId);
     if (rules.notInForce.length) console.warn('Annotation rules not in force:', rules.notInForce);
   } catch (rulesError) {
     console.warn('Failed to set up the annotation rules:', rulesError);
-    failures.push(`The annotation rules could not be set up: ${rulesError.message}`);
+    failures.push(
+      t('The annotation rules could not be set up: {error}', { error: rulesError.message }),
+    );
   }
 
   // Step 10: Mark initialized — ONLY if every step succeeded.
   if (failures.length === 0) {
-    updateProgress(90, 'Finalizing setup…');
+    updateProgress(90, t('Finalizing setup…'));
     await client.projects.setConfig(currentProjectId, IGT_NAMESPACE, 'initialized', true);
   }
 

@@ -5,7 +5,7 @@ import { FORM_PAGE_WIDTH } from '@ui/lib/pageWidth.js';
 import { Button } from '@ui/components/ui/button';
 import { DeleteProjectDialog } from '@ui/components/shared/DeleteProjectDialog.jsx';
 import { DELETE_BUTTON_CLASS } from '@ui/lib/destructive.js';
-import { countOf } from '@ui/lib/plural.js';
+import { t, tx } from '@ui/lib/i18n.js';
 import { notifyError, notifySuccess } from '@/utils/feedback';
 import { importRanWhole, markImportFinished, readImportState } from '@/domain/igtConfig';
 
@@ -29,7 +29,7 @@ async function whatItLeft(client, project) {
   const record = readImportState(config) ?? {};
   const added = [];
   for (const [id, n] of Object.entries(record.entriesAdded ?? {})) {
-    if (n > 0) added.push({ name: (await nameOf(client, id)) ?? 'a lexicon', n });
+    if (n > 0) added.push({ name: await nameOf(client, id), n });
   }
   return { added, whole: importRanWhole(record) };
 }
@@ -74,7 +74,11 @@ export const UnfinishedImport = ({ client, project, canManage, onDeleted, onFini
   // project links one of its vocabularies) or reports it.
   const remove = async () => {
     await client.projects.delete(project.id);
-    notifySuccess(`Deleted “${project.name ?? 'the project'}”`);
+    notifySuccess(
+      project.name != null
+        ? t('Deleted “{name}”', { name: project.name })
+        : t('Deleted “the project”'),
+    );
     setOpen(false);
     onDeleted?.();
   };
@@ -86,7 +90,7 @@ export const UnfinishedImport = ({ client, project, canManage, onDeleted, onFini
         if (onFinished) onFinished();
         else window.location.reload();
       } else {
-        notifyError('The import could not be marked done.', 'Try again');
+        notifyError(t('The import could not be marked done.'), t('Try again'));
       }
     } finally {
       setBusy(false);
@@ -99,12 +103,15 @@ export const UnfinishedImport = ({ client, project, canManage, onDeleted, onFini
     return (
       <div className="flex flex-col items-start gap-2">
         <p>
-          The import finished but could not be marked done.
-          {canManage ? '' : ' A project maintainer can try again.'}
+          {canManage
+            ? t('The import finished but could not be marked done.')
+            : t(
+                'The import finished but could not be marked done. A project maintainer can try again.',
+              )}
         </p>
         {canManage && (
           <Button variant="outline" size="sm" disabled={busy} onClick={tryAgain}>
-            Try again
+            {t('Try again')}
           </Button>
         )}
       </div>
@@ -114,23 +121,35 @@ export const UnfinishedImport = ({ client, project, canManage, onDeleted, onFini
   // The confirm adds the vocabularies the delete takes, from core.
   const consequence = (
     <>
-      <strong className="font-text text-foreground" dir="auto">
-        {project.name}
-      </strong>{' '}
-      is deleted. This cannot be undone.
+      {tx('<strong>{name}</strong> is deleted. This cannot be undone.', {
+        name: project.name,
+        strong: (c) => (
+          <strong className="font-text text-foreground" dir="auto">
+            {c}
+          </strong>
+        ),
+      })}
     </>
   );
 
   return (
     <div className="flex flex-col items-start gap-2">
       <p>
-        This import did not finish.{' '}
-        {canManage ? 'Delete it and import again.' : 'A project maintainer can delete it.'}
+        {canManage
+          ? t('This import did not finish. Delete it and import again.')
+          : t('This import did not finish. A project maintainer can delete it.')}
       </p>
-      {left.added.map((a) => (
-        <p key={a.name}>
-          The import added {countOf(a.n, 'entry', 'entries')} to “{a.name}” before it stopped. They
-          stay there.
+      {left.added.map((a, i) => (
+        <p key={a.name ?? i}>
+          {a.name != null
+            ? t(
+                'The import added {n, plural, one {# entry} other {# entries}} to “{name}” before it stopped. They stay there.',
+                { n: a.n, name: a.name },
+              )
+            : t(
+                'The import added {n, plural, one {# entry} other {# entries}} to “a lexicon” before it stopped. They stay there.',
+                { n: a.n },
+              )}
         </p>
       ))}
       {canManage && (
@@ -140,7 +159,7 @@ export const UnfinishedImport = ({ client, project, canManage, onDeleted, onFini
           className={DELETE_BUTTON_CLASS}
           onClick={() => setOpen(true)}
         >
-          Delete
+          {t('Delete')}
         </Button>
       )}
       <DeleteProjectDialog

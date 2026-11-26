@@ -12,7 +12,7 @@ import { AudioLines, FileText, Film, Plus, X } from 'lucide-react';
 import { Button } from '@ui/components/ui/button';
 import { Progress } from '@ui/components/ui/progress';
 import { formatBytes } from '@/utils/formatBytes';
-import { countOf } from '@ui/lib/plural.js';
+import { msg, t, tx } from '@ui/lib/i18n.js';
 import { conversionNeed, conversionNote, estimateMp3Bytes } from '@/domain/media/transcodeToMp3';
 import { FALLBACK_RATE, SMALL_RATE, mixBytes, mixRate } from '@/domain/media/mixdown';
 import { mixesTracks } from '@/import/elan/buildDocuments';
@@ -51,7 +51,7 @@ const Row = ({ icon, name, children, nested = false, onRemove }) => {
           variant="ghost"
           size="icon"
           className="h-5 w-5 shrink-0 self-center"
-          aria-label={`Remove ${name}`}
+          aria-label={t('Remove {name}', { name })}
           onClick={onRemove}
         >
           <X className="h-3 w-3" />
@@ -64,9 +64,9 @@ const Row = ({ icon, name, children, nested = false, onRemove }) => {
 };
 
 const PRIOR_MODES = [
-  ['skip', 'Keep them', null],
-  ['replace', 'Replace them', 'Deletes each document and everything added to it since.'],
-  ['copy', 'Add copies', 'A new document beside each, named with a number.'],
+  ['skip', msg('Keep them'), null],
+  ['replace', msg('Replace them'), msg('Deletes each document and everything added to it since.')],
+  ['copy', msg('Add copies'), msg('A new document beside each, named with a number.')],
 ];
 
 /**
@@ -117,17 +117,17 @@ export const ElanFiles = ({
   // Every recording some file takes, alone or as one of several.
   const matched = new Set([
     ...media.byFile.values(),
-    ...[...(media.tracks?.values() ?? [])].flatMap((ts) => ts.map((t) => t.file).filter(Boolean)),
+    ...[...(media.tracks?.values() ?? [])].flatMap((ts) => ts.map((tr) => tr.file).filter(Boolean)),
   ]);
   const unmatched = (mediaFiles || []).filter((f) => !matched.has(f));
   // Chosen for a file whose recordings are not mixed, and not its recording.
-  const chosenOf = (eaf) => (media.tracks?.get(eaf.fileName) ?? []).filter((t) => t.file);
+  const chosenOf = (eaf) => (media.tracks?.get(eaf.fileName) ?? []).filter((tr) => tr.file);
   const notUsed = new Set(
     (files || []).flatMap((eaf) =>
       mixesTracks(chosenOf(eaf))
         ? []
         : chosenOf(eaf)
-            .map((t) => t.file)
+            .map((tr) => tr.file)
             .filter((f) => f !== media.byFile.get(eaf.fileName)),
     ),
   );
@@ -137,12 +137,12 @@ export const ElanFiles = ({
   const mixes = (documents || [])
     .filter((d) => d.mediaTracks?.length >= 2)
     .map((d) => {
-      const tracks = d.mediaTracks.map((t) => ({
-        seconds: durations.get(t.file),
-        sampleRate: sampleRates?.get(t.file) ?? FALLBACK_RATE,
-        offset: t.offset,
+      const tracks = d.mediaTracks.map((tr) => ({
+        seconds: durations.get(tr.file),
+        sampleRate: sampleRates?.get(tr.file) ?? FALLBACK_RATE,
+        offset: tr.offset,
       }));
-      const known = tracks.every((t) => Number.isFinite(t.seconds));
+      const known = tracks.every((tr) => Number.isFinite(tr.seconds));
       return {
         doc: d,
         bytes: known ? { full: mixBytes(tracks, 'full'), small: mixBytes(tracks, 'small') } : null,
@@ -195,19 +195,23 @@ export const ElanFiles = ({
         {track && track.offset !== 0 && (
           <span className={TONES.muted}>
             {track.offset < 0
-              ? `first ${seconds(-track.offset)} s skipped`
-              : `from ${seconds(track.offset)} s`}
+              ? t('first {s} s skipped', { s: seconds(-track.offset) })
+              : t('from {s} s', { s: seconds(track.offset) })}
           </span>
         )}
-        {unused && <span className={TONES.muted}>not used</span>}
+        {unused && <span className={TONES.muted}>{t('not used')}</span>}
         {need && (
           <span className={need === 'required' ? TONES.error : TONES.muted}>
-            becomes {smaller ? `a ${formatBytes(smaller)} MP3` : 'an MP3'}
+            {smaller
+              ? t('becomes a {size} MP3', { size: formatBytes(smaller) })
+              : t('becomes an MP3')}
           </span>
         )}
         {kept && (
           <span className={TONES.muted}>
-            {existing.mediaUrl ? 'not used, the document has a recording' : 'added to the document'}
+            {existing.mediaUrl
+              ? t('not used, the document has a recording')
+              : t('added to the document')}
           </span>
         )}
       </Row>
@@ -217,22 +221,30 @@ export const ElanFiles = ({
   // A recording the file names and nobody chose.
   const missingRow = (eaf, name, at = 0) => (
     <Row key={`missing:${at}:${name}`} nested icon={Film} name={name}>
-      <span className={TONES.warn}>recording not chosen</span>
+      <span className={TONES.warn}>{t('recording not chosen')}</span>
     </Row>
   );
 
   return (
     <ElanSection
       step={step}
-      title="Files"
-      note={`${countOf(eafs.length, 'annotation file')}${
-        mediaFiles?.length ? `, ${countOf(mediaFiles.length, 'recording')}` : ''
-      }. Every annotation file becomes one document.`}
+      title={t('Files')}
+      note={
+        mediaFiles?.length
+          ? t(
+              '{n, plural, one {# annotation file} other {# annotation files}}, {recordings, plural, one {# recording} other {# recordings}}. Every annotation file becomes one document.',
+              { n: eafs.length, recordings: mediaFiles.length },
+            )
+          : t(
+              '{n, plural, one {# annotation file} other {# annotation files}}. Every annotation file becomes one document.',
+              { n: eafs.length },
+            )
+      }
       aside={
         editable &&
         onAddFiles && (
           <Button variant="outline" size="sm" onClick={onAddFiles}>
-            <Plus className="h-4 w-4" /> Add files
+            <Plus className="h-4 w-4" /> {t('Add files')}
           </Button>
         )
       }
@@ -260,46 +272,56 @@ export const ElanFiles = ({
                     <span className={TONES.muted}>
                       <span aria-hidden="true">→ </span>
                       <span className="font-medium text-foreground">{doc.name}</span> ·{' '}
-                      {countOf(doc.sentences.length, 'sentence')}
+                      {t('{n, plural, one {# sentence} other {# sentences}}', {
+                        n: doc.sentences.length,
+                      })}
                     </span>
                   ) : (
-                    <span className={TONES.muted}>{countOf(eaf.tiers.length, 'tier')}</span>
+                    <span className={TONES.muted}>
+                      {t('{n, plural, one {# tier} other {# tiers}}', { n: eaf.tiers.length })}
+                    </span>
                   )}
                   {!recording && named && !several && (
-                    <span className={TONES.warn}>recording not chosen</span>
+                    <span className={TONES.warn}>{t('recording not chosen')}</span>
                   )}
                   {mixed && (
                     <span className={TONES.muted}>
-                      {countOf(mixed.length, 'recording')}, mixed into one
+                      {t('{n, plural, one {# recording} other {# recordings}}, mixed into one', {
+                        n: mixed.length,
+                      })}
                     </span>
                   )}
                   {imported &&
                     (existing ? (
                       <span className={TONES.warn}>
-                        in this project as{' '}
-                        <Link
-                          to={`/projects/${projectId}/documents/${existing.id}`}
-                          className="underline underline-offset-2"
-                        >
-                          {existing.name}
-                        </Link>
+                        {tx('in this project as <a>{name}</a>', {
+                          name: existing.name,
+                          a: (c) => (
+                            <Link
+                              to={`/projects/${projectId}/documents/${existing.id}`}
+                              className="underline underline-offset-2"
+                            >
+                              {c}
+                            </Link>
+                          ),
+                        })}
                       </span>
                     ) : (
-                      <span className={TONES.muted}>new</span>
+                      <span className={TONES.muted}>{t('new')}</span>
                     ))}
                 </Row>
                 {several
-                  ? several.map((t, at) =>
-                      !t.file
-                        ? missingRow(eaf, t.name, at)
+                  ? several.map((tr, at) =>
+                      !tr.file
+                        ? missingRow(eaf, tr.name, at)
                         : mixing
                           ? recordingRow(
                               eaf,
-                              t.file,
-                              mixed?.find((m) => m.file === t.file) ?? { offset: 0, speaker: '' },
+                              tr.file,
+                              mixed?.find((m) => m.file === tr.file) ?? { offset: 0, speaker: '' },
                               at,
                             )
-                          : recordingRow(eaf, t.file, null, at),
+                          : recordingRow(eaf, tr.file, null, at),
                     )
                   : recording && recordingRow(eaf, recording)}
               </ul>
@@ -315,7 +337,7 @@ export const ElanFiles = ({
                 onRemove={editable && onRemoveMedia ? () => onRemoveMedia(file) : null}
               >
                 <span className={TONES.muted}>{formatBytes(file.size)}</span>
-                <span className={TONES.warn}>no annotation file names this file</span>
+                <span className={TONES.warn}>{t('no annotation file names this file')}</span>
               </Row>
             </ul>
           </li>
@@ -327,19 +349,23 @@ export const ElanFiles = ({
           onClick={() => setShowAll((v) => !v)}
           className="self-start text-xs text-muted-foreground hover:text-foreground hover:underline"
         >
-          {showAll ? `Show the first ${LIST_LIMIT}` : `Show all ${eafs.length}`}
+          {showAll
+            ? t('Show the first {n}', { n: LIST_LIMIT })
+            : t('Show all {n}', { n: eafs.length })}
         </button>
       )}
 
       {mixes.length > 0 && (
         <div className="flex flex-col gap-2 text-xs">
-          <div role="radiogroup" aria-label="Mix quality" className="flex flex-col gap-1">
+          <div role="radiogroup" aria-label={t('Mix quality')} className="flex flex-col gap-1">
             {[
               [
                 'full',
-                `Full quality (${Math.round(Math.max(...mixes.map((m) => m.rate)) / 100) / 10} kHz)`,
+                t('Full quality ({khz} kHz)', {
+                  khz: Math.round(Math.max(...mixes.map((m) => m.rate)) / 100) / 10,
+                }),
               ],
-              ['small', `Smaller (${SMALL_RATE / 1000} kHz)`],
+              ['small', t('Smaller ({khz} kHz)', { khz: SMALL_RATE / 1000 })],
             ].map(([value, label]) => (
               <label key={value} className="flex cursor-pointer items-center gap-2">
                 <input
@@ -353,8 +379,12 @@ export const ElanFiles = ({
                 <span>{label}</span>
                 {mixTotal(value) != null && (
                   <span className={TONES.muted}>
-                    · {formatBytes(mixTotal(value), { against: maxBytes })}
-                    {mixes.length > 1 ? ' in all' : ''}
+                    ·{' '}
+                    {mixes.length > 1
+                      ? t('{size} in all', {
+                          size: formatBytes(mixTotal(value), { against: maxBytes }),
+                        })
+                      : formatBytes(mixTotal(value), { against: maxBytes })}
                   </span>
                 )}
               </label>
@@ -362,10 +392,13 @@ export const ElanFiles = ({
           </div>
           {overLimit.length > 0 && (
             <p className="font-medium text-destructive">
-              This server accepts {formatBytes(maxBytes)}.{' '}
+              {t('This server accepts {size}.', { size: formatBytes(maxBytes) })}{' '}
               {overLimit.length === 1
-                ? `The mix for ${overLimit[0].doc.name} is ${formatBytes(overLimit[0].bytes[mixQuality], { against: maxBytes })}.`
-                : `${overLimit.length} mixes are larger.`}
+                ? t('The mix for {name} is {size}.', {
+                    name: overLimit[0].doc.name,
+                    size: formatBytes(overLimit[0].bytes[mixQuality], { against: maxBytes }),
+                  })
+                : t('{n} mixes are larger.', { n: overLimit.length })}
             </p>
           )}
         </div>
@@ -379,14 +412,17 @@ export const ElanFiles = ({
             checked={recordMediaName}
             onChange={(e) => onRecordMediaName(e.target.checked)}
           />
-          Keep each recording’s file name in a Media file field
+          {t('Keep each recording’s file name in a Media file field')}
         </label>
       )}
 
       {importedCount > 0 && onPriorMode && (
         <Panel
           tone="warning"
-          title={`${importedCount} of these ${importedCount === 1 ? 'files was' : 'files were'} imported before`}
+          title={t(
+            '{n, plural, one {{n} of these files was} other {{n} of these files were}} imported before',
+            { n: importedCount },
+          )}
         >
           <div role="radiogroup" className="mt-2 flex flex-col gap-1 text-xs">
             {PRIOR_MODES.map(([mode, label, hint]) => (
@@ -401,8 +437,8 @@ export const ElanFiles = ({
                   onChange={() => onPriorMode(mode)}
                 />
                 <span>
-                  {label}
-                  {hint && <span className="block text-muted-foreground">{hint}</span>}
+                  {t(label)}
+                  {hint && <span className="block text-muted-foreground">{t(hint)}</span>}
                 </span>
               </label>
             ))}
@@ -412,14 +448,18 @@ export const ElanFiles = ({
 
       {converting ? (
         <div className="flex flex-col gap-1" aria-live="polite">
-          <Progress value={converting.fraction * 100} label="Conversion progress" />
+          <Progress value={converting.fraction * 100} label={t('Conversion progress')} />
           <div className="flex items-center gap-2">
             <p className="text-xs text-muted-foreground">
               {converting.stopping
-                ? 'Stopping.'
-                : `Converting ${converting.name}${
-                    converting.total > 1 ? ` (${converting.index + 1} of ${converting.total})` : ''
-                  }.`}
+                ? t('Stopping.')
+                : converting.total > 1
+                  ? t('Converting {name} ({i} of {total}).', {
+                      name: converting.name,
+                      i: converting.index + 1,
+                      total: converting.total,
+                    })
+                  : t('Converting {name}.', { name: converting.name })}
             </p>
             {onStopConverting && (
               <Button
@@ -429,7 +469,7 @@ export const ElanFiles = ({
                 onClick={onStopConverting}
                 disabled={converting.stopping}
               >
-                Stop
+                {t('Stop')}
               </Button>
             )}
           </div>
@@ -440,12 +480,15 @@ export const ElanFiles = ({
             <p className="text-xs">
               {required.length > 0 ? (
                 <span className="font-medium text-destructive">
-                  This server accepts{' '}
-                  {formatBytes(maxBytes, {
-                    against: Math.min(...required.map((f) => f.size)),
-                  })}
-                  , so {required.length === 1 ? 'that recording' : 'those recordings'} cannot be
-                  uploaded as {required.length === 1 ? 'it is' : 'they are'}.{' '}
+                  {t(
+                    'This server accepts {size}, so {n, plural, one {that recording cannot be uploaded as it is} other {those recordings cannot be uploaded as they are}}.',
+                    {
+                      size: formatBytes(maxBytes, {
+                        against: Math.min(...required.map((f) => f.size)),
+                      }),
+                      n: required.length,
+                    },
+                  )}{' '}
                 </span>
               ) : null}
               <span className="text-muted-foreground">
@@ -461,10 +504,15 @@ export const ElanFiles = ({
                 >
                   <AudioLines className="h-4 w-4" />{' '}
                   {toConvert.length === 1
-                    ? `Convert to ${totalConverted ? `a ${formatBytes(totalConverted)} ` : ''}MP3`
-                    : `Convert ${toConvert.length} to MP3${
-                        totalConverted ? `, about ${formatBytes(totalConverted)}` : ''
-                      }`}
+                    ? totalConverted
+                      ? t('Convert to a {size} MP3', { size: formatBytes(totalConverted) })
+                      : t('Convert to MP3')
+                    : totalConverted
+                      ? t('Convert {n} to MP3, about {size}', {
+                          n: toConvert.length,
+                          size: formatBytes(totalConverted),
+                        })
+                      : t('Convert {n} to MP3', { n: toConvert.length })}
                 </Button>
               </div>
             )}

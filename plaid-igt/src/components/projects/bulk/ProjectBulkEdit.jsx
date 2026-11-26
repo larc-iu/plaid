@@ -10,6 +10,7 @@ import { ReanalyzePanel } from './ReanalyzePanel.jsx';
 import { RespellPanel } from './RespellPanel.jsx';
 import { TYPE } from '@ui/lib/typeScale.js';
 import { useClientApart } from '@/hooks/useClientApart';
+import { t } from '@ui/lib/i18n.js';
 
 // The Bulk Edit workbench: pick an operation, describe the change, preview
 // every match as a checkbox row (grouped by document, each row a link into
@@ -46,7 +47,7 @@ export const ProjectBulkEdit = ({ project, projectId, client: session }) => {
   if (!layerInfo.primaryTokenLayer) {
     return (
       <p className="py-10 text-center text-sm text-muted-foreground">
-        This project is not set up for words.
+        {t('This project is not set up for words.')}
       </p>
     );
   }
@@ -69,7 +70,7 @@ export const ProjectBulkEdit = ({ project, projectId, client: session }) => {
               to={opHref(`/projects/${projectId}`, o.id)}
               className="w-full justify-start gap-2 rounded-md border-b-0 px-3 py-2 data-[state=active]:bg-muted data-[state=active]:text-foreground"
             >
-              <Icon className="h-4 w-4 shrink-0" /> {o.label}
+              <Icon className="h-4 w-4 shrink-0" /> {t(o.label)}
             </TabsTrigger>
           );
         })}
@@ -81,8 +82,8 @@ export const ProjectBulkEdit = ({ project, projectId, client: session }) => {
           return (
             <TabsContent key={o.id} value={o.id} className="mt-0">
               <div className="mb-4">
-                <h2 className={TYPE.card}>{o.label}</h2>
-                <p className="text-sm text-muted-foreground">{o.blurb}</p>
+                <h2 className={TYPE.card}>{t(o.label)}</h2>
+                <p className="text-sm text-muted-foreground">{t(o.blurb)}</p>
               </div>
               {op === o.id && <Panel {...panelProps} />}
             </TabsContent>

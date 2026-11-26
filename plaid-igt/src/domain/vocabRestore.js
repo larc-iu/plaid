@@ -10,7 +10,9 @@
 
 import { fullTimestamp } from '@ui/lib/formatTime.js';
 import { isolate } from '@ui/lib/bidi.js';
-import { fieldLabel, FIELD_TYPES } from './vocabFields.js';
+import { t, msg } from '@ui/lib/i18n.js';
+import { FIELD_TYPES } from './vocabFields.js';
+import { fieldDisplayLabel } from './vocabFieldLabels.js';
 
 const show = (v) => {
   if (v == null || v === '') return '—';
@@ -21,9 +23,9 @@ const same = (a, b) => JSON.stringify(a ?? null) === JSON.stringify(b ?? null);
 // The keys an entry keeps that no field row edits, by what they mean to the
 // person reading the list.
 const STRUCTURE = [
-  [['parent', 'senseOrder'], 'Its place among the senses'],
-  [['homograph'], 'Its number among the entries spelled alike'],
-  [['examples'], 'Examples'],
+  [['parent', 'senseOrder'], msg('Its place among the senses')],
+  [['homograph'], msg('Its number among the entries spelled alike')],
+  [['examples'], msg('Examples')],
 ];
 
 /**
@@ -35,10 +37,18 @@ const STRUCTURE = [
 export function entryRestoreLines(summary, past, live, fields = []) {
   if (!summary) return [];
   if (summary.inserted) {
-    return ['The entry comes back as it was.', 'Its links in documents do not come back.'];
+    return [t('The entry comes back as it was.'), t('Its links in documents do not come back.')];
   }
   const lines = [];
-  if (summary.form) lines.push(`Form: ${show(live?.form)} → ${show(past?.form)}`);
+  if (summary.form) {
+    lines.push(
+      t('{field}: {before} → {after}', {
+        field: t('Form'),
+        before: show(live?.form),
+        after: show(past?.form),
+      }),
+    );
+  }
   if (summary.metadata) {
     const fieldsFrom = lines.length;
     const then = past?.metadata || {};
@@ -49,13 +59,17 @@ export function entryRestoreLines(summary, past, live, fields = []) {
       if (same(then[f.name], now[f.name])) continue;
       lines.push(
         f.type === FIELD_TYPES.ITEM
-          ? fieldLabel(f)
-          : `${fieldLabel(f)}: ${show(now[f.name])} → ${show(then[f.name])}`,
+          ? fieldDisplayLabel(f)
+          : t('{field}: {before} → {after}', {
+              field: fieldDisplayLabel(f),
+              before: show(now[f.name]),
+              after: show(then[f.name]),
+            }),
       );
     }
     for (const [keys, label] of STRUCTURE) {
       keys.forEach((k) => told.add(k));
-      if (keys.some((k) => !same(then[k], now[k]))) lines.push(label);
+      if (keys.some((k) => !same(then[k], now[k]))) lines.push(t(label));
     }
     const others = new Set([...Object.keys(then), ...Object.keys(now)]);
     // The server says the fields differ even where the copy on screen does
@@ -65,13 +79,16 @@ export function entryRestoreLines(summary, past, live, fields = []) {
       lines.length === fieldsFrom ||
       [...others].some((k) => !told.has(k) && !same(then[k], now[k]))
     ) {
-      lines.push('Other values');
+      lines.push(t('Other values'));
     }
   }
   return lines;
 }
 
-/** The history message a restore of entry `label` to `asOf` is written under. */
+/**
+ * The history message a restore of entry `label` to `asOf` is written under:
+ * the audit log's, in English, which every reader of the history shares.
+ */
 export const entryRestoreMessage = (label, asOf) =>
   `Restore entry “${label}” to ${fullTimestamp(asOf)}`;
 

@@ -24,7 +24,7 @@ import { distinctValues, loadAttested } from './attested.js';
 import { MarkedText } from '@ui/components/shared/MarkedText.jsx';
 import { hitTo, rememberCaret } from '../search/hitLinks.js';
 import { scopeBadgeClass } from '@/domain/scopeColors';
-import { countOf, plural } from '@ui/lib/plural.js';
+import { msg, t, tx } from '@ui/lib/i18n.js';
 
 // Values in the project that its own tagsets say are wrong.
 //
@@ -49,7 +49,7 @@ const locateMetadata = async (client, projectId, field, value) => {
   return {
     groups: (res?.results || []).map(([docId, docName]) => ({
       docId: String(docId),
-      docName: docName || '(untitled)',
+      docName: docName || t('(untitled)'),
       docHits: 1,
       rows: [],
     })),
@@ -70,26 +70,44 @@ const bulkFixHref = (projectId, domain, value, replacement = '') => {
   return `/projects/${projectId}?${p}`;
 };
 
-const MODE_LABELS = { suggest: 'open', closed: 'closed', mixed: 'closed, plus lexical glosses' };
+const MODE_LABELS = {
+  suggest: msg('open'),
+  closed: msg('closed'),
+  mixed: msg('closed, plus lexical glosses'),
+};
+
+// "one annotation a word" counted, by the unit a field annotates.
+const DOUBLED = {
+  word: msg('{field}: {n, plural, one {# word} other {# words}} with more than one annotation'),
+  morpheme: msg(
+    '{field}: {n, plural, one {# morpheme} other {# morphemes}} with more than one annotation',
+  ),
+  sentence: msg(
+    '{field}: {n, plural, one {# sentence} other {# sentences}} with more than one annotation',
+  ),
+};
+
+const code = (c) => <code className="text-foreground">{c}</code>;
 
 const reasonText = (violations) => {
   const unknown = violations.filter((v) => v.reason === 'unknown').map((v) => v.part);
-  if (unknown.length) return `${unknown.map((u) => `"${u}"`).join(', ')} not in the tagset`;
-  return 'a delimiter with nothing beside it';
+  if (unknown.length)
+    return t('{parts} not in the tagset', { parts: unknown.map((u) => `"${u}"`).join(', ') });
+  return t('a delimiter with nothing beside it');
 };
 
 // The occurrences panel for one flagged value, shared by both checks below.
 const Occurrences = ({ res, projectId }) => (
   <div className="border-t bg-muted/20 px-3 py-2">
-    {!res && <p className="text-sm text-muted-foreground">Finding occurrences…</p>}
+    {!res && <p className="text-sm text-muted-foreground">{t('Finding occurrences…')}</p>}
     {res?.failed && (
-      <p className="text-sm text-destructive">Failed to search for this value. Try again.</p>
+      <p className="text-sm text-destructive">{t('Failed to search for this value. Try again.')}</p>
     )}
     {res && !res.failed && res.groups.length === 0 && (
       <p className="text-sm text-muted-foreground">
         {res.passed > 0
-          ? 'Every occurrence found is in the tagset as read in its word.'
-          : 'No occurrences found. The value may have been changed since the last check.'}
+          ? t('Every occurrence found is in the tagset as read in its word.')
+          : t('No occurrences found. The value may have been changed since the last check.')}
       </p>
     )}
     {res &&
@@ -133,7 +151,7 @@ const Occurrences = ({ res, projectId }) => (
           ))}
           {grp.capped && (
             <p className="px-2 py-1 text-xs text-muted-foreground">
-              More in this document not shown.
+              {t('More in this document not shown.')}
             </p>
           )}
         </div>
@@ -141,8 +159,14 @@ const Occurrences = ({ res, projectId }) => (
     {res && !res.failed && res.remainingDocs > 0 && (
       <p className="text-xs text-muted-foreground">
         {res.remainingHits == null
-          ? `${res.remainingDocs.toLocaleString()} more ${plural(res.remainingDocs, 'document')} with this value not shown.`
-          : `${res.remainingHits.toLocaleString()} more in ${countOf(res.remainingDocs, 'document')} not shown.`}
+          ? t(
+              '{n, plural, one {# more document} other {# more documents}} with this value not shown.',
+              { n: res.remainingDocs },
+            )
+          : t(
+              '{hits, plural, other {# more}} in {docs, plural, one {# document} other {# documents}} not shown.',
+              { hits: res.remainingHits, docs: res.remainingDocs },
+            )}
       </p>
     )}
   </div>
@@ -262,14 +286,16 @@ export const ProjectValidation = ({ project, projectId, client, onProjectUpdate 
       );
     const removed = targets.filter((f) => !holdsList(f));
     if (removed.length) {
-      notifySuccess(`The list on ${removed.map((f) => f.field).join(', ')} is removed`);
+      notifySuccess(
+        t('The list on {fields} is removed', { fields: removed.map((f) => f.field).join(', ') }),
+      );
     }
     for (const f of targets.filter(holdsList)) {
       const tagset = readTagsetName(layers.get(f.layerId)?.config);
       notifyInfo(
         !stillStale.has(f.layerId) && tagset
-          ? `The list on ${f.field} stays: ${tagset} is closed.`
-          : `The list on ${f.field} stays.`,
+          ? t('The list on {field} stays: {tagset} is closed.', { field: f.field, tagset })
+          : t('The list on {field} stays.', { field: f.field }),
       );
     }
   };
@@ -307,7 +333,7 @@ export const ProjectValidation = ({ project, projectId, client, onProjectUpdate 
       );
     } catch (err) {
       console.error('Validation scan failed:', err);
-      notifyError(humanizeError(err), 'Failed to check the values');
+      notifyError(humanizeError(err), t('Failed to check the values'));
       setFields([]);
       setZeros([]);
     } finally {
@@ -348,7 +374,7 @@ export const ProjectValidation = ({ project, projectId, client, onProjectUpdate 
       record(res);
     } catch (err) {
       console.error('Could not locate value:', err);
-      notifyError(humanizeError(err), 'Failed to find these values');
+      notifyError(humanizeError(err), t('Failed to find these values'));
       // Record the failure. Leaving the entry unset would sit on "Finding
       // occurrences…" forever, which reads as a hang once the toast is gone.
       record({ failed: true, groups: [] });
@@ -367,6 +393,7 @@ export const ProjectValidation = ({ project, projectId, client, onProjectUpdate 
       // was read takes nothing, rather than the list it no longer uses.
       const now = governedFields(getIgtLayerInfo(p), p?.config).find((x) => x.key === g.key);
       if ((now?.tagsetName ?? null) !== g.tagsetName) {
+        // i18n-ignore: caught below, never shown
         throw Object.assign(new Error('Field moved'), { movedTo: now?.tagsetName ?? null });
       }
       const { fresh, next } = tagsetsWithValues(p, g.tagsetName, parts);
@@ -383,7 +410,12 @@ export const ProjectValidation = ({ project, projectId, client, onProjectUpdate 
         fresh = await attempt(await client.projects.get(projectId));
       }
       if (!fresh.length) return;
-      notifySuccess(`${fresh.map((f) => `“${f.value}”`).join(', ')} added to ${g.tagsetName}`);
+      notifySuccess(
+        t('{values} added to {tagset}', {
+          values: fresh.map((f) => `“${f.value}”`).join(', '),
+          tagset: g.tagsetName,
+        }),
+      );
       await putRulesInForce(client, projectId, { here: true });
       // The scan reads the tagset from the project, so refresh it and re-check.
       await onProjectUpdate?.();
@@ -391,21 +423,26 @@ export const ProjectValidation = ({ project, projectId, client, onProjectUpdate 
       if (err?.movedTo !== undefined) {
         notifyError(
           err.movedTo
-            ? `${g.field} uses “${err.movedTo}” now. Nothing was added.`
-            : `${g.field} has no tagset now. Nothing was added.`,
-          'Failed to update the tagset',
+            ? t('{field} uses “{tagset}” now. Nothing was added.', {
+                field: g.field,
+                tagset: err.movedTo,
+              })
+            : t('{field} has no tagset now. Nothing was added.', { field: g.field }),
+          t('Failed to update the tagset'),
         );
         await onProjectUpdate?.();
         return;
       }
       console.error('Could not add to tagset:', err);
-      notifyError(humanizeError(err), 'Failed to update the tagset');
+      notifyError(humanizeError(err), t('Failed to update the tagset'));
     }
   };
 
   const header = (
     <ValidationHeader
-      description="Checks every value in the project against its field's tagset, and looks for zero morphs written the wrong way. Values from imports and services are not held to closed lists."
+      description={t(
+        "Checks every value in the project against its field's tagset, and looks for zero morphs written the wrong way. Values from imports and services are not held to closed lists.",
+      )}
       busy={busy}
       onCheck={scan}
       className="mb-0"
@@ -416,7 +453,7 @@ export const ProjectValidation = ({ project, projectId, client, onProjectUpdate 
     return (
       <div className="flex flex-col gap-4">
         {header}
-        <Loading label="Checking values…" className="p-0" />
+        <Loading label={t('Checking values…')} className="p-0" />
       </div>
     );
   }
@@ -440,7 +477,7 @@ export const ProjectValidation = ({ project, projectId, client, onProjectUpdate 
               variant="ghost"
               className="h-6 w-6 shrink-0"
               onClick={() => locate(g, row.value)}
-              title={open ? 'Hide occurrences' : 'Show occurrences'}
+              title={open ? t('Hide occurrences') : t('Show occurrences')}
             >
               {open ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
             </Button>
@@ -458,7 +495,10 @@ export const ProjectValidation = ({ project, projectId, client, onProjectUpdate 
             {row.value}
           </code>
           <span className="text-xs text-muted-foreground">
-            {countOf(count, 'occurrence')} · {reasonText(row.violations)}
+            {t('{n, plural, one {# occurrence} other {# occurrences}} · {reason}', {
+              n: count,
+              reason: reasonText(row.violations),
+            })}
           </span>
           <div className="ml-auto flex shrink-0 items-center gap-1">
             {addable && unknownParts.length > 0 && (
@@ -466,14 +506,19 @@ export const ProjectValidation = ({ project, projectId, client, onProjectUpdate 
                 size="sm"
                 variant="ghost"
                 onClick={() => addToTagset(g, unknownParts)}
-                title={`Add ${unknownParts.join(', ')} to ${g.tagsetName}`}
+                title={t('Add {parts} to {tagset}', {
+                  parts: unknownParts.join(', '),
+                  tagset: g.tagsetName,
+                })}
               >
-                <Plus className="h-3.5 w-3.5" /> Add to tagset
+                <Plus className="h-3.5 w-3.5" /> {t('Add to tagset')}
               </Button>
             )}
             {bulkFixable(g.domain) && (
               <Button size="sm" variant="ghost" asChild>
-                <Link to={bulkFixHref(projectId, g.domain, row.value)}>Fix in Bulk Edit</Link>
+                <Link to={bulkFixHref(projectId, g.domain, row.value)}>
+                  {t('Fix in Bulk Edit')}
+                </Link>
               </Button>
             )}
           </div>
@@ -495,14 +540,22 @@ export const ProjectValidation = ({ project, projectId, client, onProjectUpdate 
   const unitOf = (f) =>
     ({ Word: 'word', Morpheme: 'morpheme', Sentence: 'sentence' })[f.scope] ?? 'word';
   // Each field once, with every rule of it not in force.
-  const forceText = `Not in force: ${toForce
-    .map((f) => {
-      if (f.list && f.single) return `${f.tagset} and one annotation a ${unitOf(f)} on ${f.field}`;
-      if (f.list) return `${f.tagset} on ${f.field}`;
-      if (f.single) return `one annotation a ${unitOf(f)} on ${f.field}`;
-      return `the rules of ${f.field}`;
-    })
-    .join(', ')}.`;
+  const unitRule = (f) => {
+    const v = { tagset: f.tagset, field: f.field, unit: unitOf(f) };
+    if (f.list && f.single)
+      return t(
+        '{tagset} and one annotation a {unit, select, morpheme {morpheme} sentence {sentence} other {word}} on {field}',
+        v,
+      );
+    if (f.list) return t('{tagset} on {field}', v);
+    if (f.single)
+      return t(
+        'one annotation a {unit, select, morpheme {morpheme} sentence {sentence} other {word}} on {field}',
+        v,
+      );
+    return t('the rules of {field}', v);
+  };
+  const forceText = t('Not in force: {rules}.', { rules: toForce.map(unitRule).join(', ') });
   const doubled = outOfForce.filter((f) => f.single && doubles[f.layerId]?.count > 0);
   const listNames = (fs) => fs.map((f) => f.field).join(', ');
 
@@ -521,9 +574,11 @@ export const ProjectValidation = ({ project, projectId, client, onProjectUpdate 
                   variant="outline"
                   className="ml-auto"
                   disabled={forcing}
-                  onClick={() => putInForce(toForce, `In force on ${listNames(toForce)}`)}
+                  onClick={() =>
+                    putInForce(toForce, t('In force on {fields}', { fields: listNames(toForce) }))
+                  }
                 >
-                  Put in force
+                  {t('Put in force')}
                 </Button>
               </div>
             )}
@@ -531,7 +586,7 @@ export const ProjectValidation = ({ project, projectId, client, onProjectUpdate 
               const { count, rows } = doubles[f.layerId];
               return (
                 <div key={f.layerId} data-testid="doubled-units" className="mt-1">
-                  <p>{`${f.field}: ${countOf(count, unitOf(f))} with more than one annotation`}</p>
+                  <p>{t(DOUBLED[unitOf(f)], { field: f.field, n: count })}</p>
                   <ul className="mt-1 flex flex-col">
                     {rows.map((r, i) => (
                       <li key={`${r.docId}:${r.begin}:${i}`}>
@@ -546,21 +601,27 @@ export const ProjectValidation = ({ project, projectId, client, onProjectUpdate 
                         </Link>
                         <span className="ml-2 text-xs text-muted-foreground">
                           {r.values
-                            .map((v) => (v == null || v === '' ? '(empty)' : String(v)))
+                            .map((v) => (v == null || v === '' ? t('(empty)') : String(v)))
                             .join(' | ')}
                         </span>
                       </li>
                     ))}
                   </ul>
                   {count > rows.length && (
-                    <p className="text-xs text-muted-foreground">{`${count - rows.length} more not shown.`}</p>
+                    <p className="text-xs text-muted-foreground">
+                      {t('{n} more not shown.', { n: count - rows.length })}
+                    </p>
                   )}
                 </div>
               );
             })}
             {stale.length > 0 && (
               <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-                <span>{`In force with no closed tagset: the list on ${listNames(stale)}.`}</span>
+                <span>
+                  {t('In force with no closed tagset: the list on {fields}.', {
+                    fields: listNames(stale),
+                  })}
+                </span>
                 <Button
                   size="sm"
                   variant="outline"
@@ -568,7 +629,7 @@ export const ProjectValidation = ({ project, projectId, client, onProjectUpdate 
                   disabled={forcing}
                   onClick={() => putInForce(stale, null, { listOnly: true })}
                 >
-                  Remove the list
+                  {t('Remove the list')}
                 </Button>
               </div>
             )}
@@ -578,14 +639,18 @@ export const ProjectValidation = ({ project, projectId, client, onProjectUpdate 
 
       {totalBad === 0 && governed.length > 0 && (
         <Notice tone="success" icon={Check} className="items-center px-4 py-3">
-          Every value in {countOf(fields.length, 'governed field')} is in its tagset.
+          {t(
+            'Every value in {n, plural, one {# governed field} other {# governed fields}} is in its tagset.',
+            { n: fields.length },
+          )}
         </Notice>
       )}
 
       {governed.length === 0 && (
         <div className="rounded-lg border border-dashed p-6 text-sm text-muted-foreground">
-          No field uses a tagset yet. Assign one under Settings → Annotation, and this tab will list
-          any values outside it.
+          {t(
+            'No field uses a tagset yet. Assign one under Settings → Annotation, and this tab will list any values outside it.',
+          )}
         </div>
       )}
 
@@ -593,15 +658,15 @@ export const ProjectValidation = ({ project, projectId, client, onProjectUpdate 
         <div className="overflow-hidden rounded-md border">
           <div className="flex items-center gap-2 border-b bg-muted/30 px-3 py-2">
             <Badge variant="secondary" className={scopeBadgeClass('morpheme')}>
-              morpheme
+              {t('morpheme')}
             </Badge>
-            <span className="font-medium">Form</span>
+            <span className="font-medium">{t('Form')}</span>
             <span className="text-xs text-muted-foreground">
-              looks like a zero morph written another way
+              {t('looks like a zero morph written another way')}
             </span>
             <span className="ml-auto flex items-center gap-1.5 text-sm font-medium text-destructive">
               <AlertTriangle className="h-4 w-4" />
-              {countOf(zeroRows.length, 'form')} to check
+              {t('{n, plural, one {# form} other {# forms}} to check', { n: zeroRows.length })}
             </span>
           </div>
           {zeroRows.map((row) => {
@@ -616,7 +681,7 @@ export const ProjectValidation = ({ project, projectId, client, onProjectUpdate 
                     variant="ghost"
                     className="h-6 w-6 shrink-0"
                     onClick={() => locate(morphemes, row.value)}
-                    title={open ? 'Hide occurrences' : 'Show occurrences'}
+                    title={open ? t('Hide occurrences') : t('Show occurrences')}
                   >
                     {open ? (
                       <ChevronDown className="h-4 w-4" />
@@ -628,14 +693,15 @@ export const ProjectValidation = ({ project, projectId, client, onProjectUpdate 
                     {row.value}
                   </code>
                   <span className="text-xs text-muted-foreground">
-                    {countOf(row.count, 'occurrence')} · did you mean{' '}
-                    <code className="text-foreground">{ZERO_MORPH}</code>? Only {ZERO_MORPH} is read
-                    as a zero on export.
+                    {tx(
+                      '{n, plural, one {# occurrence} other {# occurrences}} · did you mean <code>{zero}</code>? Only {zero} is read as a zero on export.',
+                      { n: row.count, zero: ZERO_MORPH, code },
+                    )}
                   </span>
                   <div className="ml-auto flex shrink-0 items-center gap-1">
                     <Button size="sm" variant="ghost" asChild>
                       <Link to={bulkFixHref(projectId, morphemes.domain, row.value, ZERO_MORPH)}>
-                        Fix in Bulk Edit
+                        {t('Fix in Bulk Edit')}
                       </Link>
                     </Button>
                   </div>
@@ -651,12 +717,17 @@ export const ProjectValidation = ({ project, projectId, client, onProjectUpdate 
         <div key={g.key} className="overflow-hidden rounded-md border">
           <div className="flex items-center gap-2 border-b bg-muted/30 px-3 py-2">
             <Badge variant="secondary" className={scopeBadgeClass(g.scope)}>
-              {g.scope}
+              {t(
+                '{scope, select, word {word} morpheme {morpheme} sentence {sentence} document {document} other {{scope}}}',
+                { scope: g.scope },
+              )}
             </Badge>
             <span className="font-medium">{g.field}</span>
             <span className="text-xs text-muted-foreground">
-              {g.tagsetName} · {MODE_LABELS[g.tagset.mode]} ·{' '}
-              {countOf(distinctValues(g.attested), 'distinct value')}
+              {g.tagsetName} · {t(MODE_LABELS[g.tagset.mode])} ·{' '}
+              {t('{n, plural, one {# distinct value} other {# distinct values}}', {
+                n: distinctValues(g.attested),
+              })}
             </span>
             <FieldCount bad={g.bad} />
           </div>
@@ -685,7 +756,7 @@ const FieldCount = ({ bad }) => {
   if (!bad.length)
     return (
       <span className="ml-auto flex items-center gap-1.5 text-sm text-success-foreground">
-        <Check className="h-4 w-4" /> All in the tagset
+        <Check className="h-4 w-4" /> {t('All in the tagset')}
       </span>
     );
   return (
@@ -693,10 +764,12 @@ const FieldCount = ({ bad }) => {
       {flagged > 0 && (
         <span className="flex items-center gap-1.5 font-medium text-destructive">
           <AlertTriangle className="h-4 w-4" />
-          {flagged} outside the tagset
+          {t('{n} outside the tagset', { n: flagged })}
         </span>
       )}
-      {unlisted > 0 && <span className="text-muted-foreground">{unlisted} not in the tagset</span>}
+      {unlisted > 0 && (
+        <span className="text-muted-foreground">{t('{n} not in the tagset', { n: unlisted })}</span>
+      )}
     </span>
   );
 };
@@ -713,7 +786,7 @@ const WordsGroup = ({ rows, open, onToggle, children }) => (
       onClick={onToggle}
     >
       {open ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
-      {rows.length} not written in capitals
+      {t('{n} not written in capitals', { n: rows.length })}
     </button>
     {open && <div className="border-t">{children}</div>}
   </div>

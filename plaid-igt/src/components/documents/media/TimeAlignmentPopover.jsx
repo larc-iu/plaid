@@ -14,6 +14,7 @@ import { formatTime } from './formatTime.js';
 import { getStickySpeaker, setStickySpeaker } from './stickySpeaker.js';
 import { snapToWords } from './selectWords.js';
 import { isEnter } from '@ui/lib/chords.js';
+import { t } from '@ui/lib/i18n.js';
 
 // The popover for a stretch dragged out on the timeline: make a segment from
 // new text, or from text already in the baseline. That is all it does. An
@@ -130,7 +131,7 @@ export const TimeAlignmentPopover = ({
       }
       if (!ok) return; // the document toasted the reason
       setStickySpeaker(doc.id, sp);
-      notifySuccess(mode === 'align' ? 'Text aligned' : 'Segment created');
+      notifySuccess(mode === 'align' ? t('Text aligned') : t('Segment created'));
       if (mode !== 'align') draftRef.current = '';
       setText('');
       setPicked(null);
@@ -188,7 +189,7 @@ export const TimeAlignmentPopover = ({
         <div className="flex flex-col gap-4">
           <div>
             <p className="text-sm font-medium">
-              {mode === 'align' ? 'Align existing text' : 'New segment'}
+              {mode === 'align' ? t('Align existing text') : t('New segment')}
             </p>
             <p className="text-xs text-muted-foreground">
               {formatTime(selection?.start || 0)} - {formatTime(selection?.end || 0)}
@@ -196,12 +197,12 @@ export const TimeAlignmentPopover = ({
           </div>
 
           <SegmentedControl
-            label="Segment text"
+            label={t('Segment text')}
             value={mode}
             onChange={handleModeChange}
             options={[
-              { label: 'New text', value: 'new' },
-              { label: 'Existing text', value: 'align' },
+              { label: t('New text'), value: 'new' },
+              { label: t('Existing text'), value: 'align' },
             ]}
             className="self-start"
           />
@@ -209,15 +210,16 @@ export const TimeAlignmentPopover = ({
           {mode === 'align' && !canAlign() ? (
             <Notice tone="info" className="p-3">
               <p>
-                No unaligned text is available for this time range. Everything between the
-                neighboring segments already belongs to a segment.
+                {t(
+                  'No unaligned text is available for this time range. Everything between the neighboring segments already belongs to a segment.',
+                )}
               </p>
             </Notice>
           ) : (
             <>
               <div className="flex flex-col gap-1.5">
                 <Label htmlFor="alignment-text">
-                  {mode === 'align' ? 'Baseline text' : 'Transcription'}{' '}
+                  {mode === 'align' ? t('Baseline text') : t('Transcription')}{' '}
                   {mode === 'new' && <span className="text-destructive">*</span>}
                 </Label>
                 {mode === 'align' ? (
@@ -244,7 +246,7 @@ export const TimeAlignmentPopover = ({
                     id="alignment-text"
                     compose
                     ref={textareaRef}
-                    placeholder="Text of this segment"
+                    placeholder={t('Text of this segment')}
                     value={text}
                     onChange={(e) => typeText(e.target.value)}
                     rows={3}
@@ -255,21 +257,21 @@ export const TimeAlignmentPopover = ({
                 {mode === 'align' &&
                   (picked ? (
                     <p className="line-clamp-2 text-xs text-muted-foreground" data-picked-text>
-                      Segment: “{pickedText}”
+                      {t('Segment: “{text}”', { text: pickedText })}
                     </p>
                   ) : (
                     <p className="text-xs text-muted-foreground">
-                      Select the words this segment covers.
+                      {t('Select the words this segment covers.')}
                     </p>
                   ))}
               </div>
               <div className="flex flex-col gap-1.5">
-                <Label htmlFor="alignment-speaker">Speaker</Label>
+                <Label htmlFor="alignment-speaker">{t('Speaker')}</Label>
                 <Input
                   id="alignment-speaker"
                   compose
                   list="alignment-speaker-options"
-                  placeholder="e.g. Speaker 1 (optional)"
+                  placeholder={t('e.g. Speaker 1 (optional)')}
                   value={speaker}
                   onChange={(e) => setSpeaker(e.target.value)}
                   autoComplete="off"
@@ -285,18 +287,18 @@ export const TimeAlignmentPopover = ({
 
           <div className="flex items-center justify-end gap-2">
             <Button variant="ghost" onClick={handleCancel} disabled={saving}>
-              Cancel
+              {t('Cancel')}
             </Button>
             <Button
               onClick={handleSave}
               disabled={!ready || (mode === 'align' && !canAlign()) || saving}
             >
-              {saving ? 'Saving…' : 'Save'}
+              {saving ? t('Saving…') : t('Save')}
             </Button>
           </div>
 
           <p className="text-xs italic text-muted-foreground">
-            Ctrl/Cmd+Enter to save, Esc to cancel.
+            {t('Ctrl/Cmd+Enter to save, Esc to cancel.')}
           </p>
         </div>
       </PopoverContent>

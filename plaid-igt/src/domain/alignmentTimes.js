@@ -16,13 +16,15 @@
 // speaker on its own tier, where cross-talk is legal, and must drop a time
 // for same-tier overlap.
 
+import { t } from '@ui/lib/i18n.js';
+
 /**
  * Does this alignment token carry a real stretch of time? Both exporters ask
  * before writing one: a token whose times are missing or inverted is a token
  * with no time, and inventing one would misalign the file.
  */
-export const hasValidTimes = (t) => {
-  const { timeBegin, timeEnd } = t?.metadata ?? {};
+export const hasValidTimes = (tok) => {
+  const { timeBegin, timeEnd } = tok?.metadata ?? {};
   return Number.isFinite(timeBegin) && Number.isFinite(timeEnd) && timeEnd >= timeBegin;
 };
 
@@ -34,9 +36,9 @@ export const hasValidTimes = (t) => {
  */
 export const MIN_SEGMENT = 0.01;
 
-const timeBeginOf = (t) => t.metadata?.timeBegin ?? 0;
-const timeEndOf = (t) => t.metadata?.timeEnd ?? timeBeginOf(t);
-const speakerOf = (t) => (t.metadata?.speaker || '').trim();
+const timeBeginOf = (tok) => tok.metadata?.timeBegin ?? 0;
+const timeEndOf = (tok) => tok.metadata?.timeEnd ?? timeBeginOf(tok);
+const speakerOf = (tok) => (tok.metadata?.speaker || '').trim();
 const byTime = (a, b) => timeBeginOf(a) - timeBeginOf(b);
 
 /** Cross-talk: both labelled, and not the same voice. */
@@ -63,24 +65,30 @@ export function keepTimeRule(alignments, utterances, warnings) {
   const kept = [];
   const dropped = new Set();
   for (const i of order) {
-    const t = tokens[i];
+    const tok = tokens[i];
     const clash = kept.find(
       (k) =>
-        timeBeginOf(tokens[k]) < timeEndOf(t) &&
-        timeEndOf(tokens[k]) > timeBeginOf(t) &&
-        !mayOverlap(tokens[k], t),
+        timeBeginOf(tokens[k]) < timeEndOf(tok) &&
+        timeEndOf(tokens[k]) > timeBeginOf(tok) &&
+        !mayOverlap(tokens[k], tok),
     );
     if (clash === undefined) {
       kept.push(i);
       continue;
     }
     dropped.add(i);
-    const why = speakerOf(t) ? 'with the same speaker' : 'with no speaker to tell them apart';
+    const speaker = speakerOf(tok) ? 'same' : 'none';
     const [n, m] = [utterances[i], utterances[clash]];
     warnings.push(
       n === m
-        ? `Utterance ${n}: two of its time segments overlap ${why}. The later one's time is not imported.`
-        : `Utterance ${n} overlaps utterance ${m} in time ${why}. Its time is not imported.`,
+        ? t(
+            "{speaker, select, same {Utterance {n}: two of its time segments overlap with the same speaker. The later one's time is not imported.} other {Utterance {n}: two of its time segments overlap with no speaker to tell them apart. The later one's time is not imported.}}",
+            { speaker, n },
+          )
+        : t(
+            '{speaker, select, same {Utterance {n} overlaps utterance {m} in time with the same speaker. Its time is not imported.} other {Utterance {n} overlaps utterance {m} in time with no speaker to tell them apart. Its time is not imported.}}',
+            { speaker, n, m },
+          ),
     );
   }
   return alignments.filter((a, i) => !dropped.has(i));
@@ -93,7 +101,7 @@ export function keepTimeRule(alignments, utterances, warnings) {
  * overlap with do not count.
  */
 export function timeBounds(tokens, id) {
-  const token = (tokens || []).find((t) => t.id === id);
+  const token = (tokens || []).find((tok) => tok.id === id);
   if (!token) return { floor: 0, ceiling: Infinity };
   const start = timeBeginOf(token);
   let floor = 0;
@@ -119,7 +127,7 @@ export function clampResize(
   time,
   { duration = Infinity, minWidth = 0.1 } = {},
 ) {
-  const token = (tokens || []).find((t) => t.id === id);
+  const token = (tokens || []).find((tok) => tok.id === id);
   if (!token) return time;
   const { floor, ceiling } = timeBounds(tokens, id);
   if (handle === 'left') {
@@ -138,9 +146,9 @@ export function clampResize(
 export function freeStretch(tokens, origin) {
   let floor = 0;
   let ceiling = Infinity;
-  for (const t of tokens || []) {
-    const begin = timeBeginOf(t);
-    const end = timeEndOf(t);
+  for (const tok of tokens || []) {
+    const begin = timeBeginOf(tok);
+    const end = timeEndOf(tok);
     if (begin < origin && origin < end) return null;
     if (end <= origin) floor = Math.max(floor, end);
     else ceiling = Math.min(ceiling, begin);
@@ -159,16 +167,22 @@ export function rangeProblem(
   timeEnd,
   { duration, minWidth = MIN_SEGMENT, format = String } = {},
 ) {
-  if (timeEnd - timeBegin < minWidth) return 'A segment must end after it starts.';
+  if (timeEnd - timeBegin < minWidth) return t('A segment must end after it starts.');
   if (Number.isFinite(duration) && duration > 0 && timeEnd > duration + 0.001) {
-    return `The recording ends at ${format(duration)}.`;
+    return t('The recording ends at {time}.', { time: format(duration) });
   }
   const { floor, ceiling } = timeBounds(tokens, id);
   if (timeBegin < floor) {
-    return `The previous segment ends at ${format(floor)}. Only segments with different speakers may overlap.`;
+    return t(
+      'The previous segment ends at {time}. Only segments with different speakers may overlap.',
+      { time: format(floor) },
+    );
   }
   if (timeEnd > ceiling) {
-    return `The next segment starts at ${format(ceiling)}. Only segments with different speakers may overlap.`;
+    return t(
+      'The next segment starts at {time}. Only segments with different speakers may overlap.',
+      { time: format(ceiling) },
+    );
   }
   return null;
 }
@@ -191,7 +205,10 @@ export function overlapProblem(tokens, candidate, { was = null, format = String 
     .sort(byTime);
   const other = others.find((o) => !mayOverlap(candidate, o) && (!was || mayOverlap(was, o)));
   if (!other) return null;
-  return `Overlaps the segment from ${format(timeBeginOf(other))} to ${format(timeEndOf(other))}. Only segments with different speakers may overlap.`;
+  return t(
+    'Overlaps the segment from {begin} to {end}. Only segments with different speakers may overlap.',
+    { begin: format(timeBeginOf(other)), end: format(timeEndOf(other)) },
+  );
 }
 
 /** Every pair of segments that overlap in time and may not, in time order. */
@@ -218,15 +235,15 @@ export function assignLanes(tokens) {
   const sorted = [...(tokens || [])].sort(byTime);
   const laneEnds = [];
   const lanes = new Map();
-  for (const t of sorted) {
-    const begin = timeBeginOf(t);
+  for (const tok of sorted) {
+    const begin = timeBeginOf(tok);
     let lane = laneEnds.findIndex((end) => end <= begin);
     if (lane < 0) {
       lane = laneEnds.length;
       laneEnds.push(0);
     }
-    laneEnds[lane] = timeEndOf(t);
-    lanes.set(t.id, lane);
+    laneEnds[lane] = timeEndOf(tok);
+    lanes.set(tok.id, lane);
   }
   return { lanes, count: Math.max(1, laneEnds.length) };
 }

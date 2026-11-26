@@ -9,11 +9,14 @@
 // encoding cannot hold: a Windows-1252 "café" from Excel would otherwise
 // import as "caf" plus U+FFFD, with nothing on screen to say so (ruled
 // 2026-09-27: refuse, never repair or guess another encoding).
+import { t } from './i18n.js';
 
 export class NotUtf8FileError extends Error {
   constructor(name) {
     super(
-      `${name ? `${name} is` : 'This file is'} not UTF-8. Save it as UTF-8 and import it again.`,
+      name
+        ? t('{name} is not UTF-8. Save it as UTF-8 and import it again.', { name })
+        : t('This file is not UTF-8. Save it as UTF-8 and import it again.'),
     );
     this.name = 'NotUtf8FileError';
   }

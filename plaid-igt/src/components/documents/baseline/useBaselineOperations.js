@@ -8,7 +8,7 @@ import { rebaseEdits } from '@ui/lib/textMerge.js';
 import { notifyError, notifySuccess } from '@/utils/feedback';
 import { useConfirm } from '@ui/components/shared/ConfirmProvider';
 import { countDeleteLoss, holdsPersonsWork, lossPhrase } from '@ui/domain/annotationLoss.js';
-import { countOf } from '@ui/lib/plural.js';
+import { t, listOf } from '@ui/lib/i18n.js';
 import {
   SENTENCE_ROLES,
   isTokenIgnored,
@@ -37,12 +37,6 @@ import {
 // text typed during a save that landed that cannot be moved onto it. It lasts
 // until the next save or Cancel.
 
-// "a", "a and b", "a, b and c".
-const listed = (parts) => {
-  const xs = parts.filter(Boolean);
-  return xs.length < 2 ? (xs[0] ?? '') : `${xs.slice(0, -1).join(', ')} and ${xs[xs.length - 1]}`;
-};
-
 // What a save that takes away `ranges` (plaid-ui removedStretches) deletes,
 // as a sentence for its question, or '' when it deletes nothing that asks:
 // - the words wholly inside a removed stretch
@@ -67,61 +61,80 @@ export function baselineLossSentence(doc, ranges) {
   const body = Array.from(doc.body || '');
   const ignored = [];
   const shown = [];
-  for (const t of layer?.tokens || []) {
-    (isTokenIgnored(body.slice(t.begin, t.end).join(''), cfg) ? ignored : shown).push(t);
+  for (const tok of layer?.tokens || []) {
+    (isTokenIgnored(body.slice(tok.begin, tok.end).join(''), cfg) ? ignored : shown).push(tok);
   }
-  const inIgnored = (t) => ignored.some((g) => g.begin <= t.begin && t.end <= g.end);
+  const inIgnored = (tok) => ignored.some((g) => g.begin <= tok.begin && tok.end <= g.end);
   const held = new Set(
     [info?.sentenceTokenLayer?.id, info?.alignmentTokenLayer?.id].filter(Boolean),
   );
-  const inside = (t) => ranges.some(([b, e]) => b <= t.begin && t.end <= e);
-  const goes = (t) => deletesSentenceOrRow(ranges, t, doc.body);
+  const inside = (tok) => ranges.some(([b, e]) => b <= tok.begin && tok.end <= e);
+  const goes = (tok) => deletesSentenceOrRow(ranges, tok, doc.body);
   // What goes: a sentence or a segment by the rule core takes, every other
   // token wholly inside a removed stretch (a point strictly inside), as
   // countTextDeleteLoss reads it, less the ignored words and what is in them
   const dying = tokenLayers.flatMap((tl) =>
-    (tl.tokens || []).filter((t) => {
-      if (held.has(tl.id)) return goes(t);
-      if (tl.id === layer?.id && !shown.includes(t)) return false;
-      if (tl.id !== layer?.id && inIgnored(t)) return false;
-      return t.begin === t.end ? ranges.some(([b, e]) => b < t.begin && t.end < e) : inside(t);
+    (tl.tokens || []).filter((tok) => {
+      if (held.has(tl.id)) return goes(tok);
+      if (tl.id === layer?.id && !shown.includes(tok)) return false;
+      if (tl.id !== layer?.id && inIgnored(tok)) return false;
+      return tok.begin === tok.end
+        ? ranges.some(([b, e]) => b < tok.begin && tok.end < e)
+        : inside(tok);
     }),
   );
   const loss = countDeleteLoss(
     tokenLayers,
-    dying.map((t) => t.id),
+    dying.map((tok) => tok.id),
     {
       vocabLinks: Object.values(doc.vocabularies || {}).flatMap((v) => v?.vocabLinks || []),
       // A token's own content counts as one annotation, as for the Tokenize
       // tab's word delete, but for the sentences and segments named apart.
-      content: (t, layerId) => !held.has(layerId) && holdsPersonsWork(t),
+      content: (tok, layerId) => !held.has(layerId) && holdsPersonsWork(tok),
     },
   );
   const gone = (tl) => (tl?.tokens || []).filter(goes);
   const sentences = gone(info?.sentenceTokenLayer).length;
   const segments = gone(info?.alignmentTokenLayer);
-  const timed = segments.some((t) => t.metadata?.timeBegin != null);
+  const timed = segments.some((tok) => tok.metadata?.timeBegin != null);
   const translations = (info?.sentenceTokenLayer?.spanLayers || [])
     .filter((sl) => readSentenceRole(sl.config) === SENTENCE_ROLES.TRANSLATION)
     .reduce((n, sl) => n + (loss.byLayer?.get(sl.id) ?? 0), 0);
   const words = shown.filter(inside).length;
   const annotations = loss.annotations - translations;
   const asks = words || segments.length || translations || annotations || loss.links;
-  const what = listed([
-    sentences &&
-      `${countOf(sentences, 'sentence')}${translations ? ` with ${countOf(translations, 'translation')}` : ''}`,
-    segments.length &&
-      `${countOf(segments.length, 'segment')}${timed ? (segments.length === 1 ? ' with its times' : ' with their times') : ''}`,
-    words && countOf(words, 'word'),
-    lossPhrase({ annotations, links: loss.links }),
-  ]);
+  // Each part a counted phrase of its own, the parts a list.
+  const what = listOf(
+    [
+      sentences &&
+        (translations
+          ? t(
+              '{s, plural, one {# sentence} other {# sentences}} with {tr, plural, one {# translation} other {# translations}}',
+              { s: sentences, tr: translations },
+            )
+          : t('{n, plural, one {# sentence} other {# sentences}}', { n: sentences })),
+      segments.length &&
+        (timed
+          ? t('{n, plural, one {# segment with its times} other {# segments with their times}}', {
+              n: segments.length,
+            })
+          : t('{n, plural, one {# segment} other {# segments}}', { n: segments.length })),
+      words && t('{n, plural, one {# word} other {# words}}', { n: words }),
+      lossPhrase({ annotations, links: loss.links }),
+    ].filter(Boolean),
+  );
   const cut = lossPhrase(loss.shortened);
-  const said = [asks && what && `Deletes ${what}.`, cut && `Shortens ${cut}.`]
+  const said = [
+    asks && what && t('Deletes {what}.', { what }),
+    cut && t('Shortens {cut}.', { cut }),
+  ]
     .filter(Boolean)
     .join(' ');
   if (said) return said;
-  const touched = shown.filter((t) => ranges.some(([b, e]) => b < t.end && t.begin < e)).length;
-  return touched ? `Changes ${countOf(touched, 'word')}.` : '';
+  const touched = shown.filter((tok) =>
+    ranges.some(([b, e]) => b < tok.end && tok.begin < e),
+  ).length;
+  return touched ? t('Changes {n, plural, one {# word} other {# words}}.', { n: touched }) : '';
 }
 
 export const useBaselineOperations = () => {
@@ -178,7 +191,7 @@ export const useBaselineOperations = () => {
         setBase(base);
       }
       setSaving(false);
-      notifyError(err, 'Failed to save baseline text');
+      notifyError(err, t('Failed to save baseline text'));
     } finally {
       busy.current = false;
     }
@@ -191,7 +204,10 @@ export const useBaselineOperations = () => {
   // the save moves them. Edits that cannot be moved are refused by the save
   // unsent, so they ask nothing.
   const removedOn = (body, gaps) => {
-    const words = (doc.layerInfo?.primaryTokenLayer?.tokens || []).map((t) => [t.begin, t.end]);
+    const words = (doc.layerInfo?.primaryTokenLayer?.tokens || []).map((tok) => [
+      tok.begin,
+      tok.end,
+    ]);
     return removedStretches(body, gaps, words);
   };
   const lossOfSave = async (gaps) => {
@@ -234,9 +250,9 @@ export const useBaselineOperations = () => {
       if (JSON.stringify(gaps) !== JSON.stringify(editLog.gaps())) continue;
       if (!loses || loses === asked) break;
       const yes = await confirm({
-        title: 'Save baseline changes?',
+        title: t('Save baseline changes?'),
         description: loses,
-        confirmLabel: 'Save anyway',
+        confirmLabel: t('Save anyway'),
         destructive: true,
       });
       if (!yes) {
@@ -266,7 +282,7 @@ export const useBaselineOperations = () => {
       setChangedElsewhere(!!outcome.conflict);
       return;
     }
-    if (ok) notifySuccess('Baseline text saved');
+    if (ok) notifySuccess(t('Baseline text saved'));
     if (editLog.gaps().length === 0) {
       handleCancel();
       return;
@@ -288,7 +304,7 @@ export const useBaselineOperations = () => {
   // a whole document's baseline, and it used to go without a word. What a
   // save on its way sends is not asked about: it lands whether or not the tab
   // is left. What was typed since is.
-  useUnsavedDraft(isEditing && editedText !== base ? 'The baseline text you have typed' : null);
+  useUnsavedDraft(isEditing && editedText !== base ? t('The baseline text you have typed') : null);
 
   // The box's change, with the selection before it (editLogHandlers) and the
   // caret after it, kept as an edit.

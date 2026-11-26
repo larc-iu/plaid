@@ -6,6 +6,7 @@ import { useOpenAssistant } from '@ui/components/assistant/subject.js';
 import { useAssistantAvailable } from '@ui/components/assistant/useAssistantAvailable.js';
 import { useWideEnoughToDock } from '@ui/components/assistant/useDock.js';
 import { IGT_ASSISTANT, assistantTabPath } from './adapter.js';
+import { t } from '@ui/lib/i18n.js';
 
 /**
  * The Assistant button of a project's Documents and Jobs tabs, the header
@@ -27,7 +28,7 @@ export const AssistantButton = ({ projectId, client, narrowOnly = false, size = 
   if (narrowOnly)
     return (
       <Button variant="outline" size={size} className="px-2" asChild>
-        <Link to={assistantTabPath(projectId)} aria-label="Assistant" title="Assistant">
+        <Link to={assistantTabPath(projectId)} aria-label={t('Assistant')} title={t('Assistant')}>
           <AssistantMark className="h-4 w-4" />
         </Link>
       </Button>
@@ -35,7 +36,7 @@ export const AssistantButton = ({ projectId, client, narrowOnly = false, size = 
   const inside = (
     <>
       <AssistantMark className="h-4 w-4" />
-      Assistant
+      {t('Assistant')}
     </>
   );
   return wide ? (

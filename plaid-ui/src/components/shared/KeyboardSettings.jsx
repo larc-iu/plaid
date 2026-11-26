@@ -4,6 +4,7 @@ import { chordCaps, chordText, chordsOf, isModifierKeydown } from '../../lib/cho
 import { KeymapConflict, saveUserKeymap } from '../../lib/userKeymap.js';
 import { notifyError } from '../../lib/notify.js';
 import { humanizeError } from '../../lib/errors.js';
+import { t } from '../../lib/i18n.js';
 import { Button } from '../ui/button';
 import { Card, CardHeader, CardTitle, CardContent } from '../ui/card';
 
@@ -27,18 +28,18 @@ const Caps = ({ chord }) =>
 
 const problemText = (found, chord) => {
   const pressed = chordText(chord, { words: true });
-  if (found.problem === 'reserved') return `The browser uses ${pressed}.`;
+  if (found.problem === 'reserved') return t('The browser uses {pressed}.', { pressed });
   if (found.problem === 'types') {
     const [mod] = chordCaps('Mod+x', { words: true });
     const [alt] = chordCaps('Alt+x', { words: true });
-    return `${pressed} types a character. Add ${mod} or ${alt}.`;
+    return t('{pressed} types a character. Add {mod} or {alt}.', { pressed, mod, alt });
   }
   if (found.problem === 'conflict') {
     return found.with.fixed
-      ? `${pressed} has a fixed meaning here.`
-      : `${pressed} is “${found.with.label}”.`;
+      ? t('{pressed} has a fixed meaning here.', { pressed })
+      : t('{pressed} is “{action}”.', { pressed, action: found.with.label });
   }
-  return `${pressed} cannot be used.`;
+  return t('{pressed} cannot be used.', { pressed });
 };
 
 export const KeyboardSettings = ({ keymap, groups }) => {
@@ -63,11 +64,11 @@ export const KeyboardSettings = ({ keymap, groups }) => {
       if (e instanceof KeymapConflict) {
         // Another tab bound the chord first: show the account's bindings.
         keymap.setOverrides(e.stored);
-        notifyError(problemText(e.found, e.chord), 'Shortcut not saved');
+        notifyError(problemText(e.found, e.chord), t('Shortcut not saved'));
         return;
       }
       keymap.setOverrides(before);
-      notifyError(humanizeError(e), 'Shortcut not saved');
+      notifyError(humanizeError(e), t('Shortcut not saved'));
     } finally {
       setSaving(false);
     }
@@ -88,7 +89,7 @@ export const KeyboardSettings = ({ keymap, groups }) => {
     if (!chord) {
       // A modifier on its way down is not an answer yet. Anything else that
       // spells no chord (a character typed through AltGr, an IME's key) is.
-      if (!isModifierKeydown(e.nativeEvent)) setProblem('That key cannot be used.');
+      if (!isModifierKeydown(e.nativeEvent)) setProblem(t('That key cannot be used.'));
       return undefined;
     }
     const found = keymap.check(id, chord);
@@ -100,7 +101,7 @@ export const KeyboardSettings = ({ keymap, groups }) => {
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Keyboard shortcuts</CardTitle>
+        <CardTitle>{t('Keyboard shortcuts')}</CardTitle>
       </CardHeader>
       <CardContent className="flex flex-col gap-5">
         {groups.map((group) => (
@@ -122,18 +123,22 @@ export const KeyboardSettings = ({ keymap, groups }) => {
                             type="button"
                             autoFocus
                             className="rounded border border-primary px-2 py-0.5 text-xs text-primary outline-none ring-2 ring-primary/30"
-                            aria-label={`Press the new shortcut for ${action.label}`}
+                            aria-label={t('Press the new shortcut for {action}', {
+                              action: action.label,
+                            })}
                             onKeyDown={onRecordKey(action.id)}
                             onBlur={stop}
                           >
-                            Press the new shortcut
+                            {t('Press the new shortcut')}
                           </button>
                         ) : (
                           <span className="flex flex-wrap items-center gap-1">
                             {keymap.chords(action.id).map((chord, i) => (
                               <Fragment key={chord}>
                                 {i > 0 && (
-                                  <span className="px-1 text-xs text-muted-foreground">or</span>
+                                  <span className="px-1 text-xs text-muted-foreground">
+                                    {t('or')}
+                                  </span>
                                 )}
                                 <Caps chord={chord} />
                               </Fragment>
@@ -143,7 +148,7 @@ export const KeyboardSettings = ({ keymap, groups }) => {
                         <span className="ms-auto flex w-32 shrink-0 justify-end gap-1">
                           {isRecording ? (
                             <Button variant="ghost" size="sm" onMouseDown={stop}>
-                              Cancel
+                              {t('Cancel')}
                             </Button>
                           ) : (
                             <>
@@ -152,23 +157,27 @@ export const KeyboardSettings = ({ keymap, groups }) => {
                                   variant="ghost"
                                   size="sm"
                                   disabled={saving}
-                                  aria-label={`Reset the shortcut for ${action.label}`}
+                                  aria-label={t('Reset the shortcut for {action}', {
+                                    action: action.label,
+                                  })}
                                   onClick={() => apply(keymap.withBinding(action.id, null))}
                                 >
-                                  Reset
+                                  {t('Reset')}
                                 </Button>
                               )}
                               <Button
                                 variant="outline"
                                 size="sm"
                                 disabled={saving}
-                                aria-label={`Change the shortcut for ${action.label}`}
+                                aria-label={t('Change the shortcut for {action}', {
+                                  action: action.label,
+                                })}
                                 onClick={() => {
                                   setProblem(null);
                                   setRecording(action.id);
                                 }}
                               >
-                                Change
+                                {t('Change')}
                               </Button>
                             </>
                           )}
@@ -176,7 +185,7 @@ export const KeyboardSettings = ({ keymap, groups }) => {
                       </div>
                       {isRecording && (
                         <p className="text-xs text-muted-foreground" role="status">
-                          {problem ?? 'Esc to cancel.'}
+                          {problem ?? t('Esc to cancel.')}
                         </p>
                       )}
                     </li>
@@ -193,7 +202,7 @@ export const KeyboardSettings = ({ keymap, groups }) => {
               disabled={saving}
               onClick={() => apply({}, { replace: true })}
             >
-              Reset all
+              {t('Reset all')}
             </Button>
           </div>
         )}

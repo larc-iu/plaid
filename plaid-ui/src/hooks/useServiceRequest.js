@@ -4,13 +4,14 @@ import { CHANGED_ELSEWHERE, humanizeError } from '../lib/errors.js';
 import { showRunNotice } from '../lib/runNotice.js';
 import { discoverServices as readServices } from '../lib/discoverServices.js';
 import { uuidv4 } from '../../../plaid-client-js/src/ids.js';
+import { t } from '../lib/i18n.js';
 
 // What a stopped or failed run did to its document, as its version says. A
 // moved version is not called the run's own writes: before the service takes
 // the document's lock someone else may write, and a service of another
 // author may not take it at all, so the page cannot tell whose the change is.
 const changedLine = (changed) =>
-  changed ? 'The document changed during the run.' : 'Nothing was written.';
+  changed ? t('The document changed during the run.') : t('Nothing was written.');
 
 // How long a version read may take before it is given up as unread. It is
 // awaited before the request goes out and before a failed run lets go of the
@@ -106,7 +107,7 @@ export const useServiceRequest = (client) => {
   const begin = useCallback(() => {
     setIsProcessing(true);
     setProgressPercent(null);
-    setProgressMessage('Starting the service…');
+    setProgressMessage(t('Starting the service…'));
   }, []);
 
   // A stopped request comes back as a normal result carrying `stopped: true`
@@ -121,7 +122,7 @@ export const useServiceRequest = (client) => {
   const succeed = useCallback((result, copy, changed = null) => {
     const stopped = result?.stopped === true;
     setProgressPercent(stopped ? null : 100);
-    setProgressMessage(stopped ? 'Stopped.' : 'Finished.');
+    setProgressMessage(stopped ? t('Stopped.') : t('Finished.'));
     if (stopped) {
       // A caller's own stop words are more exact than "Nothing was written."
       // ("No report was written."), so they stand while the document did not
@@ -152,22 +153,26 @@ export const useServiceRequest = (client) => {
   // detection) says so instead of promising a reload that finds nothing.
   const fail = useCallback((error, copy, changed = null) => {
     if (error?.pending) {
-      setProgressMessage('Lost contact with the service.');
+      setProgressMessage(t('Lost contact with the service.'));
       notifyWarning(copy.lostMessage, copy.stoppedTitle);
       return;
     }
     // A service that is not running is named as the person knows it, never
     // by its id (N2-SERVICES-4).
     const said = error?.notLive
-      ? `${copy.serviceName || 'The service'} is not running on this project.`
+      ? copy.serviceName
+        ? t('{name} is not running on this project.', { name: copy.serviceName })
+        : t('The service is not running on this project.')
       : humanizeError(error, copy.errorMessage);
     // A run the server stopped because the document changed under it
     // (H3-10-4): no edit of the person's to redo, and maybe nothing written.
-    if (said === CHANGED_ELSEWHERE) {
-      const conflict = 'Changed elsewhere during the run.';
+    if (said === t(CHANGED_ELSEWHERE)) {
+      const conflict = t('Changed elsewhere during the run.');
       setProgressMessage(conflict);
       notifyError(
-        copy.runName ? `${conflict} Run ${copy.runName} again.` : conflict,
+        copy.runName
+          ? t('Changed elsewhere during the run. Run {name} again.', { name: copy.runName })
+          : conflict,
         copy.errorTitle,
       );
       return;
@@ -179,9 +184,14 @@ export const useServiceRequest = (client) => {
       notifyError(said, copy.errorTitle);
       return;
     }
-    const again = changed ? ` Run ${copy.runName} again to finish.` : '';
+    const ended = /[.!?]$/.test(said) ? said : `${said}.`;
     notifyError(
-      `${/[.!?]$/.test(said) ? said : `${said}.`} ${changedLine(changed)}${again}`,
+      changed
+        ? t('{error} The document changed during the run. Run {name} again to finish.', {
+            error: ended,
+            name: copy.runName,
+          })
+        : t('{error} Nothing was written.', { error: ended }),
       copy.errorTitle,
     );
   }, []);
@@ -200,20 +210,22 @@ export const useServiceRequest = (client) => {
 
       const {
         successTitle,
-        successMessage = 'Finished.',
-        errorTitle = 'Failed to run the service',
-        errorMessage = 'The service reported an error.',
+        successMessage = t('Finished.'),
+        errorTitle = t('Failed to run the service'),
+        errorMessage = t('The service reported an error.'),
         // The run's plain name, for the one message that is neither a success
         // nor a failure. Whatever a stopped run had already written is kept, so
         // a run that writes nothing (speech detection) says something else.
         stoppedTitle,
-        stoppedMessage = 'Stopped partway. What ran before the stop is in the document.',
+        stoppedMessage = t('Stopped partway. What ran before the stop is in the document.'),
         // `(result) => {level, title, message}`, for a caller that can tell a
         // real success from a run that did nothing. See `succeed`.
         notice,
         // Said when the client gives up but the request has not: only true for
         // a run this page wrote down, which is what a reload looks for.
-        lostMessage = 'Lost contact with the service. It is still running. Reload to pick it back up.',
+        lostMessage = t(
+          'Lost contact with the service. It is still running. Reload to pick it back up.',
+        ),
         timeout = 300000,
         onRequestId,
         // A service run is its own action, so the request carries no open
@@ -346,7 +358,7 @@ export const useServiceRequest = (client) => {
     if (!current) return false;
     try {
       await client.messages.cancelServiceRequest(current.projectId, current.requestId);
-      setProgressMessage('Stopping…');
+      setProgressMessage(t('Stopping…'));
       return true;
     } catch (error) {
       // 409 once finished, 404 if it was never there: either way there is

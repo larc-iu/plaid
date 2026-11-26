@@ -13,6 +13,7 @@ import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { Button } from '@ui/components/ui/button';
 import { previewSentence } from '@/import/elan/preview.js';
 import { ElanSection } from './ElanSection.jsx';
+import { t } from '@ui/lib/i18n.js';
 
 // The Analyze grid's own stripes: what a row is a row OF.
 const STRIPES = {
@@ -45,19 +46,23 @@ export const ElanPreview = ({ step = 3, build }) => {
   return (
     <ElanSection
       step={step}
-      title="Preview"
-      note={build.documents.length > 1 ? `“${doc.name}”, as it will be imported.` : null}
+      title={t('Preview')}
+      note={
+        build.documents.length > 1
+          ? t('“{name}”, as it will be imported.', { name: doc.name })
+          : null
+      }
       aside={
         count > 1 && (
           <>
             <span className="text-xs tabular-nums text-muted-foreground">
-              Sentence {index + 1} of {count}
+              {t('Sentence {i} of {n}', { i: index + 1, n: count })}
             </span>
             <Button
               variant="outline"
               size="icon"
               className="h-7 w-7"
-              aria-label="Previous sentence"
+              aria-label={t('Previous sentence')}
               disabled={index === 0}
               onClick={() => setAt(index - 1)}
             >
@@ -67,7 +72,7 @@ export const ElanPreview = ({ step = 3, build }) => {
               variant="outline"
               size="icon"
               className="h-7 w-7"
-              aria-label="Next sentence"
+              aria-label={t('Next sentence')}
               disabled={index === count - 1}
               onClick={() => setAt(index + 1)}
             >
@@ -87,7 +92,7 @@ export const ElanPreview = ({ step = 3, build }) => {
               }}
               dir="auto"
             >
-              <Label kind="words">Words</Label>
+              <Label kind="words">{t('Words')}</Label>
               {shown.words.map((w, i) => (
                 <div key={i} className="font-semibold" dir="auto">
                   {w}
@@ -114,7 +119,7 @@ export const ElanPreview = ({ step = 3, build }) => {
             </div>
           </div>
         ) : (
-          <p className="text-sm text-muted-foreground">This sentence has no words.</p>
+          <p className="text-sm text-muted-foreground">{t('This sentence has no words.')}</p>
         )}
         {shown.fields.length > 0 && (
           <div className="grid grid-cols-[max-content_1fr] items-baseline gap-x-4 gap-y-1 border-t pt-2 text-sm">

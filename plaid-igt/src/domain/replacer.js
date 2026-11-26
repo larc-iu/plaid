@@ -19,6 +19,7 @@
 // equivalent text as equal, as the server's equality does.
 
 import { decomposePattern, namesMark, translatePattern } from '@ui/domain/javaRegex.js';
+import { t } from '@ui/lib/i18n.js';
 
 /**
  * Fill a value that is not there. The three search match types all skip an
@@ -69,16 +70,16 @@ const canonicalPieces = (s) => {
 // `$1`, `$<name>`, `$&` and the rest in a replacement, as String.replace
 // reads them, for one match of `matchAll`.
 const expand = (template, m) =>
-  template.replace(/\$([$&`']|\d{1,2}|<[^>]*>)/g, (all, t) => {
-    if (t === '$') return '$';
-    if (t === '&') return m[0];
-    if (t === '`') return m.input.slice(0, m.index);
-    if (t === "'") return m.input.slice(m.index + m[0].length);
-    if (t[0] === '<') return m.groups ? (m.groups[t.slice(1, -1)] ?? '') : all;
-    const two = Number(t);
-    if (t.length === 2 && two >= 1 && two < m.length) return m[two] ?? '';
-    const one = Number(t[0]);
-    return one >= 1 && one < m.length ? (m[one] ?? '') + t.slice(1) : all;
+  template.replace(/\$([$&`']|\d{1,2}|<[^>]*>)/g, (all, tok) => {
+    if (tok === '$') return '$';
+    if (tok === '&') return m[0];
+    if (tok === '`') return m.input.slice(0, m.index);
+    if (tok === "'") return m.input.slice(m.index + m[0].length);
+    if (tok[0] === '<') return m.groups ? (m.groups[tok.slice(1, -1)] ?? '') : all;
+    const two = Number(tok);
+    if (tok.length === 2 && two >= 1 && two < m.length) return m[two] ?? '';
+    const one = Number(tok[0]);
+    return one >= 1 && one < m.length ? (m[one] ?? '') + tok.slice(1) : all;
   });
 
 // `value` with every match of `re` (global) in its NFC form rewritten by
@@ -141,12 +142,16 @@ function matchCase(matched, replacement) {
   return chars.join('');
 }
 
-const REPLACEMENT_BACKSLASH = 'The replacement cannot hold a backslash. Type the character itself.';
 // `\1` is a group in sed, Perl and Python, so a backslash before a digit is
 // told the group as this replacement writes it.
 const backslashError = (replacement) => {
   const group = /\\([0-9])/.exec(replacement);
-  return group ? `${REPLACEMENT_BACKSLASH} Write $${group[1]} for a group.` : REPLACEMENT_BACKSLASH;
+  return group
+    ? t(
+        'The replacement cannot hold a backslash. Type the character itself. Write ${group} for a group.',
+        { group: group[1] },
+      )
+    : t('The replacement cannot hold a backslash. Type the character itself.');
 };
 
 // Returns { apply, error }: `apply(value)` gives the rewritten value, or null

@@ -6,6 +6,7 @@ import { useDocumentTitle } from '../../hooks/useDocumentTitle.js';
 import { useProject } from '../../hooks/useProject.js';
 import { humanizeError, projectNotFound } from '../../lib/errors.js';
 import { notifyError, notifySuccess } from '../../lib/notify.js';
+import { t } from '../../lib/i18n.js';
 import { Button } from '../ui/button';
 import { ProjectDocumentsList } from './ProjectDocumentsList.jsx';
 import { LoadError } from './LoadError.jsx';
@@ -62,7 +63,7 @@ export const ProjectDocumentsPage = ({
     error: loadError,
     reload,
   } = useProject({ withDocuments: true, logoutOnAuthError: true });
-  const error = loadError && !projectNotFound(loadError) ? 'Failed to load the documents' : '';
+  const error = loadError && !projectNotFound(loadError) ? t('Failed to load the documents') : '';
   useDocumentTitle(project?.name);
   const [settingUp, setSettingUp] = useState(false);
   const { user, getClient } = useAuth();
@@ -76,11 +77,11 @@ export const ProjectDocumentsPage = ({
       const client = getClient();
       if (!client) throw new Error('Not authenticated');
       await setup.adopt(client, project, info);
-      notifySuccess(`Set up for ${setup.app}`);
+      notifySuccess(t('Set up for {app}', { app: setup.app }));
       await reload();
     } catch (err) {
       console.error(`Failed to set the project up for ${setup.app}:`, err);
-      notifyError(humanizeError(err, 'Failed to set up the project.'));
+      notifyError(humanizeError(err, t('Failed to set up the project.')));
       // What landed before the failure is shown, not the copy the button was
       // pressed on.
       await reload();
@@ -99,7 +100,7 @@ export const ProjectDocumentsPage = ({
 
   if (!project) {
     return (
-      <LoadError onRetry={error ? reload : undefined}>{error || 'Project not found.'}</LoadError>
+      <LoadError onRetry={error ? reload : undefined}>{error || t('Project not found.')}</LoadError>
     );
   }
 
@@ -114,16 +115,18 @@ export const ProjectDocumentsPage = ({
           ) : (
             <Notice tone="info" icon={Info} className="max-w-lg gap-3 p-4">
               <div className="flex flex-col items-start gap-3">
-                <p className="font-medium">Not set up for {setup.app}</p>
+                <p className="font-medium">{t('Not set up for {app}', { app: setup.app })}</p>
                 {canManage ? (
                   <>
                     <p className="text-muted-foreground">{setup.note}</p>
                     <Button size="sm" onClick={handleSetUp} disabled={settingUp}>
-                      {settingUp ? 'Saving…' : `Set up for ${setup.app}`}
+                      {settingUp ? t('Saving…') : t('Set up for {app}', { app: setup.app })}
                     </Button>
                   </>
                 ) : (
-                  <p className="text-muted-foreground">A project maintainer can set it up.</p>
+                  <p className="text-muted-foreground">
+                    {t('A project maintainer can set it up.')}
+                  </p>
                 )}
               </div>
             </Notice>
@@ -146,10 +149,10 @@ export const ProjectDocumentsPage = ({
           <Notice tone="warning" icon={Info} className="max-w-lg gap-3 p-4">
             <div className="flex flex-col items-start gap-3">
               <p className="font-medium">
-                The last set-up for {setup.app} stopped before it finished.
+                {t('The last set-up for {app} stopped before it finished.', { app: setup.app })}
               </p>
               <Button size="sm" onClick={handleSetUp} disabled={settingUp}>
-                {settingUp ? 'Saving…' : `Finish setting up for ${setup.app}`}
+                {settingUp ? t('Saving…') : t('Finish setting up for {app}', { app: setup.app })}
               </Button>
             </div>
           </Notice>

@@ -1,5 +1,6 @@
 import { Link } from 'react-router-dom';
 import { historyHref } from '@ui/hooks/useHistoryParam.js';
+import { t } from '@ui/lib/i18n.js';
 import { APP_ROUTES } from '@/appRoutes.js';
 import { changesGroup } from './jobText.js';
 
@@ -14,8 +15,8 @@ export const JobHistoryLinks = ({ projectId, document: d, running = false }) => 
   if (d.name === null || d.name === undefined) return null;
   const path = APP_ROUTES.document(projectId, d.documentId);
   const links = [
-    [changesGroup(d), running ? 'Changes so far' : 'Changes'],
-    [d.harmonizeGroup, 'Analyses made consistent'],
+    [changesGroup(d), running ? t('Changes so far') : t('Changes')],
+    [d.harmonizeGroup, t('Analyses made consistent')],
   ].filter(([group]) => group);
   return (
     <span className="flex flex-wrap gap-x-3">

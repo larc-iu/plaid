@@ -2,6 +2,8 @@
 // and what a turn the reader stopped had already got through. Sending the
 // message again is the service's (`rewind_for_retry` in plaid-agent).
 
+import { t } from '../../lib/i18n.js';
+
 // What a turn the reader STOPPED had already got through, if it was this
 // conversation's. The live step list lives inside the panel's `busy` block and
 // goes with it, so stopping would otherwise clear the screen of everything the
@@ -20,10 +22,10 @@ export const stoppedIn = (stopped, convId) =>
 // error and the item is not drawn as well (`hidesStopped`).
 export const retryNote = (display, stoppedHere) => {
   const last = display.at(-1);
-  if (last?.stopped || stoppedHere) return 'Stopped.';
+  if (last?.stopped || stoppedHere) return t('Stopped.');
   return last?.kind === 'error'
-    ? 'That turn did not finish.'
-    : 'No answer came back for this message.';
+    ? t('That turn did not finish.')
+    : t('No answer came back for this message.');
 };
 
 // Whether the user's last message has an answer after it. Such a turn is

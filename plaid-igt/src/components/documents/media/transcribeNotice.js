@@ -1,4 +1,4 @@
-import { countOf } from '@ui/lib/plural.js';
+import { t } from '@ui/lib/i18n.js';
 // What a finished Transcribe says, from the counts the service reports
 // (`segmentsAdded`, `segmentsSkipped`). A run that added nothing, every
 // segment it heard overlapping one already here (a second press, say), says
@@ -9,30 +9,30 @@ export function transcribeNotice(result) {
   if (result?.reason === 'no-speech') {
     return {
       level: 'warning',
-      title: 'Nothing to transcribe',
-      message: 'No speech found in the recording.',
+      title: t('Nothing to transcribe'),
+      message: t('No speech found in the recording.'),
     };
   }
   const added = result?.segmentsAdded;
   if (!Number.isInteger(added)) return null;
   const skipped = Number.isInteger(result?.segmentsSkipped) ? result.segmentsSkipped : 0;
-  const segments = (n) => countOf(n, 'segment');
   if (added === 0) {
     return {
       level: 'warning',
-      title: 'Nothing new to transcribe',
+      title: t('Nothing new to transcribe'),
       message: skipped
-        ? 'Every segment heard overlaps one already here.'
-        : 'No speech was added to the transcript.',
+        ? t('Every segment heard overlaps one already here.')
+        : t('No speech was added to the transcript.'),
     };
   }
   return {
     level: 'success',
-    title: 'Transcription complete',
-    message:
-      `Added ${segments(added)}.` +
-      (skipped
-        ? ` Skipped ${segments(skipped)} that overlap${skipped === 1 ? 's' : ''} segments already here.`
-        : ''),
+    title: t('Transcription complete'),
+    message: skipped
+      ? t(
+          'Added {added, plural, one {# segment} other {# segments}}. Skipped {skipped, plural, one {# segment that overlaps} other {# segments that overlap}} segments already here.',
+          { added, skipped },
+        )
+      : t('Added {added, plural, one {# segment} other {# segments}}.', { added }),
   };
 }

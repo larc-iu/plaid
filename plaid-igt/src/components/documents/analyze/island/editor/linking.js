@@ -1,4 +1,5 @@
 import { notifyInfo } from '@/utils/feedback';
+import { t } from '@ui/lib/i18n.js';
 import { entryForm } from '@larc-iu/plaid-client';
 import { sameFormUnlinked } from '@/domain/linkEverywhere.js';
 
@@ -44,8 +45,12 @@ export const linking = {
     ).then((ok) => {
       if (ok) {
         notifyInfo(
-          `Linked ${ids.length} more “${formText}” to ${this._entryLabel(currentItem)}`,
-          'Linked in this text',
+          t('Linked {n} more “{form}” to {entry}', {
+            n: ids.length,
+            form: formText,
+            entry: this._entryLabel(currentItem),
+          }),
+          t('Linked in this text'),
         );
       }
     });
@@ -63,8 +68,12 @@ export const linking = {
     ).then((ok) => {
       if (ok) {
         notifyInfo(
-          `Linked ${count} “${formText}” to ${this._entryLabel(item)}`,
-          'Linked in this text',
+          t('Linked {n} “{form}” to {entry}', {
+            n: count,
+            form: formText,
+            entry: this._entryLabel(item),
+          }),
+          t('Linked in this text'),
         );
       }
     });
@@ -83,8 +92,8 @@ export const linking = {
     ).then((count) => {
       if (count) {
         notifyInfo(
-          `Analyzed ${count} more “${like.word.content}” like this one`,
-          'Analyzed in this text',
+          t('Analyzed {n} more “{form}” like this one', { n: count, form: like.word.content }),
+          t('Analyzed in this text'),
         );
       }
     });
@@ -125,8 +134,12 @@ export const linking = {
         if (linked) {
           const n = others.length + (row.linkChange ? 1 : 0);
           notifyInfo(
-            `Linked ${n} “${formText}” to ${this._entryLabel(row.item, row.vocabId)}`,
-            'Linked in this text',
+            t('Linked {n} “{form}” to {entry}', {
+              n,
+              form: formText,
+              entry: this._entryLabel(row.item, row.vocabId),
+            }),
+            t('Linked in this text'),
           );
         }
       });
@@ -229,8 +242,12 @@ export const linking = {
     );
     if (ok && all?.ids.length) {
       notifyInfo(
-        `Linked ${all.ids.length + 1} “${all.formText}” to ${form}`,
-        'Linked in this text',
+        t('Linked {n} “{form}” to {entry}', {
+          n: all.ids.length + 1,
+          form: all.formText,
+          entry: form,
+        }),
+        t('Linked in this text'),
       );
     }
   },

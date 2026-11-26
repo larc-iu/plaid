@@ -12,6 +12,7 @@ import {
   workerSeen,
 } from '@ui/domain/jobs.js';
 import { jobPath, jobsTabPath } from '../projects/jobs/jobText.js';
+import { t, msg } from '@ui/lib/i18n.js';
 
 // Every project's assistant jobs in one list, newest first, and whether a
 // job worker is running. A project shows only its own jobs, so which job the
@@ -23,22 +24,24 @@ import { jobPath, jobsTabPath } from '../projects/jobs/jobText.js';
 // and the model it runs. Core remembers the last one only since it started.
 const workerLine = (worker) => {
   if (!worker) return null;
-  if (workerSeen(worker)) return `A job worker is running (${worker.model}).`;
-  if (!worker.seenAt) return 'No job worker has asked for work since the server started.';
-  return `No job worker is running. The last one asked for work ${timeAgo(worker.seenAt)}.`;
+  if (workerSeen(worker)) return t('A job worker is running ({model}).', { model: worker.model });
+  if (!worker.seenAt) return t('No job worker has asked for work since the server started.');
+  return t('No job worker is running. The last one asked for work {when}.', {
+    when: timeAgo(worker.seenAt),
+  });
 };
 
-const tokens = (n) => (typeof n === 'number' ? `${n.toLocaleString()} tokens` : null);
+const tokens = (n) => (typeof n === 'number' ? t('{n, number} tokens', { n }) : null);
 
 // What the running worker's last claim said it runs, each only when sent.
 const SETTINGS = [
-  ['Version', (s) => s.version],
-  ['Model key', (s) => s.modelPool],
-  ['Context window', (s) => tokens(s.contextWindow)],
-  ['Output limit', (s) => tokens(s.maxOutputTokens)],
-  ['Piece output limit', (s) => tokens(s.pieceOutputTokens)],
-  ['Reasoning effort', (s) => s.reasoningEffort],
-  ['Apps', (s) => (Array.isArray(s.apps) ? s.apps.join(', ') : null)],
+  [msg('Version'), (s) => s.version],
+  [msg('Model key'), (s) => s.modelPool],
+  [msg('Context window'), (s) => tokens(s.contextWindow)],
+  [msg('Output limit'), (s) => tokens(s.maxOutputTokens)],
+  [msg('Piece output limit'), (s) => tokens(s.pieceOutputTokens)],
+  [msg('Reasoning effort'), (s) => s.reasoningEffort],
+  [msg('Apps'), (s) => (Array.isArray(s.apps) ? s.apps.join(', ') : null)],
 ];
 
 const workerSettings = (worker) =>
@@ -90,7 +93,7 @@ export const AdminJobs = ({ client }) => {
   const columns = [
     {
       key: 'state',
-      label: 'State',
+      label: t('State'),
       // A job whose worker has gone silent says so beside its state, and one
       // that stands undone says that, both muted.
       render: (j) =>
@@ -106,7 +109,7 @@ export const AdminJobs = ({ client }) => {
             )}
             {j.undone && (
               <span data-undone className="text-muted-foreground">
-                Undone
+                {t('Undone')}
               </span>
             )}
           </>,
@@ -115,7 +118,7 @@ export const AdminJobs = ({ client }) => {
     },
     {
       key: 'project',
-      label: 'Project',
+      label: t('Project'),
       render: (j) => (
         <Link to={jobsTabPath(j.project)} dir="auto" className="hover:underline">
           {j.projectName}
@@ -125,45 +128,47 @@ export const AdminJobs = ({ client }) => {
     },
     {
       key: 'instructions',
-      label: 'Instructions',
+      label: t('Instructions'),
       render: (j) => cell(j, <span className="line-clamp-1">{j.instructions}</span>),
       sort: (j) => j.instructions || '',
     },
     {
       key: 'documents',
-      label: 'Documents',
+      label: t('Documents'),
       align: 'right',
       render: (j) => cell(j, j.documentCount.toLocaleString()),
       sort: (j) => j.documentCount,
     },
     {
       key: 'startedBy',
-      label: 'Started by',
+      label: t('Started by'),
       render: (j) => cell(j, j.startedByName),
       sort: (j) => j.startedByName,
     },
     {
       key: 'model',
-      label: 'Model',
+      label: t('Model'),
       render: (j) => cell(j, j.model ?? ''),
       sort: (j) => j.model || '',
     },
     {
       key: 'createdAt',
-      label: 'Queued',
+      label: t('Queued'),
       render: (j) => when(j, j.createdAt),
       sort: (j) => j.createdAt,
     },
     {
       key: 'finishedAt',
-      label: 'Ended',
+      label: t('Ended'),
       render: (j) => when(j, j.finishedAt),
       sort: (j) => j.finishedAt,
     },
   ];
 
   if (error)
-    return <LoadError onRetry={() => setAttempt((n) => n + 1)}>Failed to list the jobs</LoadError>;
+    return (
+      <LoadError onRetry={() => setAttempt((n) => n + 1)}>{t('Failed to list the jobs')}</LoadError>
+    );
 
   const line = workerLine(worker);
   const settings = workerSettings(worker);
@@ -176,7 +181,7 @@ export const AdminJobs = ({ client }) => {
             <p data-worker-settings className="flex flex-wrap gap-x-3 text-xs">
               {settings.map(([label, value]) => (
                 <span key={label} data-fact>
-                  {label} {value}
+                  {t(label)} {value}
                 </span>
               ))}
             </p>
@@ -191,14 +196,15 @@ export const AdminJobs = ({ client }) => {
         columns={columns}
         defaultSort={{ key: 'createdAt', dir: 'desc' }}
         search={{
-          placeholder: 'Search jobs…',
+          placeholder: t('Search jobs…'),
           match: (j, q) =>
             textIncludes(j.projectName || '', q) ||
             textIncludes(j.instructions || '', q) ||
             textIncludes(j.startedByName || '', q),
         }}
         noun="job"
-        empty="No jobs."
+        empty={t('No jobs.')}
+        noMatch={t('No jobs match.')}
       />
     </div>
   );

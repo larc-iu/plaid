@@ -13,6 +13,7 @@ import { ConfirmProvider } from '@ui/components/shared/ConfirmProvider';
 import { Suspended } from '@ui/components/shared/Suspended';
 import { lazyNamed } from '@ui/lib/lazyNamed';
 import { keys, KEY_GROUPS } from './lib/keymap.js';
+import { t } from '@ui/lib/i18n.js';
 
 // Screens most visits never open ride in their own chunks: the import wizards
 // (and the parsers behind them), the lexicon area, the admin area, the setup
@@ -67,7 +68,9 @@ function App() {
               {/* Public routes */}
               <Route
                 path="/login"
-                element={<LoginForm tagline="Plaid Annotation Interface" homePath="/projects" />}
+                element={
+                  <LoginForm tagline={t('Plaid Annotation Interface')} homePath="/projects" />
+                }
               />
               {/* Unauthenticated by necessity: whoever follows an invite link
                 has no account yet, or has lost the password to the one they

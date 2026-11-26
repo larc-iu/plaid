@@ -4,6 +4,7 @@ import { useProject } from '../../hooks/useProject.js';
 import { projectNotFound } from '../../lib/errors.js';
 import { LoadError } from './LoadError.jsx';
 import { Loading } from './Loading.jsx';
+import { t } from '../../lib/i18n.js';
 
 /**
  * One project-level screen: the project read once, the app's tab strip above
@@ -39,9 +40,9 @@ export const ProjectTabPage = ({ title, tabs: Tabs, withDocuments = false, child
   let body = null;
   if (loading) body = <Loading />;
   else if (project) body = children({ project, projectId, client, documents, reload });
-  else if (projectNotFound(error)) body = <LoadError>Project not found.</LoadError>;
+  else if (projectNotFound(error)) body = <LoadError>{t('Project not found.')}</LoadError>;
   else if (error) {
-    body = <LoadError onRetry={() => reload()}>Failed to load the project</LoadError>;
+    body = <LoadError onRetry={() => reload()}>{t('Failed to load the project')}</LoadError>;
   }
 
   return (

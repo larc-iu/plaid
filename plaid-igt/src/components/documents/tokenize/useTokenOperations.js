@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { cpLength, cpSlice, TASKS } from '@larc-iu/plaid-client';
 import { useDocumentCtx } from '../contexts/DocumentContext.jsx';
 import { useDocumentModel } from '@ui/domain/useDocumentModel.js';
@@ -17,13 +17,14 @@ import { notifySuccess, notifyError, notifyInfo, humanizeError } from '@/utils/f
 import { hasLoss } from '@ui/domain/annotationLoss.js';
 import { useConfirm } from '@ui/components/shared/ConfirmProvider';
 import { mweSplitSentences } from '../../../domain/segments.js';
+import { t, msg } from '@ui/lib/i18n.js';
 
 // The rule-based tokenizer is always available and declares no options.
 const TOKENIZE_BUILTINS = [
   {
     name: BUILTIN_TOKENIZE_RULE_BASED,
-    label: 'Built-in (rule-based punctuation)',
-    description: 'Words split at spaces and punctuation',
+    label: msg('Built-in (rule-based punctuation)'),
+    description: msg('Words split at spaces and punctuation'),
   },
 ];
 
@@ -53,25 +54,30 @@ export const useTokenOperations = () => {
   // it rewrites the token layers and ends in a reload, so nothing may be
   // edited underneath it.
   const layers = doc.layerInfo;
+  const builtins = useMemo(
+    () =>
+      TOKENIZE_BUILTINS.map((b) => ({ ...b, label: t(b.label), description: t(b.description) })),
+    [],
+  );
   const service = useServiceRun({
     request,
     task: TASKS.TOKENIZE,
     storageId: 'tokenize',
-    builtins: TOKENIZE_BUILTINS,
+    builtins,
     project,
     projectId: project?.id,
     doc,
     acquireWriteLock,
-    label: 'Tokenize',
+    label: t('Tokenize'),
     args: {
       textLayerId: layers.primaryTextLayer?.id,
       primaryTokenLayerId: layers.primaryTokenLayer?.id,
       sentenceLayerId: layers.sentenceTokenLayer?.id,
     },
     copy: {
-      successMessage: 'Tokenization complete',
-      errorTitle: 'Failed to tokenize',
-      stoppedTitle: 'Tokenize',
+      successMessage: t('Tokenization complete'),
+      errorTitle: t('Failed to tokenize'),
+      stoppedTitle: t('Tokenize'),
       notice: tokenizeNotice,
     },
   });
@@ -102,12 +108,12 @@ export const useTokenOperations = () => {
   // returns and sends it after any write still in flight.
   const run = (fn) => fn();
   const deleteToken = async (tokenId) => {
-    const word = (doc.layerInfo.primaryTokenLayer?.tokens || []).find((t) => t.id === tokenId);
+    const word = (doc.layerInfo.primaryTokenLayer?.tokens || []).find((w) => w.id === tokenId);
     const loss = countAnnotationLossForWord(doc.layerInfo, doc.vocabularies, word);
     if (!hasLoss(loss)) return run(() => doc.deleteToken(tokenId));
     setPendingDelete({
       tokenId,
-      content: word ? cpSlice(doc.body || '', word.begin, word.end) : 'this token',
+      content: word ? cpSlice(doc.body || '', word.begin, word.end) : t('this token'),
       ...loss,
     });
     return false; // nothing deleted yet — the dialog decides
@@ -128,20 +134,20 @@ export const useTokenOperations = () => {
   // to lose).
   const [pendingStructural, setPendingStructural] = useState(null); // {kind: 'split'|'merge'|'sentence-split', payload, label, annotations, links}
   const splitToken = async (tokenId, splitOffset) => {
-    const word = (doc.layerInfo.primaryTokenLayer?.tokens || []).find((t) => t.id === tokenId);
+    const word = (doc.layerInfo.primaryTokenLayer?.tokens || []).find((w) => w.id === tokenId);
     const loss = countSplitWordLoss(doc.layerInfo, doc.vocabularies, word);
     if (!hasLoss(loss)) return run(() => doc.splitToken(tokenId, splitOffset));
     setPendingStructural({
       kind: 'split',
       payload: { tokenId, splitOffset },
-      label: word ? cpSlice(doc.body || '', word.begin, word.end) : 'this word',
+      label: word ? cpSlice(doc.body || '', word.begin, word.end) : t('this word'),
       ...loss,
     });
     return false; // nothing changed yet — the dialog decides
   };
   const mergeTokens = async (tokenIds) => {
     const ids = tokenIds instanceof Set ? Array.from(tokenIds) : Array.from(tokenIds || []);
-    const words = (doc.layerInfo.primaryTokenLayer?.tokens || []).filter((t) => ids.includes(t.id));
+    const words = (doc.layerInfo.primaryTokenLayer?.tokens || []).filter((w) => ids.includes(w.id));
     // Only what igt shows: a punctuation token the merge takes in (ud's, say)
     // is text to igt, and goes as untokenized punctuation would (REV8-PUNCT-3).
     const loss = countSubWordAnnotationLoss(doc.layerInfo, doc.vocabularies, words);
@@ -149,7 +155,8 @@ export const useTokenOperations = () => {
     setPendingStructural({
       kind: 'merge',
       payload: { ids },
-      label: words.map((w) => cpSlice(doc.body || '', w.begin, w.end)).join(' + ') || 'these words',
+      label:
+        words.map((w) => cpSlice(doc.body || '', w.begin, w.end)).join(' + ') || t('these words'),
       ...loss,
     });
     return false;
@@ -180,9 +187,9 @@ export const useTokenOperations = () => {
     if (loss.annotations + loss.links === 0) {
       if (mwes) {
         const ok = await confirm({
-          title: 'Split sentence?',
+          title: t('Split sentence?'),
           description: mwes,
-          confirmLabel: 'Split',
+          confirmLabel: t('Split'),
           destructive: false,
         });
         if (!ok) return false;
@@ -243,7 +250,7 @@ export const useTokenOperations = () => {
       // Block on unmet required service arguments before doing any work.
       const missing = Object.values(spot.params.errors);
       if (missing.length) {
-        notifyError(missing[0], 'Missing required option');
+        notifyError(missing[0], t('Missing required option'));
         return;
       }
       const loss = countReTokenizeLoss(doc.layerInfo, doc.vocabularies);
@@ -260,7 +267,7 @@ export const useTokenOperations = () => {
     // Built-in rule-based tokenizer fills untokenized ranges only — non-destructive.
     // It still writes and reloads, so it takes the lock like the service path.
     // No record: a built-in run is this page's own work, and dies with it.
-    const lock = acquireWriteLock('Tokenize');
+    const lock = acquireWriteLock(t('Tokenize'));
     if (!lock) return;
     setBusy(true);
     try {
@@ -268,11 +275,11 @@ export const useTokenOperations = () => {
       // null = failure (already toasted by the domain via doc.onError); 0 = nothing
       // to do; N = created.
       if (created === null) return;
-      if (created > 0) notifySuccess(`Created ${created} tokens`);
-      else notifyInfo('Text is already fully tokenized');
+      if (created > 0) notifySuccess(t('Created {n} tokens', { n: created }));
+      else notifyInfo(t('Text is already fully tokenized'));
     } catch (error) {
       console.error('Tokenization failed:', error);
-      notifyError(humanizeError(error), 'Failed to tokenize');
+      notifyError(humanizeError(error), t('Failed to tokenize'));
     } finally {
       setBusy(false);
       lock.release();
@@ -292,14 +299,14 @@ export const useTokenOperations = () => {
   const handleClearTokens = async () => {
     setBusy(true);
     const ok = await doc.clearTokens();
-    if (ok) notifySuccess('Tokens cleared');
+    if (ok) notifySuccess(t('Tokens cleared'));
     setBusy(false);
   };
 
   const handleClearSentences = async () => {
     setBusy(true);
     const ok = await doc.clearSentences();
-    if (ok) notifySuccess('Reset to single sentence');
+    if (ok) notifySuccess(t('Reset to single sentence'));
     setBusy(false);
   };
 

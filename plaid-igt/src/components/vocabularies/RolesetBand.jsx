@@ -12,10 +12,14 @@ import {
   rolesetProblem,
   writeUmr,
 } from '@/domain/vocabUmr';
+import { t } from '@ui/lib/i18n.js';
 
 // The rows as the band edits them, from the entry's fields. Each keeps the
 // argument it was read as (`base`), which the entry holds while the row's
 // name has a problem.
+// The band's title.
+const UMR = 'UMR'; // i18n-ignore: a format name
+
 let rowIds = 0;
 const seedDraft = (fields) => ({
   roleset: readRoleset(fields),
@@ -84,18 +88,18 @@ export const RolesetBand = ({ uid, fields, seed, setFields, disabled = false, on
 
   return (
     <div className="flex flex-col gap-2">
-      <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">UMR</p>
+      <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">{UMR}</p>
       <div className="grid grid-cols-1 gap-x-4 gap-y-3 sm:grid-cols-2 xl:grid-cols-3">
         <div className="flex min-w-0 flex-col gap-1">
           <Label htmlFor={`${uid}-roleset`} className="text-xs font-medium text-muted-foreground">
-            Roleset
+            {t('Roleset')}
           </Label>
           <Input
             id={`${uid}-roleset`}
             className="h-8"
             value={roleset}
             disabled={disabled}
-            placeholder="Roleset"
+            placeholder={t('Roleset')}
             aria-invalid={refused ? true : undefined}
             onChange={(e) => write({ roleset: e.target.value })}
           />
@@ -103,14 +107,14 @@ export const RolesetBand = ({ uid, fields, seed, setFields, disabled = false, on
             <p className="text-xs text-destructive">{refused}</p>
           ) : (
             <p className="text-xs text-muted-foreground">
-              The concept this entry stands for on a UMR graph. Empty means its headword.
+              {t('The concept this entry stands for on a UMR graph. Empty means its headword.')}
             </p>
           )}
         </div>
       </div>
       <div className="flex flex-col gap-2">
-        <p className="text-xs font-medium text-muted-foreground">Arguments</p>
-        {rows.length === 0 && <p className="text-xs text-muted-foreground">None.</p>}
+        <p className="text-xs font-medium text-muted-foreground">{t('Arguments')}</p>
+        {rows.length === 0 && <p className="text-xs text-muted-foreground">{t('None.')}</p>}
         {rows.map((row, i) => {
           const problem = problems[i];
           const problemId = `${bandId}-arg-${row.id}-problem`;
@@ -119,7 +123,7 @@ export const RolesetBand = ({ uid, fields, seed, setFields, disabled = false, on
               <div className="flex items-start gap-2">
                 <div className="flex w-28 shrink-0 flex-col gap-1">
                   <Input
-                    aria-label={`Argument ${i + 1} name`}
+                    aria-label={t('Argument {n} name', { n: i + 1 })}
                     className="h-8"
                     value={row.key}
                     disabled={disabled}
@@ -129,11 +133,11 @@ export const RolesetBand = ({ uid, fields, seed, setFields, disabled = false, on
                   />
                 </div>
                 <Input
-                  aria-label={`Argument ${i + 1} description`}
+                  aria-label={t('Argument {n} description', { n: i + 1 })}
                   className="h-8 min-w-0 flex-1"
                   value={row.description}
                   disabled={disabled}
-                  placeholder="Description"
+                  placeholder={t('Description')}
                   onChange={(e) => setRow(i, { description: e.target.value })}
                 />
                 {!disabled && (
@@ -141,7 +145,7 @@ export const RolesetBand = ({ uid, fields, seed, setFields, disabled = false, on
                     type="button"
                     variant="ghost"
                     size="sm"
-                    aria-label={`Remove argument ${i + 1}`}
+                    aria-label={t('Remove argument {n}', { n: i + 1 })}
                     className="h-8 text-muted-foreground hover:text-destructive"
                     onClick={() => write({ rows: rows.filter((_, k) => k !== i) })}
                   >
@@ -173,7 +177,7 @@ export const RolesetBand = ({ uid, fields, seed, setFields, disabled = false, on
                 })
               }
             >
-              <Plus className="h-4 w-4" /> Add argument
+              <Plus className="h-4 w-4" /> {t('Add argument')}
             </Button>
           </div>
         )}

@@ -9,7 +9,7 @@ import { TagsetField } from '@/components/shared/TagsetField.jsx';
 import { ItemRefField, EntryPlace, HomographNumber } from './DictionaryPanels';
 import { RolesetBand } from './RolesetBand';
 import { FormLabel } from './FormLabel';
-import { countOf } from '@ui/lib/plural.js';
+import { t, tx } from '@ui/lib/i18n.js';
 import { isEnter } from '@ui/lib/chords.js';
 
 // A titled band of the entry form. The grid is three across when the pane is
@@ -107,9 +107,9 @@ export const EntryEditor = ({
             }
           >
             <option value="">—</option>
-            {morphTypeOptions(values.morphType).map((t) => (
-              <option key={t} value={t}>
-                {morphTypeLabel(t)}
+            {morphTypeOptions(values.morphType).map((type) => (
+              <option key={type} value={type}>
+                {morphTypeLabel(type)}
               </option>
             ))}
           </select>
@@ -161,8 +161,9 @@ export const EntryEditor = ({
     if (!isEnter(e) || e.defaultPrevented) return;
     if (e.shiftKey || e.altKey) return;
     const mod = e.ctrlKey || e.metaKey;
-    const t = e.target;
-    const oneLine = t.tagName === 'INPUT' && ['text', 'search', ''].includes(t.type ?? '');
+    const target = e.target;
+    const oneLine =
+      target.tagName === 'INPUT' && ['text', 'search', ''].includes(target.type ?? '');
     if (!mod && !oneLine) return;
     e.preventDefault();
     if (canEdit && dirty) save();
@@ -173,7 +174,7 @@ export const EntryEditor = ({
       <div className="mb-3 flex items-start justify-between gap-2">
         <h3 className="text-base font-semibold">
           {isNew ? (
-            'New entry'
+            t('New entry')
           ) : homographs.length > 1 && !tree.parentOf.get(selectedId) ? (
             <>
               {selectedItem?.form ?? ''}
@@ -189,15 +190,17 @@ export const EntryEditor = ({
         </h3>
         {!isNew && selectedItem && usageCounts && (
           <div className="text-right text-xs text-muted-foreground">
-            <span>{countOf(uses, 'use')}</span>
+            <span>{t('{n, plural, one {# use} other {# uses}}', { n: uses })}</span>
             {usageKinds?.[selectedItem.id] && (
-              <span className="ml-1.5" title="Linked from this many words and morphemes">
+              <span className="ml-1.5" title={t('Linked from this many words and morphemes')}>
                 ·{' '}
                 {['word', 'morpheme']
                   .filter((k) => usageKinds[selectedItem.id][k])
                   .map((k) => {
                     const n = usageKinds[selectedItem.id][k];
-                    return countOf(n, k);
+                    return k === 'word'
+                      ? t('{n, plural, one {# word} other {# words}}', { n })
+                      : t('{n, plural, one {# morpheme} other {# morphemes}}', { n });
                   })
                   .join(', ')}
               </span>
@@ -225,7 +228,10 @@ export const EntryEditor = ({
       )}
       {isNew && liveNewParent && (
         <p className="mb-3 text-xs text-muted-foreground">
-          A new sense of <strong>{tree.byId.get(liveNewParent).form}</strong>
+          {tx('A new sense of <strong>{form}</strong>', {
+            form: tree.byId.get(liveNewParent).form,
+            strong: (c) => <strong>{c}</strong>,
+          })}
         </p>
       )}
 
@@ -236,7 +242,7 @@ export const EntryEditor = ({
         <FormGroup>
           <div className="flex min-w-0 flex-col gap-1">
             <Label htmlFor={`${uid}-form`} className="text-xs font-medium text-muted-foreground">
-              Form <span className="text-destructive">*</span>
+              {t('Form')} <span className="text-destructive">*</span>
             </Label>
             <Input
               id={`${uid}-form`}
@@ -244,7 +250,7 @@ export const EntryEditor = ({
               className="h-8 font-text"
               value={draft.form}
               autoFocus={isNew}
-              placeholder="Form"
+              placeholder={t('Form')}
               spellCheck={false}
               disabled={!(canEdit && (isNew || canManage))}
               ref={formRef}
@@ -262,7 +268,7 @@ export const EntryEditor = ({
                 htmlFor={`${uid}-status`}
                 className="text-xs font-medium text-muted-foreground"
               >
-                Status
+                {t('Status')}
               </Label>
               <TagsetField
                 id={`${uid}-status`}
@@ -278,12 +284,12 @@ export const EntryEditor = ({
           {formGroups.builtIn.map((f) => renderField(f, draft.fields, setFields, !canEdit))}
         </FormGroup>
         {formGroups.custom.length > 0 && (
-          <FormGroup title="Fields">
+          <FormGroup title={t('Fields')}>
             {formGroups.custom.map((f) => renderField(f, draft.fields, setFields, !canEdit))}
           </FormGroup>
         )}
         {formGroups.refs.length > 0 && (
-          <FormGroup title="References">
+          <FormGroup title={t('References')}>
             {formGroups.refs.map((f) => renderField(f, draft.fields, setFields, !canEdit))}
           </FormGroup>
         )}
@@ -308,20 +314,20 @@ export const EntryEditor = ({
                 className="text-muted-foreground hover:text-destructive"
                 onClick={onDelete}
               >
-                <Trash2 className="h-4 w-4" /> Delete
+                <Trash2 className="h-4 w-4" /> {t('Delete')}
               </Button>
             )}
           </div>
           <div className="flex items-center gap-2">
             <Button variant="outline" size="sm" onClick={onCancel} disabled={!dirty}>
-              Cancel
+              {t('Cancel')}
             </Button>
             <Button
               size="sm"
               onClick={save}
               disabled={!dirty || !draft.form.trim() || !saveAllowed}
             >
-              {isNew ? 'Create' : 'Save'}
+              {isNew ? t('Create') : t('Save')}
             </Button>
           </div>
         </div>

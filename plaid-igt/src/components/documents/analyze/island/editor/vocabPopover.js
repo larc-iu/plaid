@@ -16,10 +16,15 @@ import {
 } from '@/domain/precedent';
 import { leavePrecedent, openPrecedent, precedentBase } from '@/domain/precedentCache';
 import { sameFormUnlinked, sameFormUnanalyzed } from '@/domain/linkEverywhere.js';
-import { numHtml } from './shared.js';
+import { numHtml, tlit } from './shared.js';
 import { keys } from '@/lib/keymap.js';
 import { isEnter, isImeKey } from '@ui/lib/chords.js';
-import { countOf } from '@ui/lib/plural.js';
+import { t, listOf } from '@ui/lib/i18n.js';
+
+// Lines short enough to keep their element on one line, so it holds the
+// sentence and no whitespace around it.
+const everyUse = () => t('Applies to every use of this entry.');
+const moreLine = (n) => t('+ {n} more. Type to narrow', { n });
 
 // The vocab popover: the ranked entries for a form, the precedent tally that
 // ranks them, the entry detail, and the morph type row.
@@ -179,7 +184,7 @@ export const vocabPopover = {
       class="igt-vocab-pop"
       data-igt-pop
       role="dialog"
-      aria-label=${`Analyze “${formText}”`}
+      aria-label=${t('Analyze “{form}”', { form: formText })}
       style=${posStyle}
       @click=${(e) => e.stopPropagation()}
       @keydown=${(e) => {
@@ -194,29 +199,37 @@ export const vocabPopover = {
             type="button"
             class="igt-vocab-pop__all"
             data-pop-autofocus
-            title=${`Give the ${like.ids.length} unanalyzed “${like.word.content}” in this text this word’s morphemes and values`}
+            title=${t(
+              'Give the {n} unanalyzed “{form}” in this text this word’s morphemes and values',
+              { n: like.ids.length, form: like.word.content },
+            )}
             @click=${(e) => {
               e.stopPropagation();
               this._analyzeEverywhere(tokenId, like, true);
             }}
           >
-            Analyze every “${like.word.content}” in this text like this
+            ${t('Analyze every “{form}” in this text like this', { form: like.word.content })}
             <span class="igt-vocab-pop__prec">×${like.ids.length}</span>
           </button>`
         : html`<div class="igt-vocab-pop__empty" data-pop-autofocus tabindex="-1">
-            Nothing else in this text is spelled “${formText}” and unanalyzed.
+            ${t('Nothing else in this text is spelled “{form}” and unanalyzed.', {
+              form: formText,
+            })}
           </div>`}
       ${kind === 'word' && this._canRespell(tokenId)
         ? html`<button
             type="button"
             class="igt-vocab-pop__all"
-            title=${`Change the spelling of “${formText}” · ${keys.words('analyze.respell')}`}
+            title=${t('Change the spelling of “{form}” · {key}', {
+              form: formText,
+              key: keys.words('analyze.respell'),
+            })}
             @click=${(e) => {
               e.stopPropagation();
               this._openRespell(tokenId);
             }}
           >
-            Respell
+            ${t('Respell')}
           </button>`
         : nothing}
       ${kind === 'morpheme' ? this._morphTypeRow(tokenId, null) : nothing}
@@ -316,15 +329,17 @@ export const vocabPopover = {
           kind: 'in',
           label: m.item.form,
           sub: this._itemNumber(this._mweItem(m)),
-          title: `Open the multi-word expression “${this._mweWords(m.memberTokenIds)}”`,
+          title: t('Open the multi-word expression “{words}”', {
+            words: this._mweWords(m.memberTokenIds),
+          }),
           onSelect: () => this._openMweByLink(m.linkId),
         });
       }
       if (sentence) {
         extraRows.push({
           kind: 'start',
-          label: 'Gather into a multi-word expression',
-          title: 'Gather this word with others into one multi-word expression',
+          label: t('Gather into a multi-word expression'),
+          title: t('Gather this word with others into one multi-word expression'),
           onSelect: () => this._startMweSelection(sentence.id, tokenId),
         });
       }
@@ -333,8 +348,11 @@ export const vocabPopover = {
     if (kind === 'word' && this._canRespell(tokenId)) {
       extraRows.push({
         kind: 'respell',
-        label: 'Respell',
-        title: `Change the spelling of “${formText}” · ${keys.words('analyze.respell')}`,
+        label: t('Respell'),
+        title: t('Change the spelling of “{form}” · {key}', {
+          form: formText,
+          key: keys.words('analyze.respell'),
+        }),
         onSelect: () => this._openRespell(tokenId),
       });
     }
@@ -361,9 +379,13 @@ export const vocabPopover = {
     // the link it was pressed on.
     const canTakeAll = others.length > 0;
     const allCount = others.length + (currentItem ? 0 : 1);
+    const allValues = { n: others.length, form: formText, key: keys.words('popover.linkAll') };
     const allTitle = currentItem
-      ? `Link the ${others.length} other unlinked “${formText}” in this text · Shift+click or ${keys.words('popover.linkAll')}`
-      : `Link this and the ${others.length} other unlinked “${formText}” in this text · Shift+click or ${keys.words('popover.linkAll')}`;
+      ? t('Link the {n} other unlinked “{form}” in this text · Shift+click or {key}', allValues)
+      : t(
+          'Link this and the {n} other unlinked “{form}” in this text · Shift+click or {key}',
+          allValues,
+        );
     // The actions, routed by mode: a word's or morpheme's own link, or the
     // multi-word expression's. `all` takes the others along.
     const act = {
@@ -514,7 +536,7 @@ export const vocabPopover = {
     // The row reads "+" and the form (Luke 2026-11-10). A screen reader is
     // given the verb, which the mark alone does not say.
     const createMark = html`<span aria-hidden="true">+</span
-      ><span class="igt-sr-only">Create</span>`;
+      ><span class="igt-sr-only">${t('Create')}</span>`;
     const createExtras = html`${canTakeAll && activeIdx === limited.length
       ? html`<span
           class="igt-vocab-pop__take-all"
@@ -527,12 +549,14 @@ export const vocabPopover = {
             this._createClickTimer = null;
             if (effectiveForm) act.create(effectiveForm, false, true);
           }}
-          >all ×${others.length + 1}</span
+          >${t('all ×{n}', { n: others.length + 1 })}</span
         >`
       : nothing}
     ${newFormSub != null
       ? html`<span class="igt-vocab-pop__note"
-          >“${effectiveForm}” already exists. This adds a separate entry</span
+          >${t('“{form}” already exists. This adds a separate entry', {
+            form: effectiveForm,
+          })}</span
         >`
       : nothing}`;
 
@@ -546,7 +570,7 @@ export const vocabPopover = {
         style=${posStyle}
         role="dialog"
         dir="ltr"
-        aria-label=${isMwe ? 'Link words to lexicon' : 'Link to lexicon'}
+        aria-label=${isMwe ? t('Link words to lexicon') : t('Link to lexicon')}
         @click=${(e) => e.stopPropagation()}
       >
         ${isMwe ? this._mweMembersStrip() : nothing}
@@ -555,8 +579,8 @@ export const vocabPopover = {
           spellcheck="false"
           dir="auto"
           data-pop-autofocus
-          placeholder="Search lexicon…"
-          aria-label="Search lexicon"
+          placeholder=${t('Search lexicon…')}
+          aria-label=${t('Search lexicon')}
           .value=${live(this._popoverSearch || '')}
           @input=${(e) => {
             this._popoverSearch = e.target.value;
@@ -609,7 +633,7 @@ export const vocabPopover = {
                         ? html`<a
                             class="igt-vocab-pop__form igt-vocab-pop__goto"
                             href=${`#/vocabularies/${activeVocab.id}?item=${it.id}`}
-                            title="Open this entry in the lexicon"
+                            title=${t('Open this entry in the lexicon')}
                             @click=${(e) => e.stopPropagation()}
                             >${it.form}${numHtml(it._sub, 'igt-vocab-pop')}</a
                           >`
@@ -619,11 +643,16 @@ export const vocabPopover = {
                       ${it._prec
                         ? html`<span
                             class="igt-vocab-pop__prec"
-                            title=${`“${precForm}” was linked to this entry ${countOf(it._prec, 'time')} in this project`}
+                            title=${t(
+                              '“{form}” was linked to this entry {n, plural, one {# time} other {# times}} in this project',
+                              { form: precForm, n: it._prec },
+                            )}
                             >×${it._prec}</span
                           >`
                         : nothing}
-                      ${confirmable ? html`<span class="igt-vocab-pop__ok">accept</span>` : nothing}
+                      ${confirmable
+                        ? html`<span class="igt-vocab-pop__ok">${t('accept')}</span>`
+                        : nothing}
                       ${canTakeAll && i === activeIdx
                         ? this._takeAllMark(allTitle, others.length + 1, () =>
                             act.toggle(it, false, false, true),
@@ -636,9 +665,9 @@ export const vocabPopover = {
                       : nothing}`,
                 });
               })
-            : html`<div class="igt-vocab-pop__empty">No matches</div>`}
+            : html`<div class="igt-vocab-pop__empty">${t('No matches')}</div>`}
           ${truncated > 0
-            ? html`<div class="igt-vocab-pop__more">+ ${truncated} more. Type to narrow</div>`
+            ? html`<div class="igt-vocab-pop__more">${moreLine(truncated)}</div>`
             : nothing}
         </div>
         ${canCreate
@@ -656,7 +685,7 @@ export const vocabPopover = {
                 <button
                   type="button"
                   class="igt-vocab-pop__create-go"
-                  title="Create the entry as typed · Enter"
+                  title=${t('Create the entry as typed · Enter')}
                   @click=${onCreateClick}
                 >
                   ${createMark}
@@ -665,8 +694,8 @@ export const vocabPopover = {
                   class="igt-vocab-pop__create-input"
                   spellcheck="false"
                   dir="auto"
-                  aria-label="New entry form"
-                  title="Enter to create the entry as typed · Esc to cancel"
+                  aria-label=${t('New entry form')}
+                  title=${t('Enter to create the entry as typed · Esc to cancel')}
                   .value=${live(this._popoverCreateEdit)}
                   @input=${(e) => {
                     this._popoverCreateEdit = e.target.value;
@@ -686,7 +715,7 @@ export const vocabPopover = {
                     this._render(true);
                   }
                 }}
-                title="Click to edit the form before creating · double-click to create as is"
+                title=${t('Click to edit the form before creating · double-click to create as is')}
                 @click=${onCreateClick}
               >
                 ${createMark} “${createForm}${numHtml(newFormSub, 'igt-vocab-pop')}” ${createExtras}
@@ -718,7 +747,7 @@ export const vocabPopover = {
                   <path d="M1.5 3v6h13V3" stroke-width="1.2" stroke-linecap="round"></path>
                 </svg>`}
             ${r.kind === 'in'
-              ? html`<span class="igt-vocab-pop__mwe-in">In:</span> ${r.label}${numHtml(
+              ? html`<span class="igt-vocab-pop__mwe-in">${t('In:')}</span> ${r.label}${numHtml(
                     r.sub,
                     'igt-vocab-pop',
                   )}`
@@ -731,13 +760,17 @@ export const vocabPopover = {
           return html`<button
             type="button"
             class="igt-vocab-pop__all"
-            title=${`Link the ${others.length} other unlinked “${formText}” in this text to ${currentItem.form}`}
+            title=${t('Link the {n} other unlinked “{form}” in this text to {entry}', {
+              n: others.length,
+              form: formText,
+              entry: currentItem.form,
+            })}
             @click=${(e) => {
               e.stopPropagation();
               this._linkEverywhere(tokenId, kind, formText, currentItem, true);
             }}
           >
-            Link every “${formText}” in this text
+            ${t('Link every “{form}” in this text', { form: formText })}
             <span class="igt-vocab-pop__prec">×${others.length}</span>
           </button>`;
         })()}
@@ -753,13 +786,16 @@ export const vocabPopover = {
           return html`<button
             type="button"
             class="igt-vocab-pop__all"
-            title=${`Give the ${like.ids.length} unanalyzed “${form}” in this text this word’s morphemes, links and values`}
+            title=${t(
+              'Give the {n} unanalyzed “{form}” in this text this word’s morphemes, links and values',
+              { n: like.ids.length, form },
+            )}
             @click=${(e) => {
               e.stopPropagation();
               this._analyzeEverywhere(tokenId, like, true);
             }}
           >
-            Analyze every “${form}” in this text like this
+            ${t('Analyze every “{form}” in this text like this', { form })}
             <span class="igt-vocab-pop__prec">×${like.ids.length}</span>
           </button>`;
         })()}
@@ -779,14 +815,14 @@ export const vocabPopover = {
                 // visible ones are kept from a screen reader.
                 pairs
                   ? html`<span class="igt-vocab-pop__vocabsel-label" aria-hidden="true"
-                      >New entry in</span
+                      >${t('New entry in')}</span
                     >`
                   : nothing
               }
               <div
                 class="igt-vocab-pop__vocabtabs"
                 role="tablist"
-                aria-label=${pairs ? 'New entry in' : 'Choose lexicon'}
+                aria-label=${pairs ? t('New entry in') : t('Choose lexicon')}
               >
                 ${tabVocabs.map((v) => {
                   const isActive = v.id === activeVocab?.id;
@@ -801,7 +837,7 @@ export const vocabPopover = {
                         href=${`#/vocabularies/${v.id}`}
                         target="_blank"
                         rel="noopener"
-                        title=${`Open “${v.name}” in a new tab`}
+                        title=${t('Open “{name}” in a new tab', { name: v.name })}
                         @click=${(e) => e.stopPropagation()}
                         ><span class="igt-vocab-pop__vtab-name">${v.name}</span
                         ><span class="igt-vocab-pop__vtab-ext">↗</span></a
@@ -811,7 +847,9 @@ export const vocabPopover = {
                         class="igt-vocab-pop__vocabtab"
                         role="tab"
                         aria-selected="false"
-                        title=${pairs ? `Create in “${v.name}”` : `Switch to “${v.name}”`}
+                        title=${pairs
+                          ? t('Create in “{name}”', { name: v.name })
+                          : t('Switch to “{name}”', { name: v.name })}
                         @click=${(e) => {
                           e.stopPropagation();
                           selectVocab(v.id);
@@ -831,20 +869,18 @@ export const vocabPopover = {
   // into belong to other projects: “X” belongs to another project. Each
   // name is data and takes its own direction.
   _borrowedNote(list) {
-    const names = list.map(
-      (v, i) =>
-        html`${i === 0 ? '' : i === list.length - 1 ? ' and ' : ', '}“<span dir="auto"
-            >${v.name}</span
-          >”`,
+    const parts = Object.fromEntries(
+      list.map((v, i) => [`v${i}`, html`“<span dir="auto">${v.name}</span>”`]),
     );
     const homes = new Set(list.map((v) => v.project ?? null));
-    const tail =
-      list.length === 1
-        ? 'belongs to another project.'
-        : homes.size === 1
-          ? 'belong to another project.'
-          : 'belong to other projects.';
-    return html`<div class="igt-vocab-pop__borrowed">${names} ${tail}</div>`;
+    const line = tlit(parts, (m) => {
+      const names = listOf(Object.values(m));
+      if (list.length === 1) return t('{names} belongs to another project.', { names });
+      return homes.size === 1
+        ? t('{names} belong to another project.', { names })
+        : t('{names} belong to other projects.', { names });
+    });
+    return html`<div class="igt-vocab-pop__borrowed">${line}</div>`;
   },
 
   // A row of the list: a button the pointer makes active and a click picks,
@@ -881,7 +917,7 @@ export const vocabPopover = {
         e.stopPropagation();
         onClick();
       }}
-      >all ×${count}</span
+      >${t('all ×{n}', { n: count })}</span
     >`;
   },
 
@@ -894,7 +930,7 @@ export const vocabPopover = {
         e.stopPropagation();
         onClick();
       }}
-      >unlink</span
+      >${t('unlink')}</span
     >`;
   },
 
@@ -1013,13 +1049,13 @@ export const vocabPopover = {
     return html`
       <label
         class="igt-vocab-pop__type"
-        title="Type of the new entry"
+        title=${t('Type of the new entry')}
         @click=${(e) => e.stopPropagation()}
       >
-        <span>Type (new entry)</span>
+        <span>${t('Type (new entry)')}</span>
         <select
           ?disabled=${this.readOnly}
-          aria-label="New entry morpheme type"
+          aria-label=${t('New entry morpheme type')}
           @change=${(e) => {
             e.stopPropagation();
             this._popoverCreateType = e.target.value || null;
@@ -1029,8 +1065,10 @@ export const vocabPopover = {
         >
           <option value="" ?selected=${current === ''}>—</option>
           ${morphTypeOptions(current).map(
-            (t) =>
-              html`<option value=${t} ?selected=${current === t}>${morphTypeLabel(t)}</option>`,
+            (type) =>
+              html`<option value=${type} ?selected=${current === type}>
+                ${morphTypeLabel(type)}
+              </option>`,
           )}
         </select>
       </label>
@@ -1062,16 +1100,16 @@ export const vocabPopover = {
     // Disabled on a document the user writes only because the entry is in a
     // lexicon of a project they hold no role in, which the title says.
     const title = !editsEntry
-      ? 'Type of this morpheme'
+      ? t('Type of this morpheme')
       : canEditEntry || this.readOnly
-        ? 'Type of the linked lexicon entry'
-        : 'Type of the linked lexicon entry, from another project';
+        ? t('Type of the linked lexicon entry')
+        : t('Type of the linked lexicon entry, from another project');
     return html`
       <label class="igt-vocab-pop__type" title=${title} @click=${(e) => e.stopPropagation()}>
-        <span>${editsEntry ? 'Type (entry)' : 'Type'}</span>
+        <span>${editsEntry ? t('Type (entry)') : t('Type')}</span>
         <select
           ?disabled=${disabled}
-          aria-label=${editsEntry ? 'Lexicon entry morpheme type' : 'Morpheme type'}
+          aria-label=${editsEntry ? t('Lexicon entry morpheme type') : t('Morpheme type')}
           @change=${(e) => {
             e.stopPropagation();
             const value = e.target.value || null;
@@ -1082,14 +1120,14 @@ export const vocabPopover = {
         >
           <option value="" ?selected=${current === ''}>—</option>
           ${morphTypeOptions(current).map(
-            (t) =>
-              html`<option value=${t} ?selected=${current === t}>${morphTypeLabel(t)}</option>`,
+            (type) =>
+              html`<option value=${type} ?selected=${current === type}>
+                ${morphTypeLabel(type)}
+              </option>`,
           )}
         </select>
       </label>
-      ${canEditEntry
-        ? html`<div class="igt-vocab-pop__type-note">Applies to every use of this entry.</div>`
-        : nothing}
+      ${canEditEntry ? html`<div class="igt-vocab-pop__type-note">${everyUse()}</div>` : nothing}
     `;
   },
 };

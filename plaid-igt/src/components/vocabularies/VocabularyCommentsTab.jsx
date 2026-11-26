@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { CommentsBrowser } from '@ui/components/shared/CommentsBrowser';
 import { buildEntryAnchorIndex } from '@/domain/commentAnchors';
 import { notifyError } from '@/utils/feedback';
+import { t } from '@ui/lib/i18n.js';
 
 // Every thread on a vocabulary's entries: the vocabulary's counterpart of the
 // document Comments tab. The entries are what threads are labeled by (and what
@@ -26,7 +27,7 @@ export const VocabularyCommentsTab = ({
       })
       .catch((err) => {
         if (!alive) return;
-        notifyError('Failed to load the entries', err);
+        notifyError(t('Failed to load the entries'), err);
         setItems([]);
       });
     return () => {
@@ -42,7 +43,7 @@ export const VocabularyCommentsTab = ({
   );
 
   if (!anchors) {
-    return <p className="py-6 text-sm text-muted-foreground">Loading comments…</p>;
+    return <p className="py-6 text-sm text-muted-foreground">{t('Loading comments…')}</p>;
   }
   return (
     <CommentsBrowser
@@ -51,9 +52,9 @@ export const VocabularyCommentsTab = ({
       canWrite={canWrite}
       canDeleteAny={canDeleteAny}
       jumpHref={(itemId) => `/vocabularies/${vocabularyId}?item=${itemId}`}
-      jumpTitle="Open the entry"
-      emptyText="No entry has comments yet. Open an entry to add one."
-      positionLabel="By entry"
+      jumpTitle={t('Open the entry')}
+      emptyText={t('No entry has comments yet. Open an entry to add one.')}
+      positionLabel={t('By entry')}
     />
   );
 };

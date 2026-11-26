@@ -10,7 +10,9 @@ import {
   AlertDialogCancel,
 } from '@ui/components/ui/alert-dialog';
 import { FormLabel } from './FormLabel';
-import { countOf, plural } from '@ui/lib/plural.js';
+import { t, tx } from '@ui/lib/i18n.js';
+
+const strong = (c) => <strong>{c}</strong>;
 
 // The confirmation the screen asks before deleting the open entry. Whether it
 // is open is the reducer's `dialog`.
@@ -84,70 +86,79 @@ export const EntryDialogs = ({
           }}
         >
           <AlertDialogHeader>
-            <AlertDialogTitle>Delete entry?</AlertDialogTitle>
+            <AlertDialogTitle>{t('Delete entry?')}</AlertDialogTitle>
           </AlertDialogHeader>
           <div className="rounded-md border border-destructive/50 bg-destructive/5 p-3">
             <div className="flex items-start gap-2">
               <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-destructive" />
               <div className="text-sm">
-                <p className="font-medium text-destructive">Warning</p>
+                <p className="font-medium text-destructive">{t('Warning')}</p>
                 {deleteLinksChanged && (
                   <p className="mt-1 font-medium text-foreground">
-                    Its links changed while this was open.
+                    {t('Its links changed while this was open.')}
                   </p>
                 )}
                 {deleteRefsChanged && (
                   <p className="mt-1 font-medium text-foreground">
-                    The entries that refer to it changed while this was open.
+                    {t('The entries that refer to it changed while this was open.')}
                   </p>
                 )}
                 <p className="mt-1 text-muted-foreground">
-                  Deletes the entry{' '}
-                  <strong>
-                    "<FormLabel form={item?.form ?? ''} index={numbers?.get(item?.id)} />"
-                  </strong>
-                  .
+                  {tx('Deletes the entry <strong>"{form}"</strong>.', {
+                    form: (
+                      <FormLabel
+                        key="form"
+                        form={item?.form ?? ''}
+                        index={numbers?.get(item?.id)}
+                      />
+                    ),
+                    strong,
+                  })}
                 </p>
                 <p className="mt-1 text-muted-foreground">
                   {(usageCounts || deleteHidden) && uses > 0 ? (
                     <>
-                      It is linked to{' '}
-                      <strong>
-                        {countOf(uses, 'word')}/{plural(uses, 'morpheme')}
-                      </strong>
                       {deleteHidden?.hidden
-                        ? `, ${deleteHidden.hidden} of them in projects you cannot open`
-                        : ''}
-                      . Those links will be removed.{' '}
+                        ? tx(
+                            'It is linked to <strong>{n, plural, one {# word/morpheme} other {# words/morphemes}}</strong>, {hidden} of them in projects you cannot open. Those links will be removed.',
+                            { n: uses, hidden: deleteHidden.hidden, strong },
+                          )
+                        : tx(
+                            'It is linked to <strong>{n, plural, one {# word/morpheme} other {# words/morphemes}}</strong>. Those links will be removed.',
+                            { n: uses, strong },
+                          )}{' '}
                       {deleteTypesLost
-                        ? 'Morphemes in projects you cannot write that took their type from it will have none. '
+                        ? `${t('Morphemes in projects you cannot write that took their type from it will have none.')} `
                         : ''}
                     </>
                   ) : null}
                   {deleteRefPatches.length > 0 && (
                     <>
-                      <strong>{countOf(deleteRefPatches.length, 'entry')}</strong>{' '}
-                      {deleteRefPatches.length === 1 ? 'refers' : 'refer'} to it.{' '}
                       {deleteFreesSenses
-                        ? 'Its senses become entries of their own, and those '
-                        : 'Those '}
-                      references are removed.{' '}
+                        ? tx(
+                            '<strong>{n, plural, one {# entry} other {# entries}}</strong> {n, plural, one {refers} other {refer}} to it. Its senses become entries of their own, and those references are removed.',
+                            { n: deleteRefPatches.length, strong },
+                          )
+                        : tx(
+                            '<strong>{n, plural, one {# entry} other {# entries}}</strong> {n, plural, one {refers} other {refer}} to it. Those references are removed.',
+                            { n: deleteRefPatches.length, strong },
+                          )}{' '}
                     </>
                   )}
-                  It can be undone from the vocabulary's History.
+                  {t("It can be undone from the vocabulary's History.")}
                 </p>
               </div>
             </div>
           </div>
           <AlertDialogFooter>
             <AlertDialogCancel ref={cancelRef} onClick={close}>
-              Cancel
+              {t('Cancel')}
             </AlertDialogCancel>
             <AlertDialogAction
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
               onClick={onConfirmDelete}
             >
-              <Trash2 className="h-4 w-4" /> Delete entry
+              <Trash2 className="h-4 w-4" /> {t('Delete entry')}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

@@ -3,7 +3,8 @@ import { Pause, Play, Trash2, X } from 'lucide-react';
 import { cpSlice, provState, PROV_STATES } from '@larc-iu/plaid-client';
 import { Button } from '@ui/components/ui/button';
 import { Popover, PopoverAnchor, PopoverContent } from '@ui/components/ui/popover';
-import { hasLoss, lossPhrase, lossWithin } from '@ui/domain/annotationLoss.js';
+import { hasLoss, lossWithin } from '@ui/domain/annotationLoss.js';
+import { t, tx } from '@ui/lib/i18n.js';
 import { Input } from '@ui/components/ui/input';
 import { Label } from '@ui/components/ui/label';
 import { Switch } from '@ui/components/ui/switch';
@@ -69,11 +70,11 @@ const EMPTY = [];
 // was most of what a frame cost. The rows stay in the page, so focus, find
 // and screen readers reach them as before.
 const ROW_OFFSCREEN = '[content-visibility:auto] [contain-intrinsic-size:auto_2.75rem]';
-const timeBeginOf = (t) => t.metadata?.timeBegin ?? 0;
-const timeEndOf = (t) => t.metadata?.timeEnd ?? timeBeginOf(t);
+const timeBeginOf = (tok) => tok.metadata?.timeBegin ?? 0;
+const timeEndOf = (tok) => tok.metadata?.timeEnd ?? timeBeginOf(tok);
 const byTime = (a, b) => timeBeginOf(a) - timeBeginOf(b);
 // The cell engine's key for a segment's text (see above).
-const segmentKey = (t) => `segment:${settledId(t.id)}`;
+const segmentKey = (tok) => `segment:${settledId(tok.id)}`;
 
 // Up and Down move between rows, but only from an edge of the text: in the
 // middle of a wrapped line they are the caret keys the box is entitled to, and
@@ -155,11 +156,43 @@ const coveredBy = (answer, text, loss) =>
 
 // "3 annotations and 1 vocabulary link on this text." A link or annotation
 // the delete only cuts down is named apart: "Shortens 1 vocabulary link."
+const goneSentence = ({ annotations = 0, links = 0 } = {}) => {
+  if (annotations && links) {
+    return t(
+      '{annotations, plural, one {# annotation} other {# annotations}} and {links, plural, one {# vocabulary link} other {# vocabulary links}} on this text.',
+      { annotations, links },
+    );
+  }
+  if (annotations) {
+    return t('{annotations, plural, one {# annotation} other {# annotations}} on this text.', {
+      annotations,
+    });
+  }
+  return links
+    ? t('{links, plural, one {# vocabulary link} other {# vocabulary links}} on this text.', {
+        links,
+      })
+    : '';
+};
+const cutSentence = ({ annotations = 0, links = 0 } = {}) => {
+  if (annotations && links) {
+    return t(
+      'Shortens {annotations, plural, one {# annotation} other {# annotations}} and {links, plural, one {# vocabulary link} other {# vocabulary links}}.',
+      { annotations, links },
+    );
+  }
+  if (annotations) {
+    return t('Shortens {annotations, plural, one {# annotation} other {# annotations}}.', {
+      annotations,
+    });
+  }
+  return links
+    ? t('Shortens {links, plural, one {# vocabulary link} other {# vocabulary links}}.', { links })
+    : '';
+};
 const lossSentence = (loss) => {
   if (!loss) return '';
-  const gone = lossPhrase(loss);
-  const cut = lossPhrase(loss.shortened);
-  return [gone && `${gone} on this text.`, cut && `Shortens ${cut}.`].filter(Boolean).join(' ');
+  return [goneSentence(loss), cutSentence(loss.shortened)].filter(Boolean).join(' ');
 };
 
 const SegmentRow = memo(function SegmentRow({
@@ -415,14 +448,14 @@ const SegmentRow = memo(function SegmentRow({
           <>
             <TimecodeField
               value={timeBeginOf(token)}
-              label={`Segment ${index + 1} start`}
+              label={t('Segment {n} start', { n: index + 1 })}
               duration={duration}
               onCommit={(seconds) => onCommitTime(token.id, 'begin', seconds)}
               onPlayToggle={playToggle}
             />
             <TimecodeField
               value={timeEndOf(token)}
-              label={`Segment ${index + 1} end`}
+              label={t('Segment {n} end', { n: index + 1 })}
               duration={duration}
               onCommit={(seconds) => onCommitTime(token.id, 'end', seconds)}
               onPlayToggle={playToggle}
@@ -438,7 +471,7 @@ const SegmentRow = memo(function SegmentRow({
                 : 'text-[color:var(--plaid-contributed)]',
             )}
           >
-            {proposed}
+            {proposed === 'machine' ? t('machine') : t('contributed')}
           </span>
         )}
       </div>
@@ -449,9 +482,9 @@ const SegmentRow = memo(function SegmentRow({
         <Input
           value={speaker}
           list={SPEAKER_LIST_ID}
-          placeholder="Speaker"
+          placeholder={t('Speaker')}
           compose
-          aria-label={`Segment ${index + 1} speaker`}
+          aria-label={t('Segment {n} speaker', { n: index + 1 })}
           autoComplete="off"
           className="h-8 text-xs"
           onChange={(e) => {
@@ -475,7 +508,7 @@ const SegmentRow = memo(function SegmentRow({
             rows={1}
             spellCheck={false}
             compose
-            aria-label={`Segment ${index + 1} text`}
+            aria-label={t('Segment {n} text', { n: index + 1 })}
             aria-describedby={conflict ? noteId : undefined}
             className={cn(
               'min-h-8 resize-none py-1.5 font-text text-sm [field-sizing:content]',
@@ -526,7 +559,7 @@ const SegmentRow = memo(function SegmentRow({
             variant="ghost"
             size="icon"
             className="h-8 w-8"
-            aria-label={playing ? 'Pause segment' : 'Play segment'}
+            aria-label={playing ? t('Pause segment') : t('Play segment')}
             onClick={playToggle}
             disabled={!canPlay}
           >
@@ -545,7 +578,7 @@ const SegmentRow = memo(function SegmentRow({
                 variant="ghost"
                 size="icon"
                 className="h-8 w-8 hover:text-destructive"
-                aria-label="Delete segment"
+                aria-label={t('Delete segment')}
                 onClick={() => {
                   const loss = lossFor(token);
                   if (!hasLoss(loss)) onDelete(token.id, { deleteText: true, asked: loss });
@@ -566,7 +599,7 @@ const SegmentRow = memo(function SegmentRow({
                     onDelete(token.id, { deleteText: false });
                   }}
                 >
-                  Keep text
+                  {t('Keep text')}
                 </Button>
                 <Button
                   size="sm"
@@ -576,7 +609,7 @@ const SegmentRow = memo(function SegmentRow({
                     onDelete(token.id, { deleteText: true, asked: askText });
                   }}
                 >
-                  Delete text
+                  {t('Delete text')}
                 </Button>
               </div>
             </PopoverContent>
@@ -719,9 +752,11 @@ const ProposalRow = memo(function ProposalRow({
       <Input
         value={speaker}
         list={SPEAKER_LIST_ID}
-        placeholder="Speaker"
+        placeholder={t('Speaker')}
         compose
-        aria-label={`Proposed segment at ${formatTime(proposal.timeBegin)}, speaker`}
+        aria-label={t('Proposed segment at {time}, speaker', {
+          time: formatTime(proposal.timeBegin),
+        })}
         autoComplete="off"
         className="h-8 text-xs"
         onChange={(e) => {
@@ -743,9 +778,9 @@ const ProposalRow = memo(function ProposalRow({
         value={draft}
         rows={1}
         spellCheck={false}
-        placeholder="Proposed segment"
+        placeholder={t('Proposed segment')}
         compose
-        aria-label={`Proposed segment at ${formatTime(proposal.timeBegin)}, text`}
+        aria-label={t('Proposed segment at {time}, text', { time: formatTime(proposal.timeBegin) })}
         className={cn(
           ROW_TEXT,
           'min-h-8 resize-none py-1.5 font-text text-sm [field-sizing:content]',
@@ -759,7 +794,7 @@ const ProposalRow = memo(function ProposalRow({
           variant="ghost"
           size="icon"
           className="h-8 w-8"
-          aria-label={playing ? 'Pause segment' : 'Play segment'}
+          aria-label={playing ? t('Pause segment') : t('Play segment')}
           onClick={() => onPlayToggle(proposal)}
           disabled={!canPlay}
         >
@@ -769,7 +804,7 @@ const ProposalRow = memo(function ProposalRow({
           variant="ghost"
           size="icon"
           className="h-8 w-8"
-          aria-label="Discard proposed segment"
+          aria-label={t('Discard proposed segment')}
           onClick={() => onDiscard(proposal.id)}
         >
           <X className="h-4 w-4" />
@@ -804,7 +839,7 @@ const NewSegmentRow = memo(function NewSegmentRow({
   const canCreate = ready && draft.trim().length > 0;
   // Only Enter saves this row, so what it holds is asked about on every way
   // out, as Baseline's edit box is.
-  useUnsavedDraft(draft.trim() ? 'The new segment you have typed' : null);
+  useUnsavedDraft(draft.trim() ? t('The new segment you have typed') : null);
 
   useLayoutEffect(() => autoGrow(ref.current), [draft]);
   // Stable, so the running clock's re-renders do not hand the box over again
@@ -895,9 +930,9 @@ const NewSegmentRow = memo(function NewSegmentRow({
       <Input
         value={speaker}
         list={SPEAKER_LIST_ID}
-        placeholder="Speaker"
+        placeholder={t('Speaker')}
         compose
-        aria-label="New segment speaker"
+        aria-label={t('New segment speaker')}
         autoComplete="off"
         className="h-8 text-xs"
         onChange={(e) => {
@@ -912,19 +947,24 @@ const NewSegmentRow = memo(function NewSegmentRow({
           value={draft}
           rows={1}
           spellCheck={false}
-          placeholder="New segment"
+          placeholder={t('New segment')}
           compose
-          aria-label="New segment text"
+          aria-label={t('New segment text')}
           className="min-h-8 resize-none py-1.5 font-text text-sm [field-sizing:content]"
           onChange={(e) => setDraft(e.target.value)}
           onKeyDown={onKeyDown}
         />
         <p className="text-xs text-muted-foreground">
           {ready
-            ? `${formatTime(prevEnd)} to ${formatTime(currentTime)} (playback). Enter to save.`
+            ? t('{from} to {to} (playback). Enter to save.', {
+                from: formatTime(prevEnd),
+                to: formatTime(currentTime),
+              })
             : prevEnd > 0
-              ? `Playback must be past ${formatTime(prevEnd)}. For earlier segments, drag on the timeline.`
-              : 'Play the recording or drag on the timeline.'}
+              ? t('Playback must be past {time}. For earlier segments, drag on the timeline.', {
+                  time: formatTime(prevEnd),
+                })
+              : t('Play the recording or drag on the timeline.')}
         </p>
       </div>
       <div className={cn(ROW_BUTTONS, 'h-8 w-8')} />
@@ -996,7 +1036,9 @@ export function TranscriptList({
   }, [segments, proposals]);
 
   const activeId = useMemo(() => {
-    const hit = segments.find((t) => timeBeginOf(t) <= currentTime && currentTime < timeEndOf(t));
+    const hit = segments.find(
+      (tok) => timeBeginOf(tok) <= currentTime && currentTime < timeEndOf(tok),
+    );
     if (hit) return hit.id;
     const proposal = proposals.find((p) => p.timeBegin <= currentTime && currentTime < p.timeEnd);
     return proposal?.id ?? null;
@@ -1005,7 +1047,8 @@ export function TranscriptList({
   const playingId = useMemo(() => {
     if (!isPlaying || !playingSelection) return null;
     const hit = segments.find(
-      (t) => timeBeginOf(t) === playingSelection.start && timeEndOf(t) === playingSelection.end,
+      (tok) =>
+        timeBeginOf(tok) === playingSelection.start && timeEndOf(tok) === playingSelection.end,
     );
     if (hit) return hit.id;
     const proposal = proposals.find(
@@ -1047,7 +1090,7 @@ export function TranscriptList({
     (token) => {
       const ops = opsRef.current;
       // The token handed over may predate a time edit; play what is stored now.
-      const live = doc.alignmentTokens.find((t) => t.id === token.id) ?? token;
+      const live = doc.alignmentTokens.find((tok) => tok.id === token.id) ?? token;
       const range = { start: timeBeginOf(live), end: timeEndOf(live) };
       const isThis =
         ops.playingSelection &&
@@ -1064,12 +1107,12 @@ export function TranscriptList({
 
   // The segments' text cells. What a cell holds is read from the document,
   // by the segment that names it.
-  const segmentAt = (key) => doc.alignmentTokens.find((t) => segmentKey(t) === key);
+  const segmentAt = (key) => doc.alignmentTokens.find((tok) => segmentKey(tok) === key);
   const textOf = (token) => cpSlice(doc.body || '', token.begin, token.end);
   // The ids of the segments on either side of `token` in the text.
   const neighboursOf = (token) => {
     const order = [...doc.alignmentTokens].sort((a, b) => a.begin - b.begin || a.end - b.end);
-    const at = order.findIndex((t) => t.id === token.id);
+    const at = order.findIndex((tok) => tok.id === token.id);
     return { before: order[at - 1]?.id ?? null, after: order[at + 1]?.id ?? null };
   };
   const cells = useCellEngine(doc, {
@@ -1133,7 +1176,10 @@ export function TranscriptList({
   // Leaving the document by an in-app link asks first while they are shown.
   useUnsavedDraft(
     unsaved.length
-      ? `The text of ${unsaved.length === 1 ? 'a transcript line' : `${unsaved.length} transcript lines`}`
+      ? t(
+          '{n, plural, one {The text of a transcript line} other {The text of {n} transcript lines}}',
+          { n: unsaved.length },
+        )
       : null,
   );
 
@@ -1145,7 +1191,7 @@ export function TranscriptList({
   const answered = useRef(new Map());
   const handleCommit = useCallback(
     async (id, { text, speaker, edits, saved, what }) => {
-      let token = doc.alignmentTokens.find((t) => t.id === id);
+      let token = doc.alignmentTokens.find((tok) => tok.id === id);
       if (!token) return false;
       let storedText = cpSlice(doc.body || '', token.begin, token.end);
       const storedSpeaker = token.metadata?.speaker || '';
@@ -1163,14 +1209,14 @@ export function TranscriptList({
         if (loses) {
           const times = { timeBegin: timeBeginOf(token), timeEnd: timeEndOf(token) };
           const yes = await confirm({
-            title: 'Save segment text?',
+            title: t('Save segment text?'),
             description: loses,
-            confirmLabel: 'Save anyway',
+            confirmLabel: t('Save anyway'),
             destructive: true,
           });
           // The segment as it is now: a time or text changed while the
           // question was open is not written back.
-          token = doc.alignmentTokens.find((t) => t.id === id);
+          token = doc.alignmentTokens.find((tok) => tok.id === id);
           if (!yes || !token) {
             // A row no longer on screen (the person left the tab, or another
             // question answered this one) keeps its typing under Not saved.
@@ -1240,7 +1286,7 @@ export function TranscriptList({
   const handleCommitTime = useCallback(
     async (id, which, seconds) => {
       const sorted = [...doc.alignmentTokens].sort(byTime);
-      const i = sorted.findIndex((t) => t.id === id);
+      const i = sorted.findIndex((tok) => tok.id === id);
       if (i < 0) return false;
       const token = sorted[i];
       const timeBegin = which === 'begin' ? seconds : timeBeginOf(token);
@@ -1251,7 +1297,7 @@ export function TranscriptList({
         format: formatTime,
       });
       if (problem) {
-        notifyError(problem, 'Time not saved');
+        notifyError(problem, t('Time not saved'));
         return false;
       }
       return doc.updateAlignmentBounds(id, { timeBegin, timeEnd });
@@ -1276,7 +1322,7 @@ export function TranscriptList({
     (id, opts) => opsRef.current.handleDeleteAlignment(id, opts),
     [],
   );
-  const lossFor = useCallback((t) => doc.segmentDeleteLoss(t.id), [doc]);
+  const lossFor = useCallback((tok) => doc.segmentDeleteLoss(tok.id), [doc]);
   const handleSplit = useCallback(
     (id, offset) => opsRef.current.handleSplitSegment(id, { offset }),
     [],
@@ -1321,10 +1367,10 @@ export function TranscriptList({
     (fromTime, direction) => {
       const tokens = doc.alignmentTokens || [];
       const live = (opsRef.current.vad?.proposals || []).filter(
-        (p) => !tokens.some((t) => timeBeginOf(t) < p.timeEnd && timeEndOf(t) > p.timeBegin),
+        (p) => !tokens.some((tok) => timeBeginOf(tok) < p.timeEnd && timeEndOf(tok) > p.timeBegin),
       );
       const rows = [
-        ...tokens.map((t) => ({ id: t.id, time: timeBeginOf(t) })),
+        ...tokens.map((tok) => ({ id: tok.id, time: timeBeginOf(tok) })),
         ...live.map((p) => ({ id: p.id, time: p.timeBegin })),
       ].sort((a, b) => a.time - b.time);
       const target =
@@ -1351,7 +1397,7 @@ export function TranscriptList({
   useEffect(() => {
     if (!selection) return;
     const match = segments.find(
-      (t) => timeBeginOf(t) === selection.start && timeEndOf(t) === selection.end,
+      (tok) => timeBeginOf(tok) === selection.start && timeEndOf(tok) === selection.end,
     );
     if (!match) return;
     revealRow(match.id);
@@ -1362,7 +1408,7 @@ export function TranscriptList({
   // focus (read-only), the segment is selected and played directly.
   useEffect(() => {
     if (!segmentFocusRequest) return;
-    const token = doc.alignmentTokens.find((t) => t.id === segmentFocusRequest.id);
+    const token = doc.alignmentTokens.find((tok) => tok.id === segmentFocusRequest.id);
     // A proposal block on the timeline asks for its row the same way a segment
     // does, so the id may name either kind.
     const proposal = token ? null : proposals.find((p) => p.id === segmentFocusRequest.id);
@@ -1380,7 +1426,7 @@ export function TranscriptList({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [segmentFocusRequest]);
 
-  const prevEnd = segments.reduce((max, t) => Math.max(max, timeEndOf(t)), 0);
+  const prevEnd = segments.reduce((max, tok) => Math.max(max, timeEndOf(tok)), 0);
 
   // The rows as elements, built again only when a row's own props change. The
   // list re-renders with the tab's running clock, and walking a thousand rows
@@ -1466,9 +1512,9 @@ export function TranscriptList({
     <div className="rounded-lg border bg-card p-4" ref={containerRef}>
       <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
         <div className="flex items-baseline gap-2">
-          <span className="text-sm font-medium">Transcript</span>
+          <span className="text-sm font-medium">{t('Transcript')}</span>
           <span className="text-xs text-muted-foreground">
-            {segments.length === 1 ? '1 segment' : `${segments.length} segments`}
+            {t('{n, plural, one {# segment} other {# segments}}', { n: segments.length })}
           </span>
         </div>
         {/* Wraps on a phone: the switch and its label stay together, and the
@@ -1482,7 +1528,7 @@ export function TranscriptList({
                 onCheckedChange={(on) => mediaOps.setAutoPlayOnFocus(on)}
               />
               <Label htmlFor="transcript-play-on-focus" className="text-xs font-normal">
-                Play segment on entry
+                {t('Play segment on entry')}
               </Label>
             </div>
           )}
@@ -1498,21 +1544,24 @@ export function TranscriptList({
       </div>
 
       {unsaved.length > 0 && (
-        <ul className="mb-2 flex flex-col gap-1" aria-label="Not saved">
+        <ul className="mb-2 flex flex-col gap-1" aria-label={t('Not saved')}>
           {unsaved.map((u) => (
             <li
               key={u.id}
               className="flex items-start gap-2 rounded-md border border-warning px-2 py-1 text-xs text-warning-foreground"
             >
               <span className="min-w-0 flex-1 select-text">
-                Not saved, {formatTime(u.timeBegin)} to {formatTime(u.timeEnd)}:{' '}
-                <bdi className="whitespace-pre-wrap">{u.typed}</bdi>
+                {tx('Not saved, {from} to {to}: {typed}', {
+                  from: formatTime(u.timeBegin),
+                  to: formatTime(u.timeEnd),
+                  typed: <bdi className="whitespace-pre-wrap">{u.typed}</bdi>,
+                })}
               </span>
               <Button
                 variant="ghost"
                 size="icon"
                 className="h-5 w-5 shrink-0"
-                aria-label="Dismiss"
+                aria-label={t('Dismiss')}
                 onClick={() => doc.dismissUnsavedRow(u.id)}
               >
                 <X className="h-3.5 w-3.5" />
@@ -1560,8 +1609,10 @@ export function TranscriptList({
         {rows.length === 0 && (
           <p className="py-2 text-sm text-muted-foreground">
             {readOnly
-              ? 'No segments.'
-              : 'No segments yet. Add one below, drag on the timeline, detect speech, or run a transcription service.'}
+              ? t('No segments.')
+              : t(
+                  'No segments yet. Add one below, drag on the timeline, detect speech, or run a transcription service.',
+                )}
           </p>
         )}
         {rowElements}

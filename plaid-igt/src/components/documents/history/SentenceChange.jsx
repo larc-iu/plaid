@@ -3,11 +3,20 @@ import { cn } from '@ui/lib/utils';
 import { APP_ROUTES } from '@/appRoutes.js';
 import { ChangeValue } from './ChangeValue.jsx';
 import { kindsLine } from './changeMarks.js';
+import { t, msg } from '@ui/lib/i18n.js';
 
 // Rows whose values are glosses, set in small caps as the grid sets them.
 const GLOSS_KINDS = new Set(['word', 'morph']);
 
-const STATE_WORDS = { added: 'Added', deleted: 'Deleted' };
+const STATE_WORDS = { added: msg('Added'), deleted: msg('Deleted') };
+
+// The rows named by what they are rather than by a field's name.
+const LINE_LABELS = {
+  morphemes: msg('Morphemes'),
+  entry: msg('Entry'),
+  wordEntry: msg('Word entry'),
+};
+const lineLabel = (line) => (LINE_LABELS[line.kind] ? t(LINE_LABELS[line.kind]) : line.label);
 
 /**
  * One sentence an entry changed (`s`, from sentenceChanges), as an
@@ -28,22 +37,22 @@ export const SentenceChange = ({ s, dir, projectId, documentId }) => (
   >
     <div className="mb-1.5 flex flex-wrap items-baseline gap-x-2 text-xs">
       {s.state === 'deleted' ? (
-        <span className="font-medium">Sentence {s.number}</span>
+        <span className="font-medium">{t('Sentence {n}', { n: s.number })}</span>
       ) : (
         <Link
           className="font-medium hover:underline"
           to={APP_ROUTES.sentence(projectId, documentId, s.id)}
         >
-          Sentence {s.number}
+          {t('Sentence {n}', { n: s.number })}
         </Link>
       )}
       {STATE_WORDS[s.state] && (
         <span className="rounded border px-1.5 text-[11px] font-medium text-muted-foreground">
-          {STATE_WORDS[s.state]}
+          {t(STATE_WORDS[s.state])}
         </span>
       )}
       <span className="text-muted-foreground">{kindsLine(s.kinds || {})}</span>
-      {s.changedSince && <span className="text-muted-foreground">Changed again later</span>}
+      {s.changedSince && <span className="text-muted-foreground">{t('Changed again later')}</span>}
     </div>
     <div className="overflow-x-auto">
       <table
@@ -60,8 +69,8 @@ export const SentenceChange = ({ s, dir, projectId, documentId }) => (
                 scope="row"
                 className="sticky start-0 z-10 bg-card pe-3 text-start align-top text-[11px] font-normal leading-5 text-muted-foreground"
               >
-                <span className="block max-w-[7rem] truncate" title={line.label || undefined}>
-                  {line.label}
+                <span className="block max-w-[7rem] truncate" title={lineLabel(line) || undefined}>
+                  {lineLabel(line)}
                 </span>
               </th>
               {line.cells.map((c, j) => (
@@ -87,7 +96,7 @@ export const SentenceChange = ({ s, dir, projectId, documentId }) => (
       </table>
     </div>
     {s.text.changed && (
-      <Field label="Text">
+      <Field label={t('Text')}>
         <ChangeValue c={{ ...s.text, beforeProv: null, afterProv: null }} />
       </Field>
     )}
@@ -97,7 +106,7 @@ export const SentenceChange = ({ s, dir, projectId, documentId }) => (
       </Field>
     ))}
     {s.mwes.map((m) => (
-      <Field key={m.id} label={`Expression (${m.words})`}>
+      <Field key={m.id} label={t('Expression ({words})', { words: m.words })}>
         <ChangeValue c={m} />
       </Field>
     ))}

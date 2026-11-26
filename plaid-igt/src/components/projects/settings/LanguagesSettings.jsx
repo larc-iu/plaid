@@ -14,6 +14,7 @@ import { readLanguages, IGT_NAMESPACE } from '@/domain/igtConfig';
 import { isLangTag } from '@/domain/fieldNames';
 import { TYPE } from '@ui/lib/typeScale.js';
 import { useUnsavedDraft } from '@ui/hooks/useUnsavedDraft.js';
+import { t } from '@ui/lib/i18n.js';
 
 // Advisory only: a wrong-looking code still saves, since a project may be
 // documenting something Glottolog has no entry for.
@@ -90,8 +91,8 @@ const Field = ({ id, label, value, onChange, placeholder, hint, invalid, elsewhe
     {elsewhere !== undefined && (
       <p className="text-xs text-muted-foreground">
         {elsewhere === null || elsewhere === ''
-          ? 'Cleared elsewhere.'
-          : `Changed elsewhere to ${elsewhere}.`}
+          ? t('Cleared elsewhere.')
+          : t('Changed elsewhere to {value}.', { value: String(elsewhere) })}
       </p>
     )}
   </div>
@@ -115,39 +116,39 @@ const LanguageGroup = ({ prefix, title, description, lang, onChange, coordinates
       <Field
         id={`${prefix}-name`}
         elsewhere={theirs('name')}
-        label="Name"
+        label={t('Name')}
         value={lang.name}
-        placeholder="e.g. Lezgian"
+        placeholder={t('e.g. Lezgian')}
         onChange={(v) => set({ name: v })}
       />
       <div className="grid grid-cols-3 gap-3">
         <Field
           id={`${prefix}-tag`}
           elsewhere={theirs('tag')}
-          label="Writing system tag"
+          label={t('Writing system tag')}
           value={lang.tag}
-          placeholder="e.g. lez"
-          hint="A tag is letters and hyphens, like lez or qaa-x-lezgi."
+          placeholder={t('e.g. {address}', { address: 'lez' })}
+          hint={t('A tag is letters and hyphens, like lez or qaa-x-lezgi.')}
           invalid={lang.tag !== '' && !isLangTag(lang.tag)}
           onChange={(v) => set({ tag: v.trim() })}
         />
         <Field
           id={`${prefix}-glottocode`}
           elsewhere={theirs('glottocode')}
-          label="Glottocode"
+          label="Glottocode" // i18n-ignore: a proper name
           value={lang.glottocode}
-          placeholder="e.g. lezg1247"
-          hint="Glottocodes look like lezg1247 (four letters, four digits)."
+          placeholder={t('e.g. {address}', { address: 'lezg1247' })}
+          hint={t('Glottocodes look like lezg1247 (four letters, four digits).')}
           invalid={lang.glottocode !== '' && !GLOTTOCODE_RE.test(lang.glottocode)}
           onChange={(v) => set({ glottocode: v.trim() })}
         />
         <Field
           id={`${prefix}-iso`}
           elsewhere={theirs('iso639P3')}
-          label="ISO 639-3"
+          label="ISO 639-3" // i18n-ignore: a standard's name
           value={lang.iso639P3}
-          placeholder="e.g. lez"
-          hint="ISO 639-3 codes are three letters."
+          placeholder={t('e.g. {address}', { address: 'lez' })}
+          hint={t('ISO 639-3 codes are three letters.')}
           invalid={lang.iso639P3 !== '' && !ISO_RE.test(lang.iso639P3)}
           onChange={(v) => set({ iso639P3: v.trim() })}
         />
@@ -157,20 +158,20 @@ const LanguageGroup = ({ prefix, title, description, lang, onChange, coordinates
           <Field
             id={`${prefix}-lat`}
             elsewhere={theirs('latitude')}
-            label="Latitude"
+            label={t('Latitude')}
             value={lang.latitude ?? ''}
-            placeholder="e.g. 41.5"
-            hint="Latitude is a number from -90 to 90."
+            placeholder={t('e.g. {address}', { address: '41.5' })}
+            hint={t('Latitude is a number from -90 to 90.')}
             invalid={!coordinateOk(lang.latitude, LIMITS.latitude)}
             onChange={(v) => set({ latitude: v })}
           />
           <Field
             id={`${prefix}-lon`}
             elsewhere={theirs('longitude')}
-            label="Longitude"
+            label={t('Longitude')}
             value={lang.longitude ?? ''}
-            placeholder="e.g. 48.0"
-            hint="Longitude is a number from -180 to 180."
+            placeholder={t('e.g. {address}', { address: '48.0' })}
+            hint={t('Longitude is a number from -180 to 180.')}
             invalid={!coordinateOk(lang.longitude, LIMITS.longitude)}
             onChange={(v) => set({ longitude: v })}
           />
@@ -204,13 +205,13 @@ export const LanguagesSettings = ({ project, projectId, client, onProjectUpdate 
   const dirty = JSON.stringify(stored) !== JSON.stringify(saved);
   const valid = coordinatesOk(draft.object) && coordinatesOk(draft.meta);
   // Leaving the section, or the page, with an edit not saved asks first.
-  useUnsavedDraft(dirty ? 'What you have typed here' : null);
+  useUnsavedDraft(dirty ? t('What you have typed here') : null);
 
   const save = async () => {
     if (!dirty || !valid || saving) return;
     setSaving(true);
     try {
-      if (!client) throw new Error('Not authenticated');
+      if (!client) throw new Error('Not authenticated'); // i18n-ignore: an invariant, nobody signed out reaches this page
       await client.projects.setConfig(
         projectId,
         IGT_NAMESPACE,
@@ -232,7 +233,10 @@ export const LanguagesSettings = ({ project, projectId, client, onProjectUpdate 
     } catch (err) {
       console.error('Failed to save project languages:', err);
       // Someone else saved since: show what is stored now, the edits on it.
-      notifyError(isConfigConflict(err) ? CHANGED_ELSEWHERE : err, 'Failed to save the languages');
+      notifyError(
+        isConfigConflict(err) ? t(CHANGED_ELSEWHERE) : err,
+        t('Failed to save the languages'),
+      );
       if (isConfigConflict(err)) onProjectUpdate?.();
     } finally {
       setSaving(false);
@@ -241,18 +245,18 @@ export const LanguagesSettings = ({ project, projectId, client, onProjectUpdate 
 
   return (
     <div>
-      <h2 className={TYPE.card}>Languages</h2>
+      <h2 className={TYPE.card}>{t('Languages')}</h2>
       <p className="mb-4 mt-1 text-sm text-muted-foreground">
-        Which language this project documents, and which one it is glossed in. Exports use this to
-        identify the data: a CLDF dataset without a Glottocode cannot be linked to any other
-        dataset, and a FLEx or ELAN file labels its text with the writing system tag.{' '}
+        {t(
+          'Which language this project documents, and which one it is glossed in. Exports use this to identify the data: a CLDF dataset without a Glottocode cannot be linked to any other dataset, and a FLEx or ELAN file labels its text with the writing system tag.',
+        )}{' '}
         <a
           href="https://glottolog.org/glottolog"
           target="_blank"
           rel="noreferrer"
           className="inline-flex items-center gap-1 underline underline-offset-2"
         >
-          Look up a Glottocode <ExternalLink className="h-3 w-3" />
+          {t('Look up a Glottocode')} <ExternalLink className="h-3 w-3" />
         </a>
       </p>
 
@@ -260,8 +264,8 @@ export const LanguagesSettings = ({ project, projectId, client, onProjectUpdate 
         <div className="grid gap-3 sm:grid-cols-2">
           <LanguageGroup
             prefix="obj-lang"
-            title="Object language"
-            description="The language of the baseline text."
+            title={t('Object language')}
+            description={t('The language of the baseline text.')}
             lang={draft.object}
             elsewhere={draft.elsewhere?.object ?? {}}
             coordinates
@@ -269,15 +273,15 @@ export const LanguagesSettings = ({ project, projectId, client, onProjectUpdate 
           />
           <LanguageGroup
             prefix="meta-lang"
-            title="Meta language"
-            description="The language glosses and translations are written in."
+            title={t('Meta language')}
+            description={t('The language glosses and translations are written in.')}
             lang={draft.meta}
             elsewhere={draft.elsewhere?.meta ?? {}}
             onChange={(meta) => setDraft((d) => ({ ...d, meta }))}
           />
         </div>
         <Button className="self-start" onClick={save} disabled={!dirty || !valid || saving}>
-          {saving ? 'Saving…' : 'Save'}
+          {saving ? t('Saving…') : t('Save')}
         </Button>
       </div>
     </div>

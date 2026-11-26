@@ -26,6 +26,7 @@ import {
 import { textIncludes } from '@ui/domain/collation.js';
 import { TYPE } from '@ui/lib/typeScale.js';
 import { useUnsavedDraft } from '@ui/hooks/useUnsavedDraft.js';
+import { t, tx } from '@ui/lib/i18n.js';
 
 const byCode = (a, b) => a.code.toLowerCase().localeCompare(b.code.toLowerCase());
 
@@ -127,19 +128,27 @@ const NOTE_SHOWN = 20;
 const clashText = (other) => {
   const note = other.description || '';
   const cut = note.length > NOTE_SHOWN ? `${note.slice(0, NOTE_SHOWN)}…` : note;
-  const what = other.char ? ` is ${other.char}${cut ? ` (${cut})` : ''}` : '';
-  return `${DUPLICATE_CODE.slice(0, -1)}: \\${other.code}${what}.`;
+  if (!other.char) return t('This code already exists: \\{code}.', { code: other.code });
+  return cut
+    ? t('This code already exists: \\{code} is {char} ({note}).', {
+        code: other.code,
+        char: other.char,
+        note: cut,
+      })
+    : t('This code already exists: \\{code} is {char}.', { code: other.code, char: other.char });
 };
 
 // "Changed elsewhere to ʔ (by Ana)." under a row someone else changed too,
 // `row.elsewhere` being the row as stored now.
 const elsewhereText = (row) => {
   const r = row.elsewhere;
-  if (r.origin === 'removed') return 'Deleted elsewhere.';
+  if (r.origin === 'removed') return t('Deleted elsewhere.');
   const note = r.description || '';
   const cut = note.length > NOTE_SHOWN ? `${note.slice(0, NOTE_SHOWN)}…` : note;
-  const changed = `Changed elsewhere to ${r.char}${cut ? ` (${cut})` : ''}.`;
-  return row.origin === 'removed' ? `Deleted on save. ${changed}` : changed;
+  const changed = cut
+    ? t('Changed elsewhere to {char} ({note}).', { char: r.char, note: cut })
+    : t('Changed elsewhere to {char}.', { char: r.char });
+  return row.origin === 'removed' ? `${t('Deleted on save.')} ${changed}` : changed;
 };
 
 const edited = (r) =>
@@ -184,7 +193,7 @@ export const ComposeSettings = ({ project, projectId, client, onProjectUpdate })
 
   const dirty = rowsKey(draft) !== rowsKey(saved);
   // Leaving the section, or the page, with an edit not saved asks first.
-  useUnsavedDraft(dirty ? 'The change to special characters' : null);
+  useUnsavedDraft(dirty ? t('The change to special characters') : null);
   const problemsByCode = useMemo(() => {
     const m = new Map();
     for (const row of draft) m.set(row, validateCode(row, draft));
@@ -318,7 +327,7 @@ export const ComposeSettings = ({ project, projectId, client, onProjectUpdate })
     if (!canSave) return;
     setSaving(true);
     try {
-      if (!client) throw new Error('Not authenticated');
+      if (!client) throw new Error(t('Not authenticated'));
       const existing = readCompose(project?.config) || {};
       // A row changed in this save takes the time of the save.
       const now = new Date().toISOString();
@@ -349,7 +358,10 @@ export const ComposeSettings = ({ project, projectId, client, onProjectUpdate })
     } catch (err) {
       console.error('Failed to save the project codes:', err);
       // Someone else saved since: show what is stored now, the edits on it.
-      notifyError(isConfigConflict(err) ? CHANGED_ELSEWHERE : err, 'Failed to save the codes');
+      notifyError(
+        isConfigConflict(err) ? t(CHANGED_ELSEWHERE) : err,
+        t('Failed to save the codes'),
+      );
       if (isConfigConflict(err)) onProjectUpdate?.();
     } finally {
       setSaving(false);
@@ -358,9 +370,12 @@ export const ComposeSettings = ({ project, projectId, client, onProjectUpdate })
 
   return (
     <div>
-      <h2 className={TYPE.card}>Special characters</h2>
+      <h2 className={TYPE.card}>{t('Special characters')}</h2>
       <p className="mb-4 mt-1 max-w-3xl text-sm text-muted-foreground">
-        Type a backslash and a code in any field: <code>\sw</code> for ə, <code>\00</code> for ∅.
+        {tx(
+          'Type a backslash and a code in any field: <code>\\sw</code> for ə, <code>\\00</code> for ∅.',
+          { code: (c) => <code>{c}</code> },
+        )}
       </p>
 
       <div className="flex max-w-4xl flex-col gap-3">
@@ -369,23 +384,23 @@ export const ComposeSettings = ({ project, projectId, client, onProjectUpdate })
           <SearchInput
             className="w-full max-w-[20rem]"
             inputClassName="h-8"
-            placeholder="Search codes…"
+            placeholder={t('Search codes…')}
             value={q}
             onChange={setQ}
           />
           {changedCount > 0 && (
             <span className="whitespace-nowrap text-xs text-muted-foreground">
-              · {changedCount} changed by this project
+              · {t('{n} changed by this project', { n: changedCount })}
             </span>
           )}
           <div className="ml-auto flex items-center gap-2">
             {anyRemoved && (
               <Button variant="ghost" size="sm" onClick={restoreBuiltIns}>
-                Restore built-in codes
+                {t('Restore built-in codes')}
               </Button>
             )}
             <Button variant="outline" size="sm" onClick={addRow}>
-              <Plus className="h-4 w-4" /> Add code
+              <Plus className="h-4 w-4" /> {t('Add code')}
             </Button>
           </div>
         </div>
@@ -394,16 +409,23 @@ export const ComposeSettings = ({ project, projectId, client, onProjectUpdate })
           <div className="min-w-[36rem]" ref={listRef}>
             <div className="border-b bg-muted/30 py-2 text-xs">
               <div className={GRID} data-compose-header>
-                <SortHeader field="code" label="Code" sort={sort} onSort={onSort} />
-                <SortHeader field="char" label="Character" sort={sort} onSort={onSort} />
-                <SortHeader field="description" label="Note" sort={sort} onSort={onSort} />
-                <SortHeader field="modified" label="Last modified" sort={sort} onSort={onSort} />
+                <SortHeader field="code" label={t('Code')} sort={sort} onSort={onSort} />
+                <SortHeader field="char" label={t('Character')} sort={sort} onSort={onSort} />
+                <SortHeader field="description" label={t('Note')} sort={sort} onSort={onSort} />
+                <SortHeader
+                  field="modified"
+                  label={t('Last modified')}
+                  sort={sort}
+                  onSort={onSort}
+                />
                 <span />
               </div>
             </div>
             <ListPager {...paged} onPage={paged.setPage} position="top" />
             {paged.pageItems.length === 0 && (
-              <p className="px-3 py-4 text-sm text-muted-foreground">No codes match “{q}”.</p>
+              <p className="px-3 py-4 text-sm text-muted-foreground">
+                {t('No codes match “{query}”.', { query: q })}
+              </p>
             )}
             {paged.pageItems.map((row) => {
               const problems = problemsByCode.get(row) || [];
@@ -424,7 +446,7 @@ export const ComposeSettings = ({ project, projectId, client, onProjectUpdate })
                         <Input
                           value={row.code}
                           onChange={(e) => editRow(row, { code: e.target.value })}
-                          aria-label="Code"
+                          aria-label={t('Code')}
                           className="h-8 font-mono"
                           spellCheck={false}
                           aria-invalid={problems.length > 0 || undefined}
@@ -436,7 +458,7 @@ export const ComposeSettings = ({ project, projectId, client, onProjectUpdate })
                         compose
                         value={row.char}
                         onChange={(e) => editRow(row, { char: e.target.value })}
-                        aria-label="Character"
+                        aria-label={t('Character')}
                         className="h-8 text-base"
                         spellCheck={false}
                       />
@@ -445,7 +467,7 @@ export const ComposeSettings = ({ project, projectId, client, onProjectUpdate })
                       <Input
                         value={row.description || ''}
                         onChange={(e) => editRow(row, { description: e.target.value })}
-                        aria-label="Note"
+                        aria-label={t('Note')}
                         className="h-8"
                       />
                     </div>
@@ -463,8 +485,8 @@ export const ComposeSettings = ({ project, projectId, client, onProjectUpdate })
                           variant="ghost"
                           className="h-7 w-7"
                           onClick={() => resetRow(row)}
-                          title="Reset to built-in"
-                          aria-label={`Reset code ${row.code}`}
+                          title={t('Reset to built-in')}
+                          aria-label={t('Reset code {code}', { code: row.code })}
                         >
                           <RotateCcw className="h-3.5 w-3.5" />
                         </Button>
@@ -474,8 +496,10 @@ export const ComposeSettings = ({ project, projectId, client, onProjectUpdate })
                         variant="ghost"
                         className="h-7 w-7"
                         onClick={() => removeRow(row)}
-                        title="Delete"
-                        aria-label={row.code ? `Delete code ${row.code}` : 'Delete code'}
+                        title={t('Delete')}
+                        aria-label={
+                          row.code ? t('Delete code {code}', { code: row.code }) : t('Delete code')
+                        }
                       >
                         <Trash2 className="h-3.5 w-3.5" />
                       </Button>
@@ -497,7 +521,7 @@ export const ComposeSettings = ({ project, projectId, client, onProjectUpdate })
                               className="h-auto p-0 text-xs"
                               onClick={() => show(other)}
                             >
-                              Show
+                              {t('Show')}
                             </Button>
                           </>
                         )}
@@ -513,7 +537,7 @@ export const ComposeSettings = ({ project, projectId, client, onProjectUpdate })
 
         <div>
           <Button onClick={save} disabled={!canSave}>
-            {saving ? 'Saving…' : 'Save'}
+            {saving ? t('Saving…') : t('Save')}
           </Button>
         </div>
       </div>

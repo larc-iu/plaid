@@ -5,7 +5,7 @@ import { Button } from '@ui/components/ui/button';
 import { Loading } from '@ui/components/shared/Loading.jsx';
 import { Notice } from '@ui/components/shared/Notice.jsx';
 import { SegmentedControl } from '@ui/components/shared/SegmentedControl.jsx';
-import { countOf } from '@ui/lib/plural.js';
+import { t, tx } from '@ui/lib/i18n.js';
 import { canManageProject } from '@ui/domain/permissions.js';
 import { TYPE } from '@ui/lib/typeScale.js';
 import { documentViewSearch } from '@ui/hooks/useHistoryParam.js';
@@ -136,10 +136,13 @@ export const DocumentHistoryChanges = ({ context, user = null }) => {
     [liveDoc, projectId, documentId, docRows],
   );
 
-  if (!after) return <Loading label="Loading changes…" />;
+  if (!after) return <Loading label={t('Loading changes…')} />;
   if (data.reading) {
     return (
-      <Loading label={`Reading changes, ${data.read.toLocaleString()} so far`} className="pt-2" />
+      <Loading
+        label={t('Reading changes, {n, number} so far', { n: data.read })}
+        className="pt-2"
+      />
     );
   }
   if (errors.length) {
@@ -157,10 +160,10 @@ export const DocumentHistoryChanges = ({ context, user = null }) => {
     return (
       <div className="flex flex-col items-start gap-2 pt-2" data-testid="history-changes">
         <p className="text-sm" data-testid="change-count">
-          Too many changes to show here.
+          {t('Too many changes to show here.')}
         </p>
         <Button asChild variant="outline" size="sm">
-          <Link to={{ search: documentViewSearch(search) }}>Show document</Link>
+          <Link to={{ search: documentViewSearch(search) }}>{t('Show document')}</Link>
         </Button>
       </div>
     );
@@ -174,7 +177,7 @@ export const DocumentHistoryChanges = ({ context, user = null }) => {
   return (
     <div className="flex flex-col gap-4 pt-2" data-testid="history-changes">
       {view.changes === 0 ? (
-        <p className="text-sm text-muted-foreground">No changes to show.</p>
+        <p className="text-sm text-muted-foreground">{t('No changes to show.')}</p>
       ) : (
         <div className="flex flex-wrap items-center justify-between gap-2">
           <p className="text-sm" data-testid="change-count">
@@ -182,20 +185,24 @@ export const DocumentHistoryChanges = ({ context, user = null }) => {
           </p>
           <div className="flex flex-wrap items-center gap-2">
             <SegmentedControl
-              label="Filter"
+              label={t('Filter')}
               value={only}
               onChange={(next) => {
                 setOnly(next);
                 setShown(SENTENCES_SHOWN);
               }}
               options={[
-                { value: 'all', label: 'All changes' },
-                { value: 'persons', label: 'A person’s value replaced', count: view.replaced },
+                { value: 'all', label: t('All changes') },
+                {
+                  value: 'persons',
+                  label: t('A person’s value replaced'),
+                  count: view.replaced,
+                },
               ]}
             />
             {canUndo && (
               <Button variant="outline" size="sm" onClick={() => setUndoOpen(true)}>
-                Undo
+                {t('Undo')}
               </Button>
             )}
           </div>
@@ -226,14 +233,14 @@ export const DocumentHistoryChanges = ({ context, user = null }) => {
       {picked.length > shown && (
         <div>
           <Button variant="outline" size="sm" onClick={() => setShown((n) => n + SENTENCES_SHOWN)}>
-            Show more sentences
+            {t('Show more sentences')}
           </Button>
         </div>
       )}
 
       {!persons && view.documentFields.length > 0 && (
         <section>
-          <h3 className={`${TYPE.card} mb-2`}>Document</h3>
+          <h3 className={`${TYPE.card} mb-2`}>{t('Document')}</h3>
           <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-sm">
             {view.documentFields.map((f) => (
               <div key={f.label} className="contents">
@@ -249,7 +256,7 @@ export const DocumentHistoryChanges = ({ context, user = null }) => {
 
       {!persons && view.entries.length > 0 && (
         <section>
-          <h3 className={`${TYPE.card} mb-2`}>Lexicon</h3>
+          <h3 className={`${TYPE.card} mb-2`}>{t('Lexicon')}</h3>
           <EntryChangeList entries={view.entries} entryId={pastEntry.id} />
         </section>
       )}
@@ -257,13 +264,25 @@ export const DocumentHistoryChanges = ({ context, user = null }) => {
       {!persons && (elsewhere.transcript > 0 || elsewhere.other > 0 || elsewhere.deleted > 0) && (
         <ul className="text-sm text-muted-foreground" data-testid="changes-elsewhere">
           {elsewhere.transcript > 0 && (
-            <li>{countOf(elsewhere.transcript, 'change')} to transcript segments</li>
+            <li>
+              {t('{n, plural, one {# change} other {# changes}} to transcript segments', {
+                n: elsewhere.transcript,
+              })}
+            </li>
           )}
           {elsewhere.other > 0 && (
-            <li>{countOf(elsewhere.other, 'change')} to other annotations</li>
+            <li>
+              {t('{n, plural, one {# change} other {# changes}} to other annotations', {
+                n: elsewhere.other,
+              })}
+            </li>
           )}
           {elsewhere.deleted > 0 && (
-            <li>{countOf(elsewhere.deleted, 'change')} to annotations deleted later</li>
+            <li>
+              {t('{n, plural, one {# change} other {# changes}} to annotations deleted later', {
+                n: elsewhere.deleted,
+              })}
+            </li>
           )}
         </ul>
       )}
@@ -274,12 +293,18 @@ export const DocumentHistoryChanges = ({ context, user = null }) => {
 // The marks of the old and new values, in the grid legend's words.
 const Legend = () => (
   <p className="text-xs text-muted-foreground">
-    New over old. Marks: <span className="plaid-prov--machine">machine-made</span> ·{' '}
-    <span className="plaid-prov--contributed">contributed</span> ·{' '}
-    <span className="underline decoration-[var(--plaid-machine-soft)] underline-offset-[3px]">
-      confirmed
-    </span>{' '}
-    · plain: a person’s · <del className="text-destructive-strong">red</del>: a person’s value
-    replaced
+    {tx(
+      'New over old. Marks: <machine>machine-made</machine> · <contributed>contributed</contributed> · <confirmed>confirmed</confirmed> · plain: a person’s · <del>red</del>: a person’s value replaced',
+      {
+        machine: (c) => <span className="plaid-prov--machine">{c}</span>,
+        contributed: (c) => <span className="plaid-prov--contributed">{c}</span>,
+        confirmed: (c) => (
+          <span className="underline decoration-[var(--plaid-machine-soft)] underline-offset-[3px]">
+            {c}
+          </span>
+        ),
+        del: (c) => <del className="text-destructive-strong">{c}</del>,
+      },
+    )}
   </p>
 );

@@ -5,6 +5,7 @@ import { Button } from '../ui/button.jsx';
 import { Loading } from '../shared/Loading.jsx';
 import { AssistantMark } from './PlaidMarks.jsx';
 import { ProjectTartan } from '../shared/ProjectTartan.jsx';
+import { t } from '../../lib/i18n.js';
 
 // What the dock shows before any project has been in scope: the reader has just
 // signed in and is looking at a list of projects, so the panel has nothing to be
@@ -36,7 +37,7 @@ export const ProjectPicker = ({ client, onPick, onHide, noAssistantFor = null })
       })
       .catch((e) => {
         if (!alive) return;
-        setError(humanizeError(e, 'Failed to load your projects.'));
+        setError(humanizeError(e, t('Failed to load your projects.')));
         setProjects([]);
       });
     return () => {
@@ -48,7 +49,7 @@ export const ProjectPicker = ({ client, onPick, onHide, noAssistantFor = null })
     <div className="flex h-full min-h-0 flex-col">
       <header className="flex items-center gap-2 border-b px-3 py-2 text-sm">
         <AssistantMark className="h-4 w-4 shrink-0" />
-        <span className="text-muted-foreground">Choose a project</span>
+        <span className="text-muted-foreground">{t('Choose a project')}</span>
         {onHide && (
           <Button
             type="button"
@@ -56,7 +57,7 @@ export const ProjectPicker = ({ client, onPick, onHide, noAssistantFor = null })
             size="sm"
             className="ml-auto"
             onClick={onHide}
-            title="Hide the assistant"
+            title={t('Hide the assistant')}
           >
             <PanelRightClose className="h-4 w-4" />
           </Button>
@@ -65,7 +66,7 @@ export const ProjectPicker = ({ client, onPick, onHide, noAssistantFor = null })
       <div className="min-h-0 flex-1 overflow-y-auto p-2">
         {noAssistantFor && (
           <p role="status" className="px-1 pb-2 text-xs text-muted-foreground">
-            No assistant is running for “{noAssistantFor}”.
+            {t('No assistant is running for “{name}”.', { name: noAssistantFor })}
           </p>
         )}
         {projects === null ? (
@@ -73,7 +74,7 @@ export const ProjectPicker = ({ client, onPick, onHide, noAssistantFor = null })
         ) : error ? (
           <p className="px-1 py-2 text-xs text-destructive">{error}</p>
         ) : projects.length === 0 ? (
-          <p className="px-1 py-2 text-xs text-muted-foreground">No projects yet.</p>
+          <p className="px-1 py-2 text-xs text-muted-foreground">{t('No projects yet.')}</p>
         ) : (
           projects.map((p) => (
             <button
@@ -90,7 +91,7 @@ export const ProjectPicker = ({ client, onPick, onHide, noAssistantFor = null })
         )}
       </div>
       <p className="border-t px-3 py-2 text-[11px] text-muted-foreground">
-        Opening a project chooses it.
+        {t('Opening a project chooses it.')}
       </p>
     </div>
   );

@@ -50,12 +50,12 @@ export function useResumedRun(client, doc, acquireWriteLock, notices = {}) {
     // The record's start, so the banner's clock counts the whole run and not
     // just the time since the reload. What it knows is one step, the one in
     // flight, with its percent and message as the request reports them.
-    const lock = acquireWriteLock(record.label || 'A service', {
+    const lock = acquireWriteLock(record.label || t('A service'), {
       onCancel: cancelRequest,
       startedAt: record.startedAt,
     });
     if (!lock) return; // something already holds it; this page did not reload
-    lock.report({ message: 'Rejoining…' });
+    lock.report({ message: t('Rejoining…') });
 
     let stillOut = false; // the request survived our giving up on it
     let answered = false; // the request's own answer came, so a throw is ours
@@ -65,12 +65,15 @@ export function useResumedRun(client, doc, acquireWriteLock, notices = {}) {
           onProgress: lock.onProgress,
         });
         answered = true;
-        lock.report({ percent: null, message: 'Loading results…' });
+        lock.report({ percent: null, message: t('Loading results…') });
         await reloadAfterRun(() => doc._reload());
         if (result?.stopped === true) {
           // Someone stopped it — from this page's banner, or another of their
           // tabs. Not a finish, and not a failure.
-          notifyInfo('Stopped partway. What ran before the stop is in the document.', record.label);
+          notifyInfo(
+            t('Stopped partway. What ran before the stop is in the document.'),
+            record.label,
+          );
         } else {
           // The app's words for the counts, as the page that started the run
           // would have shown them (useServiceRequest's `succeed`): a run that
@@ -82,12 +85,12 @@ export function useResumedRun(client, doc, acquireWriteLock, notices = {}) {
             notifyWarning(
               notice?.message
                 ? `${notice.message} ${after}`
-                : `The step that was running finished. ${after}`,
+                : t('The step that was running finished. {after}', { after }),
               record.label,
               ...(notice?.sticky ? [{ duration: Infinity }] : []),
             );
           } else if (notice) showRunNotice(notice);
-          else notifySuccess(`${record.label} finished.`, record.label);
+          else notifySuccess(t('{name} finished.', { name: record.label }), record.label);
         }
       } catch (error) {
         if (error?.status === 404) {
@@ -102,7 +105,7 @@ export function useResumedRun(client, doc, acquireWriteLock, notices = {}) {
           // does not toast, unlike a submitted request, so this says it.)
           stillOut = true;
           notifyWarning(
-            'Lost contact with the service. It is still running. Reload to pick it back up.',
+            t('Lost contact with the service. It is still running. Reload to pick it back up.'),
             record.label,
           );
         } else if (!answered && !Number.isFinite(error?.status)) {
@@ -110,17 +113,23 @@ export function useResumedRun(client, doc, acquireWriteLock, notices = {}) {
           // comes back: a refusal of the rejoin itself carries its status.
           // Said as the page that started it would have said it.
           await reloadAfterRun(() => doc._reload());
-          const said = humanizeError(error, 'The service reported an error.');
+          const said = humanizeError(error, t('The service reported an error.'));
           const stop = /[.!?]$/.test(said) ? '' : '.';
           notifyError(
-            [`${record.step || record.label} failed: ${said}${stop}`, after]
+            [
+              t('{name} failed: {error}', {
+                name: record.step || record.label,
+                error: `${said}${stop}`,
+              }),
+              after,
+            ]
               .filter(Boolean)
               .join(' '),
             record.label,
           );
         } else {
           console.error('Could not rejoin the service request:', error);
-          notifyWarning('Failed to rejoin the run.', record.label);
+          notifyWarning(t('Failed to rejoin the run.'), record.label);
         }
       } finally {
         if (!stillOut) clearRunRecord(documentId);

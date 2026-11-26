@@ -22,6 +22,7 @@
 // Framework-agnostic, like everything else under domain/.
 
 import { clipText } from '../lib/text.js';
+import { msg, t } from '../lib/i18n.js';
 
 // How much of a sentence, or of a value, an anchor quotes, in code points.
 const EXCERPT_LIMIT = 60;
@@ -53,7 +54,7 @@ export const anchorName = (text) => clip(text, NAME_LIMIT);
 /** The anchor of the document itself, the first entry of every app's index. */
 export const documentAnchor = (doc) => ({
   kind: 'document',
-  label: doc.name || 'This document',
+  label: doc.name || t('This document'),
   detail: '',
   sentenceIndex: null,
   sentenceId: null,
@@ -66,22 +67,22 @@ export const documentAnchor = (doc) => ({
 // word are both `token`, and both read "Deleted word" here, which is what the
 // substrate calls them whatever the app does.
 const GONE = {
-  document: 'This document',
-  text: 'Baseline text',
-  token: 'Deleted word',
-  span: 'Deleted annotation',
-  relation: 'Deleted relation',
-  'vocab-item': 'Deleted entry',
+  document: msg('This document'),
+  text: msg('Baseline text'),
+  token: msg('Deleted word'),
+  span: msg('Deleted annotation'),
+  relation: msg('Deleted relation'),
+  'vocab-item': msg('Deleted entry'),
 };
 
 // The heading for an anchor that is still there, on a layer this app does not
 // show, when the comment carries no caption of its own.
 const ELSEWHERE = {
-  document: 'This document',
-  text: 'Baseline text',
-  token: 'Word',
-  span: 'Annotation',
-  relation: 'Relation',
+  document: msg('This document'),
+  text: msg('Baseline text'),
+  token: msg('Word'),
+  span: msg('Annotation'),
+  relation: msg('Relation'),
 };
 
 // The keys under which a document read holds the entities a comment can be on.
@@ -117,7 +118,7 @@ export function describeAnchor(index, entityType, entityId, anchorLabel = null, 
     return {
       kind: 'elsewhere',
       elsewhere: true,
-      label: caption || ELSEWHERE[entityType] || 'Annotation',
+      label: caption || t(ELSEWHERE[entityType] ?? 'Annotation'),
       detail: '',
       sentenceIndex: null,
       sentenceId: null,
@@ -127,7 +128,7 @@ export function describeAnchor(index, entityType, entityId, anchorLabel = null, 
   return {
     kind: 'outdated',
     outdated: true,
-    label: caption || GONE[entityType] || 'Deleted',
+    label: caption || t(GONE[entityType] ?? 'Deleted'),
     detail: '',
     sentenceIndex: null,
     sentenceId: null,

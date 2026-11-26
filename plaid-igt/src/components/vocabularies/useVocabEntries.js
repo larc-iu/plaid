@@ -6,6 +6,7 @@ import { followIds, recordSettled, settledId } from '@ui/domain/pendingIds.js';
 import { CHUNK } from '@/domain/bulk';
 import { readVocabulary } from '@/domain/vocabCache';
 import { keyedSend } from '@ui/domain/keyedSend.js';
+import { t } from '@ui/lib/i18n.js';
 
 // A past state read with no entry list: one empty list, so the memos over it
 // keep their identity.
@@ -94,7 +95,7 @@ export function useVocabEntries({
       return fetched;
     } catch (err) {
       if (inTurn) throw err;
-      setError('Failed to load entries');
+      setError(t('Failed to load entries'));
       console.error('Error fetching vocabulary items:', err);
       return null;
     } finally {
@@ -151,7 +152,7 @@ export function useVocabEntries({
       setUsageCounts(null);
       setUsageKinds(null);
       if (!isPermissionError(err)) {
-        notifyWarning('Usage counts could not be loaded.', 'Usage counts unavailable');
+        notifyWarning(t('Usage counts could not be loaded.'), t('Usage counts unavailable'));
       }
     }
   };

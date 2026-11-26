@@ -8,6 +8,7 @@ import {
   SelectItem,
 } from '@ui/components/ui/select';
 import { cn } from '@ui/lib/utils';
+import { t } from '@ui/lib/i18n.js';
 import { MODES, sortedValues, validateValue } from '@/domain/tagsets';
 
 // One form input governed by a tagset, if its field has one: a document
@@ -40,7 +41,7 @@ export const TagsetField = ({ field, value, tagset, onChange, ...inputProps }) =
   // grid happily accepts unreachable here. With delimiters the value is
   // composite and has to stay typable either way.
   if (tagset?.mode === MODES.CLOSED && !tagset.delimiters) {
-    const known = tagset.values.some((t) => t.value === v);
+    const known = tagset.values.some((tag) => tag.value === v);
     return (
       <Select
         value={v === '' ? UNSET : v}
@@ -57,19 +58,21 @@ export const TagsetField = ({ field, value, tagset, onChange, ...inputProps }) =
           <SelectValue />
         </SelectTrigger>
         <SelectContent>
-          <SelectItem value={UNSET}>Not set</SelectItem>
-          {sortedValues(tagset).map((t) => (
-            <SelectItem key={t.value} value={t.value}>
-              {t.value}
-              {t.description ? (
-                <span className="ml-2 text-xs text-muted-foreground">{t.description}</span>
+          <SelectItem value={UNSET}>{t('Not set')}</SelectItem>
+          {sortedValues(tagset).map((tag) => (
+            <SelectItem key={tag.value} value={tag.value}>
+              {tag.value}
+              {tag.description ? (
+                <span className="ml-2 text-xs text-muted-foreground">{tag.description}</span>
               ) : null}
             </SelectItem>
           ))}
           {/* A value already in the data that the tagset no longer allows. Kept
               selectable so the control shows what is actually stored rather
               than silently reading as "Not set" and overwriting it on save. */}
-          {v !== '' && !known && <SelectItem value={v}>{v} (not in tagset)</SelectItem>}
+          {v !== '' && !known && (
+            <SelectItem value={v}>{t('{value} (not in tagset)', { value: v })}</SelectItem>
+          )}
         </SelectContent>
       </Select>
     );
@@ -89,7 +92,7 @@ export const TagsetField = ({ field, value, tagset, onChange, ...inputProps }) =
         // appear beside it meaning something else.
         spellCheck={tagset ? false : undefined}
         onChange={(e) => onChange(e.target.value)}
-        placeholder={`Enter ${field.name}`}
+        placeholder={t('Enter {field}', { field: field.name })}
         {...inputProps}
         // The same squiggle the grid uses, so an off-tagset value reads the
         // same way wherever it is shown.
@@ -100,9 +103,9 @@ export const TagsetField = ({ field, value, tagset, onChange, ...inputProps }) =
       />
       {tagset && (
         <datalist id={listId}>
-          {sortedValues(tagset).map((t) => (
-            <option key={t.value} value={t.value}>
-              {t.description ?? ''}
+          {sortedValues(tagset).map((tag) => (
+            <option key={tag.value} value={tag.value}>
+              {tag.description ?? ''}
             </option>
           ))}
         </datalist>
@@ -110,11 +113,13 @@ export const TagsetField = ({ field, value, tagset, onChange, ...inputProps }) =
       {invalid && (
         <p className="text-xs text-destructive">
           {violations.some((x) => x.reason === 'unknown')
-            ? `${violations
-                .filter((x) => x.reason === 'unknown')
-                .map((x) => `"${x.part}"`)
-                .join(', ')} is not in this field's tagset.`
-            : 'There is a delimiter with nothing beside it.'}
+            ? t("{values} is not in this field's tagset.", {
+                values: violations
+                  .filter((x) => x.reason === 'unknown')
+                  .map((x) => `"${x.part}"`)
+                  .join(', '),
+              })
+            : t('There is a delimiter with nothing beside it.')}
         </p>
       )}
     </>

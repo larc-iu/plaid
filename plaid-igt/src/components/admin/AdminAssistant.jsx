@@ -23,6 +23,7 @@ import { PLAIN_ASSISTANT } from '@ui/components/assistant/plainCitations.js';
 import { textIncludes } from '@ui/domain/collation.js';
 import { TYPE } from '@ui/lib/typeScale.js';
 import { useDetailParam } from '@ui/hooks/useDetailParam.js';
+import { t, msg } from '@ui/lib/i18n.js';
 
 // Every assistant conversation on the instance. A conversation is private to
 // the person who had it — it never appears in anyone else's sidebar — and an
@@ -54,19 +55,23 @@ const OWN_APP = 'igt';
 // and the entry's `lastError.reason` (plaid_agent conversation.py
 // `ERROR_REASONS`). An item written before reasons has none and is not named.
 const ERROR_KINDS = {
-  stopped: 'Stopped',
-  'connection-lost': 'Connection lost',
-  'output-limit': 'Output limit',
-  'no-answer': 'No answer',
-  model: 'Model failed',
-  'too-large': 'Too large to save',
-  other: 'Other',
+  stopped: msg('Stopped'),
+  'connection-lost': msg('Connection lost'),
+  'output-limit': msg('Output limit'),
+  'no-answer': msg('No answer'),
+  model: msg('Model failed'),
+  'too-large': msg('Too large to save'),
+  other: msg('Other'),
 };
 
-const lastErrorTitle = (last) =>
-  `Last error: ${[ERROR_KINDS[last?.reason], isTime(last?.at) ? fullTimestamp(last.at) : null]
-    .filter(Boolean)
-    .join(', ')}`;
+const errorKindLabel = (reason) => (ERROR_KINDS[reason] ? t(ERROR_KINDS[reason]) : null);
+
+const lastErrorTitle = (last) => {
+  const kind = errorKindLabel(last?.reason);
+  const time = isTime(last?.at) ? fullTimestamp(last.at) : null;
+  if (kind && time) return t('Last error: {kind}, {time}', { kind, time });
+  return t('Last error: {detail}', { detail: kind || time || '' });
+};
 
 const isTime = (v) => typeof v === 'string' && !Number.isNaN(new Date(v).getTime());
 
@@ -83,7 +88,7 @@ const convKeyFor = (app, projectId, convId) => `${app}:assistant:${projectId}:co
 const AllConversations = ({ to }) => (
   <Button asChild variant="ghost" size="sm" className="self-start">
     <Link to={to}>
-      <ArrowLeft className="h-4 w-4" /> All conversations
+      <ArrowLeft className="h-4 w-4" /> {t('All conversations')}
     </Link>
   </Button>
 );
@@ -121,8 +126,8 @@ const ConversationDetail = ({ client, row, backTo }) => {
         if (!live) return;
         setError(
           err?.status === 404
-            ? 'The transcript is gone. Only the summary above remains.'
-            : humanizeError(err, 'The conversation could not be read.'),
+            ? t('The transcript is gone. Only the summary above remains.')
+            : humanizeError(err, t('The conversation could not be read.')),
         );
       });
     return () => {
@@ -210,7 +215,7 @@ const ConversationDetail = ({ client, row, backTo }) => {
           <div className="px-4 py-4">
             <div className="mx-auto flex max-w-3xl flex-col gap-5">
               {display.length === 0 && (
-                <p className="text-sm text-muted-foreground">No messages.</p>
+                <p className="text-sm text-muted-foreground">{t('No messages.')}</p>
               )}
               {display.map((d, i) =>
                 unanswered &&
@@ -225,7 +230,7 @@ const ConversationDetail = ({ client, row, backTo }) => {
                     adapter={adapter}
                     rounds={!row.projectExists || closedAt.has(i) ? null : rounds}
                     hideLine={unanswered && hidesStopped(display, i)}
-                    errorKind={d.kind === 'error' ? ERROR_KINDS[d.reason] : null}
+                    errorKind={d.kind === 'error' ? errorKindLabel(d.reason) : null}
                     {...turnContext(display, i)}
                     homeName={row.projectName}
                     canWrite={false}
@@ -268,7 +273,7 @@ export const AdminAssistant = ({ client }) => {
       setProjects(projectList || []);
     } catch (err) {
       console.error('Error loading conversations:', err);
-      notifyError(humanizeError(err), 'Failed to load the conversations');
+      notifyError(humanizeError(err), t('Failed to load the conversations'));
     } finally {
       setLoading(false);
     }
@@ -298,10 +303,10 @@ export const AdminAssistant = ({ client }) => {
           projectExists: !!project,
           // A project can be deleted while the conversation about it stays in
           // its owner's store, so the name is not always there to look up.
-          projectName: project?.name || 'Deleted project',
+          projectName: project?.name || t('Deleted project'),
           convId: parsed.convId,
           meta,
-          title: meta.title || 'Untitled',
+          title: meta.title || t('Untitled'),
           turns: typeof meta.turns === 'number' ? meta.turns : null,
           // How many error items it shows, and the newest one's reason and
           // time. An entry written before the count has none.
@@ -328,7 +333,9 @@ export const AdminAssistant = ({ client }) => {
     return (
       <div className="flex flex-col gap-4">
         <AllConversations to={backTo} />
-        <p className="text-sm text-muted-foreground">There is no conversation at this address.</p>
+        <p className="text-sm text-muted-foreground">
+          {t('There is no conversation at this address.')}
+        </p>
       </div>
     );
   }
@@ -336,7 +343,7 @@ export const AdminAssistant = ({ client }) => {
   const columns = [
     {
       key: 'title',
-      label: 'Conversation',
+      label: t('Conversation'),
       sort: (r) => r.title.toLowerCase(),
       render: (r) => (
         <Link to={withConversation(r.key)} className="font-medium hover:underline">
@@ -346,7 +353,7 @@ export const AdminAssistant = ({ client }) => {
     },
     {
       key: 'user',
-      label: 'Person',
+      label: t('Person'),
       sort: (r) => r.userName.toLowerCase(),
       render: (r) => (
         <div className="flex items-center gap-2">
@@ -363,20 +370,20 @@ export const AdminAssistant = ({ client }) => {
     },
     {
       key: 'app',
-      label: 'App',
+      label: t('App'),
       sort: (r) => r.app,
       render: (r) => <Badge variant={r.app === OWN_APP ? 'secondary' : 'outline'}>{r.app}</Badge>,
     },
     {
       key: 'project',
-      label: 'Project',
+      label: t('Project'),
       sort: (r) => r.projectName.toLowerCase(),
       // A project opens here only for this app's own conversations: the others
       // belong to an app whose routes this one does not know.
       render: (r) =>
         !r.projectExists ? (
           <Badge variant="outline" className="whitespace-nowrap">
-            Deleted project
+            {t('Deleted project')}
           </Badge>
         ) : r.app === OWN_APP ? (
           <Link to={`/projects/${r.projectId}`} className="hover:underline">
@@ -388,7 +395,7 @@ export const AdminAssistant = ({ client }) => {
     },
     {
       key: 'turns',
-      label: 'Turns',
+      label: t('Turns'),
       sort: (r) => r.turns,
       align: 'right',
       className: 'tabular-nums text-muted-foreground',
@@ -397,7 +404,7 @@ export const AdminAssistant = ({ client }) => {
     },
     {
       key: 'errors',
-      label: 'Errors',
+      label: t('Errors'),
       sort: (r) => r.errors,
       align: 'right',
       className: 'tabular-nums text-muted-foreground',
@@ -407,14 +414,14 @@ export const AdminAssistant = ({ client }) => {
     },
     {
       key: 'model',
-      label: 'Assistant',
+      label: t('Assistant'),
       sort: (r) => (r.model || '').toLowerCase(),
       className: 'text-muted-foreground',
       render: (r) => r.model || '—',
     },
     {
       key: 'updated',
-      label: 'Updated',
+      label: t('Updated'),
       sort: (r) => (r.updatedAt ? new Date(r.updatedAt).getTime() : null),
       className: 'whitespace-nowrap text-muted-foreground',
       render: (r) => <span title={fullTimestamp(r.updatedAt)}>{timeAgo(r.updatedAt)}</span>,
@@ -429,7 +436,7 @@ export const AdminAssistant = ({ client }) => {
       id="admin-assistant"
       defaultSort={{ key: 'updated', dir: 'desc' }}
       search={{
-        placeholder: 'Search conversations…',
+        placeholder: t('Search conversations…'),
         match: (r, q) =>
           textIncludes(r.title, q) ||
           textIncludes(r.userName, q) ||
@@ -437,8 +444,8 @@ export const AdminAssistant = ({ client }) => {
           textIncludes(r.projectName, q),
       }}
       noun="conversation"
-      empty="No conversations."
-      noMatch={(q) => `No conversations match “${q}”.`}
+      empty={t('No conversations.')}
+      noMatch={(q) => t('No conversations match “{query}”.', { query: q })}
       loading={loading}
       actions={
         <Button
@@ -447,7 +454,7 @@ export const AdminAssistant = ({ client }) => {
           aria-pressed={withErrors}
           onClick={() => setWithErrors((on) => !on)}
         >
-          With errors
+          {t('With errors')}
         </Button>
       }
     />

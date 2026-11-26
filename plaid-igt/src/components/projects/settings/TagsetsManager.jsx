@@ -26,7 +26,7 @@ import {
 import { textIncludes } from '@ui/domain/collation.js';
 import { sameConfig } from '@ui/domain/configCells.js';
 import { nameKey } from '@ui/lib/nameKey.js';
-import { countOf, plural } from '@ui/lib/plural.js';
+import { t, tx, msg, listOf } from '@ui/lib/i18n.js';
 import { isEnter } from '@ui/lib/chords.js';
 
 // The editor for a project's tagsets. Owns a draft of the whole map and hands
@@ -56,20 +56,24 @@ const MODES_UI = {
   [MODES.SUGGEST]: {
     // "Open" against "Closed", the way a linguist already reads open and
     // closed classes. The stored mode value is still `suggest`.
-    label: 'Open',
+    label: msg('Open'),
     badge: 'border-transparent bg-secondary text-secondary-foreground',
-    help: 'The whole list is offered while you annotate, but anything can be typed.',
+    help: msg('The whole list is offered while you annotate, but anything can be typed.'),
   },
   [MODES.CLOSED]: {
-    label: 'Closed',
+    label: msg('Closed'),
     // Neutral: amber means a contributor's unreviewed work.
     badge: 'border-input bg-transparent text-foreground',
-    help: 'Only tags in the list can be entered. For a fixed inventory such as part of speech.',
+    help: msg(
+      'Only tags in the list can be entered. For a fixed inventory such as part of speech.',
+    ),
   },
   [MODES.MIXED]: {
-    label: 'Closed, plus lexical glosses',
+    label: msg('Closed, plus lexical glosses'),
     badge: 'border-dashed border-input bg-transparent text-foreground',
-    help: 'A tag is allowed if it has a lowercase letter or is in a script without capitals. Anything else must be on the list. Useful for glosses.',
+    help: msg(
+      'A tag is allowed if it has a lowercase letter or is in a script without capitals. Anything else must be on the list. Useful for glosses.',
+    ),
   },
 };
 
@@ -79,6 +83,15 @@ const MODES_UI = {
 const extraKeys = (rec) =>
   Object.keys(rec).filter((k) => k !== 'value' && !RESERVED_VALUE_KEYS.includes(k));
 
+// A field that uses a tagset, with its scope: "Gloss (word)".
+const fieldWithScope = (f) =>
+  t(
+    '{field} ({scope, select, sentence {sentence} word {word} morpheme {morpheme} other {{scope}}})',
+    { field: f.field, scope: String(f.scope) },
+  );
+
+const mono = (c) => <span className="font-mono">{c}</span>;
+
 export const TagsetsManager = ({
   tagsets,
   usage,
@@ -87,15 +100,22 @@ export const TagsetsManager = ({
   // The wording that differs between a project's tagsets and a vocabulary's:
   // where a field gets assigned, what the seed reads, what a delete leaves
   // alone.
-  emptyHint = 'No tagsets yet. Add one, then assign it to a field under Annotation fields.',
-  seedLabel = 'Add values used in this project',
-  valuesNoun = 'annotations',
-  enforceNote = 'Closed lists apply to what you type and to the assistant. Values brought in by imports or services are not checked. The Validation tab lists them.',
+  emptyHint = t('No tagsets yet. Add one, then assign it to a field under Annotation fields.'),
+  seedLabel = t('Add values used in this project'),
+  // What a delete leaves alone, as a whole sentence. `valuesNoun` is the old
+  // bare-noun form of it, kept for callers not yet moved to `keptNote`.
+  valuesNoun,
+  keptNote = valuesNoun
+    ? `No ${valuesNoun} are changed.` // i18n-ignore: the old bare-noun prop, English only until its caller passes keptNote
+    : t('No annotations are changed.'),
+  enforceNote = t(
+    'Closed lists apply to what you type and to the assistant. Values brought in by imports or services are not checked. The Validation tab lists them.',
+  ),
   // {tagset name: [value]}: values that may not be renamed or removed, and
   // what a refusal of one says, given the value (a vocabulary's reserved
   // Status values).
   reservedValues = {},
-  reservedMessage = () => 'This value is reserved and cannot be renamed or removed',
+  reservedMessage = () => t('This value is reserved and cannot be renamed or removed'),
 }) => {
   const [draft, setDraft] = useState(tagsets);
   // The tagsets as the page last read them. A read that brings something new
@@ -143,7 +163,7 @@ export const TagsetsManager = ({
         if (name) setRefused({ name, fields: error.refusedValues });
         else {
           setRefused(null);
-          notifyError(refusedValuesText(error.refusedValues), REFUSED_TITLE);
+          notifyError(refusedValuesText(error.refusedValues), t(REFUSED_TITLE));
         }
       }
       return false;
@@ -159,21 +179,21 @@ export const TagsetsManager = ({
     const name = nameKey(newTagsetName).trim();
     if (!name) return;
     if (draft[name]) {
-      notifyError(`A tagset named "${name}" already exists`, 'Duplicate tagset');
+      notifyError(t('A tagset named "{name}" already exists', { name }), t('Duplicate tagset'));
       return;
     }
     if (!(await save({ ...draft, [name]: { delimiters: '', mode: MODES.SUGGEST, values: [] } })))
       return;
     setNewTagsetName('');
     setOpenName(name);
-    notifySuccess(`Tagset “${name}” added`);
+    notifySuccess(t('Tagset “{name}” added', { name }));
   };
 
   const handleRenameTagset = async (from, to) => {
     const name = nameKey(to).trim();
     if (!name || name === from) return;
     if (draft[name]) {
-      notifyError(`A tagset named "${name}" already exists`, 'Duplicate tagset');
+      notifyError(t('A tagset named "{name}" already exists', { name }), t('Duplicate tagset'));
       return;
     }
     // Object order is the display order, so rebuild in place rather than
@@ -190,7 +210,10 @@ export const TagsetsManager = ({
     // page knows.
     const n = saved.repointed ?? (usage?.[from] || []).length;
     if (n) {
-      notifyInfo(`${countOf(n, 'field')} now use${n === 1 ? 's' : ''} "${name}"`, 'Tagset renamed');
+      notifyInfo(
+        t('{n, plural, one {# field now uses} other {# fields now use}} "{name}"', { n, name }),
+        t('Tagset renamed'),
+      );
     }
   };
 
@@ -199,24 +222,24 @@ export const TagsetsManager = ({
     delete next[name];
     if (!(await save(next))) return;
     if (openName === name) setOpenName(null);
-    notifyInfo(`Tagset “${name}” removed`);
+    notifyInfo(t('Tagset “{name}” removed', { name }));
   };
 
   const handleAddValues = async (name, records) => {
-    const t = draft[name];
-    const have = new Set(t.values.map((v) => v.value));
+    const tagset = draft[name];
+    const have = new Set(tagset.values.map((v) => v.value));
     const fresh = records.filter((r) => r.value && !have.has(r.value));
     if (!fresh.length) {
       // Two different nothings: nothing was found, or everything found is
       // already here. Saying the second when the first happened sends people
       // looking for a bug in the wrong place.
       notifyInfo(
-        records.length ? 'Every value found is already in the tagset' : 'No values found',
-        'Nothing to add',
+        records.length ? t('Every value found is already in the tagset') : t('No values found'),
+        t('Nothing to add'),
       );
       return 0;
     }
-    const values = [...t.values, ...fresh];
+    const values = [...tagset.values, ...fresh];
     // Refused: null, and what was pasted stays to be added again.
     if (!(await patch(name, { values }))) return null;
     // The table reads in alphabetical order, so one added value lands
@@ -233,7 +256,11 @@ export const TagsetsManager = ({
   const seedWith = async (name, records) => {
     setSeedPending(null);
     const n = await handleAddValues(name, records);
-    if (n) notifySuccess(`Added ${countOf(n, 'value')} found in this project`);
+    if (n) {
+      notifySuccess(
+        t('Added {n, plural, one {# value} other {# values}} found in this project', { n }),
+      );
+    }
   };
 
   // The attested rows are per-tagset (they come from the fields referencing it),
@@ -253,7 +280,7 @@ export const TagsetsManager = ({
       setSeedPending({ name, tags, lexical });
     } catch (error) {
       console.error('Failed to read attested values:', error);
-      notifyError(error, 'Failed to read the values used in this project');
+      notifyError(error, t('Failed to read the values used in this project'));
     }
   };
 
@@ -265,14 +292,14 @@ export const TagsetsManager = ({
       .map((value) => ({ value }));
     const n = await handleAddValues(name, records);
     if (n === null) return;
-    if (n) notifySuccess(`Added ${countOf(n, 'value')}`);
+    if (n) notifySuccess(t('Added {n, plural, one {# value} other {# values}}', { n }));
     setPasteText('');
     setPasteOpen(false);
   };
 
   const isReserved = (name, value) => (reservedValues[name] || []).includes(value);
   const refuseReserved = (value) => {
-    notifyError(reservedMessage(value), 'Reserved value');
+    notifyError(reservedMessage(value), t('Reserved value'));
     return false;
   };
 
@@ -292,7 +319,10 @@ export const TagsetsManager = ({
       changes.value !== undefined &&
       draft[name].values.some((v, i) => i !== index && v.value === changes.value)
     ) {
-      notifyError(`"${changes.value}" is already in the tagset`, 'Duplicate value');
+      notifyError(
+        t('"{value}" is already in the tagset', { value: changes.value }),
+        t('Duplicate value'),
+      );
       return false;
     }
     const values = draft[name].values.map((v, i) => (i === index ? { ...v, ...changes } : v));
@@ -322,17 +352,17 @@ export const TagsetsManager = ({
       )}
 
       {names.map((name) => {
-        const t = draft[name];
+        const ts = draft[name];
         const isOpen = openName === name;
         const fields = usage?.[name] || [];
-        const preview = scanValue(SAMPLE, t.delimiters);
+        const preview = scanValue(SAMPLE, ts.delimiters);
         // A word-scope gloss reads "dog-PL". If "-" is not a delimiter, mixed
         // mode waves the whole thing through on the lowercase in "dog".
         // A value holding one of its own delimiters is scanned as two parts and
         // can never match, so the list would hold something it rejects.
-        const unreachable = unreachableValues(t);
+        const unreachable = unreachableValues(ts);
         const missingAffix = missingAffixDelimiters(
-          t,
+          ts,
           fields.some((f) => f.scope === 'word'),
         );
         return (
@@ -348,7 +378,7 @@ export const TagsetsManager = ({
                   setValuePage(0);
                   setSeedPending(null);
                 }}
-                title={isOpen ? 'Collapse' : 'Expand'}
+                title={isOpen ? t('Collapse') : t('Expand')}
               >
                 {isOpen ? (
                   <ChevronDown className="h-4 w-4" />
@@ -357,21 +387,26 @@ export const TagsetsManager = ({
                 )}
               </Button>
               <span className="font-medium">{name}</span>
-              <Badge variant="secondary" className={MODES_UI[t.mode].badge}>
-                {MODES_UI[t.mode].label}
+              <Badge variant="secondary" className={MODES_UI[ts.mode].badge}>
+                {t(MODES_UI[ts.mode].label)}
               </Badge>
               <span className="text-xs text-muted-foreground">
-                {countOf(t.values.length, 'value')}
-                {t.delimiters && ` · split on ${[...t.delimiters].join(' ')}`}
-                {fields.length > 0 &&
-                  ` · used by ${fields.map((f) => `${f.field} (${f.scope})`).join(', ')}`}
+                {[
+                  t('{n, plural, one {# value} other {# values}}', { n: ts.values.length }),
+                  ts.delimiters &&
+                    t('split on {delimiters}', { delimiters: [...ts.delimiters].join(' ') }),
+                  fields.length > 0 &&
+                    t('used by {fields}', { fields: fields.map(fieldWithScope).join(', ') }),
+                ]
+                  .filter(Boolean)
+                  .join(' · ')}
               </span>
               <Button
                 size="icon"
                 variant="ghost"
                 className="ml-auto h-7 w-7 text-muted-foreground hover:text-destructive"
                 onClick={() => setPendingDelete(name)}
-                title="Delete tagset"
+                title={t('Delete tagset')}
               >
                 <Trash2 className="h-3.5 w-3.5" />
               </Button>
@@ -381,7 +416,7 @@ export const TagsetsManager = ({
               <div className="flex flex-col gap-5 border-t bg-muted/20 px-3 py-4">
                 {/* Name */}
                 <div className="flex max-w-md flex-col gap-1">
-                  <p className="text-sm font-medium">Name</p>
+                  <p className="text-sm font-medium">{t('Name')}</p>
                   <Input
                     defaultValue={name}
                     onBlur={(e) => handleRenameTagset(name, e.currentTarget.value)}
@@ -392,20 +427,20 @@ export const TagsetsManager = ({
                     three answers are points on a line rather than independent
                     switches. */}
                 <div className="flex flex-col gap-2">
-                  <p className="text-sm font-medium">How the list is applied</p>
+                  <p className="text-sm font-medium">{t('How the list is applied')}</p>
                   {TAGSET_MODES.map((m) => (
                     <label key={m} className="flex max-w-2xl items-start gap-3">
                       <input
                         type="radio"
                         name={`tagset-mode-${name}`}
                         className="mt-1"
-                        checked={t.mode === m}
+                        checked={ts.mode === m}
                         onChange={() => patch(name, { mode: m })}
                       />
                       <span>
-                        <span className="text-sm font-medium">{MODES_UI[m].label}</span>
+                        <span className="text-sm font-medium">{t(MODES_UI[m].label)}</span>
                         <span className="block text-xs text-muted-foreground">
-                          {MODES_UI[m].help}
+                          {t(MODES_UI[m].help)}
                         </span>
                       </span>
                     </label>
@@ -418,85 +453,97 @@ export const TagsetsManager = ({
 
                 {/* Delimiters */}
                 <div className="flex max-w-2xl flex-col gap-1">
-                  <p className="text-sm font-medium">Delimiters</p>
+                  <p className="text-sm font-medium">{t('Delimiters')}</p>
                   <p className="text-xs text-muted-foreground">
-                    Characters that separate tags within one cell, so each tag is checked on its
-                    own. Leave empty if a cell holds a single tag, as for part of speech.
+                    {t(
+                      'Characters that separate tags within one cell, so each tag is checked on its own. Leave empty if a cell holds a single tag, as for part of speech.',
+                    )}
                   </p>
                   <Input
                     className="max-w-[12rem] font-mono"
-                    placeholder="e.g. .:>"
+                    placeholder={t('e.g. {example}', { example: '.:>' })}
                     // Uncontrolled, so it must remount when the value changes
                     // from outside (the affix quick-fix below), or the stale
                     // display gets written back on the next blur.
-                    key={t.delimiters}
-                    defaultValue={t.delimiters}
+                    key={ts.delimiters}
+                    defaultValue={ts.delimiters}
                     onBlur={(e) => {
                       // Spaces are never delimiters (see normalizeTagset).
                       const next = stripSpace(e.currentTarget.value);
-                      if (next !== t.delimiters) patch(name, { delimiters: next });
-                      else e.currentTarget.value = t.delimiters;
+                      if (next !== ts.delimiters) patch(name, { delimiters: next });
+                      else e.currentTarget.value = ts.delimiters;
                     }}
                   />
                   {missingAffix.length > 0 && (
                     <Notice tone="warning" className="mt-1 text-xs">
                       <div>
-                        A Word field uses this tagset. Word glosses join tags with{' '}
-                        {missingAffix.map((d) => (
-                          <span key={d} className="font-mono">
-                            {d}{' '}
-                          </span>
-                        ))}
-                        as in <span className="font-mono">dog-PL</span>, so add{' '}
-                        {missingAffix.length === 1 ? 'it as a delimiter' : 'them as delimiters'} or{' '}
-                        <span className="font-mono">PL</span> is never checked.
+                        {tx(
+                          'A Word field uses this tagset. Word glosses join tags with {delimiters} as in <mono>dog-PL</mono>, so add {n, plural, one {it as a delimiter} other {them as delimiters}} or <mono>PL</mono> is never checked.',
+                          {
+                            delimiters: missingAffix.map((d, i) => (
+                              <span key={d}>
+                                {i > 0 && ' '}
+                                <span className="font-mono">{d}</span>
+                              </span>
+                            )),
+                            n: missingAffix.length,
+                            mono,
+                          },
+                        )}
                         <Button
                           size="sm"
                           variant="outline"
                           className="ml-2 h-6"
                           onClick={() =>
-                            patch(name, { delimiters: t.delimiters + missingAffix.join('') })
+                            patch(name, { delimiters: ts.delimiters + missingAffix.join('') })
                           }
                         >
-                          Add {missingAffix.join(' and ')}
+                          {t('Add {delimiters}', { delimiters: listOf(missingAffix) })}
                         </Button>
                       </div>
                     </Notice>
                   )}
                   <p className="mt-1 text-xs text-muted-foreground">
-                    <span className="font-mono">{SAMPLE}</span> is checked as{' '}
-                    {preview.map((p, i) => (
-                      <span key={i}>
-                        {i > 0 && ' + '}
-                        <span className="rounded-sm bg-background px-1 font-mono">
-                          {p.text || '(empty)'}
+                    {tx('<mono>{sample}</mono> is checked as {parts}', {
+                      sample: SAMPLE,
+                      mono,
+                      parts: preview.map((p, i) => (
+                        <span key={i}>
+                          {i > 0 && ' + '}
+                          <span className="rounded-sm bg-background px-1 font-mono">
+                            {p.text || t('(empty)')}
+                          </span>
                         </span>
-                      </span>
-                    ))}
+                      )),
+                    })}
                   </p>
                 </div>
 
                 {/* Values */}
                 <div className="flex flex-col gap-2">
-                  <p className="text-sm font-medium">Values</p>
+                  <p className="text-sm font-medium">{t('Values')}</p>
                   {unreachable.length > 0 && (
                     <Notice tone="warning" className="text-xs">
                       <div>
-                        {unreachable.map((v) => (
-                          <span key={v.value} className="font-mono">
-                            {v.value}{' '}
-                          </span>
-                        ))}
-                        {unreachable.length === 1 ? 'contains' : 'contain'} a delimiter, so{' '}
-                        {unreachable.length === 1 ? 'it' : 'they'} can never match. Remove it from
-                        the value or from the delimiters.
+                        {tx(
+                          '{values} {n, plural, one {contains a delimiter, so it can never match.} other {contain a delimiter, so they can never match.}} Remove it from the value or from the delimiters.',
+                          {
+                            values: unreachable.map((v, i) => (
+                              <span key={v.value}>
+                                {i > 0 && ' '}
+                                <span className="font-mono">{v.value}</span>
+                              </span>
+                            )),
+                            n: unreachable.length,
+                          },
+                        )}
                       </div>
                     </Notice>
                   )}
-                  {t.values.length > 0 &&
+                  {ts.values.length > 0 &&
                     (() => {
                       const q = deferredQuery.trim().toLowerCase();
-                      const matched = t.values
+                      const matched = ts.values
                         .map((rec, i) => ({ rec, i }))
                         .filter(
                           ({ rec }) =>
@@ -515,13 +562,13 @@ export const TagsetsManager = ({
                           <div className="flex items-center gap-2">
                             <ListCount
                               shown={matched.length}
-                              total={t.values.length}
+                              total={ts.values.length}
                               noun="value"
                             />
                             <SearchInput
                               className="w-full max-w-[18rem]"
                               inputClassName="h-8"
-                              placeholder="Search values…"
+                              placeholder={t('Search values…')}
                               value={valueQuery}
                               onChange={(v) => {
                                 setValueQuery(v);
@@ -531,7 +578,7 @@ export const TagsetsManager = ({
                           </div>
                           {paged.pageItems.length === 0 ? (
                             <p className="rounded-md border border-dashed p-3 text-sm text-muted-foreground">
-                              No values match “{deferredQuery}”.
+                              {t('No values match “{query}”.', { query: deferredQuery })}
                             </p>
                           ) : (
                             <div className="overflow-hidden rounded-md border bg-background">
@@ -541,10 +588,10 @@ export const TagsetsManager = ({
                                   <tr className="text-xs text-muted-foreground">
                                     <th className="w-8 px-2 py-1.5"></th>
                                     <th className="w-[22%] px-2 py-1.5 text-left font-medium">
-                                      Value
+                                      {t('Value')}
                                     </th>
                                     <th className="px-2 py-1.5 text-left font-medium">
-                                      Description
+                                      {t('Description')}
                                     </th>
                                     <th className="w-8 px-2 py-1.5"></th>
                                   </tr>
@@ -588,7 +635,7 @@ export const TagsetsManager = ({
                   <div className="flex items-center gap-2">
                     <Input
                       className="max-w-[16rem]"
-                      placeholder="Add a value"
+                      placeholder={t('Add a value')}
                       value={newValue}
                       onChange={(e) => setNewValue(e.currentTarget.value)}
                       onKeyDown={async (e) => {
@@ -607,10 +654,10 @@ export const TagsetsManager = ({
                         setNewValue('');
                       }}
                     >
-                      <Plus className="h-4 w-4" /> Add
+                      <Plus className="h-4 w-4" /> {t('Add')}
                     </Button>
                     <Button variant="ghost" onClick={() => setPasteOpen((o) => !o)}>
-                      Paste a list
+                      {t('Paste a list')}
                     </Button>
                     <Button
                       variant="ghost"
@@ -618,8 +665,10 @@ export const TagsetsManager = ({
                       onClick={() => handleSeedAttested(name)}
                       title={
                         fields.length === 0
-                          ? 'Assign this tagset to a field first.'
-                          : `Add every tag already used in ${fields.map((f) => f.field).join(', ')}`
+                          ? t('Assign this tagset to a field first.')
+                          : t('Add every tag already used in {fields}', {
+                              fields: fields.map((f) => f.field).join(', '),
+                            })
                       }
                     >
                       <Sparkles className="h-4 w-4" /> {seedLabel}
@@ -629,22 +678,23 @@ export const TagsetsManager = ({
                   {pasteOpen && (
                     <div className="flex flex-col gap-2 rounded-md border bg-background p-3">
                       <p className="text-xs text-muted-foreground">
-                        One value per line, or comma separated. Values already in the list are
-                        skipped.
+                        {t(
+                          'One value per line, or comma separated. Values already in the list are skipped.',
+                        )}
                       </p>
                       <Textarea
                         rows={4}
                         className="font-mono text-sm"
                         value={pasteText}
                         onChange={(e) => setPasteText(e.currentTarget.value)}
-                        placeholder={'NOM\nACC\nERG'}
+                        placeholder={'NOM\nACC\nERG'} // i18n-ignore: example Leipzig tags
                       />
                       <div className="flex gap-2">
                         <Button disabled={!pasteText.trim()} onClick={() => handlePaste(name)}>
-                          Add values
+                          {t('Add values')}
                         </Button>
                         <Button variant="ghost" onClick={() => setPasteOpen(false)}>
-                          Cancel
+                          {t('Cancel')}
                         </Button>
                       </div>
                     </div>
@@ -653,27 +703,34 @@ export const TagsetsManager = ({
                   {seedPending?.name === name && (
                     <div className="flex flex-col gap-2 rounded-md border bg-background p-3">
                       <p className="text-sm">
-                        Found <strong>{seedPending.tags.length}</strong>{' '}
-                        {plural(seedPending.tags.length, 'tag')} and{' '}
-                        <strong>{seedPending.lexical.length}</strong>{' '}
-                        {plural(seedPending.lexical.length, 'value')} not written in capitals (
-                        <span className="font-mono">
-                          {seedPending.lexical
-                            .slice(0, 5)
-                            .map((v) => v.value)
-                            .join(', ')}
-                        </span>
-                        {seedPending.lexical.length > 5 ? ', …' : ''}) not in the list.
+                        {tx(
+                          'Found <strong>{tags}</strong> {tags, plural, one {tag} other {tags}} and <strong>{lexical}</strong> {lexical, plural, one {value} other {values}} not written in capitals (<mono>{examples}</mono>{more, select, yes {, …} other {}}) not in the list.',
+                          {
+                            tags: seedPending.tags.length,
+                            lexical: seedPending.lexical.length,
+                            examples: seedPending.lexical
+                              .slice(0, 5)
+                              .map((v) => v.value)
+                              .join(', '),
+                            more: seedPending.lexical.length > 5 ? 'yes' : 'no',
+                            strong: (c) => <strong>{c}</strong>,
+                            mono,
+                          },
+                        )}
                       </p>
                       <p className="text-xs text-muted-foreground">
-                        Read from {fields.map((f) => f.field).join(', ')}.
+                        {t('Read from {fields}.', {
+                          fields: fields.map((f) => f.field).join(', '),
+                        })}
                       </p>
                       <div className="flex gap-2">
                         <Button
                           disabled={seedPending.tags.length === 0}
                           onClick={() => seedWith(name, seedPending.tags)}
                         >
-                          Add {countOf(seedPending.tags.length, 'tag')}
+                          {t('Add {n, plural, one {# tag} other {# tags}}', {
+                            n: seedPending.tags.length,
+                          })}
                         </Button>
                         <Button
                           variant="outline"
@@ -681,10 +738,12 @@ export const TagsetsManager = ({
                             seedWith(name, [...seedPending.tags, ...seedPending.lexical])
                           }
                         >
-                          Add all {seedPending.tags.length + seedPending.lexical.length}
+                          {t('Add all {n}', {
+                            n: seedPending.tags.length + seedPending.lexical.length,
+                          })}
                         </Button>
                         <Button variant="ghost" onClick={() => setSeedPending(null)}>
-                          Cancel
+                          {t('Cancel')}
                         </Button>
                       </div>
                     </div>
@@ -700,21 +759,21 @@ export const TagsetsManager = ({
       <div className="flex items-center gap-2">
         <Input
           className="max-w-[20rem]"
-          placeholder="New tagset name (e.g. Leipzig)"
+          placeholder={t('New tagset name (e.g. Leipzig)')}
           value={newTagsetName}
           onChange={(e) => setNewTagsetName(e.currentTarget.value)}
           onKeyDown={(e) => isEnter(e) && handleAddTagset()}
         />
         <Button onClick={handleAddTagset} disabled={!newTagsetName.trim()}>
-          <Plus className="h-4 w-4" /> Add tagset
+          <Plus className="h-4 w-4" /> {t('Add tagset')}
         </Button>
       </div>
 
       <ConfirmDeleteDialog
         open={pendingDelete !== null}
         onOpenChange={(o) => !o && setPendingDelete(null)}
-        title={`Delete tagset “${pendingDelete ?? ''}”?`}
-        confirmLabel="Delete"
+        title={t('Delete tagset “{name}”?', { name: pendingDelete ?? '' })}
+        confirmLabel={t('Delete')}
         onConfirm={() => {
           const name = pendingDelete;
           setPendingDelete(null);
@@ -723,8 +782,14 @@ export const TagsetsManager = ({
       >
         <p>
           {(usage?.[pendingDelete] || []).length === 0
-            ? 'No field uses it.'
-            : `${usage[pendingDelete].map((f) => `${f.field} (${f.scope})`).join(', ')} ${usage[pendingDelete].length === 1 ? 'uses' : 'use'} it and will accept any value again. No ${valuesNoun} are changed.`}
+            ? t('No field uses it.')
+            : `${t(
+                '{fields} {n, plural, one {uses} other {use}} it and will accept any value again.',
+                {
+                  fields: usage[pendingDelete].map(fieldWithScope).join(', '),
+                  n: usage[pendingDelete].length,
+                },
+              )} ${keptNote}`}
         </p>
       </ConfirmDeleteDialog>
     </div>
@@ -765,7 +830,9 @@ const ValueRow = ({
             variant="ghost"
             className="h-6 w-6"
             onClick={onToggle}
-            title={extras.length ? `${extras.length} more field(s)` : 'Add custom fields'}
+            title={
+              extras.length ? t('{n} more field(s)', { n: extras.length }) : t('Add custom fields')
+            }
           >
             {expanded ? (
               <ChevronDown className="h-3.5 w-3.5" />
@@ -782,7 +849,7 @@ const ValueRow = ({
             defaultValue={rec.value}
             readOnly={reserved}
             title={reserved ? reservedMessage(rec.value) : undefined}
-            aria-label={`Value ${rec.value}`}
+            aria-label={t('Value {value}', { value: rec.value })}
             onBlur={(e) => {
               const v = e.currentTarget.value.trim();
               if (v && v !== rec.value && onPatch({ value: v }) !== false) return;
@@ -807,7 +874,7 @@ const ValueRow = ({
             className="h-6 w-6 text-muted-foreground hover:text-destructive"
             onClick={onRemove}
             disabled={reserved}
-            title={reserved ? reservedMessage(rec.value) : 'Remove value'}
+            title={reserved ? reservedMessage(rec.value) : t('Remove value')}
           >
             <Trash2 className="h-3.5 w-3.5" />
           </Button>
@@ -837,7 +904,7 @@ const ValueRow = ({
                     delete next[k];
                     onReplace(next);
                   }}
-                  title="Remove field"
+                  title={t('Remove field')}
                 >
                   <Trash2 className="h-3.5 w-3.5" />
                 </Button>
@@ -846,19 +913,19 @@ const ValueRow = ({
             <div className="mt-2 flex items-center gap-2">
               <Input
                 className="h-7 w-32 font-mono"
-                placeholder="key"
+                placeholder={t('key')}
                 value={newKey}
                 onChange={(e) => setNewKey(e.currentTarget.value)}
               />
               <Input
                 className="h-7 max-w-md"
-                placeholder="value"
+                placeholder={t('value')}
                 value={newVal}
                 onChange={(e) => setNewVal(e.currentTarget.value)}
                 onKeyDown={(e) => isEnter(e) && addExtra()}
               />
               <Button size="sm" variant="outline" disabled={!newKey.trim()} onClick={addExtra}>
-                <Plus className="h-3.5 w-3.5" /> Add
+                <Plus className="h-3.5 w-3.5" /> {t('Add')}
               </Button>
             </div>
           </td>

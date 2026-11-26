@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { holdRun } from './useSavingGuard.js';
+import { t } from '../lib/i18n.js';
 
 // The document's write lock, held while a service run is writing to it.
 //
@@ -91,7 +92,7 @@ export function useWriteLock() {
       // is the only place the run shows (REV-RUN-2).
       const cancel = onCancel
         ? () => {
-            report({ percent: null, message: 'Stopping…' });
+            report({ percent: null, message: t('Stopping…') });
             return onCancel();
           }
         : null;

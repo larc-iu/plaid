@@ -10,6 +10,7 @@ import { arrowStep, caretAtArrowEdge, isRtlBox } from '@ui/lib/bidi.js';
 import { keys } from '@/lib/keymap.js';
 import { tokenizeFocus } from '../../../hooks/focusHandoff.js';
 import { isEnter } from '@ui/lib/chords.js';
+import { t } from '@ui/lib/i18n.js';
 
 // Multi-word expressions: gathering words into one link, the bracket and its
 // lanes, and the popover for the expression as a whole.
@@ -84,13 +85,13 @@ export const mwe = {
     const sel = this._mweSel;
     if (!sel) return [];
     const sentence = this.doc.sentenceLookup.get(sel.sentenceId);
-    return (sentence?.tokens || []).filter((t) => sel.tokenIds.has(t.id));
+    return (sentence?.tokens || []).filter((tok) => sel.tokenIds.has(tok.id));
   },
 
   // The words of the open MWE, else of the selection, as token ids in order.
   _mweTargetIds() {
     const open = this._openMwe();
-    return open ? [...open.memberTokenIds] : this._mweSelTokens().map((t) => t.id);
+    return open ? [...open.memberTokenIds] : this._mweSelTokens().map((tok) => tok.id);
   },
 
   // An MWE's entry in the shape the popover and the homonym helper expect.
@@ -139,8 +140,8 @@ export const mwe = {
       };
     }
     const words = sentence.tokens;
-    let i = words.findIndex((t) => t.id === sel.cursorId);
-    if (i < 0) i = words.findIndex((t) => t.id === wordId);
+    let i = words.findIndex((tok) => tok.id === sel.cursorId);
+    if (i < 0) i = words.findIndex((tok) => tok.id === wordId);
     const next = words[i + dir];
     if (next) {
       sel.cursorId = next.id;
@@ -201,7 +202,11 @@ export const mwe = {
       e.stopPropagation();
       if (sel.tokenIds.size >= 2) this._openMwePopover();
       else
-        notifyInfo(`Add another word first: Shift+click it, or ${this._gatherKey()} from a cell`);
+        notifyInfo(
+          t('Add another word first: Shift+click it, or {key} from a cell', {
+            key: this._gatherKey(),
+          }),
+        );
       return true;
     }
     const gather = keys.which(GATHER_ACTIONS, e);
@@ -337,7 +342,7 @@ export const mwe = {
       el.closest?.('[data-word-col]')?.dataset?.wordCol ??
       (kind === 'wa' || kind === 'or' ? targetId : null);
     const sentence = (this.doc.sentences || []).find((s) => s.id === sentenceId);
-    const begin = sentence?.tokens?.find((t) => t.id === wordId)?.begin ?? null;
+    const begin = sentence?.tokens?.find((tok) => tok.id === wordId)?.begin ?? null;
     try {
       tokenizeFocus.write({ docId: this.doc.id, sentenceId, begin });
     } catch {
@@ -430,14 +435,19 @@ export const mwe = {
       const sub = this._itemNumber(item);
       content = html`${mwe.item.form}${numHtml(sub, 'igt-vocab')}`;
       const words = this._mweWords(mwe.memberTokenIds);
-      title = `“${words}” ${this._linkStateText(state, mwe.provOrigin, mwe.item.form, canLink)}`;
+      title = this._linkStateText(state, mwe.provOrigin, mwe.item.form, canLink, false, words);
     } else {
       const n = this._mweSel?.tokenIds.size ?? 0;
-      content = n >= 2 ? html`${n} words · <kbd>↵</kbd>` : html`add words…`;
+      content = n >= 2 ? html`${t('{n} words', { n })} · <kbd>↵</kbd>` : html`${t('add words…')}`;
       title =
         n >= 2
-          ? 'Enter to link these words to one entry · Shift+click to add or remove a word · Esc to drop them'
-          : `Shift+click a word, or ${this._gatherKey()} from a cell, to gather it into the multi-word expression · Esc to drop it`;
+          ? t(
+              'Enter to link these words to one entry · Shift+click to add or remove a word · Esc to drop them',
+            )
+          : t(
+              'Shift+click a word, or {key} from a cell, to gather it into the multi-word expression · Esc to drop it',
+              { key: this._gatherKey() },
+            );
     }
     let popover = nothing;
     if (open) {
@@ -476,18 +486,18 @@ export const mwe = {
       .map((id) => this.doc.tokenLookup.get(id))
       .filter(Boolean);
     return html`
-      <div class="igt-vocab-pop__members" aria-label="Words in this multi-word expression">
+      <div class="igt-vocab-pop__members" aria-label=${t('Words in this multi-word expression')}>
         ${tokens.map(
-          (t) =>
+          (tok) =>
             html`<span class="igt-vocab-pop__member"
-              >${t.content}<button
+              >${tok.content}<button
                 type="button"
                 class="igt-vocab-pop__member-x"
-                title=${`Remove “${t.content}” from the multi-word expression`}
-                aria-label=${`Remove ${t.content}`}
+                title=${t('Remove “{word}” from the multi-word expression', { word: tok.content })}
+                aria-label=${t('Remove {word}', { word: tok.content })}
                 @click=${(e) => {
                   e.stopPropagation();
-                  this._removeMweMember(t.id);
+                  this._removeMweMember(tok.id);
                 }}
               >
                 ×
@@ -495,7 +505,7 @@ export const mwe = {
             >`,
         )}
       </div>
-      <div class="igt-vocab-pop__hintline">Shift+click a word to add or remove it</div>
+      <div class="igt-vocab-pop__hintline">${t('Shift+click a word to add or remove it')}</div>
     `;
   },
 
@@ -512,17 +522,17 @@ export const mwe = {
     const canEditEntry = linked && !!vocab && this.canEditEntries(vocab);
     const title = linked
       ? canEditEntry
-        ? 'Type of the linked lexicon entry'
+        ? t('Type of the linked lexicon entry')
         : this.readOnly
-          ? 'Type comes from the linked lexicon entry'
-          : 'Type of the linked lexicon entry, from another project'
-      : 'The type a new entry gets: multi-word expression';
+          ? t('Type comes from the linked lexicon entry')
+          : t('Type of the linked lexicon entry, from another project')
+      : t('The type a new entry gets: multi-word expression');
     return html`
       <label class="igt-vocab-pop__type" title=${title} @click=${(e) => e.stopPropagation()}>
-        <span>${linked ? 'Type (entry)' : 'Type'}</span>
+        <span>${linked ? t('Type (entry)') : t('Type')}</span>
         <select
           ?disabled=${this.readOnly || !canEditEntry}
-          aria-label="Lexicon entry type"
+          aria-label=${t('Lexicon entry type')}
           @change=${(e) => {
             e.stopPropagation();
             const value = e.target.value || null;
@@ -531,8 +541,10 @@ export const mwe = {
         >
           <option value="" ?selected=${current === ''}>—</option>
           ${morphTypeOptions(current).map(
-            (t) =>
-              html`<option value=${t} ?selected=${current === t}>${morphTypeLabel(t)}</option>`,
+            (type) =>
+              html`<option value=${type} ?selected=${current === type}>
+                ${morphTypeLabel(type)}
+              </option>`,
           )}
         </select>
       </label>

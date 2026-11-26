@@ -19,6 +19,7 @@
 
 import { conflictingPairs } from './alignmentTimes.js';
 import { collectMweLinks } from './mwe.js';
+import { t } from '@ui/lib/i18n.js';
 
 const SEVERITY = { ERROR: 'error', WARNING: 'warning' };
 
@@ -48,7 +49,10 @@ export function validateIgtDocument(
           add(
             SEVERITY.WARNING,
             'mwe-partial',
-            `The multi-word expression "${m.item?.form ?? ''}" has words outside sentence ${(sentences.indexOf(s) ?? 0) + 1}, or on words that no longer exist. Only its words in that sentence are shown.`,
+            t(
+              'The multi-word expression "{form}" has words outside sentence {n}, or on words that no longer exist. Only its words in that sentence are shown.',
+              { form: m.item?.form ?? '', n: (sentences.indexOf(s) ?? 0) + 1 },
+            ),
             { linkId: m.linkId, sentenceId: s.id, tokens: m.tokenIds },
           );
         }
@@ -59,7 +63,10 @@ export function validateIgtDocument(
       add(
         SEVERITY.WARNING,
         'mwe-undrawn',
-        `The multi-word expression "${m.item?.form ?? ''}" has fewer than two words in the sentence of its first word, so it is not shown. Merge the sentences back to show it.`,
+        t(
+          'The multi-word expression "{form}" has fewer than two words in the sentence of its first word, so it is not shown. Merge the sentences back to show it.',
+          { form: m.item?.form ?? '' },
+        ),
         { linkId: m.linkId, tokens: m.tokenIds },
       );
     }
@@ -67,7 +74,7 @@ export function validateIgtDocument(
     add(
       SEVERITY.ERROR,
       'mwe-check-failed',
-      `Multi-word expression check threw: ${err?.message || err}`,
+      t('Multi-word expression check threw: {error}', { error: String(err?.message || err) }),
     );
   }
 
@@ -75,20 +82,31 @@ export function validateIgtDocument(
     add(
       SEVERITY.WARNING,
       'alignment-time-overlap',
-      `Two segments overlap in time without different speakers (${a.metadata?.timeBegin}-${a.metadata?.timeEnd} and ${b.metadata?.timeBegin}-${b.metadata?.timeEnd}). Only cross-talk between labelled speakers may overlap.`,
+      t(
+        'Two segments overlap in time without different speakers ({aBegin}-{aEnd} and {bBegin}-{bEnd}). Only cross-talk between labelled speakers may overlap.',
+        {
+          aBegin: String(a.metadata?.timeBegin),
+          aEnd: String(a.metadata?.timeEnd),
+          bBegin: String(b.metadata?.timeBegin),
+          bEnd: String(b.metadata?.timeEnd),
+        },
+      ),
       { ids: [a.id, b.id], speakers: [a.metadata?.speaker ?? null, b.metadata?.speaker ?? null] },
     );
   });
 
-  (alignmentTokens || []).forEach((t) => {
-    const tb = t.metadata?.timeBegin;
-    const te = t.metadata?.timeEnd;
+  (alignmentTokens || []).forEach((token) => {
+    const tb = token.metadata?.timeBegin;
+    const te = token.metadata?.timeEnd;
     if (typeof tb === 'number' && typeof te === 'number' && te < tb) {
       add(
         SEVERITY.WARNING,
         'alignment-time-inverted',
-        `An alignment has end time (${te}) before start time (${tb}).`,
-        { id: t.id, begin: t.begin, end: t.end, timeBegin: tb, timeEnd: te },
+        t('An alignment has end time ({end}) before start time ({begin}).', {
+          end: String(te),
+          begin: String(tb),
+        }),
+        { id: token.id, begin: token.begin, end: token.end, timeBegin: tb, timeEnd: te },
       );
     }
   });

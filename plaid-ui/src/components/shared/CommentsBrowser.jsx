@@ -9,6 +9,7 @@ import { threadList, plainText } from '../../domain/commentThreads.js';
 import { detectDirection } from '../../domain/textDirection.js';
 import { CommentThread } from './CommentThread.jsx';
 import { SegmentedControl } from './SegmentedControl.jsx';
+import { t } from '../../lib/i18n.js';
 
 // Every thread on one document (or one vocabulary), with the list chrome around
 // it: search, count, sort, Current / On other layers / Outdated, a pager top
@@ -82,7 +83,7 @@ const ThreadRow = ({
         <button
           type="button"
           className="mt-0.5 shrink-0 text-muted-foreground hover:text-foreground"
-          aria-label={open ? 'Collapse this thread' : 'Open this thread'}
+          aria-label={open ? t('Collapse this thread') : t('Open this thread')}
           aria-expanded={open}
           onClick={onToggle}
         >
@@ -95,7 +96,7 @@ const ThreadRow = ({
             {detail && <AnchorDetail detail={detail} excerpt={excerpt} />}
             {thread.outdated && (
               <span className="rounded bg-warning/15 px-1.5 py-0.5 text-[10px] font-normal text-warning-foreground">
-                outdated
+                {t('outdated')}
               </span>
             )}
             {/* The pinned thread is synthesized with no comments when the
@@ -151,7 +152,7 @@ export const CommentsBrowser = ({
   jumpHref,
   jumpTitle,
   emptyText,
-  positionLabel = 'In text order',
+  positionLabel = t('In text order'),
   present = null,
 }) => {
   useCommentStore(store);
@@ -218,40 +219,44 @@ export const CommentsBrowser = ({
   return (
     <div className="mt-2">
       <div className="mb-3 flex flex-wrap items-center gap-2">
-        <ListCount shown={shownCount} total={total} noun="thread" />
+        <ListCount
+          shown={shownCount}
+          total={total}
+          countLabel={(v) => t('{total} {n, plural, one {thread} other {threads}}', v)}
+        />
         <SearchInput
           className="w-56"
-          placeholder="Search comments…"
+          placeholder={t('Search comments…')}
           value={query}
           onChange={setQuery}
         />
         <Select value={sort} onValueChange={setSort}>
-          <SelectTrigger className="h-8 w-40" aria-label="Sort threads">
+          <SelectTrigger className="h-8 w-40" aria-label={t('Sort threads')}>
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="recent">Latest activity</SelectItem>
-            <SelectItem value="oldest">Oldest first</SelectItem>
+            <SelectItem value="recent">{t('Latest activity')}</SelectItem>
+            <SelectItem value="oldest">{t('Oldest first')}</SelectItem>
             <SelectItem value="position">{positionLabel}</SelectItem>
           </SelectContent>
         </Select>
         <SegmentedControl
-          label="Which threads"
+          label={t('Which threads')}
           value={filter}
           onChange={setFilter}
           className="ml-auto"
           options={[
-            { value: 'current', label: 'Current', count: currentTotal },
+            { value: 'current', label: t('Current'), count: currentTotal },
             ...(showElsewhere
               ? [
                   {
                     value: 'elsewhere',
-                    label: 'On other layers',
+                    label: t('On other layers'),
                     count: list?.elsewhereTotal ?? 0,
                   },
                 ]
               : []),
-            { value: 'outdated', label: 'Outdated', count: list?.outdatedTotal ?? 0 },
+            { value: 'outdated', label: t('Outdated'), count: list?.outdatedTotal ?? 0 },
           ]}
         />
       </div>
@@ -276,11 +281,11 @@ export const CommentsBrowser = ({
         ) : (
           <p className="px-3 py-6 text-center text-sm text-muted-foreground">
             {q
-              ? `No comments match “${q}”.`
+              ? t('No comments match “{query}”.', { query: q })
               : filter === 'outdated'
-                ? 'No outdated comments.'
+                ? t('No outdated comments.')
                 : filter === 'elsewhere'
-                  ? 'No comments on other layers.'
+                  ? t('No comments on other layers.')
                   : emptyText}
           </p>
         )}

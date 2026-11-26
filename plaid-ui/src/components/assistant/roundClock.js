@@ -8,6 +8,8 @@
 // while a tool runs. The page reads that and never the event's line, so a
 // reload or a second tab joining mid-round counts from the true start.
 
+import { t } from '../../lib/i18n.js';
+
 // When the model call under way began (ms), while the model works on it with
 // no text yet, else null. Null too where the service says nothing of the
 // round (another assistant, an older service): no count is shown.
@@ -33,5 +35,7 @@ export const thinkingFor = (ms) => {
   const total = Math.max(0, Math.floor(ms / 1000));
   const minutes = Math.floor(total / 60);
   const seconds = total % 60;
-  return minutes ? `Thinking, ${minutes} min ${seconds} s` : `Thinking, ${seconds} s`;
+  return minutes
+    ? t('Thinking, {minutes} min {seconds} s', { minutes, seconds })
+    : t('Thinking, {seconds} s', { seconds });
 };
