@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { X } from 'lucide-react';
 import { Input } from '@ui/components/ui/input';
+import { t } from '@ui/lib/i18n.js';
 
 // The project's metadata fields for one level, as removable chips plus an input
 // that appends on Enter.
@@ -41,7 +42,7 @@ export const MetadataFieldList = ({ value, onChange, validate, placeholder, labe
               <button
                 type="button"
                 className="text-muted-foreground hover:text-destructive"
-                aria-label={`Remove ${field}`}
+                aria-label={t('Remove {name}', { name: field })}
                 onClick={() => onChange(fields.filter((f) => f !== field))}
               >
                 <X className="h-3 w-3" />

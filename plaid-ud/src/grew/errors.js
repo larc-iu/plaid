@@ -15,6 +15,11 @@
 //
 // Both extend GrewError so a caller can `catch (e) { if (e instanceof GrewError) … }`
 // to separate "your query is the problem" from "the server/network is the problem".
+//
+// A message is the person's sentence, in the interface's language: the node
+// test suite loads this file, so i18n.js comes by a relative path.
+
+import { t } from '../../../plaid-ui/src/lib/i18n.js';
 
 export class GrewError extends Error {}
 
@@ -30,7 +35,7 @@ export class GrewParseError extends GrewError {
 
 export class GrewUnsupportedError extends GrewError {
   constructor(feature, message, line = null) {
-    super(message || `Unsupported Grew feature: ${feature}`);
+    super(message || t('Unsupported Grew feature: {feature}', { feature }));
     this.name = 'GrewUnsupportedError';
     this.feature = feature;
     this.line = line;

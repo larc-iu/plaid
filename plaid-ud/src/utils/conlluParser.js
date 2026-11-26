@@ -7,6 +7,8 @@
 // (cpLength, and code-point offsets kept beside UTF-16 ones), not the UTF-16 indexOf / .length.
 import { composeText, cpLength } from '@larc-iu/plaid-client';
 import { parseDeps } from '../domain/enhancedGraph.js';
+// By its real path: the `node --test` suite has no `@ui` alias.
+import { t } from '../../../plaid-ui/src/lib/i18n.js';
 
 // Split a CoNLL-U file into one chunk per `# newdoc[ id = X]` block, so a single
 // uploaded file containing multiple documents becomes multiple Plaid documents.
@@ -44,10 +46,12 @@ export function splitConlluByNewdoc(text) {
 
 // Where a refusal points: the sentence's number in the document and its
 // sent_id when it has one, which is what a person can search the file for.
+// Where a refusal is: the sentence's number, and its sent_id when it has
+// one, as the values of a message that says "in sentence 2 (sent_id x-2)".
 const sentenceName = (n, metadata) =>
   typeof metadata?.sent_id === 'string'
-    ? `sentence ${n} (sent_id ${metadata.sent_id})`
-    : `sentence ${n}`;
+    ? { n, named: 'yes', sentId: metadata.sent_id }
+    : { n, named: 'no', sentId: '' };
 
 // An ID, a HEAD or a range bound is digits and nothing else. parseInt alone
 // read `2a` as 2 and `1.5` as 1.
@@ -139,7 +143,10 @@ export function parseCoNLLU(text) {
     const columns = trimmedLine.split('\t');
     if (columns.length !== 10) {
       throw new Error(
-        `Invalid CoNLL-U format: Expected 10 columns, found ${columns.length} in line: ${trimmedLine}`,
+        t('Invalid CoNLL-U format: Expected 10 columns, found {found} in line: {line}', {
+          found: columns.length,
+          line: trimmedLine,
+        }),
       );
     }
 
@@ -170,7 +177,12 @@ export function parseCoNLLU(text) {
       const end = wholeNumber(endStr);
 
       if (isNaN(start) || isNaN(end) || start <= 0 || end <= 0 || start >= end) {
-        throw new Error(`Invalid multi-word token range in ${here()}: ${id}`);
+        throw new Error(
+          t(
+            'Invalid multi-word token range in {named, select, yes {sentence {n} (sent_id {sentId})} other {sentence {n}}}: {id}',
+            { ...here(), id },
+          ),
+        );
       }
 
       if (dropsMisc(misc)) droppedMiscTokens += 1;
@@ -186,11 +198,22 @@ export function parseCoNLLU(text) {
     // Validate ID is a positive integer
     const idNum = wholeNumber(id);
     if (isNaN(idNum) || idNum <= 0) {
-      throw new Error(`Invalid token ID in ${here()}: ${id}`);
+      throw new Error(
+        t(
+          'Invalid token ID in {named, select, yes {sentence {n} (sent_id {sentId})} other {sentence {n}}}: {id}',
+          { ...here(), id },
+        ),
+      );
     }
     // A word's FORM is never empty (`_` is the form `_`, below). One that is
     // would be a token of no width, which the server refuses in its own terms.
-    if (form === '') throw new Error(`Empty FORM in ${here()}, ID ${id}.`);
+    if (form === '')
+      throw new Error(
+        t(
+          'Empty FORM in {named, select, yes {sentence {n} (sent_id {sentId})} other {sentence {n}}}, ID {id}.',
+          { ...here(), id },
+        ),
+      );
 
     // The MISC column is deliberately unsupported (it often carries annotations
     // like entity info that tokenization changes would silently corrupt; see
@@ -209,7 +232,12 @@ export function parseCoNLLU(text) {
     // relation, whatever its DEPREL says: null, never 0.
     const headNum = head === '_' ? null : wholeNumber(head);
     if (headNum !== null && (isNaN(headNum) || headNum < 0)) {
-      throw new Error(`Invalid HEAD value in ${here()}: ${head}`);
+      throw new Error(
+        t(
+          'Invalid HEAD value in {named, select, yes {sentence {n} (sent_id {sentId})} other {sentence {n}}}: {head}',
+          { ...here(), head },
+        ),
+      );
     }
 
     // DEPS, the enhanced graph's incoming edges (see domain/enhancedGraph.js).
@@ -266,13 +294,23 @@ export function parseCoNLLU(text) {
   // An ID 1 after other rows and a comment line is a new sentence with no
   // blank line before it, which is said as such.
   sentences.forEach((sentence, s) => {
-    sentence.tokens.forEach((t, i) => {
-      if (t.id === i + 1) return;
+    sentence.tokens.forEach((row, i) => {
+      if (row.id === i + 1) return;
       const where = sentenceName(s + 1, sentence.metadata);
       throw new Error(
-        t.id === 1 && commentAfterRow.has(sentence)
-          ? `Invalid token ordering in ${where}: a new sentence begins after ID ${sentence.tokens[i - 1].id} with no blank line before it.`
-          : `Invalid token ordering in ${where}: expected ID ${i + 1}, found ${t.id}.`,
+        row.id === 1 && commentAfterRow.has(sentence)
+          ? t(
+              'Invalid token ordering in {named, select, yes {sentence {n} (sent_id {sentId})} other {sentence {n}}}: a new sentence begins after ID {id} with no blank line before it.',
+              { ...where, id: sentence.tokens[i - 1].id },
+            )
+          : t(
+              'Invalid token ordering in {named, select, yes {sentence {n} (sent_id {sentId})} other {sentence {n}}}: expected ID {expected}, found {found}.',
+              {
+                ...where,
+                expected: i + 1,
+                found: row.id,
+              },
+            ),
       );
     });
   });
@@ -287,12 +325,26 @@ export function parseCoNLLU(text) {
       const range = `${m.start}-${m.end}`;
       if (m.end > sentence.tokens.length) {
         throw new Error(
-          `Invalid multi-word token range in ${where}: ${range} runs past the last ID, ${sentence.tokens.length}.`,
+          t(
+            'Invalid multi-word token range in {named, select, yes {sentence {n} (sent_id {sentId})} other {sentence {n}}}: {range} runs past the last ID, {last}.',
+            {
+              ...where,
+              range,
+              last: sentence.tokens.length,
+            },
+          ),
         );
       }
       if (prev && m.start <= prev.end) {
         throw new Error(
-          `Invalid multi-word token range in ${where}: ${range} overlaps ${prev.start}-${prev.end}.`,
+          t(
+            'Invalid multi-word token range in {named, select, yes {sentence {n} (sent_id {sentId})} other {sentence {n}}}: {range} overlaps {other}.',
+            {
+              ...where,
+              range,
+              other: `${prev.start}-${prev.end}`,
+            },
+          ),
         );
       }
       prev = m;

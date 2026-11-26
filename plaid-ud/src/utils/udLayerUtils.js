@@ -6,8 +6,10 @@ import {
   readFeatureInventory,
 } from './udVocab.js';
 import { MODES, readVocabMode, readDescriptions } from './udVocabMode.js';
-import { UPOS_DESCRIPTIONS, DEPREL_DESCRIPTIONS } from './udVocabDescriptions.js';
+import { shippedDescriptions } from './udVocabDescriptions.js';
 import { ROLES, findByRole } from '@larc-iu/plaid-client';
+// By its real path: the `node --test` suite has no `@ui` alias.
+import { msg, t } from '../../../plaid-ui/src/lib/i18n.js';
 import {
   UD_SPAN_CONFIG_KEYS,
   UD_RELATION_CONFIG_KEY,
@@ -36,17 +38,17 @@ export const containsToken = (parent, child) =>
 // (kept for interop): `wordTokenLayer` is the orthographic surface layer — a UD
 // "token" layer — and `morphemeTokenLayer` holds UD syntactic "words".
 const UD_LAYER_LABELS = {
-  textLayer: 'Text layer',
-  sentenceTokenLayer: 'Sentence layer',
-  wordTokenLayer: 'Token layer',
-  morphemeTokenLayer: 'Word layer',
-  form: 'Form layer',
-  lemma: 'Lemma layer',
-  upos: 'UPOS layer',
-  xpos: 'XPOS layer',
-  features: 'Features layer',
-  dependency: 'Dependency relation layer',
-  enhancedDependency: 'Enhanced dependency relation layer',
+  textLayer: msg('Text layer'),
+  sentenceTokenLayer: msg('Sentence layer'),
+  wordTokenLayer: msg('Token layer'),
+  morphemeTokenLayer: msg('Word layer'),
+  form: msg('Form layer'),
+  lemma: msg('Lemma layer'),
+  upos: msg('UPOS layer'),
+  xpos: msg('XPOS layer'),
+  features: msg('Features layer'),
+  dependency: msg('Dependency relation layer'),
+  enhancedDependency: msg('Enhanced dependency relation layer'),
 };
 
 // Substrate layers (text + token layers) are bound by their shared ROLE
@@ -105,7 +107,7 @@ export const getUdLayerInfo = (document) => {
       },
       colors: { upos: {}, deprel: {} },
       modes: { upos: MODES.OPEN, xpos: MODES.OPEN, deprel: MODES.OPEN, feats: MODES.OPEN },
-      descriptions: { upos: UPOS_DESCRIPTIONS, xpos: {}, deprel: DEPREL_DESCRIPTIONS },
+      descriptions: { ...shippedDescriptions(), xpos: {} },
       missingLayers: [...EMPTY_MISSING],
       isConfigured: false,
     };
@@ -156,6 +158,7 @@ export const getUdLayerInfo = (document) => {
   if (!enhancedRelationLayer) missingLayers.push('enhancedDependency');
 
   const normalizedMissing = Array.from(new Set(missingLayers));
+  const shipped = shippedDescriptions();
 
   return {
     textLayer,
@@ -197,9 +200,9 @@ export const getUdLayerInfo = (document) => {
       feats: readVocabMode(featuresLayer?.config),
     },
     descriptions: {
-      upos: readDescriptions(uposLayer?.config, UPOS_DESCRIPTIONS),
+      upos: readDescriptions(uposLayer?.config, shipped.upos),
       xpos: readDescriptions(xposLayer?.config),
-      deprel: readDescriptions(relationLayer?.config, DEPREL_DESCRIPTIONS),
+      deprel: readDescriptions(relationLayer?.config, shipped.deprel),
       // Keyed by the whole `Key=Value` pair, which is what a FEATS span
       // stores and what the picker offers.
       feats: readDescriptions(featuresLayer?.config),
@@ -217,5 +220,5 @@ export const dependencyRelationLayers = (layerInfo) =>
 
 export const missingUdLayerLabels = (missingKeys) => {
   if (!Array.isArray(missingKeys)) return [];
-  return missingKeys.map((key) => UD_LAYER_LABELS[key] || key);
+  return missingKeys.map((key) => (UD_LAYER_LABELS[key] ? t(UD_LAYER_LABELS[key]) : key));
 };

@@ -4,6 +4,7 @@ import { Combobox } from '@ui/components/shared/combobox';
 import { textIncludes } from '@ui/domain/collation.js';
 import { foldAlif } from '../../../domain/lexicon.js';
 import { keys } from '../../../lib/keymap.js';
+import { t } from '@ui/lib/i18n.js';
 
 // A small editor floating over the canvas at a point of the graph: a
 // Combobox seeded with options, a free value allowed unless `strict`.
@@ -84,17 +85,17 @@ export function InlineEditor({
   // The option Enter takes for typed text when the arrows chose none. A
   // relation is typed with or without its colon.
   const matchFor = (typed) => {
-    const t = String(typed ?? '').trim();
-    if (!t) return null;
+    const text = String(typed ?? '').trim();
+    if (!text) return null;
     // Alif read as the frame file keys it, so أعلن-01 typed is اعلن-01.
     const bare = (v) => foldAlif(String(v).replace(/^:/, ''));
     const all = flatOptions(options);
-    const exact = all.find((o) => o.value === t || bare(o.value) === bare(t));
+    const exact = all.find((o) => o.value === text || bare(o.value) === bare(text));
     if (exact || !complete) return exact || null;
     // A relation is one name however it is typed, so `arg0` is `:ARG0`, as
     // the list it is picked from has it. A lone colon is the beginning of
     // every relation and so of none: it takes the first option otherwise.
-    const typed_ = bare(t).toLowerCase();
+    const typed_ = bare(text).toLowerCase();
     if (!typed_) return null;
     const same = all.find((o) => bare(o.value).toLowerCase() === typed_);
     return same || all.find((o) => bare(o.value).toLowerCase().startsWith(typed_)) || null;
@@ -190,8 +191,8 @@ export function InlineEditor({
         <button
           type="button"
           className="umr-inline-delete"
-          title="Delete"
-          aria-label="Delete"
+          title={t('Delete')}
+          aria-label={t('Delete')}
           onPointerDown={(event) => {
             event.preventDefault();
             event.stopPropagation();

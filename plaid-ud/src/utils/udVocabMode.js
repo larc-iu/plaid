@@ -21,6 +21,8 @@
 
 import { valueSetAllows } from '@larc-iu/plaid-client';
 import { readUdConfig } from '../domain/udConfig.js';
+// By its real path: the `node --test` suite has no `@ui` alias.
+import { msg, t } from '../../../plaid-ui/src/lib/i18n.js';
 
 export const MODES = Object.freeze({ OPEN: 'open', CLOSED: 'closed' });
 
@@ -101,7 +103,13 @@ export const allowsFeature = (value, inventoryMap, config) => {
  * apologise: the annotator either meant a different tag or wants the list
  * changed, and both are one click away for a maintainer.
  */
-const refusalMessage = (value, field) => `${value} is not in this project's ${field} list.`;
+const REFUSALS = {
+  upos: msg("{value} is not in this project's UPOS list."),
+  xpos: msg("{value} is not in this project's XPOS list."),
+  deprel: msg("{value} is not in this project's dependency relation list."),
+  feats: msg("{value} is not in this project's feature list."),
+};
+const refusalMessage = (value, field) => t(REFUSALS[field], { value });
 
 /**
  * The refusal rule for each annotation field, as `(value) => message | null`,
@@ -115,21 +123,21 @@ export const makeValidators = (layerInfo) => {
   const vocab = layerInfo?.vocab || {};
   const modes = layerInfo?.modes || {};
   const closedFor = (field) => modes[field] === MODES.CLOSED;
-  const plain = (field, list, label) => (value) =>
+  const plain = (field, list) => (value) =>
     !closedFor(field) || allowsPlainValue(value, list, { ud: { vocabMode: MODES.CLOSED } })
       ? null
-      : refusalMessage(value, label);
+      : refusalMessage(value, field);
   return {
-    upos: plain('upos', vocab.upos, 'UPOS'),
-    xpos: plain('xpos', vocab.xpos, 'XPOS'),
+    upos: plain('upos', vocab.upos),
+    xpos: plain('xpos', vocab.xpos),
     deprel: (value) =>
       !closedFor('deprel') || allowsDeprel(value, vocab.deprel, { ud: { vocabMode: MODES.CLOSED } })
         ? null
-        : refusalMessage(value, 'dependency relation'),
+        : refusalMessage(value, 'deprel'),
     feats: (value) =>
       !closedFor('feats') ||
       allowsFeature(value, vocab.featureInventory?.map, { ud: { vocabMode: MODES.CLOSED } })
         ? null
-        : refusalMessage(value, 'feature'),
+        : refusalMessage(value, 'feats'),
   };
 };

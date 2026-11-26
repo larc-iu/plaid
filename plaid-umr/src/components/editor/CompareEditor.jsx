@@ -30,6 +30,7 @@ import {
   sentenceReport,
 } from '../../domain/adjudication.js';
 import { humanizeError } from '../../utils/feedback.jsx';
+import { t, tx } from '@ui/lib/i18n.js';
 
 // The document scored against another document of the same text: two
 // annotators' copies, or a draft against a corrected one. The score is
@@ -53,7 +54,7 @@ export const CompareEditor = () => {
   const { projectId, documentId, doc, project, services, writeLockHeld } = useDocumentEditor();
   const { getClient, user } = useAuth();
   const client = getClient();
-  useDocumentTitle('Compare', doc?.name, project?.name);
+  useDocumentTitle(t('Compare'), doc?.name, project?.name);
 
   const report = readAdjudication(doc.layerInfo.nodeTokenLayer?.tokens, doc.sentences);
   const canRun = canEditProject(project, user);
@@ -77,7 +78,7 @@ export const CompareEditor = () => {
           ),
       )
       .catch(
-        (error) => live && setListError(humanizeError(error, 'Failed to list the documents.')),
+        (error) => live && setListError(humanizeError(error, t('Failed to list the documents.'))),
       );
     return () => {
       live = false;
@@ -98,7 +99,7 @@ export const CompareEditor = () => {
     if (!otherId) return undefined;
     UmrDocument.load(client, { documentId: otherId, projectId, project, user })
       .then((loaded) => live && setOther(loaded))
-      .catch((error) => live && setOtherError(humanizeError(error, 'Failed to load it.')));
+      .catch((error) => live && setOtherError(humanizeError(error, t('Failed to load it.'))));
     return () => {
       live = false;
     };
@@ -110,10 +111,10 @@ export const CompareEditor = () => {
     <div className="flex flex-col gap-6">
       <div className="flex flex-wrap items-end justify-between gap-4">
         <div>
-          <h3 className="text-xl font-semibold tracking-tight">Compare</h3>
+          <h3 className="text-xl font-semibold tracking-tight">{t('Compare')}</h3>
           <p className="mt-1 text-sm text-muted-foreground">
             {/* service-ok: AnCast names the score the report holds */}
-            This document scored against another document of the same text, with AnCast.
+            {t('This document scored against another document of the same text, with AnCast.')}
           </p>
         </div>
         {canRun && (
@@ -131,7 +132,7 @@ export const CompareEditor = () => {
 
       {!report && (
         <p className="text-sm text-muted-foreground" data-testid="compare-empty">
-          No comparison yet.
+          {t('No comparison yet.')}
         </p>
       )}
 
@@ -139,26 +140,34 @@ export const CompareEditor = () => {
         <>
           <div className="rounded-md border p-4" data-testid="compare-report">
             <p className="text-sm">
-              Against{' '}
-              <Link
-                className="font-medium underline underline-offset-2"
-                to={`/projects/${projectId}/documents/${report.against?.id}/annotate`}
-              >
-                {report.against?.name || report.against?.id}
-              </Link>
-              , {formatWhen(report.at)}
-              {report.requestedBy
-                ? `, requested by ${report.requestedBy.name || report.requestedBy.id}`
-                : ''}
-              , {report.tool}.{report.scope === 'snt' ? ' Sentence graphs only.' : ''}
+              {tx(
+                report.requestedBy
+                  ? 'Against <a>{name}</a>, {when}, requested by {who}, {tool}.'
+                  : 'Against <a>{name}</a>, {when}, {tool}.',
+                {
+                  name: report.against?.name || report.against?.id,
+                  when: formatWhen(report.at),
+                  who: report.requestedBy?.name || report.requestedBy?.id,
+                  tool: report.tool,
+                  a: (c) => (
+                    <Link
+                      className="font-medium underline underline-offset-2"
+                      to={`/projects/${projectId}/documents/${report.against?.id}/annotate`}
+                    >
+                      {c}
+                    </Link>
+                  ),
+                },
+              )}
+              {report.scope === 'snt' ? ` ${t('Sentence graphs only.')}` : ''}
             </p>
             <dl className="mt-3 flex flex-wrap gap-x-8 gap-y-2">
               {rows.map((row) => (
                 <div key={row.key} data-score={row.key}>
-                  <dt className="text-xs text-muted-foreground">{row.label}</dt>
+                  <dt className="text-xs text-muted-foreground">{t(row.label)}</dt>
                   <dd
                     className="text-2xl font-semibold tabular-nums"
-                    title={row.value == null ? 'Neither document has any' : undefined}
+                    title={row.value == null ? t('Neither document has any') : undefined}
                   >
                     {percent(row.value)}
                   </dd>
@@ -166,15 +175,15 @@ export const CompareEditor = () => {
               ))}
             </dl>
             <p className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
-              <span>Marked in the graphs:</span>
-              <mark className={MARK_CLASS.missing}>No counterpart</mark>
-              <mark className={MARK_CLASS.differs}>Paired with another concept</mark>
+              <span>{t('Marked in the graphs:')}</span>
+              <mark className={MARK_CLASS.missing}>{t('No counterpart')}</mark>
+              <mark className={MARK_CLASS.differs}>{t('Paired with another concept')}</mark>
             </p>
           </div>
 
           {otherError && (
             <p className="text-sm text-warning-foreground">
-              Failed to read the other document: {otherError}
+              {t('Failed to read the other document: {error}', { error: otherError })}
             </p>
           )}
 
@@ -186,7 +195,7 @@ export const CompareEditor = () => {
                 row={sentenceReport(report, sentence.index)}
                 left={doc.penmanOf(sentence.index)}
                 right={other ? other.penmanOf(sentence.index) : null}
-                otherName={report.against?.name || 'the other document'}
+                otherName={report.against?.name || t('the other document')}
                 thisHref={annotateHref(projectId, documentId)}
                 otherHref={report.against?.id ? annotateHref(projectId, report.against.id) : null}
               />
@@ -214,7 +223,7 @@ const changedSince = (row, left, right) =>
 
 const formatWhen = (iso) => {
   const d = iso ? new Date(iso) : null;
-  return d && !Number.isNaN(d.getTime()) ? d.toLocaleString() : 'undated';
+  return d && !Number.isNaN(d.getTime()) ? d.toLocaleString() : t('undated');
 };
 
 // One sentence: its scores, and the two graphs side by side. On each side
@@ -240,25 +249,27 @@ function SentenceComparison({ sentence, row, left, right, otherName, thisHref, o
           {sentence.text}
         </span>
         {row?.skipped ? (
-          <span className="text-xs text-warning-foreground">Not scored: {row.skipped}</span>
+          <span className="text-xs text-warning-foreground">
+            {t('Not scored: {reason}', { reason: row.skipped })}
+          </span>
         ) : row ? (
           SENTENCE_SCORE_LABELS.map(([key, label]) => (
             <span key={key} className="text-xs text-muted-foreground" data-sentence-score={key}>
-              {label} <span className="font-medium text-foreground">{percent(row[key])}</span>
+              {t(label)} <span className="font-medium text-foreground">{percent(row[key])}</span>
             </span>
           ))
         ) : (
-          <span className="text-xs text-muted-foreground">Not in the report</span>
+          <span className="text-xs text-muted-foreground">{t('Not in the report')}</span>
         )}
         {changedSince(row, left, right) && (
           <span className="text-xs text-muted-foreground" data-changed-since>
-            Changed since this comparison.
+            {t('Changed since this comparison.')}
           </span>
         )}
       </header>
       <div className="grid gap-4 p-4 md:grid-cols-2">
         <GraphColumn
-          title="This document"
+          title={t('This document')}
           text={left}
           marks={mine}
           hrefFor={(v) => thisHref(sentence.index, v)}
@@ -268,14 +279,14 @@ function SentenceComparison({ sentence, row, left, right, otherName, thisHref, o
           text={right}
           marks={theirs}
           hrefFor={otherHref ? (v) => otherHref(sentence.index, v) : null}
-          placeholder={right == null ? 'Loading…' : undefined}
+          placeholder={right == null ? t('Loading…') : undefined}
         />
       </div>
       {pairs.length > 0 && (
         <div className="flex flex-col gap-1 border-t px-4 py-2 text-xs text-muted-foreground">
           {differ.length > 0 && (
             <p data-pairs="differ">
-              Paired with another concept:{' '}
+              {t('Paired with another concept:')}{' '}
               {differ.map((m) => (
                 <Pair key={m.this} match={m} withConcepts />
               ))}
@@ -283,7 +294,7 @@ function SentenceComparison({ sentence, row, left, right, otherName, thisHref, o
           )}
           {same.length > 0 && (
             <p data-pairs="same">
-              Same concept:{' '}
+              {t('Same concept:')}{' '}
               {same.map((m) => (
                 <Pair key={m.this} match={m} />
               ))}
@@ -310,9 +321,9 @@ function Pair({ match, withConcepts = false }) {
       {match.leftover && (
         <span
           className="ml-1 font-sans italic text-muted-foreground"
-          title="Paired from the nodes left once the rest were paired"
+          title={t('Paired from the nodes left once the rest were paired')}
         >
-          left over
+          {t('left over')}
         </span>
       )}
     </span>
@@ -342,7 +353,7 @@ function GraphColumn({ title, text, marks, hrefFor, placeholder }) {
             ),
           )
         ) : (
-          <span className="text-muted-foreground">{placeholder || 'No graph'}</span>
+          <span className="text-muted-foreground">{placeholder || t('No graph')}</span>
         )}
       </pre>
     </div>
@@ -363,22 +374,22 @@ function CompareDialog({
 }) {
   const [open, setOpen] = useState(false);
   const { spot, start } = compare;
-  const running = heldBy(writeLockHeld, 'Compare');
+  const running = heldBy(writeLockHeld, t('Compare'));
 
   // No service online is the method row's to say, and said once.
   const notice =
     runHeldNotice(writeLockHeld) ||
     listError ||
     (documents && documents.length === 0
-      ? 'This project has no other document to compare with.'
+      ? t('This project has no other document to compare with.')
       : !chosenId
-        ? 'Choose a document to compare with.'
+        ? t('Choose a document to compare with.')
         : null);
 
   return (
     <>
       <ServiceRunButton
-        label="Compare"
+        label={t('Compare')}
         icon={Scale}
         onClick={() => setOpen(true)}
         running={running}
@@ -387,11 +398,13 @@ function CompareDialog({
       <ServiceRunDialog
         open={open}
         onOpenChange={setOpen}
-        title="Compare"
+        title={t('Compare')}
         icon={Scale}
-        description="Scores this document's graphs against another document of the same text, and writes the report on this document."
+        description={t(
+          "Scores this document's graphs against another document of the same text, and writes the report on this document.",
+        )}
         notice={notice}
-        runLabel="Compare"
+        runLabel={t('Compare')}
         onRun={() => {
           setOpen(false);
           start({ against: chosenId });
@@ -399,10 +412,10 @@ function CompareDialog({
         runDisabled={!!notice || spot.empty || Object.keys(spot.params.errors).length > 0}
       >
         <div className="flex flex-col gap-2">
-          <Label className="text-xs">Compare with</Label>
+          <Label className="text-xs">{t('Compare with')}</Label>
           <Select value={chosenId ?? ''} onValueChange={onChoose} disabled={!documents}>
             <SelectTrigger data-testid="compare-against">
-              <SelectValue placeholder="Document" />
+              <SelectValue placeholder={t('Document')} />
             </SelectTrigger>
             <SelectContent>
               {(documents || []).map((d) => (
@@ -417,8 +430,8 @@ function CompareDialog({
           spot={spot}
           emptyHint={
             isDiscovering
-              ? 'Looking for a comparison service.'
-              : 'No comparison service is online for this project.'
+              ? t('Looking for a comparison service.')
+              : t('No comparison service is online for this project.')
           }
         />
       </ServiceRunDialog>

@@ -1,3 +1,4 @@
+import { msg } from '@ui/lib/i18n.js';
 import { ProjectSettingsShell } from '@ui/components/shared/ProjectSettingsShell.jsx';
 import { ProjectAccessSettings } from '@ui/components/shared/ProjectAccessSettings.jsx';
 import { ProjectGeneralSettings } from './ProjectGeneralSettings.jsx';
@@ -21,13 +22,13 @@ import { ROLE_OPTIONS } from '../../domain/roleGrants.js';
 const SECTIONS = [
   {
     value: 'general',
-    label: 'General',
+    label: msg('General'),
     body: ({ reload }) => <ProjectGeneralSettings onProjectUpdate={reload} />,
   },
-  { value: 'customization', label: 'UMR settings', body: () => <UmrSettings /> },
+  { value: 'customization', label: msg('UMR settings'), body: () => <UmrSettings /> },
   {
     value: 'management',
-    label: 'Access',
+    label: msg('Access'),
     body: ({ reload }) => (
       <ProjectAccessSettings
         roleOptions={ROLE_OPTIONS}
@@ -36,7 +37,7 @@ const SECTIONS = [
       />
     ),
   },
-  { value: 'services', label: 'Services', body: () => <ProjectServicesSettings /> },
+  { value: 'services', label: msg('Services'), body: () => <ProjectServicesSettings /> },
 ];
 
 export const ProjectSettings = () => (

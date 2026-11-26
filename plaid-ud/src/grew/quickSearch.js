@@ -14,21 +14,23 @@
 //   feats regex "Number"  ->  pattern { W [Number=re"..."] }
 
 import { BARE_LABEL, exactRegex, literalRegex, quote, regexLiteral } from './literals.js';
+import { msg } from '../../../plaid-ui/src/lib/i18n.js';
 
-/** The fields a quick search can look in, in the order the picker shows them. */
+/** The fields a quick search can look in, in the order the picker shows them.
+ * Each label is a message (the picker calls t()), UPOS and XPOS names. */
 export const QUICK_FIELDS = Object.freeze([
-  { value: 'form', label: 'Form' },
-  { value: 'lemma', label: 'Lemma' },
-  { value: 'upos', label: 'UPOS' },
-  { value: 'xpos', label: 'XPOS' },
-  { value: 'deprel', label: 'Dependency relation' },
-  { value: 'feats', label: 'Features' },
+  { value: 'form', label: msg('Form') },
+  { value: 'lemma', label: msg('Lemma') },
+  { value: 'upos', label: 'UPOS' }, // i18n-ignore: a CoNLL-U column name
+  { value: 'xpos', label: 'XPOS' }, // i18n-ignore: a CoNLL-U column name
+  { value: 'deprel', label: msg('Dependency relation') },
+  { value: 'feats', label: msg('Features') },
 ]);
 
 export const MATCH_TYPES = Object.freeze([
-  { value: 'contains', label: 'contains' },
-  { value: 'exact', label: 'is' },
-  { value: 'regex', label: 'matches' },
+  { value: 'contains', label: msg('contains') },
+  { value: 'exact', label: msg('is') },
+  { value: 'regex', label: msg('matches') },
 ]);
 
 // The escaping rules live in one place, because three callers need them and

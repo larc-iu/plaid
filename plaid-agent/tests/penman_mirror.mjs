@@ -7,9 +7,11 @@
 // value's result being what valueGrammarProblem says of `[value, rel]` (and,
 // under `written`, what the editors refuse a new value with) and a
 // variable's what nextVariable names for `[sentence, concept, taken]`, and
-// `nodeUnder` what nodeUnderAttributeProblem says of `[rel, concept]`. The one
-// package the modules import is stubbed below, so this needs no node_modules:
-// `node penman_mirror.mjs cases.json` from anywhere.
+// `nodeUnder` what nodeUnderAttributeProblem says of `[rel, concept]`. The
+// client package the modules import is stubbed below, so plaid-umr needs no
+// node_modules. penman.js and validate.js also import plaid-ui's lib/i18n.js,
+// which resolves i18next from plaid-ui's node_modules, so those must be
+// installed: `node penman_mirror.mjs cases.json` from anywhere.
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, resolve } from 'node:path';
@@ -19,7 +21,7 @@ const HERE = dirname(fileURLToPath(import.meta.url));
 const PENMAN = resolve(HERE, '../../plaid-umr/src/domain/format/penman.js');
 const VALIDATE = resolve(HERE, '../../plaid-umr/src/domain/format/validate.js');
 const { parsePenman, serializePenman, treeEdges, attrValueProblem, nfc } = await import(PENMAN);
-// validate.js imports only its siblings, so this still needs no node_modules.
+// validate.js imports its siblings and plaid-ui's lib/i18n.js, as penman.js does.
 const { valueGrammarProblem, nodeUnderAttributeProblem } = await import(VALIDATE);
 // nextVariable lives in sentenceGraph.js, whose imports reach the client
 // package for helpers nextVariable never calls. A stub stands in for it, so

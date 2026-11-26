@@ -1,6 +1,7 @@
 import { AppShell } from '@ui/components/shared/AppShell.jsx';
 import { UMR_ASSISTANT } from './assistant/adapter.js';
 import { keys } from '../lib/keymap.js';
+import { msg } from '@ui/lib/i18n.js';
 
 // The app shell, which is plaid-ui's: the header band, the assistant panel and
 // its chip and rail, and the one container every screen renders into. What this
@@ -8,7 +9,9 @@ import { keys } from '../lib/keymap.js';
 // bindings lie over, and where its user guide is. It has no destinations of its
 // own beside Projects, which the nav names as plaid-igt's does, so the three
 // headers read alike.
-const NAV = [{ to: '/projects', label: 'Projects', match: (path) => path.startsWith('/projects') }];
+const NAV = [
+  { to: '/projects', label: msg('Projects'), match: (path) => path.startsWith('/projects') },
+];
 
 export const Layout = () => (
   <AppShell

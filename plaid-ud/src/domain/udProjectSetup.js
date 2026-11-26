@@ -46,6 +46,7 @@ import { newUdWord } from './newUdWord.js';
 import { wordsWithNoUdWord } from './sentenceRows.js';
 import { ensureLayerConstraints } from '../../../plaid-ui/src/lib/layerConstraints.js';
 import { createOnce } from '../../../plaid-ui/src/lib/createOnce.js';
+import { t } from '../../../plaid-ui/src/lib/i18n.js';
 import {
   declarePreserveOnSplit,
   declareSplitOnSpace,
@@ -144,10 +145,12 @@ const bootstrap = async (client, projectName, mint) => {
         b.spanLayers.setConfig(spanLayerIds[i], UD_NAMESPACE, configKey, true);
       });
 
+      // i18n-ignore: a layer name, stored
       b.relationLayers.create(lemmaLayerId, 'Dependency Relations', undefined, {
         id: relationLayerId,
       });
       b.relationLayers.setConfig(relationLayerId, UD_NAMESPACE, UD_RELATION_CONFIG_KEY, true);
+      // i18n-ignore: a layer name, stored
       b.relationLayers.create(lemmaLayerId, 'Enhanced Dependencies', undefined, {
         id: enhancedLayerId,
       });
@@ -173,11 +176,14 @@ const bootstrap = async (client, projectName, mint) => {
       // nothing to find. The press after this one names the same id.
       if (!created) throw err;
       console.error('Failed to roll back partially-created project:', deleteErr);
-      const original = err?.message || 'Unknown error';
-      const dErr = deleteErr?.message || 'Unknown error';
+      const original = err?.message || 'Unknown error'; // i18n-ignore: console only
+      const dErr = deleteErr?.message || 'Unknown error'; // i18n-ignore: console only
       console.error('Setup failed:', original, 'Delete failed:', dErr);
       const wrapped = new Error(
-        `Failed to set up the project, and the partial project was not deleted. Delete “${projectName.trim()}” by hand.`,
+        t(
+          'Failed to set up the project, and the partial project was not deleted. Delete “{name}” by hand.',
+          { name: projectName.trim() },
+        ),
       );
       wrapped.cause = err;
       throw wrapped;
@@ -199,6 +205,7 @@ const bootstrap = async (client, projectName, mint) => {
  * @returns {Promise<object>} the created project
  */
 export const createUdProject = (client, projectName, mint = { current: null }) =>
+  // i18n-ignore: an audit label, sent to the server
   client.withOperation(`Create UD project "${projectName.trim()}"`, () =>
     bootstrap(client, projectName, mint),
   );
@@ -233,6 +240,7 @@ export const createUdProject = (client, projectName, mint = { current: null }) =
  * @returns {Promise<void>}
  */
 export const adoptSubstrate = (client, page) =>
+  // i18n-ignore: an audit label, sent to the server
   client.withOperation('Set the project up for UD', async () => {
     const project = await client.projects.get(page.id);
     const textLayers = project?.textLayers || [];
@@ -240,7 +248,7 @@ export const adoptSubstrate = (client, page) =>
     // Two text layers with no baseline role between them is not a project any
     // Plaid app makes, and picking one for the writer would be a guess.
     if (!baseline && textLayers.length > 1) {
-      throw new Error('This project has more than one text layer.');
+      throw new Error(t('This project has more than one text layer.'));
     }
     const existingTextLayer = baseline || textLayers[0] || null;
     const lacking = await wordsLackingUdWords(client, project.id, existingTextLayer);
@@ -322,7 +330,7 @@ export const adoptSubstrate = (client, page) =>
       // null where this call makes it, which has none to find.
       if (!findFlagged(lemmaLayer?.relationLayers, UD_RELATION_CONFIG_KEY)) {
         const id = uuidv7();
-        b.relationLayers.create(lemmaLayerId, 'Dependency Relations', undefined, { id });
+        b.relationLayers.create(lemmaLayerId, 'Dependency Relations', undefined, { id }); // i18n-ignore: a layer name, stored
         b.relationLayers.setConfig(id, UD_NAMESPACE, UD_RELATION_CONFIG_KEY, true);
         made.relationLayer = { id };
       }
@@ -461,7 +469,7 @@ const wordsLackingUdWords = async (client, projectId, textLayer) => {
 // Answers that id.
 const queueEnhancedRelationLayer = (b, lemmaLayerId) => {
   const id = uuidv7();
-  b.relationLayers.create(lemmaLayerId, 'Enhanced Dependencies', undefined, { id });
+  b.relationLayers.create(lemmaLayerId, 'Enhanced Dependencies', undefined, { id }); // i18n-ignore: a layer name, stored
   b.relationLayers.setConfig(id, UD_NAMESPACE, UD_ENHANCED_RELATION_CONFIG_KEY, true);
   return id;
 };

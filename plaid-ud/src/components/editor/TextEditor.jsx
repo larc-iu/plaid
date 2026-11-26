@@ -7,7 +7,7 @@ import { cpSlice } from '@larc-iu/plaid-client';
 import { useEditLog } from '@ui/hooks/useEditLog.js';
 import { removedStretches } from '@ui/lib/editLog.js';
 import { useAuth } from '../../contexts/AuthContext.jsx';
-import { countOf, plural } from '@ui/lib/plural.js';
+import { t, tc, listOf } from '@ui/lib/i18n.js';
 import { lossPhrase } from '@ui/domain/annotationLoss.js';
 import { containsToken } from '../../utils/udLayerUtils.js';
 import { useConfirm } from '@ui/components/shared/ConfirmProvider';
@@ -26,10 +26,20 @@ import { sentenceNumberOf } from './hooks/useSentenceDeepLink.js';
 import { notifyError } from '../../utils/feedback.jsx';
 
 // "a", "a and b", "a, b and c", leaving out the empty ones.
-const listed = (parts) => {
-  const xs = parts.filter(Boolean);
-  return xs.length < 2 ? xs.join('') : `${xs.slice(0, -1).join(', ')} and ${xs.at(-1)}`;
-};
+const listed = (parts) => listOf(parts.filter(Boolean));
+
+// The sentences, tokens and words a deletion takes, each a counted clause.
+const tokensLost = (loss) =>
+  listed([
+    loss.sentences > 0 &&
+      t('{n, plural, one {# sentence} other {# sentences}}', { n: loss.sentences }),
+    loss.tokens > 0 && t('{n, plural, one {# token} other {# tokens}}', { n: loss.tokens }),
+    loss.words > 0 && t('{n, plural, one {# word} other {# words}}', { n: loss.words }),
+  ]);
+
+// "Deletes 2 tokens, with 3 annotations."
+const deletesWith = (what, on) =>
+  on ? t('Deletes {what}, with {on}.', { what, on }) : t('Deletes {what}.', { what });
 
 export const TextEditor = () => {
   // Project, document, the breadcrumbs/tab strip and the version-counter
@@ -86,7 +96,7 @@ export const TextEditor = () => {
         // saved, whose offsets are not the tokens'.
         const box = textareaRef.current;
         const sentence = (doc?.layerInfo?.sentenceTokenLayer?.tokens || []).find(
-          (t) => String(t.id) === id,
+          (tok) => String(tok.id) === id,
         );
         if (box && !box.readOnly && sentence && box.value === doc?.body) {
           const at = cpSlice(box.value, 0, sentence.begin).length;
@@ -111,7 +121,7 @@ export const TextEditor = () => {
     };
   }, [sentParam, doc]);
 
-  useDocumentTitle('Text Editor', doc?.name, project?.name);
+  useDocumentTitle(t('Text Editor'), doc?.name, project?.name);
 
   const serverText = doc.layerInfo.textLayer?.text?.body || '';
   const serverDigest = doc.layerInfo.textLayer?.text?.digest ?? null;
@@ -178,7 +188,7 @@ export const TextEditor = () => {
     } catch (err) {
       if (at.sent && !at.settled) editLog.unsend(at.sent);
       setSending(null);
-      notifyError(err, 'Failed to save text');
+      notifyError(err, t('Failed to save text'));
     }
   };
 
@@ -188,24 +198,25 @@ export const TextEditor = () => {
     // A save that deletes tokens, or a sentence with fields, asks first,
     // naming what goes with them on this editor's layers (R44, R45). One that
     // only adds text or cuts a token down asks nothing.
-    const words = (doc.layerInfo.wordTokenLayer?.tokens || []).map((t) => [t.begin, t.end]);
+    const words = (doc.layerInfo.wordTokenLayer?.tokens || []).map((tok) => [tok.begin, tok.end]);
     const removed = removedStretches(editLog.log.base, editLog.gaps(), words);
     const loss = removed.length > 0 ? doc.textDeleteLoss(removed) : null;
     if (loss?.tokens > 0 || loss?.sentenceFields > 0) {
-      const what = listed([
-        loss.sentences > 0 && countOf(loss.sentences, 'sentence'),
-        loss.tokens > 0 && countOf(loss.tokens, 'token'),
-        loss.words > 0 && countOf(loss.words, 'word'),
-      ]);
+      const what = tokensLost(loss);
       const on = listed([
-        loss.annotations > 0 && countOf(loss.annotations, 'annotation'),
-        loss.relations > 0 && countOf(loss.relations, 'relation'),
-        loss.sentenceFields > 0 && countOf(loss.sentenceFields, 'sentence field'),
+        loss.annotations > 0 &&
+          t('{n, plural, one {# annotation} other {# annotations}}', { n: loss.annotations }),
+        loss.relations > 0 &&
+          t('{n, plural, one {# relation} other {# relations}}', { n: loss.relations }),
+        loss.sentenceFields > 0 &&
+          t('{n, plural, one {# sentence field} other {# sentence fields}}', {
+            n: loss.sentenceFields,
+          }),
       ]);
       const ok = await confirm({
-        title: 'Save text?',
-        description: `Deletes ${what}${on ? `, with ${on}` : ''}.`,
-        confirmLabel: 'Save',
+        title: t('Save text?'),
+        description: deletesWith(what, on),
+        confirmLabel: t('Save'),
         destructive: true,
       });
       if (!ok) return;
@@ -252,16 +263,12 @@ export const TextEditor = () => {
   const handleClearTokens = async () => {
     if (!doc) return;
     const loss = doc.clearLoss();
-    const what = listed([
-      loss.sentences > 0 && countOf(loss.sentences, 'sentence'),
-      loss.tokens > 0 && countOf(loss.tokens, 'token'),
-      loss.words > 0 && countOf(loss.words, 'word'),
-    ]);
+    const what = tokensLost(loss);
     const on = lossPhrase(loss);
     const ok = await confirm({
-      title: 'Clear all tokens?',
-      description: what ? `Deletes ${what}${on ? `, with ${on}` : ''}.` : undefined,
-      confirmLabel: 'Clear',
+      title: t('Clear all tokens?'),
+      description: what ? deletesWith(what, on) : undefined,
+      confirmLabel: t('Clear'),
       destructive: true,
     });
     if (!ok) return;
@@ -282,31 +289,38 @@ export const TextEditor = () => {
     const other = deleting ? doc.otherLossForWord(word) : { annotations: 0, links: 0 };
     const annotations = loss.annotations + (deleting ? loss.forms : 0) + other.annotations;
     const { relations } = loss;
+    // Counted as `${n}` always printed them, with no digit grouping.
     const parts = listed([
-      annotations > 0 && `${annotations} ${plural(annotations, 'annotation')}`,
-      relations > 0 && `${relations} ${plural(relations, 'relation')}`,
-      other.links > 0 && `${other.links} ${plural(other.links, 'vocabulary link')}`,
+      annotations > 0 &&
+        t('{n, plural, one {{n} annotation} other {{n} annotations}}', { n: annotations }),
+      relations > 0 && t('{n, plural, one {{n} relation} other {{n} relations}}', { n: relations }),
+      other.links > 0 &&
+        t('{n, plural, one {{n} vocabulary link} other {{n} vocabulary links}}', {
+          n: other.links,
+        }),
     ]);
     // A link or annotation that also covers a token that stays is only cut
     // down, and named apart (REV-N5-APPS R8).
     const cut = lossPhrase(other.shortened || {});
     if (!parts && !cut) return null;
     const surface = cpSlice(serverText, word.begin, word.end);
-    if (!parts) return `Shortens ${cut} on “${surface}”.`;
-    return `Deletes ${parts} on “${surface}”${cut ? `, and shortens ${cut}` : ''}.`;
+    if (!parts) return t('Shortens {cut} on “{surface}”.', { cut, surface });
+    return cut
+      ? t('Deletes {parts} on “{surface}”, and shortens {cut}.', { parts, surface, cut })
+      : t('Deletes {parts} on “{surface}”.', { parts, surface });
   };
 
   // A token that carries annotations, on any layer, asks before it goes. The
   // server takes everything under it with everything on them.
   const handleWordDelete = async (wordId) => {
     if (!doc) return;
-    const word = doc.layerInfo.wordTokenLayer?.tokens?.find((t) => t.id === wordId);
+    const word = doc.layerInfo.wordTokenLayer?.tokens?.find((tok) => tok.id === wordId);
     const loss = word ? lossOf(word, { deleting: true }) : null;
     if (loss) {
       const ok = await confirm({
-        title: 'Delete token?',
+        title: t('Delete token?'),
         description: loss,
-        confirmLabel: 'Delete',
+        confirmLabel: t('Delete'),
         destructive: true,
       });
       if (!ok) return;
@@ -326,9 +340,11 @@ export const TextEditor = () => {
     const loss = lossPhrase(service ? doc.serviceTokenizeLoss() : doc.tokenizeLoss(text));
     if (loss) {
       const ok = await confirm({
-        title: 'Tokenize?',
-        description: service ? `Deletes up to ${loss}.` : `Deletes ${loss}.`,
-        confirmLabel: 'Tokenize',
+        title: t('Tokenize?'),
+        description: service
+          ? t('Deletes up to {loss}.', { loss })
+          : t('Deletes {what}.', { what: loss }),
+        confirmLabel: t('Tokenize'),
         destructive: true,
       });
       if (!ok) return;
@@ -349,9 +365,12 @@ export const TextEditor = () => {
     const fields = [...new Set(doc.sentenceFieldsLostByJoin(charPos))];
     if (fields.length > 0) {
       const ok = await confirm({
-        title: 'Join sentences?',
-        description: `Deletes ${countOf(fields.length, 'sentence field')}: ${fields.join(', ')}.`,
-        confirmLabel: 'Join',
+        title: t('Join sentences?'),
+        description: t(
+          'Deletes {n, plural, one {# sentence field} other {# sentence fields}}: {fields}.',
+          { n: fields.length, fields: fields.join(', ') },
+        ),
+        confirmLabel: tc('sentences', 'Join'),
         destructive: true,
       });
       if (!ok) return;
@@ -360,9 +379,9 @@ export const TextEditor = () => {
     const loss = lossPhrase(doc.otherLossForSentenceSplit(charPos));
     if (loss) {
       const ok = await confirm({
-        title: 'Split sentence?',
-        description: `Deletes ${loss}.`,
-        confirmLabel: 'Split',
+        title: t('Split sentence?'),
+        description: t('Deletes {what}.', { what: loss }),
+        confirmLabel: t('Split'),
         destructive: true,
       });
       if (!ok) return;
@@ -379,9 +398,9 @@ export const TextEditor = () => {
     const loss = count === forms.length ? null : lossOf(word);
     if (loss) {
       const ok = await confirm({
-        title: 'Change words?',
+        title: t('Change words?'),
         description: loss,
-        confirmLabel: 'Change',
+        confirmLabel: tc('verb', 'Change'),
         destructive: true,
       });
       if (!ok) return;
@@ -409,8 +428,10 @@ export const TextEditor = () => {
   // tick adds and takes out a history entry under the router.
   useUnsavedDraft(
     canEditProject(project, user) && (sending || rawText !== log.base)
-      ? 'The text you have typed'
+      ? t('The text you have typed')
       : null,
+    null,
+    { one: t('The text you have typed is not saved. Leaving loses it.') },
   );
   const hasTokens = sentenceTokens.length > 0 || wordTokens.length > 0 || morphemeTokens.length > 0;
 
@@ -467,7 +488,11 @@ export const TextEditor = () => {
 
   return (
     <div>
-      {!canEdit && <Notice className="mb-3">Read-only. {readOnlyReason(project, user)}</Notice>}
+      {!canEdit && (
+        <Notice className="mb-3">
+          {t('Read-only. {reason}', { reason: readOnlyReason(project, user) })}
+        </Notice>
+      )}
 
       {setupIncomplete && (
         <NotSetUpNotice
@@ -481,17 +506,18 @@ export const TextEditor = () => {
 
       {behind && !readOnly && (
         <Notice tone="warning" className="mb-3" role="alert">
-          Changed elsewhere in the same passage.{' '}
+          {t('Changed elsewhere in the same passage.')}{' '}
           <Button size="sm" variant="outline" className="ms-2 h-7" onClick={handleDiscard}>
-            Discard changes
+            {t('Discard changes')}
           </Button>
         </Notice>
       )}
 
       {layersMisconfigured && (
         <Notice tone="warning" className="mb-3">
-          This project is set up incompletely. Tokens can still be made. Recreate the project to fix
-          it.
+          {t(
+            'This project is set up incompletely. Tokens can still be made. Recreate the project to fix it.',
+          )}
         </Notice>
       )}
 
@@ -500,7 +526,7 @@ export const TextEditor = () => {
       <div className="grid gap-8 lg:grid-cols-2">
         <div className="flex min-w-0 flex-col gap-4">
           <h4 id="ud-text-heading" className="text-base font-semibold">
-            Text
+            {t('Text')}
           </h4>
           <Textarea
             ref={textareaRef}
@@ -510,7 +536,7 @@ export const TextEditor = () => {
             {...editLog.handlers}
             onChange={handleTextChange}
             readOnly={readOnly}
-            placeholder="Type or paste the text. One sentence per line."
+            placeholder={t('Type or paste the text. One sentence per line.')}
             rows={12}
             className="resize-none overflow-hidden font-text leading-relaxed"
           />
@@ -521,7 +547,7 @@ export const TextEditor = () => {
                 onClick={handleSaveText}
                 disabled={saving || !textContent.trim() || rawText === log.base}
               >
-                Save
+                {t('Save')}
               </Button>
             )}
 
@@ -533,11 +559,11 @@ export const TextEditor = () => {
                 onOpen={services.discoverServices}
                 blockedHint={
                   !textContent.trim()
-                    ? 'There is no text to tokenize.'
+                    ? t('There is no text to tokenize.')
                     : isTextDirty
-                      ? 'Save the text first.'
+                      ? t('Save the text first.')
                       : hasTokens && doc.tokenizeGaps?.(serverText) === 0
-                        ? 'No untokenized text.'
+                        ? t('No untokenized text.')
                         : null
                 }
               />
@@ -548,7 +574,7 @@ export const TextEditor = () => {
                 parse={services.parse}
                 isDiscovering={services.isDiscovering}
                 writeLockHeld={writeLockHeld}
-                blockedHint={rawText !== log.base ? 'Save the text first.' : null}
+                blockedHint={rawText !== log.base ? t('Save the text first.') : null}
                 onOpen={services.discoverServices}
               />
             )}
@@ -560,34 +586,36 @@ export const TextEditor = () => {
                 onClick={handleClearTokens}
                 disabled={saving || !hasTokens}
               >
-                Clear tokens
+                {t('Clear tokens')}
               </Button>
             )}
 
             <span className="ms-auto whitespace-nowrap text-sm font-medium text-muted-foreground">
-              {wordTokens.length} token{wordTokens.length !== 1 ? 's' : ''}, {sentenceTokens.length}{' '}
-              sentence{sentenceTokens.length !== 1 ? 's' : ''}
+              {t(
+                '{tokens, plural, one {{tokens} token} other {{tokens} tokens}}, {sentences, plural, one {{sentences} sentence} other {{sentences} sentences}}',
+                { tokens: wordTokens.length, sentences: sentenceTokens.length },
+              )}
             </span>
           </div>
 
           <p className="text-sm">
             {/* Offline, the shell's save status says so, over every tab. */}
             {saving && !doc.isOffline && (
-              <span className="italic text-muted-foreground">Saving…</span>
+              <span className="italic text-muted-foreground">{t('Saving…')}</span>
             )}
             {!saving && lastSaved && (
               <span className="text-success-foreground">
-                Saved: {lastSaved.toLocaleTimeString()}
+                {t('Saved: {time}', { time: lastSaved.toLocaleTimeString() })}
               </span>
             )}
             {!saving && !lastSaved && textContent && isTextDirty && (
-              <span className="italic text-warning-foreground">Unsaved changes</span>
+              <span className="italic text-warning-foreground">{t('Unsaved changes')}</span>
             )}
           </p>
         </div>
 
         <div className="min-w-0 rounded-md border bg-muted/40 p-4">
-          <h4 className="mb-4 text-base font-semibold">Tokens</h4>
+          <h4 className="mb-4 text-base font-semibold">{t('Tokens')}</h4>
           <TokenVisualizer
             text={rawText}
             originalText={originalTokenizedText}

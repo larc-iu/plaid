@@ -24,6 +24,7 @@
 // `\"` and `\\` as escapes.
 
 import { GrewParseError } from './errors.js';
+import { t } from '../../../plaid-ui/src/lib/i18n.js';
 
 export const TT = {
   IDENT: 'IDENT',
@@ -118,7 +119,7 @@ export function lex(src) {
     if (c === '#') {
       const sl = line,
         sc = col;
-      if (!match('#BEGIN')) fail("Unexpected '#' (a lexicon starts with '#BEGIN name')");
+      if (!match('#BEGIN')) fail(t("Unexpected '#' (a lexicon starts with '#BEGIN name')"));
       advance(6);
       while (src[i] === ' ' || src[i] === '\t') advance();
       let name = '';
@@ -126,12 +127,12 @@ export function lex(src) {
         name += src[i];
         advance();
       }
-      if (!name) fail('Expected a lexicon name after #BEGIN');
+      if (!name) fail(t('Expected a lexicon name after #BEGIN'));
       while (i < src.length && src[i] !== '\n') advance();
       advance(); // the newline
       const bodyLine = line;
       const endAt = src.indexOf('#END', i);
-      if (endAt === -1) fail('Unterminated lexicon (#BEGIN without #END)');
+      if (endAt === -1) fail(t('Unterminated lexicon (#BEGIN without #END)'));
       const body = src.slice(i, endAt);
       advance(endAt - i + 4);
       push(TT.LEXICON, { name, body, bodyLine }, sl, sc);
@@ -318,7 +319,7 @@ export function lex(src) {
       continue;
     }
 
-    fail(`Unexpected character '${c}'`);
+    fail(t("Unexpected character ''{c}''", { c }));
   }
 
   tokens.push({ type: TT.EOF, value: null, line, col });
@@ -332,17 +333,17 @@ export function lex(src) {
       if (src[i] === '\\') {
         advance();
         const e = src[i];
-        if (e === undefined) fail('Unterminated string');
+        if (e === undefined) fail(t('Unterminated string'));
         if (raw) val += e === '"' ? e : `\\${e}`;
         else val += e === 'n' ? '\n' : e === 't' ? '\t' : e;
         advance();
         continue;
       }
-      if (src[i] === '\n') fail('Unterminated string');
+      if (src[i] === '\n') fail(t('Unterminated string'));
       val += src[i];
       advance();
     }
-    if (i >= src.length) fail('Unterminated string');
+    if (i >= src.length) fail(t('Unterminated string'));
     advance(); // closing quote
     return { type: TT.STRING, value: val, line: sl, col: sc };
   }

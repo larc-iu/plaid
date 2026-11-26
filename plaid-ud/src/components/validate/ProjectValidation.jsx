@@ -27,7 +27,7 @@ import {
   seedCandidates,
   featureSeedCandidates,
 } from '../../domain/validationQueries.js';
-import { countOf } from '@ui/lib/plural.js';
+import { t, msg } from '@ui/lib/i18n.js';
 
 // What the project has stored that its own vocabularies do not list.
 //
@@ -43,17 +43,37 @@ import { countOf } from '@ui/lib/plural.js';
 // The dependency relation list governs the tree and the enhanced graph alike,
 // so its row reads the enhanced layer too (`also`, H17-2). A suppressor has no
 // value, and the queries ask only for values. `layer` holds the list.
+// `updated` is the toast once its values are added to the list.
 const FIELDS = [
-  { key: 'upos', label: 'UPOS', layer: 'uposLayer', kind: 'span' },
-  { key: 'xpos', label: 'XPOS', layer: 'xposLayer', kind: 'span' },
+  {
+    key: 'upos',
+    label: 'UPOS', // i18n-ignore: the UD name, the same in every language
+    updated: msg('UPOS updated'),
+    layer: 'uposLayer',
+    kind: 'span',
+  },
+  {
+    key: 'xpos',
+    label: 'XPOS', // i18n-ignore: the UD name, the same in every language
+    updated: msg('XPOS updated'),
+    layer: 'xposLayer',
+    kind: 'span',
+  },
   {
     key: 'deprel',
-    label: 'Dependency relations',
+    label: msg('Dependency relations'),
+    updated: msg('Dependency relations updated'),
     layer: 'relationLayer',
     also: 'enhancedRelationLayer',
     kind: 'relation',
   },
-  { key: 'feats', label: 'Features', layer: 'featuresLayer', kind: 'feats' },
+  {
+    key: 'feats',
+    label: msg('Features'),
+    updated: msg('Features updated'),
+    layer: 'featuresLayer',
+    kind: 'feats',
+  },
 ];
 
 // [value, count] pairs summed over several layers' answers.
@@ -74,9 +94,9 @@ const summed = (answers) => {
 // over the seventeenth sentence is worse than no number at all.
 const Occurrences = ({ found, projectId }) => (
   <div className="border-t bg-muted/20 px-3 py-2">
-    {!found && <p className="text-sm text-muted-foreground">Finding it…</p>}
+    {!found && <p className="text-sm text-muted-foreground">{t('Finding it…')}</p>}
     {found === 'failed' && (
-      <p className="text-sm text-destructive">Failed to search for this value.</p>
+      <p className="text-sm text-destructive">{t('Failed to search for this value.')}</p>
     )}
     {Array.isArray(found) &&
       found.map((doc) => (
@@ -89,14 +109,14 @@ const Occurrences = ({ found, projectId }) => (
               to={APP_ROUTES.sentence(projectId, doc.docId, sentId)}
               className="rounded bg-background px-1.5 py-0.5 hover:underline"
             >
-              occurrence {i + 1}
+              {t('occurrence {n}', { n: i + 1 })}
             </Link>
           ))}
         </p>
       ))}
     {Array.isArray(found) && found.length === 0 && (
       <p className="text-sm text-muted-foreground">
-        No occurrences found. It may have been changed since the check.
+        {t('No occurrences found. It may have been changed since the check.')}
       </p>
     )}
   </div>
@@ -107,7 +127,7 @@ export const ProjectValidation = () => {
   const { getClient } = useAuth();
   const client = getClient();
 
-  useDocumentTitle('Validation', project?.name);
+  useDocumentTitle(t('Validation'), project?.name);
 
   const layerInfo = useMemo(() => (project ? getUdLayerInfo(project) : null), [project]);
   const [report, setReport] = useState(null);
@@ -164,7 +184,7 @@ export const ProjectValidation = () => {
       setReport(out);
     } catch (err) {
       console.error('Validation scan failed:', err);
-      notifyError(err, 'Failed to read the project');
+      notifyError(err, t('Failed to read the project'));
     } finally {
       setBusy(false);
     }
@@ -202,7 +222,7 @@ export const ProjectValidation = () => {
           ...prev,
           [key]: [...byDoc.entries()].map(([docId, sentences]) => ({
             docId,
-            docName: nameOf.get(docId) || '(untitled)',
+            docName: nameOf.get(docId) || t('(untitled)'),
             sentences,
           })),
         }));
@@ -245,11 +265,11 @@ export const ProjectValidation = () => {
           if (!isConfigConflict(err)) throw err;
           await attempt(await client.projects.get(projectId));
         }
-        notifySuccess(`${field.label} updated`);
+        notifySuccess(t(field.updated));
         await fetchProject({ quiet: true });
       } catch (err) {
         console.error('Failed to add the values:', err);
-        notifyError(err, 'Failed to add the values');
+        notifyError(err, t('Failed to add the values'));
       } finally {
         setAdding(null);
       }
@@ -268,7 +288,9 @@ export const ProjectValidation = () => {
       {/* The same width in every app: a form's, from the page's left edge. */}
       <div className={cn('w-full', FORM_PAGE_WIDTH)}>
         <ValidationHeader
-          description="Values in this project that its lists do not include. Imports and parsers may write values outside the lists."
+          description={t(
+            'Values in this project that its lists do not include. Imports and parsers may write values outside the lists.',
+          )}
           busy={busy}
           disabled={!configured}
           onCheck={scan}
@@ -276,11 +298,13 @@ export const ProjectValidation = () => {
 
         {!configured && (
           <p className="rounded-md border bg-muted/40 px-3 py-2 text-sm text-muted-foreground">
-            Set the project up for UD first.
+            {t('Set the project up for UD first.')}
           </p>
         )}
 
-        {configured && busy && !report && <Loading label="Reading the project…" className="p-0" />}
+        {configured && busy && !report && (
+          <Loading label={t('Reading the project…')} className="p-0" />
+        )}
 
         {configured &&
           report?.map((field) => {
@@ -292,9 +316,9 @@ export const ProjectValidation = () => {
               <div key={field.key} className="mb-4 rounded-lg border">
                 <div className="flex items-center justify-between gap-3 border-b px-3 py-2">
                   <div className="flex items-center gap-2">
-                    <h3 className="font-medium">{field.label}</h3>
+                    <h3 className="font-medium">{t(field.label)}</h3>
                     <Badge variant={field.enforced ? 'secondary' : 'outline'}>
-                      {field.enforced ? 'closed' : 'open'}
+                      {field.enforced ? t('closed') : t('open')}
                     </Badge>
                   </div>
                   {count > 0 && (
@@ -305,7 +329,7 @@ export const ProjectValidation = () => {
                       onClick={() => adopt(field)}
                     >
                       <Plus className="h-3.5 w-3.5" />
-                      Add {countOf(count, 'value', 'values')}
+                      {t('Add {n, plural, one {# value} other {# values}}', { n: count })}
                     </Button>
                   )}
                 </div>
@@ -313,7 +337,7 @@ export const ProjectValidation = () => {
                 {count === 0 ? (
                   <p className="flex items-center gap-2 px-3 py-2 text-sm text-muted-foreground">
                     <Check className="h-4 w-4 text-success" />
-                    Everything stored is on the list.
+                    {t('Everything stored is on the list.')}
                   </p>
                 ) : field.kind === 'feats' ? (
                   <div className="px-3 py-2">
@@ -323,7 +347,7 @@ export const ProjectValidation = () => {
                           {entry.key}
                           {!entry.known && (
                             <span className="ml-2 text-xs font-normal text-muted-foreground">
-                              not in the inventory
+                              {t('not in the inventory')}
                             </span>
                           )}
                         </p>
@@ -348,7 +372,7 @@ export const ProjectValidation = () => {
                                   )}
                                   <code>{v.value}</code>
                                   <span className="text-xs">
-                                    {countOf(v.count, 'time', 'times')}
+                                    {t('{n, plural, one {# time} other {# times}}', { n: v.count })}
                                   </span>
                                 </button>
                                 {open && <Occurrences found={where[key]} projectId={projectId} />}
@@ -380,7 +404,7 @@ export const ProjectValidation = () => {
                             <AlertTriangle className="h-3.5 w-3.5 text-warning" />
                             <code>{v.value}</code>
                             <span className="text-xs text-muted-foreground">
-                              {countOf(v.count, 'time', 'times')}
+                              {t('{n, plural, one {# time} other {# times}}', { n: v.count })}
                             </span>
                           </button>
                           {open && <Occurrences found={found} projectId={projectId} />}

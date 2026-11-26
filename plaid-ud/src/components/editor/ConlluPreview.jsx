@@ -1,5 +1,6 @@
 import { Fragment } from 'react';
 import { detectDirection } from '@ui/domain/textDirection.js';
+import { t } from '@ui/lib/i18n.js';
 
 // The Export tab's view of the CoNLL-U file, read-only.
 //
@@ -59,7 +60,7 @@ export const ConlluPreview = ({ content }) => {
       dir="ltr"
       tabIndex={0}
       role="region"
-      aria-label="CoNLL-U file"
+      aria-label={t('CoNLL-U file')}
       data-testid="conllu-preview"
       className="max-h-[400lh] w-full overflow-auto whitespace-pre rounded-md border bg-muted/40 p-3 text-left font-mono text-xs leading-relaxed focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
     >

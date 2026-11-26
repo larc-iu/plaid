@@ -2,6 +2,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@ui/components/ui/card
 import { MetadataFields } from '../common/MetadataFields.jsx';
 import { metadataRows } from '../../utils/udMetadata.js';
 import { readMetadataFields } from '../../domain/udConfig.js';
+import { t } from '@ui/lib/i18n.js';
 
 // What this project records about a document, on the document's Details tab.
 // Nothing is drawn when the project declares no fields and the document carries
@@ -16,11 +17,11 @@ export const DocumentMetadataCard = ({ doc, project, readOnly }) => {
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Metadata</CardTitle>
+        <CardTitle>{t('Metadata')}</CardTitle>
       </CardHeader>
       <CardContent className="flex flex-col gap-4">
         <p className="text-sm text-muted-foreground">
-          Fields are set under Settings → UD settings.
+          {t('Fields are set under Settings → UD settings.')}
         </p>
         <MetadataFields
           rows={rows}

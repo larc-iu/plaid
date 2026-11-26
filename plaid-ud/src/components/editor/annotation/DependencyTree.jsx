@@ -31,6 +31,7 @@ import { stableKey } from '@ui/domain/pendingIds.js';
 import { useFollowedState } from '@ui/hooks/useFollowedState.js';
 import { getEffectiveSpanId, positionMatchesSpanId } from './treePositions.js';
 import { edgeScrollStep } from './edgeScroll.js';
+import { t } from '@ui/lib/i18n.js';
 import './DependencyTree.css';
 
 // The modifier that turns a tree gesture into an enhanced-graph one. Cmd as
@@ -563,16 +564,16 @@ export const DependencyTree = forwardRef(
     // Render dependency arc
     // Commit an edited deprel label, by the write contract in ArcLabel.
     const commitLabel = (relation, v, typed) => {
-      const t = trimLabel(v);
-      if (!t) return;
+      const label = trimLabel(v);
+      if (!label) return;
       // A relabel writes to the enhanced graph and leaves the tree's label as
       // it was. The same label again is no relabel, so nothing is written.
       if (relabeling === relation.id) {
-        if (labelChanged(relation, t))
-          onEnhancedRelationCreate(relation.source, relation.target, t);
+        if (labelChanged(relation, label))
+          onEnhancedRelationCreate(relation.source, relation.target, label);
         return;
       }
-      if (commitsLabel(relation, t, typed)) onRelationUpdate(relation.id, t);
+      if (commitsLabel(relation, label, typed)) onRelationUpdate(relation.id, label);
     };
 
     // Whether the enhanced graph has this basic relation. Ctrl/Cmd+click on it,
@@ -691,7 +692,7 @@ export const DependencyTree = forwardRef(
           className={`${isToRoot ? ' tree-deprel-text--root' : ''}${isSuppressed ? ' tree-deprel-text--suppressed' : ''}${dimmed ? ' tree-deprel-text--dimmed' : ''}`}
           // A suppressed relation's hover record is the fact a reader cannot
           // get from the faded label alone.
-          title={isSuppressed ? 'Not in the enhanced graph' : undefined}
+          title={isSuppressed ? t('Not in the enhanced graph') : undefined}
           onOpen={() => {
             if (!isReadOnly) openEditor(relation);
           }}

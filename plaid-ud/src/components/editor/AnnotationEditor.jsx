@@ -34,6 +34,7 @@ import { precedentKey } from '../../domain/precedent.js';
 import { historicalEmptyNotice } from '../../domain/sentenceRows.js';
 import { stableKey } from '@ui/domain/pendingIds.js';
 import { useDocumentTitle } from '@ui/hooks/useDocumentTitle.js';
+import { t } from '@ui/lib/i18n.js';
 
 // Document-wide annotation-row expansion. FEATS defaults to collapsed because its
 // vertically-stacked tags inflate column widths; users expand it via its row header.
@@ -118,7 +119,7 @@ export const AnnotationEditor = () => {
     setVisibleFields((prev) => ({ ...prev, [field]: !prev[field] }));
   }, []);
 
-  useDocumentTitle('Annotate', doc?.name, project?.name);
+  useDocumentTitle(t('Annotate'), doc?.name, project?.name);
 
   // doc-level operation errors surface as toasts (see ConlluDocument.setError);
   // a hard document-load failure is DocumentEditorShell's banner, not ours.
@@ -231,11 +232,14 @@ export const AnnotationEditor = () => {
     [doc],
   );
   const handleFeatureDelete = useCallback((spanId) => doc?.deleteFeature(spanId), [doc]);
-  const handleRelationCreate = useCallback((s, t, dep) => doc?.createRelation(s, t, dep), [doc]);
+  const handleRelationCreate = useCallback(
+    (source, target, dep) => doc?.createRelation(source, target, dep),
+    [doc],
+  );
   const handleRelationUpdate = useCallback((id, dep) => doc?.updateRelation(id, dep), [doc]);
   const handleRelationDelete = useCallback((id) => doc?.deleteRelation(id), [doc]);
   const handleEnhancedRelationCreate = useCallback(
-    (s, t, dep) => doc?.createEnhancedRelation(s, t, dep),
+    (source, target, dep) => doc?.createEnhancedRelation(source, target, dep),
     [doc],
   );
   const handleRelationSuppress = useCallback(
@@ -485,7 +489,7 @@ export const AnnotationEditor = () => {
   const toolbar = (
     <RunBar
       run={parseButton || null}
-      helpLabel="Gestures and marks"
+      helpLabel={t('Gestures and marks')}
       help={processedSentences.length > 0 && !readOnly ? <EditorLegend project={project} /> : null}
     >
       <RunBarPager {...paged} onPage={setPage} />
@@ -496,7 +500,7 @@ export const AnnotationEditor = () => {
   // shell's banner, over every tab.
   const readOnlyBanner = !selectedEntry && !canEdit && (
     <Notice tone="info" className="mt-4">
-      Read-only. {readOnlyReason(project, user)}
+      {t('Read-only. {reason}', { reason: readOnlyReason(project, user) })}
     </Notice>
   );
 
@@ -528,7 +532,7 @@ export const AnnotationEditor = () => {
       {/* Only the BODY waits here: the breadcrumbs and tab strip are the
           shell's and stay on screen throughout. */}
       {!activeDocument && (
-        <p className="py-10 text-center text-muted-foreground">Document not found</p>
+        <p className="py-10 text-center text-muted-foreground">{t('Document not found')}</p>
       )}
 
       {activeDocument && (
@@ -546,12 +550,12 @@ export const AnnotationEditor = () => {
               <p className="text-center text-muted-foreground">
                 {isViewingHistorical
                   ? historicalEmptyNotice(layerInfo)
-                  : 'No sentences. Parse, or tokenize in the Text Editor.'}
+                  : t('No sentences. Parse, or tokenize in the Text Editor.')}
               </p>
               {!isViewingHistorical && !readOnly && (
                 <Button asChild variant="outline" size="sm">
                   <Link to={`/projects/${projectId}/documents/${documentId}/edit`}>
-                    Go to Text Editor
+                    {t('Go to Text Editor')}
                   </Link>
                 </Button>
               )}

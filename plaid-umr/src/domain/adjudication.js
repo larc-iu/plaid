@@ -42,6 +42,7 @@
 
 import { UMR_NAMESPACE } from '../utils/umrLayerUtils.js';
 import { isRecordToken } from './sentenceGraph.js';
+import { msg, t } from '../../../plaid-ui/src/lib/i18n.js';
 
 /** The shape this reads. The service writes the same number. 5: the report
  * is on UMR's records. */
@@ -94,7 +95,7 @@ export const conceptsDiffer = (match) => match.thisConcept !== match.otherConcep
  * would round to either is printed with one decimal (`99.9%`, `0.1%`).
  */
 export const percent = (x) => {
-  if (typeof x !== 'number' || !Number.isFinite(x)) return 'n/a';
+  if (typeof x !== 'number' || !Number.isFinite(x)) return t('n/a');
   const whole = Math.round(x * 100);
   if (whole === 100 && x < 1) return `${Math.min(99.9, Math.round(x * 1000) / 10)}%`;
   if (whole === 0 && x > 0) return `${Math.max(0.1, Math.round(x * 1000) / 10)}%`;
@@ -104,16 +105,16 @@ export const percent = (x) => {
 // The document-level scores in the order the tab lists them, with the
 // label each carries.
 const SCORE_LABELS = [
-  ['sentence', 'Sentence graphs'],
-  ['modal', 'Modal'],
-  ['temporal', 'Temporal'],
-  ['coref', 'Coreference'],
-  ['comprehensive', 'Comprehensive'],
+  ['sentence', msg('Sentence graphs')],
+  ['modal', msg('Modal')],
+  ['temporal', msg('Temporal')],
+  ['coref', msg('Coreference')],
+  ['comprehensive', msg('Comprehensive')],
 ];
 
 // A sentence-only run has the first alone. A document run has all five, and
 // one it has no number for (a group neither document annotates) is a row
-// that says so.
+// that says so. Each row's label is a message: the tab calls t().
 export const scoreRows = (report) =>
   (report?.scope === 'snt' ? SCORE_LABELS.slice(0, 1) : SCORE_LABELS).map(([key, label]) => ({
     key,
@@ -122,10 +123,10 @@ export const scoreRows = (report) =>
   }));
 
 export const SENTENCE_SCORE_LABELS = [
-  ['concept', 'Concepts'],
-  ['labeled', 'Relations'],
-  ['unlabeled', 'Unlabeled'],
-  ['smatch', 'Smatch'],
+  ['concept', msg('Concepts')],
+  ['labeled', msg('Relations')],
+  ['unlabeled', msg('Unlabeled')],
+  ['smatch', msg('Smatch')],
 ];
 
 /**

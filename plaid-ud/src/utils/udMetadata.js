@@ -15,6 +15,7 @@
 
 import { PLAID_NAMESPACE, isReservedMetadataKey } from '@larc-iu/plaid-client';
 import { sameName } from '../../../plaid-ui/src/lib/nameKey.js';
+import { t } from '../../../plaid-ui/src/lib/i18n.js';
 
 // The keys and their reader, readMetadataFields, are in domain/udConfig.js.
 
@@ -50,26 +51,30 @@ export const toMetadataConfig = (names) => (names || []).map((name) => ({ name: 
  */
 export function metadataFieldError(name, level, taken = []) {
   const trimmed = (name || '').trim();
-  if (!trimmed) return 'A field needs a name.';
+  if (!trimmed) return t('A field needs a name.');
   // The query engine reads a dot as a path separator, so a key containing one
   // is unreachable from a query for the rest of its life.
-  if (trimmed.includes('.')) return 'A field name cannot contain a dot.';
+  if (trimmed.includes('.')) return t('A field name cannot contain a dot.');
   // CoNLL-U writes a field as `# name = value`, so a name carrying an `=` or a
   // line break comes back as a different field, or as a broken line, the next
   // time the document is exported and read again.
-  if (/[=\r\n]/.test(trimmed)) return 'A field name cannot contain "=" or a line break.';
+  if (/[=\r\n]/.test(trimmed)) return t('A field name cannot contain "=" or a line break.');
   if (isReservedMetadataKey(trimmed)) {
     return trimmed === PLAID_NAMESPACE
-      ? `${trimmed} is reserved for document settings.`
-      : `${trimmed} is reserved for provenance.`;
+      ? t('{name} is reserved for document settings.', { name: trimmed })
+      : t('{name} is reserved for provenance.', { name: trimmed });
   }
   if (level === 'sentence' && SENTENCE_RESERVED.has(trimmed)) {
     return trimmed === SENT_ID
-      ? 'Every sentence already has sent_id.'
-      : `${trimmed} is written from the document text.`;
+      ? t('Every sentence already has sent_id.')
+      : t('{name} is written from the document text.', { name: trimmed });
   }
-  if (level === 'sentence' && CONLLU_MARKER.test(trimmed)) return `${trimmed} is a CoNLL-U marker.`;
-  if (taken.some((t) => sameName(t.trim(), trimmed))) return `${trimmed} is already a field.`;
+  if (level === 'sentence' && CONLLU_MARKER.test(trimmed)) {
+    return t('{name} is a CoNLL-U marker.', { name: trimmed });
+  }
+  if (taken.some((name_) => sameName(name_.trim(), trimmed))) {
+    return t('{name} is already a field.', { name: trimmed });
+  }
   return null;
 }
 

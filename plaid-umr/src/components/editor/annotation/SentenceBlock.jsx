@@ -47,7 +47,7 @@ import { Parentheses } from 'lucide-react';
 import { AssistantMark } from '@ui/components/assistant/PlaidMarks.jsx';
 import { CATEGORICAL, DYES } from '@ui/domain/dyes.js';
 import './canvas.css';
-import { countOf } from '@ui/lib/plural.js';
+import { t } from '@ui/lib/i18n.js';
 
 // The margin to the left of every graph, where the document graph's
 // constants are pinned, and how the constants stack in it.
@@ -115,7 +115,7 @@ const parentWords = (edge, nodesById) => {
   if (!parent) return null;
   const role = edge.role.replace(/^:/, '');
   const name = parent.concept || parent.var;
-  return /-of$/.test(role) ? `${role} ${name}` : `${role} of ${name}`;
+  return /-of$/.test(role) ? `${role} ${name}` : t('{role} of {name}', { role, name });
 };
 
 // One sentence: the graph over its words. Nodes are HTML boxes placed by the
@@ -208,9 +208,9 @@ export const SentenceBlock = React.memo(function SentenceBlock({
   const askLeaveTextMode = async (dirty) => {
     if (dirty) {
       const ok = await confirm({
-        title: 'Leave the text unapplied?',
-        description: 'What was typed is not stored.',
-        confirmLabel: 'Leave',
+        title: t('Leave the text unapplied?'),
+        description: t('What was typed is not stored.'),
+        confirmLabel: t('Leave'),
         destructive: true,
         // Focus goes to the graph on Leave and to the text on Cancel, below,
         // not back to the Text toggle (H3-8-2).
@@ -396,8 +396,8 @@ export const SentenceBlock = React.memo(function SentenceBlock({
   const lane = useMemo(() => {
     const names = [...ALWAYS_PINNED];
     const triples = sentence.triples || [];
-    triples.forEach((t) => {
-      [t.source, t.target].forEach((id) => {
+    triples.forEach((tr) => {
+      [tr.source, tr.target].forEach((id) => {
         const n = nodesById.get(id);
         if (n?.constant && !names.includes(n.var)) names.push(n.var);
       });
@@ -406,31 +406,31 @@ export const SentenceBlock = React.memo(function SentenceBlock({
       name,
       node: doc?.constantNode?.(name) || null,
       y: CONST_TOP + i * CONST_STEP,
-      used: triples.some((t) => {
-        const a = nodesById.get(t.source);
-        const b = nodesById.get(t.target);
+      used: triples.some((tr) => {
+        const a = nodesById.get(tr.source);
+        const b = nodesById.get(tr.target);
         return (a?.constant && a.var === name) || (b?.constant && b.var === name);
       }),
     }));
     const constY = new Map(constants.map((c) => [c.name, c.y]));
     const drawn = [];
     const listed = [];
-    triples.forEach((t) => {
-      const a = nodesById.get(t.source);
-      const b = nodesById.get(t.target);
+    triples.forEach((tr) => {
+      const a = nodesById.get(tr.source);
+      const b = nodesById.get(tr.target);
       if (!a || !b) return;
       const here = (n) => !n.constant && n.sentence === sentence.index;
       if ((a.constant && here(b)) || (b.constant && here(a))) {
         drawn.push({
-          ...t,
+          ...tr,
           kind: 'margin',
           node: a.constant ? b : a,
           constant: a.constant ? a : b,
         });
       } else if (here(a) && here(b)) {
-        drawn.push({ ...t, kind: 'inner', a, b });
+        drawn.push({ ...tr, kind: 'inner', a, b });
       } else if (a.constant && b.constant) {
-        listed.push({ ...t, a, b });
+        listed.push({ ...tr, a, b });
       }
     });
     return { constants, constY, drawn, listed };
@@ -452,36 +452,36 @@ export const SentenceBlock = React.memo(function SentenceBlock({
     const dx = MARGIN + pad;
     return lane.drawn
       .map((triple) => {
-        const t = { ...triple, family: lineFamily(triple, nodesById) };
-        if (t.kind === 'margin') {
-          if (t.node.id !== active) return null;
-          const p = layout.nodes.get(t.node.id);
+        const tr = { ...triple, family: lineFamily(triple, nodesById) };
+        if (tr.kind === 'margin') {
+          if (tr.node.id !== active) return null;
+          const p = layout.nodes.get(tr.node.id);
           if (!p) return null;
           const x1 = p.x - p.width / 2 + dx;
           const y1 = p.y + p.height / 2;
           const x2 = MARGIN - CONST_GAP + scrollLeft;
-          const y2 = lane.constY.get(t.constant.var) + 11;
+          const y2 = lane.constY.get(tr.constant.var) + 11;
           const k = Math.max(24, Math.abs(x1 - x2) / 2);
           // Drawn in the triple's own direction, so the head at the far end
           // points where the relation does. Nearly every one of these runs
           // FROM the constant (`author :full-affirmative x`).
-          const fromNode = t.source === t.node.id;
+          const fromNode = tr.source === tr.node.id;
           return {
-            ...t,
+            ...tr,
             path: fromNode
               ? `M ${x1} ${y1} C ${x1 - k} ${y1}, ${x2 + k} ${y2}, ${x2} ${y2}`
               : `M ${x2} ${y2} C ${x2 + k} ${y2}, ${x1 - k} ${y1}, ${x1} ${y1}`,
           };
         }
-        if (t.a.id !== active && t.b.id !== active) return null;
-        const pa = layout.nodes.get(t.a.id);
-        const pb = layout.nodes.get(t.b.id);
+        if (tr.a.id !== active && tr.b.id !== active) return null;
+        const pa = layout.nodes.get(tr.a.id);
+        const pb = layout.nodes.get(tr.b.id);
         if (!pa || !pb) return null;
         // No label on the line: each end wears the relation as a tag.
         if (pa.row === pb.row) {
           // One row: a dip under it, as a re-entrant edge takes.
-          const curve = routeBetween(pa, pb, layout.nodes, {}, [t.a.id, t.b.id]);
-          return { ...t, path: curvePath(curve, dx) };
+          const curve = routeBetween(pa, pb, layout.nodes, {}, [tr.a.id, tr.b.id]);
+          return { ...tr, path: curvePath(curve, dx) };
         }
         // Rows apart: the short S from the side facing the other node to the
         // side facing back, a quarter in from the right, clear of where the
@@ -495,7 +495,7 @@ export const SentenceBlock = React.memo(function SentenceBlock({
         const y2 = down ? pb.y : pb.y + pb.height;
         const k = Math.max(24, Math.abs(y2 - y1) / 2) * (down ? 1 : -1);
         return {
-          ...t,
+          ...tr,
           path: `M ${x1} ${y1} C ${x1} ${y1 + k}, ${x2} ${y2 - k}, ${x2} ${y2}`,
         };
       })
@@ -511,11 +511,11 @@ export const SentenceBlock = React.memo(function SentenceBlock({
     const map = new Map();
     sentence.nodes.forEach((n) => {
       const meta = new Map(
-        [...(n.docOut || []), ...(n.docIn || [])].map((t) => [t.id, t.metadata]),
+        [...(n.docOut || []), ...(n.docIn || [])].map((tr) => [tr.id, tr.metadata]),
       );
-      const tags = docTagsOf(n, nodesById).map((t) => {
-        const prov = provMark(meta.get(t.id));
-        return { ...t, prov: prov.mark, provTitle: prov.title };
+      const tags = docTagsOf(n, nodesById).map((tr) => {
+        const prov = provMark(meta.get(tr.id));
+        return { ...tr, prov: prov.mark, provTitle: prov.title };
       });
       if (tags.length) map.set(n.id, tags);
     });
@@ -750,8 +750,8 @@ export const SentenceBlock = React.memo(function SentenceBlock({
     }
     if (ed.kind === 'docList') {
       // By the option's triple when one was picked: two tags can read alike.
-      const tag = (docTagsByNode.get(ed.nodeId) || []).find((t) =>
-        option?.tripleId ? t.id === option.tripleId : t.text === text,
+      const tag = (docTagsByNode.get(ed.nodeId) || []).find((tr) =>
+        option?.tripleId ? tr.id === option.tripleId : tr.text === text,
       );
       setEditor(null);
       if (tag) {
@@ -790,7 +790,9 @@ export const SentenceBlock = React.memo(function SentenceBlock({
       if (!other) {
         const named = [...nodesById.values()].filter((n) => n.var === name && !n.constant);
         if (named.length > 1) {
-          doc.setError(`${name} names ${named.length} nodes. Pick one from the list.`);
+          doc.setError(
+            t('{name} names {n} nodes. Pick one from the list.', { name, n: named.length }),
+          );
           closeEditor();
           return;
         }
@@ -904,7 +906,7 @@ export const SentenceBlock = React.memo(function SentenceBlock({
   // before a word was dropped on, a number names a word, never a concept.
   const missingWord = (ed, text) =>
     !ed.wordIds.length && /^\d+$/.test(text) && !sentence.words[Number(text) - 1]
-      ? `Sentence ${sentence.number ?? sentence.index} has no word ${text}.`
+      ? t('Sentence {n} has no word {word}.', { n: sentence.number ?? sentence.index, word: text })
       : null;
 
   // ----- deleting -----
@@ -929,15 +931,29 @@ export const SentenceBlock = React.memo(function SentenceBlock({
       const n = doomed.length;
       // The document relations on the nodes that go, which go with them.
       const docRelations = new Set(
-        doomed.flatMap((d) => [...(d.docOut || []), ...(d.docIn || [])].map((t) => t.id)),
+        doomed.flatMap((d) => [...(d.docOut || []), ...(d.docIn || [])].map((tr) => tr.id)),
       ).size;
       const also = docRelations
-        ? ` Also removes ${countOf(docRelations, 'document relation')}.`
-        : '';
+        ? t('Also removes {n, plural, one {# document relation} other {# document relations}}.', {
+            n: docRelations,
+          })
+        : null;
+      // The concepts in the description are data, listed as they are written.
       const ok = await confirm({
-        title: edge ? `Delete ${edge.role} and ${countOf(n, 'node')}?` : `Delete ${n} nodes?`,
-        description: `${doomed.map((d) => d.concept).join(', ')}.${also} Restorable from History.`,
-        confirmLabel: 'Delete',
+        title: edge
+          ? t('Delete {role} and {n, plural, one {# node} other {# nodes}}?', {
+              role: edge.role,
+              n,
+            })
+          : t('Delete {n} nodes?', { n }),
+        description: [
+          `${doomed.map((d) => d.concept).join(', ')}.`,
+          also,
+          t('Restorable from History.'),
+        ]
+          .filter(Boolean)
+          .join(' '),
+        confirmLabel: t('Delete'),
         destructive: true,
       });
       // The dialog had nothing to hand focus back to.
@@ -994,25 +1010,30 @@ export const SentenceBlock = React.memo(function SentenceBlock({
   const discardDraft = async () => {
     const { nodes, relations, otherRelations } = doc.discardPlan(sentence.index);
     if (!nodes.length && !relations.length) return;
-    const count = (n, one) => countOf(n, one);
     // The sentence's own relations first, then what other sentences lose
     // with the nodes that go (their drafted coreference onto them).
     const ownRelations = relations.length - otherRelations;
+    const v = { nodes: nodes.length, relations: ownRelations };
+    const own =
+      v.nodes && v.relations
+        ? t(
+            '{nodes, plural, one {# node} other {# nodes}} and {relations, plural, one {# relation} other {# relations}}.',
+            v,
+          )
+        : v.nodes
+          ? t('{nodes, plural, one {# node} other {# nodes}}.', v)
+          : t('{relations, plural, one {# relation} other {# relations}}.', v);
     const others =
       otherRelations > 0
-        ? ` Also removes ${count(otherRelations, 'drafted relation')} from ${
-            otherRelations === 1 ? 'another sentence' : 'other sentences'
-          }.`
-        : '';
+        ? t(
+            'Also removes {n, plural, one {# drafted relation from another sentence} other {# drafted relations from other sentences}}.',
+            { n: otherRelations },
+          )
+        : null;
     const ok = await confirm({
-      title: 'Discard the drafted graph?',
-      description: `${[
-        nodes.length ? count(nodes.length, 'node') : null,
-        ownRelations ? count(ownRelations, 'relation') : null,
-      ]
-        .filter(Boolean)
-        .join(' and ')}.${others} Restorable from History.`,
-      confirmLabel: 'Discard',
+      title: t('Discard the drafted graph?'),
+      description: [own, others, t('Restorable from History.')].filter(Boolean).join(' '),
+      confirmLabel: t('Discard'),
       destructive: true,
     });
     if (!ok) {
@@ -1293,7 +1314,9 @@ export const SentenceBlock = React.memo(function SentenceBlock({
     if (!count) return null;
     return {
       'node.takeEntryAll':
-        count === 1 ? 'Take entry value for 1 node' : `Take entry value for all ${count} nodes`,
+        count === 1
+          ? t('Take entry value for 1 node')
+          : t('Take entry value for all {n} nodes', { n: count }),
     };
   })();
 
@@ -1322,7 +1345,7 @@ export const SentenceBlock = React.memo(function SentenceBlock({
       (!edge || (n.id !== edge.source && !doc.wouldCycle?.(n.id, ed.nodeId, edge.role)));
     return [
       {
-        group: `Sentence ${sentence.number ?? sentence.index}`,
+        group: t('Sentence {n}', { n: sentence.number ?? sentence.index }),
         items: sentence.nodes
           .filter(fits)
           .map((n) => ({ value: n.var, label: `${n.var} ${n.concept}`, nodeId: n.id })),
@@ -1333,8 +1356,8 @@ export const SentenceBlock = React.memo(function SentenceBlock({
     const name = String(text).trim().split(/\s+/)[0];
     if (flatItems(targetOptions(ed)).some((o) => o.value === name)) return null;
     return sentence.nodes.some((n) => n.var === name)
-      ? `${name} cannot be picked here.`
-      : `Sentence ${sentence.number ?? sentence.index} has no node ${name}.`;
+      ? t('{name} cannot be picked here.', { name })
+      : t('Sentence {n} has no node {name}.', { n: sentence.number ?? sentence.index, name });
   };
   const pickTarget = (kind, nodeId, targetId) => {
     setMode(null);
@@ -1573,7 +1596,7 @@ export const SentenceBlock = React.memo(function SentenceBlock({
         ? sentence.words.filter((w) => ed.wordIds.includes(w.id))
         : [];
       return [
-        ...(ed.wordIds.length ? [] : [{ group: 'Words', items: wordOptions(sentence.words) }]),
+        ...(ed.wordIds.length ? [] : [{ group: t('Words'), items: wordOptions(sentence.words) }]),
         ...conceptOptions(words, frames, ed.typed || '', vocabFor(words)),
       ];
     }
@@ -1596,13 +1619,13 @@ export const SentenceBlock = React.memo(function SentenceBlock({
     if (ed.kind === 'docList') {
       return [
         {
-          group: 'Document relations',
-          items: (docTagsByNode.get(ed.nodeId) || []).map((t) => {
-            const other = nodesById.get(t.otherId);
+          group: t('Document relations'),
+          items: (docTagsByNode.get(ed.nodeId) || []).map((tr) => {
+            const other = nodesById.get(tr.otherId);
             return {
-              value: t.text,
-              label: other && !other.constant ? `${t.text} (${other.concept})` : t.text,
-              tripleId: t.id,
+              value: tr.text,
+              label: other && !other.constant ? `${tr.text} (${other.concept})` : tr.text,
+              tripleId: tr.id,
             };
           }),
         },
@@ -1613,7 +1636,7 @@ export const SentenceBlock = React.memo(function SentenceBlock({
       const constants =
         ed.group === 'modal' ? MODAL_CONSTANTS : ed.group === 'temporal' ? TEMPORAL_CONSTANTS : [];
       return [
-        ...(constants.length ? [{ group: 'Constants', items: constants }] : []),
+        ...(constants.length ? [{ group: t('Constants'), items: constants }] : []),
         ...nodeOptions(doc.graph, ed.nodeId),
       ];
     }
@@ -1629,15 +1652,18 @@ export const SentenceBlock = React.memo(function SentenceBlock({
   const modeHint = mode
     ? {
         anchor: mode.missing
-          ? `Sentence ${sentence.number ?? sentence.index} has no word ${mode.missing}.`
+          ? t('Sentence {n} has no word {word}.', {
+              n: sentence.number ?? sentence.index,
+              word: mode.missing,
+            })
           : mode.typed
-            ? `Word ${mode.typed}, Enter to anchor.`
-            : 'Click words or type their numbers to anchor to them. Enter to finish.',
-        move: 'Pick or click the new parent.',
-        reentrancy: 'Pick or click the second parent.',
+            ? t('Word {word}, Enter to anchor.', { word: mode.typed })
+            : t('Click words or type their numbers to anchor to them. Enter to finish.'),
+        move: t('Pick or click the new parent.'),
+        reentrancy: t('Pick or click the second parent.'),
         child: sentence.words.length
-          ? "Click the child's word, an existing node, or empty space for no word."
-          : 'Click an existing node, or empty space for a new node.',
+          ? t("Click the child's word, an existing node, or empty space for no word.")
+          : t('Click an existing node, or empty space for a new node.'),
       }[mode.kind]
     : null;
 
@@ -1645,7 +1671,7 @@ export const SentenceBlock = React.memo(function SentenceBlock({
     <section
       ref={sectionRef}
       className={`umr-block${mode ? ` umr-block--mode-${mode.kind}` : ''}`}
-      aria-label={`Sentence ${sentence.number ?? sentence.index}`}
+      aria-label={t('Sentence {n}', { n: sentence.number ?? sentence.index })}
       // Somewhere for focus to land when the node that had it is deleted.
       tabIndex={-1}
       data-sentence-index={sentence.index}
@@ -1679,12 +1705,14 @@ export const SentenceBlock = React.memo(function SentenceBlock({
                 focusNode(id);
               }}
             >
-              {mode.kind === 'anchor' ? 'Done' : 'Cancel'}
+              {mode.kind === 'anchor' ? t('Done') : t('Cancel')}
             </button>
           </span>
         )}
         {sentence.roots.length > 1 && (
-          <span className="umr-block-note">{sentence.roots.length} unconnected graphs</span>
+          <span className="umr-block-note">
+            {t('{n} unconnected graphs', { n: sentence.roots.length })}
+          </span>
         )}
         {/* A sentence with no graph says so by being empty, so it carries no
             note. The one below is the opposite case and matters more for it:
@@ -1696,8 +1724,8 @@ export const SentenceBlock = React.memo(function SentenceBlock({
             {/* With nodes made over it, the kept graph is not shown or
                 exported until they are deleted (H3-8-1). */}
             {sentence.nodes.length === 0
-              ? 'Unreadable graph, stored as text'
-              : 'Unreadable graph stored as text, not exported'}
+              ? t('Unreadable graph, stored as text')
+              : t('Unreadable graph stored as text, not exported')}
           </span>
         )}
         {/* The sentence's actions, in the treatment every app's wear
@@ -1710,7 +1738,7 @@ export const SentenceBlock = React.memo(function SentenceBlock({
               className={cn(SENTENCE_REVIEW, 'umr-review plaid-review plaid-review--accept')}
               onClick={acceptGraph}
             >
-              Accept graph
+              {t('Accept graph')}
             </button>
           )}
           {!readOnly && !textMode && doc?.canDiscardSentence(sentence.index) && (
@@ -1720,7 +1748,7 @@ export const SentenceBlock = React.memo(function SentenceBlock({
               className={cn(SENTENCE_REVIEW, 'umr-review plaid-review plaid-review--discard')}
               onClick={discardDraft}
             >
-              Discard graph
+              {t('Discard graph')}
             </button>
           )}
           {!readOnly && (
@@ -1738,7 +1766,7 @@ export const SentenceBlock = React.memo(function SentenceBlock({
               }}
             >
               <Parentheses width={12} height={12} />
-              Text
+              {t('Text')}
             </button>
           )}
           {onAskAssistant && (
@@ -1746,12 +1774,15 @@ export const SentenceBlock = React.memo(function SentenceBlock({
               type="button"
               className={SENTENCE_ACTION}
               onClick={() =>
-                onAskAssistant({ ref: `s${sentence.number ?? sentence.index}`, label: 'Sentence' })
+                onAskAssistant({
+                  ref: `s${sentence.number ?? sentence.index}`,
+                  label: t('Sentence'),
+                })
               }
-              title="Ask the assistant about this sentence"
+              title={t('Ask the assistant about this sentence')}
             >
               <AssistantMark className="h-3.5 w-3.5" />
-              Ask
+              {t('Ask')}
             </button>
           )}
           {/* Comments are about the sentence, not the graph, so a reader sees
@@ -1850,7 +1881,7 @@ export const SentenceBlock = React.memo(function SentenceBlock({
             className={['umr-margin', scrollLeft > 0 ? 'umr-margin--over' : '']
               .filter(Boolean)
               .join(' ')}
-            aria-label="Document constants"
+            aria-label={t('Document constants')}
           >
             {lane.constants.map((c) => (
               <span
@@ -1873,7 +1904,12 @@ export const SentenceBlock = React.memo(function SentenceBlock({
                 title={
                   readOnly
                     ? undefined
-                    : `Drag a node here for a ${groupOfConstant(c.name)} relation`
+                    : t(
+                        'Drag a node here for a {group, select, modal {modal} other {temporal}} relation',
+                        {
+                          group: groupOfConstant(c.name),
+                        },
+                      )
                 }
               >
                 {c.name}
@@ -1882,11 +1918,11 @@ export const SentenceBlock = React.memo(function SentenceBlock({
             {/* A triple between two constants (`root :modal author`) belongs
                 to no node, so it is written with the constants, under them.
                 Under the graph it floated wherever the words ended. */}
-            {lane.listed.map((t, i) => {
-              const prov = provMark(t.metadata);
+            {lane.listed.map((tr, i) => {
+              const prov = provMark(tr.metadata);
               return (
                 <span
-                  key={stableKey(t.id)}
+                  key={stableKey(tr.id)}
                   className={`umr-doc-chip${prov.mark ? ` umr-doc-chip--${prov.mark}` : ''}`}
                   data-prov={prov.mark || undefined}
                   title={prov.title || undefined}
@@ -1897,7 +1933,7 @@ export const SentenceBlock = React.memo(function SentenceBlock({
                   }}
                   role={readOnly ? undefined : 'button'}
                   tabIndex={-1}
-                  data-triple-id={t.id}
+                  data-triple-id={tr.id}
                   onClick={
                     readOnly
                       ? undefined
@@ -1905,17 +1941,17 @@ export const SentenceBlock = React.memo(function SentenceBlock({
                           ev.stopPropagation();
                           askDocRole(
                             {
-                              tripleId: t.id,
-                              role: t.rel,
-                              group: t.group,
-                              ends: { source: t.source, target: t.target },
+                              tripleId: tr.id,
+                              role: tr.rel,
+                              group: tr.group,
+                              ends: { source: tr.source, target: tr.target },
                             },
                             { x: 8, y: listedTop + i * CONST_STEP + 24 },
                           );
                         }
                   }
                 >
-                  {t.a.var} {t.rel} {t.b.var}
+                  {tr.a.var} {tr.rel} {tr.b.var}
                 </span>
               );
             })}
@@ -1931,13 +1967,13 @@ export const SentenceBlock = React.memo(function SentenceBlock({
                 <Arrow key={family} id={`${arrows}-doc-${family}`} color={color} />
               ))}
             </defs>
-            {docEdges.map((t) => (
+            {docEdges.map((tr) => (
               <path
-                key={stableKey(t.id)}
-                d={t.path}
+                key={stableKey(tr.id)}
+                d={tr.path}
                 className="umr-doc-edge"
-                data-family={t.family}
-                markerEnd={`url(#${arrows}-doc-${t.family})`}
+                data-family={tr.family}
+                markerEnd={`url(#${arrows}-doc-${tr.family})`}
               />
             ))}
           </svg>
@@ -1949,7 +1985,9 @@ export const SentenceBlock = React.memo(function SentenceBlock({
             // itself is the keyboard's way in, where `n` starts one.
             tabIndex={emptyStop ? 0 : undefined}
             aria-label={
-              emptyStop ? `No graph. ${keys.words('canvas.newRoot')} to add a node.` : undefined
+              emptyStop
+                ? t('No graph. {key} to add a node.', { key: keys.words('canvas.newRoot') })
+                : undefined
             }
             // Empty space in child mode: a child with no word, where the
             // click was. Only when the press began on empty space too: a drag
@@ -1993,8 +2031,8 @@ export const SentenceBlock = React.memo(function SentenceBlock({
             {!textMode && sentence.nodes.length === 0 && !sentence.rawGraph && (
               <p className="umr-graph-empty" aria-hidden="true">
                 {emptyStop
-                  ? `No graph. ${keys.words('canvas.newRoot')} to add a node.`
-                  : 'No graph.'}
+                  ? t('No graph. {key} to add a node.', { key: keys.words('canvas.newRoot') })
+                  : t('No graph.')}
               </p>
             )}
             <svg
@@ -2062,13 +2100,13 @@ export const SentenceBlock = React.memo(function SentenceBlock({
                 onDocTagClick={
                   readOnly
                     ? undefined
-                    : (t) =>
+                    : (tr) =>
                         askDocRole(
                           {
-                            tripleId: t.id,
-                            role: t.rel,
-                            group: t.group,
-                            ends: { source: t.source, target: t.target },
+                            tripleId: tr.id,
+                            role: tr.rel,
+                            group: tr.group,
+                            ends: { source: tr.source, target: tr.target },
                           },
                           positionBelow(node.id),
                         )
@@ -2115,7 +2153,7 @@ export const SentenceBlock = React.memo(function SentenceBlock({
                     title={
                       [
                         prov.title,
-                        readOnly ? null : 'Click to change, drag to move under another node',
+                        readOnly ? null : t('Click to change, drag to move under another node'),
                       ]
                         .filter(Boolean)
                         .join('. ') || undefined
@@ -2174,14 +2212,14 @@ export const SentenceBlock = React.memo(function SentenceBlock({
                 options={editorOptions(editor)}
                 placeholder={
                   {
-                    role: 'Relation',
-                    docRole: 'Relation',
-                    pick: 'Variable or constant',
-                    target: 'Variable',
-                    docList: 'Relation',
-                    new: sentence.words.length ? 'Word number or concept' : 'Concept',
-                    concept: 'Concept',
-                    variable: 'Variable',
+                    role: t('Relation'),
+                    docRole: t('Relation'),
+                    pick: t('Variable or constant'),
+                    target: t('Variable'),
+                    docList: t('Relation'),
+                    new: sentence.words.length ? t('Word number or concept') : t('Concept'),
+                    concept: t('Concept'),
+                    variable: t('Variable'),
                   }[editor.kind]
                 }
                 strict={editor.kind === 'docList'}
@@ -2206,7 +2244,7 @@ export const SentenceBlock = React.memo(function SentenceBlock({
                         }
                       : undefined
                 }
-                onTyped={(t) => setEditor((ed) => (ed ? { ...ed, typed: t } : ed))}
+                onTyped={(tr) => setEditor((ed) => (ed ? { ...ed, typed: tr } : ed))}
                 complete={editor.kind === 'role' || editor.kind === 'docRole'}
                 check={
                   editor.kind === 'target'

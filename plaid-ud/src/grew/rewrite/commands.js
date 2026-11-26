@@ -24,6 +24,7 @@ import {
 } from './graph.js';
 import { labelMatches } from './match.js';
 import { isEnhancedLabel, bareLabel, compactLabel } from '../edgeLabel.js';
+import { t } from '../../../../plaid-ui/src/lib/i18n.js';
 
 export function applyCommands(rule, match, graph) {
   const ctx = {
@@ -47,7 +48,7 @@ const refuseFeatsWhole = (name, cmd) => {
   if (String(name).toLowerCase() !== 'feats') return;
   throw new GrewUnsupportedError(
     'feats-command',
-    'A command names one feature, not FEATS: X.Number = Sing, del_feat X.Number.',
+    t('A command names one feature, not FEATS: X.Number = Sing, del_feat X.Number.'),
     cmd.line,
   );
 };
@@ -56,15 +57,17 @@ function nodeOf(ctx, cmd, v) {
   const id = ctx.nodes.get(v);
   if (!id) {
     if (ctx.edges.has(v)) return null; // an edge variable
-    fail(ctx, cmd, `'${v}' is not a node of the pattern.`);
+    fail(ctx, cmd, t("''{name}'' is not a node of the pattern.", { name: v }));
   }
   const n = ctx.graph.nodes.get(id);
-  if (!n || n.deleted) fail(ctx, cmd, `'${v}' was deleted by an earlier command.`);
+  if (!n || n.deleted)
+    fail(ctx, cmd, t("''{name}'' was deleted by an earlier command.", { name: v }));
   return n;
 }
 
 function edgeOf(ctx, cmd, v) {
-  if (!ctx.edges.has(v)) fail(ctx, cmd, `'${v}' is not an edge of the pattern.`);
+  if (!ctx.edges.has(v))
+    fail(ctx, cmd, t("''{name}'' is not an edge of the pattern.", { name: v }));
   return ctx.graph.edges.get(ctx.edges.get(v)) || null; // null: already deleted
 }
 
@@ -89,7 +92,7 @@ function literalLabel(ctx, cmd, label) {
   }
   throw new GrewUnsupportedError(
     'command-label',
-    'A command names one label: add_edge X -[obj]-> Y.',
+    t('A command names one label: add_edge X -[obj]-> Y.'),
     cmd.line,
   );
 }
@@ -111,7 +114,8 @@ function applyCommand(ctx, cmd) {
       const hits = [...g.edges.values()].filter(
         (e) => e.src === src.id && e.tgt === tgt.id && labelMatches(cmd.label, e.label),
       );
-      if (!hits.length) fail(ctx, cmd, `No edge ${cmd.src} -> ${cmd.tgt} to delete.`);
+      if (!hits.length)
+        fail(ctx, cmd, t('No edge {src} -> {tgt} to delete.', { src: cmd.src, tgt: cmd.tgt }));
       hits.forEach((e) => g.edges.delete(e.id));
       return;
     }
@@ -122,7 +126,7 @@ function applyCommand(ctx, cmd) {
       if (cmd.label) label = literalLabel(ctx, cmd, cmd.label);
       else {
         const e = edgeOf(ctx, cmd, cmd.id);
-        if (!e) fail(ctx, cmd, `Edge '${cmd.id}' was already deleted.`);
+        if (!e) fail(ctx, cmd, t("Edge ''{name}'' was already deleted.", { name: cmd.id }));
         label = e.label;
       }
       if (sameEdge(g, src.id, tgt.id, label)) return; // ineffective
@@ -133,7 +137,12 @@ function applyCommand(ctx, cmd) {
     }
     case 'del_node': {
       const n = nodeOf(ctx, cmd, cmd.node);
-      if (n.anchor) fail(ctx, cmd, `'${cmd.node}' is the root anchor and cannot be deleted.`);
+      if (n.anchor)
+        fail(
+          ctx,
+          cmd,
+          t("''{name}'' is the root anchor and cannot be deleted.", { name: cmd.node }),
+        );
       n.deleted = true;
       for (const e of [...g.edges.values()])
         if (e.src === n.id || e.tgt === n.id) g.edges.delete(e.id);
@@ -142,7 +151,7 @@ function applyCommand(ctx, cmd) {
     case 'add_node':
       throw new GrewUnsupportedError(
         'add_node',
-        'Adding words is not supported: words come from the text.',
+        t('Adding words is not supported: words come from the text.'),
         cmd.line,
       );
     case 'shift': {
@@ -170,7 +179,7 @@ function applyCommand(ctx, cmd) {
         return;
       }
       const e = edgeOf(ctx, cmd, cmd.node);
-      if (!e) fail(ctx, cmd, `Edge '${cmd.node}' was deleted.`);
+      if (!e) fail(ctx, cmd, t("Edge ''{name}'' was deleted.", { name: cmd.node }));
       e.label = setLabelPart(e.label, cmd.feat, value);
       return;
     }
@@ -182,15 +191,21 @@ function applyCommand(ctx, cmd) {
           columnOf(cmd.feat) === 'lemma' &&
           [...g.edges.values()].some((e) => e.src === n.id || e.tgt === n.id)
         ) {
-          fail(ctx, cmd, `${cmd.node}.lemma cannot be removed while the word has dependencies.`);
+          fail(
+            ctx,
+            cmd,
+            t('{node}.lemma cannot be removed while the word has dependencies.', {
+              node: cmd.node,
+            }),
+          );
         }
         if (columnOf(cmd.feat) === 'form')
-          fail(ctx, cmd, 'form cannot be removed: every word has one.');
+          fail(ctx, cmd, t('form cannot be removed: every word has one.'));
         delFeat(n, cmd.feat);
         return;
       }
       const e = edgeOf(ctx, cmd, cmd.node);
-      if (!e) fail(ctx, cmd, `Edge '${cmd.node}' was deleted.`);
+      if (!e) fail(ctx, cmd, t("Edge ''{name}'' was deleted.", { name: cmd.node }));
       e.label = setLabelPart(e.label, cmd.feat, null);
       return;
     }
@@ -214,7 +229,11 @@ function applyCommand(ctx, cmd) {
       return;
     }
     default:
-      throw new GrewUnsupportedError(cmd.kind, `Unsupported command: ${cmd.kind}`, cmd.line);
+      throw new GrewUnsupportedError(
+        cmd.kind,
+        t('Unsupported command: {command}', { command: cmd.kind }),
+        cmd.line,
+      );
   }
 }
 
@@ -226,7 +245,7 @@ function setLabelPart(label, feat, value) {
   if (feat === 'label') return value ?? '';
   if (feat === 'enhanced') {
     if (value != null && value !== 'yes') {
-      throw new GrewUnsupportedError('edge-feature', "`enhanced` takes one value: 'yes'.");
+      throw new GrewUnsupportedError('edge-feature', t("`enhanced` takes one value: 'yes'."));
     }
     return compactLabel(bareLabel(label), value != null);
   }
@@ -234,7 +253,7 @@ function setLabelPart(label, feat, value) {
   if (!Number.isInteger(i) || i < 1) {
     throw new GrewUnsupportedError(
       'edge-feature',
-      `Edge feature '${feat}' is not supported. Use e.label, e.1, e.2, e.enhanced.`,
+      t("Edge feature ''{feat}'' is not supported. Use e.label, e.1, e.2, e.enhanced.", { feat }),
     );
   }
   const parts = labelParts(label);
@@ -267,10 +286,11 @@ function evalExpr(ctx, cmd, atoms) {
         v = getFeat(n, a.feat);
       } else {
         const e = edgeOf(ctx, cmd, a.node);
-        if (!e) fail(ctx, cmd, `Edge '${a.node}' was deleted.`);
+        if (!e) fail(ctx, cmd, t("Edge ''{name}'' was deleted.", { name: a.node }));
         v = labelPart(e.label, a.feat);
       }
-      if (v === undefined) fail(ctx, cmd, `${a.node}.${a.feat} is undefined.`);
+      if (v === undefined)
+        fail(ctx, cmd, t('{node}.{feat} is undefined.', { node: a.node, feat: a.feat }));
       if (!a.slice) return String(v);
       const chars = Array.from(String(v));
       const [s, e] = a.slice;
@@ -283,13 +303,23 @@ function evalExpr(ctx, cmd, atoms) {
 // on. Several different values is an error, as Grew reports it.
 function lexValue(ctx, cmd, a) {
   const lex = ctx.lexicons[a.node];
-  if (!lex.fields.includes(a.feat)) fail(ctx, cmd, `Lexicon '${a.node}' has no field '${a.feat}'.`);
+  if (!lex.fields.includes(a.feat))
+    fail(
+      ctx,
+      cmd,
+      t("Lexicon ''{lex}'' has no field ''{field}''.", { lex: a.node, field: a.feat }),
+    );
   const values = [...new Set(lex.entries.map((e) => e[a.feat]))];
   if (values.length !== 1) {
     fail(
       ctx,
       cmd,
-      `${a.node}.${a.feat} is ambiguous: ${lex.entries.length} entries match, with ${values.length} different values.`,
+      t('{node}.{feat} is ambiguous: {entries} entries match, with {values} different values.', {
+        node: a.node,
+        feat: a.feat,
+        entries: lex.entries.length,
+        values: values.length,
+      }),
     );
   }
   const v = values[0];

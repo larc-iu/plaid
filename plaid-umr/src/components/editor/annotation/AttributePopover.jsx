@@ -4,6 +4,7 @@ import { X } from 'lucide-react';
 import { ATTRIBUTES } from '../../../domain/format/inventory.js';
 import { latticeFor, linesFor, valuesFor } from '../../../domain/lattices.js';
 import { attrsToLine, focusValue, readAttrLine } from './pickers.js';
+import { t } from '@ui/lib/i18n.js';
 
 // The attributes with a value set, in the order the picker lists them.
 // `:modal-strength` is last and marked: UMR 1.0 moved modality into the
@@ -207,7 +208,7 @@ export function AttributePopover({
       className="umr-attr-popover"
       style={{ ...place, width: `${width}px` }}
       role="dialog"
-      aria-label="Attributes"
+      aria-label={t('Attributes')}
       // A portal's events still bubble through the React tree, so the canvas
       // below would see these.
       onPointerDown={(e) => e.stopPropagation()}
@@ -226,7 +227,7 @@ export function AttributePopover({
                 type="button"
                 className="umr-attr-clear"
                 tabIndex={-1}
-                aria-label={`Clear ${row.rel.slice(1)}`}
+                aria-label={t('Clear {name}', { name: row.rel.slice(1) })}
                 onClick={(e) => {
                   // The button goes with the value, and so do the finer
                   // lines under it, so focus goes to the row's first value.
@@ -237,7 +238,9 @@ export function AttributePopover({
                 <X size={11} />
               </button>
             )}
-            {DEPRECATED.has(row.rel) && <span className="umr-attr-deprecated">deprecated</span>}
+            {DEPRECATED.has(row.rel) && (
+              <span className="umr-attr-deprecated">{t('deprecated')}</span>
+            )}
           </div>
           <div className="umr-attr-lines">
             {row.lines.map((line, i) => (
@@ -261,12 +264,12 @@ export function AttributePopover({
       ))}
       <div className="umr-attr-row">
         <div className="umr-attr-label">
-          <span>other</span>
+          <span>{t('other')}</span>
         </div>
         <input
           className="umr-attr-other"
           value={otherLine}
-          placeholder=':quant 3 :wiki "Q42"'
+          placeholder=':quant 3 :wiki "Q42"' // i18n-ignore: an example of PENMAN, written as typed
           spellCheck={false}
           aria-invalid={problem ? true : undefined}
           onChange={(e) => {
@@ -290,7 +293,7 @@ export function AttributePopover({
         </div>
       )}
       <div className="umr-attr-hint">
-        Arrows to move, Enter to pick, Backspace to clear the row, Escape to close.
+        {t('Arrows to move, Enter to pick, Backspace to clear the row, Escape to close.')}
       </div>
     </div>,
     document.body,

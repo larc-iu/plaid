@@ -8,7 +8,7 @@ import { makeValidators } from '../utils/udVocabMode.js';
 import { parseCoNLLU, buildConlluHierarchy } from '../utils/conlluParser.js';
 import { SUPPRESS_KEY, planEnhancedRow } from './enhancedGraph.js';
 import { humanizeError, statusOf } from '../../../plaid-ui/src/lib/errors.js';
-import { countOf } from '../../../plaid-ui/src/lib/plural.js';
+import { msg, t } from '../../../plaid-ui/src/lib/i18n.js';
 import { createOnce } from '../../../plaid-ui/src/lib/createOnce.js';
 import { sendInChunks } from '../../../plaid-ui/src/domain/bulkChunks.js';
 
@@ -22,32 +22,30 @@ const composed = (v) => {
   if (!v || typeof v !== 'object') return v;
   return Object.fromEntries(Object.entries(v).map(([k, x]) => [k.normalize('NFC'), composed(x)]));
 };
-const HEADLESS = 'the head is not a row of the sentence.';
-const SELF_HEAD = 'the head is the word itself.';
-const NO_HEAD = 'no head is given.';
-const NO_DEPREL = 'no DEPREL is given.';
 // Over the server's cap on a request's body. The person imported a file, so
 // it is said in those words rather than the general wording for a 413.
-const TOO_LARGE_TO_IMPORT = 'This file is too large to import. Split it into shorter documents.';
+const TOO_LARGE_TO_IMPORT = msg(
+  'This file is too large to import. Split it into shorter documents.',
+);
 
 // What an import that failed says, in place of humanizeError's general words.
 export const importErrorText = (err) =>
-  statusOf(err) === 413 ? TOO_LARGE_TO_IMPORT : humanizeError(err, 'Failed to import.');
+  statusOf(err) === 413 ? t(TOO_LARGE_TO_IMPORT) : humanizeError(err, t('Failed to import.'));
 
 const OFF_LIST_FIELDS = [
-  ['upos', 'UPOS', (t) => [t.upos]],
-  ['xpos', 'XPOS', (t) => [t.xpos]],
-  ['feats', 'FEATS', (t) => t.feats || []],
-  ['deprel', 'DEPREL', (t) => [t.deprel]],
+  ['upos', 'UPOS', (row) => [row.upos]],
+  ['xpos', 'XPOS', (row) => [row.xpos]],
+  ['feats', 'FEATS', (row) => row.feats || []],
+  ['deprel', 'DEPREL', (row) => [row.deprel]],
   // The enhanced graph's labels, held to the same list (H17-2). An edge that
   // repeats the row's own HEAD and DEPREL is the tree's, counted above and not
   // stored again, so it is not counted twice (REV-HFU-7).
   [
     'deprel',
     'DEPS',
-    (t) =>
-      (t.deps?.edges || [])
-        .filter((e) => !(String(e.head) === String(t.head) && e.deprel === t.deprel))
+    (row) =>
+      (row.deps?.edges || [])
+        .filter((e) => !(String(e.head) === String(row.head) && e.deprel === row.deprel))
         .map((e) => e.deprel),
   ],
 ];
@@ -61,22 +59,69 @@ export function offListWarnings(parsedData, layerInfo) {
   for (const [field, label, valuesOf] of OFF_LIST_FIELDS) {
     const seen = new Map();
     for (const s of parsedData.sentences) {
-      for (const t of s.tokens) {
-        for (const v of valuesOf(t)) {
+      for (const row of s.tokens) {
+        for (const v of valuesOf(row)) {
           if (v && validators[field](v)) seen.set(v, (seen.get(v) || 0) + 1);
         }
       }
     }
     if (!seen.size) continue;
     const n = [...seen.values()].reduce((a, b) => a + b, 0);
-    const shown = [...seen.keys()].slice(0, 5).join(', ');
-    const more = seen.size > 5 ? `, and ${seen.size - 5} more` : '';
+    // `label` is the column's name in the file (UPOS, DEPS), the same in
+    // every language.
+    const values = [...seen.keys()].slice(0, 5).join(', ');
     out.push(
-      `${countOf(n, `${label} value`, `${label} values`)} not on the list: ${shown}${more}.`,
+      seen.size > 5
+        ? t(
+            '{n, plural, one {# {label} value} other {# {label} values}} not on the list: {values}, and {more} more.',
+            { n, label, values, more: seen.size - 5 },
+          )
+        : t(
+            '{n, plural, one {# {label} value} other {# {label} values}} not on the list: {values}.',
+            { n, label, values },
+          ),
     );
   }
   return out;
 }
+
+// What an import says of the heads it could not write, by what was dropped.
+const HEAD_WARNINGS = [
+  [
+    'basicNoHead',
+    msg(
+      '{n, plural, one {# dependency relation} other {# dependency relations}} dropped: no head is given.',
+    ),
+  ],
+  [
+    'basicNoDeprel',
+    msg('{n, plural, one {# HEAD value} other {# HEAD values}} dropped: no DEPREL is given.'),
+  ],
+  [
+    'basicHeadless',
+    msg(
+      '{n, plural, one {# dependency relation} other {# dependency relations}} dropped: the head is not a row of the sentence.',
+    ),
+  ],
+  [
+    'basicSelf',
+    msg(
+      '{n, plural, one {# dependency relation} other {# dependency relations}} dropped: the head is the word itself.',
+    ),
+  ],
+  [
+    'enhancedHeadless',
+    msg(
+      '{n, plural, one {# enhanced dependency} other {# enhanced dependencies}} dropped: the head is not a row of the sentence.',
+    ),
+  ],
+  [
+    'enhancedSelf',
+    msg(
+      '{n, plural, one {# enhanced dependency} other {# enhanced dependencies}} dropped: the head is the word itself.',
+    ),
+  ],
+];
 
 // CoNLL-U import: text in, a new document in the project out.
 //
@@ -107,18 +152,18 @@ export const importConlluDocument = (
   options = {},
 ) =>
   client.withOperation(
-    `Import CoNLL-U document "${name}"`,
+    `Import CoNLL-U document "${name}"`, // i18n-ignore: an audit label, sent to the server
     () => importDocument(client, projectId, name, conlluText, precomputedLayerInfo, options),
     { kind: 'import', ref: 'format:conllu' },
   );
 
 async function importDocument(client, projectId, name, conlluText, precomputedLayerInfo, options) {
-  if (!name || !name.trim()) throw new Error('Document name is required');
-  if (!conlluText || !conlluText.trim()) throw new Error('No content to import');
+  if (!name || !name.trim()) throw new Error(t('Document name is required'));
+  if (!conlluText || !conlluText.trim()) throw new Error(t('No content to import'));
 
   const parsedData = composed(parseCoNLLU(conlluText));
   if (parsedData.sentences.length === 0) {
-    throw new Error('No valid sentences found in CoNLL-U data');
+    throw new Error(t('No valid sentences found in CoNLL-U data'));
   }
 
   // Deliberately-unsupported data the parser dropped. Returned to the caller
@@ -134,31 +179,45 @@ async function importDocument(client, projectId, name, conlluText, precomputedLa
   if (emptyNodes > 0 || emptyNodeDeps > 0) {
     // One line for both: an enhanced dependency that hangs from an empty node
     // is lost to the same decision as the node.
-    const parts = [];
-    if (emptyNodes > 0)
-      parts.push(`${countOf(emptyNodes, 'empty node', 'empty nodes')} (decimal-ID rows)`);
-    if (emptyNodeDeps > 0) {
-      parts.push(
-        `${countOf(emptyNodeDeps, 'enhanced dependency', 'enhanced dependencies')} from an empty node`,
-      );
-    }
-    importWarnings.push(`${parts.join(' and ')} dropped: Plaid UD does not store empty nodes.`);
+    importWarnings.push(
+      emptyNodes > 0 && emptyNodeDeps > 0
+        ? t(
+            '{nodes, plural, one {# empty node} other {# empty nodes}} (decimal-ID rows) and {deps, plural, one {# enhanced dependency} other {# enhanced dependencies}} from an empty node dropped: Plaid UD does not store empty nodes.',
+            { nodes: emptyNodes, deps: emptyNodeDeps },
+          )
+        : emptyNodes > 0
+          ? t(
+              '{n, plural, one {# empty node} other {# empty nodes}} (decimal-ID rows) dropped: Plaid UD does not store empty nodes.',
+              { n: emptyNodes },
+            )
+          : t(
+              '{n, plural, one {# enhanced dependency} other {# enhanced dependencies}} from an empty node dropped: Plaid UD does not store empty nodes.',
+              { n: emptyNodeDeps },
+            ),
+    );
   }
   if (unreadableDeps > 0) {
     importWarnings.push(
-      `DEPS values on ${countOf(unreadableDeps, 'token row', 'token rows')} could not be read and were dropped.`,
+      t(
+        'DEPS values on {n, plural, one {# token row} other {# token rows}} could not be read and were dropped.',
+        { n: unreadableDeps },
+      ),
     );
   }
   if (repeatedComments > 0) {
     importWarnings.push(
-      `${countOf(repeatedComments, 'repeated comment line')} dropped: ` +
-        'Plaid UD stores one comment line of each name per sentence.',
+      t(
+        '{n, plural, one {# repeated comment line} other {# repeated comment lines}} dropped: Plaid UD stores one comment line of each name per sentence.',
+        { n: repeatedComments },
+      ),
     );
   }
   if (miscTokens > 0) {
     importWarnings.push(
-      `MISC values on ${countOf(miscTokens, 'token row')} ` +
-        'dropped: Plaid UD does not store the MISC column.',
+      t(
+        'MISC values on {n, plural, one {# token row} other {# token rows}} dropped: Plaid UD does not store the MISC column.',
+        { n: miscTokens },
+      ),
     );
   }
 
@@ -181,7 +240,7 @@ async function importDocument(client, projectId, name, conlluText, precomputedLa
 
     if (!layerInfo.isConfigured) {
       console.error('UD layers missing:', missingUdLayerLabels(layerInfo.missingLayers).join(', '));
-      throw new Error('This project is not set up for UD.');
+      throw new Error(t('This project is not set up for UD.'));
     }
     importWarnings.push(...offListWarnings(parsedData, layerInfo));
 
@@ -204,10 +263,10 @@ async function importDocument(client, projectId, name, conlluText, precomputedLa
     const enhancedPlans = parsedData.sentences.map((s) => {
       // Whether this sentence is annotated for the enhanced graph at all,
       // which is what a bare `_` on one of its words means (enhancedGraph.js).
-      const hasDeps = s.tokens.some((t) => t.deps);
+      const hasDeps = s.tokens.some((row) => row.deps);
       // A DEPS value that could not be read is dropped with a warning, and
       // says nothing: the word keeps the relation its tree gives it.
-      return s.tokens.map((t) => planEnhancedRow(t, t.deps, hasDeps && !t.depsUnreadable));
+      return s.tokens.map((row) => planEnhancedRow(row, row.deps, hasDeps && !row.depsUnreadable));
     });
 
     const hierarchy = buildConlluHierarchy(parsedData);
@@ -221,14 +280,14 @@ async function importDocument(client, projectId, name, conlluText, precomputedLa
     // with every tree in it dropped, in silence.
     const needsLemma = parsedData.sentences.map((s, sentIdx) => {
       const rows = new Set();
-      s.tokens.forEach((t, tokIdx) => {
-        if (t.deprel) {
-          rows.add(t.id);
-          if (t.head > 0) rows.add(t.head);
+      s.tokens.forEach((row, tokIdx) => {
+        if (row.deprel) {
+          rows.add(row.id);
+          if (row.head > 0) rows.add(row.head);
         }
         // An extra enhanced edge hangs off the same two kinds of row.
         enhancedPlans[sentIdx][tokIdx].extras.forEach((e) => {
-          rows.add(t.id);
+          rows.add(row.id);
           if (e.head > 0) rows.add(e.head);
         });
       });
@@ -243,14 +302,18 @@ async function importDocument(client, projectId, name, conlluText, precomputedLa
     const { syntheticOffsetSentences = 0, skippedTextSentences = 0 } = hierarchy.dropped || {};
     if (skippedTextSentences > 0) {
       importWarnings.push(
-        `${countOf(skippedTextSentences, 'sentence')} ${skippedTextSentences === 1 ? 'has' : 'have'} ` +
-          'text its rows do not spell, left in no token.',
+        t(
+          '{n, plural, one {# sentence has} other {# sentences have}} text its rows do not spell, left in no token.',
+          { n: skippedTextSentences },
+        ),
       );
     }
     if (syntheticOffsetSentences > 0) {
       importWarnings.push(
-        `${countOf(syntheticOffsetSentences, 'sentence')} used synthetic offsets ` +
-          "(their tokens couldn't be located in the sentence text, so positions won't match the original).",
+        t(
+          "{n, plural, one {# sentence} other {# sentences}} used synthetic offsets (their tokens couldn't be located in the sentence text, so positions won't match the original).",
+          { n: syntheticOffsetSentences },
+        ),
       );
     }
 
@@ -371,8 +434,10 @@ async function importDocument(client, projectId, name, conlluText, precomputedLa
 
     if (unreadableFeats > 0) {
       importWarnings.push(
-        `${countOf(unreadableFeats, 'FEATS entry', 'FEATS entries')} could not be read and ` +
-          `${unreadableFeats === 1 ? 'was' : 'were'} dropped.`,
+        t(
+          '{n, plural, one {# FEATS entry could not be read and was dropped.} other {# FEATS entries could not be read and were dropped.}}',
+          { n: unreadableFeats },
+        ),
       );
     }
 
@@ -468,16 +533,9 @@ async function importDocument(client, projectId, name, conlluText, precomputedLa
         });
       });
     }
-    const headWarnings = [
-      [dropped.basicNoHead, 'dependency relation', 'dependency relations', NO_HEAD],
-      [dropped.basicNoDeprel, 'HEAD value', 'HEAD values', NO_DEPREL],
-      [dropped.basicHeadless, 'dependency relation', 'dependency relations', HEADLESS],
-      [dropped.basicSelf, 'dependency relation', 'dependency relations', SELF_HEAD],
-      [dropped.enhancedHeadless, 'enhanced dependency', 'enhanced dependencies', HEADLESS],
-      [dropped.enhancedSelf, 'enhanced dependency', 'enhanced dependencies', SELF_HEAD],
-    ];
-    for (const [n, one, many, why] of headWarnings) {
-      if (n > 0) importWarnings.push(`${countOf(n, one, many)} dropped: ${why}`);
+    for (const [kind, message] of HEAD_WARNINGS) {
+      const n = dropped[kind];
+      if (n > 0) importWarnings.push(t(message, { n }));
     }
 
     // The text with its sentences in one request (a sentence layer
@@ -521,8 +579,10 @@ async function importDocument(client, projectId, name, conlluText, precomputedLa
         // Name the partial document so the user can delete it by hand. The
         // original error message stays at the front.
         const wrapped = new Error(
-          `${importErrorText(err)} The partial document “${name.trim()}” ` +
-            'was not deleted. Delete it by hand.',
+          t('{error} The partial document “{name}” was not deleted. Delete it by hand.', {
+            error: importErrorText(err),
+            name: name.trim(),
+          }),
         );
         wrapped.cause = err;
         throw wrapped;

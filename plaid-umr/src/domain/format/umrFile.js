@@ -19,6 +19,7 @@ import {
   relationProblem,
 } from './penman.js';
 import { displayWidth, padToWidth } from '../../../../plaid-ui/src/lib/displayWidth.js';
+import { t } from '../../../../plaid-ui/src/lib/i18n.js';
 
 const SEPARATOR = '#'.repeat(80);
 
@@ -108,16 +109,17 @@ function classifyHeader(header) {
 // guessing, and keeps the written line inside the standard's grammar.
 const GLOSS_KEYS = new Set(['word-gloss', 'morpheme-gloss', 'sentence-gloss']);
 
+// The format's own headers, written into the file.
 const MODERN_HEADERS = {
   index: 'Index',
   words: 'Words',
-  'word-gloss': 'Word Gloss',
-  pos: 'Part of Speech',
+  'word-gloss': 'Word Gloss', // i18n-ignore: a file header
+  pos: 'Part of Speech', // i18n-ignore: a file header
   morphemes: 'Morphemes',
-  'morpheme-gloss': 'Morpheme Gloss',
-  'morpheme-category': 'Morpheme Category',
+  'morpheme-gloss': 'Morpheme Gloss', // i18n-ignore: a file header
+  'morpheme-category': 'Morpheme Category', // i18n-ignore: a file header
   sentence: 'Sentence',
-  'sentence-gloss': 'Sentence Gloss',
+  'sentence-gloss': 'Sentence Gloss', // i18n-ignore: a file header
 };
 
 /** The header to write for an interlinear line, upgrading an obsolete one. */
@@ -136,12 +138,18 @@ function parseAlignmentValue(text, warn, variable) {
     const value = piece.trim();
     if (value === '0-0' || value === '') continue;
     if (value === '-1--1') {
-      warn('legacy-unaligned', `Alignment '-1--1' of '${variable}' is UMR 1.0 for unaligned.`);
+      warn(
+        'legacy-unaligned',
+        t("Alignment '-1--1' of ''{v}'' is UMR 1.0 for unaligned.", { v: variable }),
+      );
       continue;
     }
     const match = RANGE.exec(value);
     if (!match) {
-      warn('invalid-token-range', `Cannot read the token range '${value}' of '${variable}'.`);
+      warn(
+        'invalid-token-range',
+        t("Cannot read the token range ''{value}'' of ''{v}''.", { value, v: variable }),
+      );
       continue;
     }
     spans.push([Number(match[1]), Number(match[2])]);
@@ -167,18 +175,21 @@ export function readAlignment(block, warn = () => {}) {
     if (trimmed.startsWith('#')) continue;
     const colon = trimmed.indexOf(':');
     if (colon === -1) {
-      warn('invalid-alignment', `Alignment line without a colon: '${trimmed}'.`);
+      warn(
+        'invalid-alignment',
+        t("Alignment line without a colon: ''{line}''.", { line: trimmed }),
+      );
       continue;
     }
     const variable = trimmed.slice(0, colon).trim();
     if (/\s/.test(trimmed.slice(0, colon))) {
       warn(
         'alignment-space-before-colon',
-        `Alignment of '${variable}' has a space before the colon.`,
+        t("Alignment of ''{v}'' has a space before the colon.", { v: variable }),
       );
     }
     if (alignment.has(variable)) {
-      warn('duplicate-alignment', `Repeated alignment of node '${variable}'.`);
+      warn('duplicate-alignment', t("Repeated alignment of node ''{v}''.", { v: variable }));
     }
     alignment.set(variable, parseAlignmentValue(trimmed.slice(colon + 1), warn, variable));
   }
@@ -194,7 +205,10 @@ function triplesFrom(slice, group, warn) {
   let j = 0;
   while (j < slice.length) {
     if (slice[j] !== '(') {
-      warn('invalid-document-level', `Stray token '${slice[j]}' in the '${group}' group.`);
+      warn(
+        'invalid-document-level',
+        t("Stray token ''{token}'' in the ''{group}'' group.", { token: slice[j], group }),
+      );
       j++;
       continue;
     }
@@ -211,7 +225,10 @@ function triplesFrom(slice, group, warn) {
     }
     const at = parts.findIndex((part) => part.startsWith(':'));
     if (at <= 0 || at === parts.length - 1) {
-      warn('invalid-document-level', `Cannot read a '${group}' triple from '${parts.join(' ')}'.`);
+      warn(
+        'invalid-document-level',
+        t("Cannot read a ''{group}'' triple from ''{text}''.", { group, text: parts.join(' ') }),
+      );
       continue;
     }
     triples.push([parts[at - 1], parts[at], parts[at + 1]]);
@@ -239,12 +256,18 @@ function parseDocGraph(text, warn) {
     const slice = tokens.slice(start, i);
     if (tokens[i] === ')') i++;
     else
-      warn('missing-closing-bracket', 'The document level graph ends without a closing bracket.');
+      warn(
+        'missing-closing-bracket',
+        t('The document level graph ends without a closing bracket.'),
+      );
     return slice;
   };
 
   if (peek() !== '(') {
-    warn('invalid-document-level', `Expected the opening bracket, found '${peek()}'.`);
+    warn(
+      'invalid-document-level',
+      t("Expected the opening bracket, found ''{token}''.", { token: String(peek()) }),
+    );
     return null;
   }
   i++;
@@ -253,13 +276,18 @@ function parseDocGraph(text, warn) {
   if (!/^s[0-9]+s0$/.test(String(variable))) {
     warn(
       'invalid-document-level',
-      `Document-level variable '${variable}' is not of the form sNs0.`,
+      t("Document-level variable ''{v}'' is not of the form sNs0.", { v: String(variable) }),
     );
   }
   if (peek() === '/') i++;
-  else warn('invalid-document-level', "Expected '/' after the document-level variable.");
+  else warn('invalid-document-level', t("Expected '/' after the document-level variable."));
   if (peek() === 'sentence') i++;
-  else warn('missing-sentence-concept', `Expected the concept 'sentence', found '${peek()}'.`);
+  else {
+    warn(
+      'missing-sentence-concept',
+      t("Expected the concept 'sentence', found ''{token}''.", { token: String(peek()) }),
+    );
+  }
 
   const graph = { var: variable, temporal: [], modal: [], coref: [] };
   while (i < tokens.length && peek() !== ')') {
@@ -267,10 +295,13 @@ function parseDocGraph(text, warn) {
     i++;
     const bucket = /^:(temporal|modal|coref)$/.test(group) ? graph[group.slice(1)] : null;
     if (!bucket) {
-      warn('unknown-document-relation-group', `Unknown document-level relation group '${group}'.`);
+      warn(
+        'unknown-document-relation-group',
+        t("Unknown document-level relation group ''{group}''.", { group }),
+      );
     }
     if (peek() !== '(') {
-      warn('invalid-document-level', `Expected the bracketed '${group}' group.`);
+      warn('invalid-document-level', t("Expected the bracketed ''{group}'' group.", { group }));
       continue;
     }
     const triples = triplesFrom(balanced(), group, warn);
@@ -310,7 +341,7 @@ export function parseUmrFile(text) {
   for (const line of lines) {
     if (/^#{3,}\s*$/.test(line)) {
       if (line.trimEnd() !== SEPARATOR) {
-        warn('sentence-separator-width', 'A sentence separator is not exactly 80 hashes.');
+        warn('sentence-separator-width', t('A sentence separator is not exactly 80 hashes.'));
       }
       current = [];
       chunks.push(current);
@@ -322,7 +353,7 @@ export function parseUmrFile(text) {
   if (preamble.some((line) => !isBlank(line))) {
     warn(
       'content-before-first-sentence',
-      'Content before the first sentence separator was ignored.',
+      t('Content before the first sentence separator was ignored.'),
     );
   }
 
@@ -349,7 +380,10 @@ function splitBlocks(chunk, warn) {
         if (line.trim() !== header.canonical) {
           warn(
             'nonstandard-block-header',
-            `Block header '${line.trim()}' is not '${header.canonical}'.`,
+            t("Block header ''{found}'' is not ''{header}''.", {
+              found: line.trim(),
+              header: header.canonical,
+            }),
           );
         }
         bounds[header.key] = index;
@@ -358,7 +392,10 @@ function splitBlocks(chunk, warn) {
   });
   for (const header of BLOCK_HEADERS) {
     if (bounds[header.key] === undefined) {
-      warn('missing-block-header', `Missing the '${header.canonical}' header.`);
+      warn(
+        'missing-block-header',
+        t("Missing the ''{header}'' header.", { header: header.canonical }),
+      );
     }
   }
   const at = (key, fallback) => (bounds[key] === undefined ? fallback : bounds[key]);
@@ -387,7 +424,9 @@ function parseSentence(chunk, index, warn, error) {
     if (trimmed.trimStart().startsWith('#')) {
       const match = SENT_ID.exec(trimmed.trim());
       if (match) {
-        if (snt !== null) warn('multiple-sent-id', 'More than one sentence id in the token block.');
+        if (snt !== null) {
+          warn('multiple-sent-id', t('More than one sentence id in the token block.'));
+        }
         snt = Number(match[1]);
         sentenceText = (match[2] ?? '').trim();
         continue;
@@ -397,15 +436,24 @@ function parseSentence(chunk, index, warn, error) {
     }
     const colon = trimmed.indexOf(':');
     if (colon === -1) {
-      warn('invalid-ilg', `Token-block line without a header: '${trimmed.trim()}'.`);
+      warn(
+        'invalid-ilg',
+        t("Token-block line without a header: ''{line}''.", { line: trimmed.trim() }),
+      );
       continue;
     }
     const header = trimmed.slice(0, colon);
     const kind = classifyHeader(header);
     if (kind.obsolete) {
-      warn('obsolete-ilg', `Obsolete interlinear glossing header '${header.trim()}'.`);
+      warn(
+        'obsolete-ilg',
+        t("Obsolete interlinear glossing header ''{header}''.", { header: header.trim() }),
+      );
     } else if (kind.key === 'other') {
-      warn('unknown-ilg', `Unknown interlinear glossing header '${header.trim()}'.`);
+      warn(
+        'unknown-ilg',
+        t("Unknown interlinear glossing header ''{header}''.", { header: header.trim() }),
+      );
     }
     const value = trimmed.slice(colon + 1).trim();
     // The untokenized text, where an export writes it (ruled 2026-09-28): it
@@ -421,18 +469,21 @@ function parseSentence(chunk, index, warn, error) {
   }
   if (sentenceLine !== null) sentenceText = sentenceLine;
   if (snt === null) {
-    warn('missing-sent-id', 'No sentence id line. The position in the file is used instead.');
+    warn('missing-sent-id', t('No sentence id line. The position in the file is used instead.'));
     snt = index;
   }
   const words = ilg.find((line) => line.key === 'words')?.items ?? [];
-  if (!words.length) warn('missing-words', 'No Words line in the token block.');
+  if (!words.length) warn('missing-words', t('No Words line in the token block.'));
 
   const graphText = trimBlankEnds(blocks.graph).join('\n');
   let graph = null;
   if (graphText.trim() !== '') {
     graph = parsePenman(graphText);
     graph.errors.forEach((e) =>
-      error('sentence-graph', `${e.message} (line ${e.line}, column ${e.col})`),
+      error(
+        'sentence-graph',
+        t('{error} (line {line}, column {col})', { error: e.message, line: e.line, col: e.col }),
+      ),
     );
   }
 
@@ -588,27 +639,29 @@ export function umrFileProblems(sentences) {
     const readable = /^[0-9]+$/.test(String(number));
     const place = readable ? number : sentence.index;
     const at = (variable, message) => problems.push({ sentence: place, var: variable, message });
-    if (!readable) at(null, `A sentence number cannot be written as it is: ${oneLine(number)}`);
+    if (!readable) {
+      at(null, t('A sentence number cannot be written as it is: {n}', { n: oneLine(number) }));
+    }
     // Shapes only the API can store, which the writer below would crash on.
     if (sentence.meta != null && !Array.isArray(sentence.meta)) {
-      at(null, 'The metadata lines cannot be written as they are.');
+      at(null, t('The metadata lines cannot be written as they are.'));
       return;
     }
     const lines = sentence.ilg ?? [];
     if (!Array.isArray(lines) || lines.some((line) => !Array.isArray(line?.items))) {
-      at(null, 'A gloss line cannot be written as it is.');
+      at(null, t('A gloss line cannot be written as it is.'));
       return;
     }
     (sentence.meta ?? []).forEach((line) => {
       const text = oneLine(line);
       if (!text.trimStart().startsWith('#') || isStructural(text)) {
-        at(null, `A metadata line cannot be written as it is: ${text}`);
+        at(null, t('A metadata line cannot be written as it is: {line}', { line: text }));
       }
     });
     if (typeof sentence.rawGraph === 'string') {
       const raw = [sentence.rawGraph, sentence.rawAlignment ?? ''].join('\n');
       if (raw.split('\n').some(isStructural)) {
-        at(null, 'The graph stored as text holds a sentence separator or a block header.');
+        at(null, t('The graph stored as text holds a sentence separator or a block header.'));
       }
     } else if (sentence.graph) {
       penmanProblems(sentence.graph).forEach((p) => at(p.var, p.message));
@@ -618,7 +671,10 @@ export function umrFileProblems(sentences) {
       for (const [variable, node] of sentence.graph.nodes ?? []) {
         for (const child of node.children) {
           if (child.kind !== 'node' && String(child.value).split('\n').some(isStructural)) {
-            at(variable, `A value holds a line that starts a new block: ${child.rel}`);
+            at(
+              variable,
+              t('A value holds a line that starts a new block: {rel}', { rel: child.rel }),
+            );
           }
         }
       }
@@ -628,9 +684,12 @@ export function umrFileProblems(sentences) {
       (doc?.[group] ?? []).forEach(([a, rel, b]) => {
         const token = /^[^\s()]+$/;
         if (!token.test(String(a)) || !token.test(String(b))) {
-          at(null, `A document-level relation cannot be written as it is: ${a} ${rel} ${b}`);
+          at(
+            null,
+            t('A document-level relation cannot be written as it is: {a} {rel} {b}', { a, rel, b }),
+          );
         } else if (!/^:[-A-Za-z0-9]+$/.test(String(rel))) {
-          at(a, relationProblem(rel) ?? `A relation starts with a colon: ${rel}`);
+          at(a, relationProblem(rel) ?? t('A relation starts with a colon: {rel}', { rel }));
         }
       });
     });
@@ -639,11 +698,17 @@ export function umrFileProblems(sentences) {
 }
 
 /** Where a problem is, as a person reads it: "Lunch, sentence 3, s3b". */
-export const problemPlace = (p) =>
-  [p.document, `sentence ${p.sentence}`, p.var]
-    .filter(Boolean)
-    .join(', ')
-    .replace(/^./, (c) => c.toUpperCase());
+export const problemPlace = (p) => {
+  const n = p.sentence;
+  if (!p.document) {
+    return p.var ? t('Sentence {n}, {v}', { n, v: p.var }) : t('Sentence {n}', { n });
+  }
+  // The name starts the line, so it starts with a capital.
+  const document = String(p.document).replace(/^./, (c) => c.toUpperCase());
+  return p.var
+    ? t('{document}, sentence {n}, {v}', { document, n, v: p.var })
+    : t('{document}, sentence {n}', { document, n });
+};
 
 /**
  * The export refused: `problems` lists each place that cannot be written,
@@ -651,7 +716,11 @@ export const problemPlace = (p) =>
  */
 export class UnwritableUmrError extends Error {
   constructor(problems) {
-    super(problems.map((p) => `${problemPlace(p)}: ${p.message}`).join('\n'));
+    super(
+      problems
+        .map((p) => t('{label}: {error}', { label: problemPlace(p), error: p.message }))
+        .join('\n'),
+    );
     this.name = 'UnwritableUmrError';
     this.problems = problems;
   }

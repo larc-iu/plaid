@@ -1,6 +1,7 @@
 import { Input } from '@ui/components/ui/input';
 import { cn } from '@ui/lib/utils';
 import { isHexColor, sixDigitHex } from '../../utils/udVocab.js';
+import { t } from '@ui/lib/i18n.js';
 
 // One labelled color, as a native swatch beside its hex. Replaces Mantine's
 // ColorInput.
@@ -25,7 +26,7 @@ export const ColorField = ({ label, value, auto, onChange }) => {
           type="color"
           className="h-8 w-8 shrink-0 cursor-pointer rounded border bg-transparent p-0.5"
           value={valid ? sixDigitHex(value) : auto}
-          aria-label={`${label} color`}
+          aria-label={t('{label} color', { label })}
           onChange={(e) => onChange(e.target.value)}
         />
         <Input
@@ -33,7 +34,7 @@ export const ColorField = ({ label, value, auto, onChange }) => {
           value={value || ''}
           spellCheck={false}
           placeholder={auto}
-          aria-label={`${label} hex`}
+          aria-label={t('{label} hex', { label })}
           aria-invalid={value && !valid ? true : undefined}
           onChange={(e) => onChange(e.target.value.trim())}
         />

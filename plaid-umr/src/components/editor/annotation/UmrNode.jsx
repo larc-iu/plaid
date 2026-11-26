@@ -1,7 +1,7 @@
 import React from 'react';
 import { stableKey } from '@ui/domain/pendingIds.js';
 import { provMark, worstMark } from './provMarks.js';
-import { countOf } from '@ui/lib/plural.js';
+import { t } from '@ui/lib/i18n.js';
 
 // A node a machine drafted or a contributor made wears a dashed border
 // until somebody settles it (provMarks.js).
@@ -10,20 +10,30 @@ const PROV_CLASS = {
   contributed: 'umr-node--contributed',
 };
 
-// "2 errors, 1 warning", for a node's accessible name.
-const someOf = (n, one) => (n ? countOf(n, one) : null);
+// "2 errors, 1 warning", for a node's accessible name: a short counted clause
+// each.
 const problemWords = (problems) => {
   if (!problems?.length) return null;
   const errors = problems.filter((p) => p.level === 'error').length;
-  return [someOf(errors, 'error'), someOf(problems.length - errors, 'warning')]
+  const warnings = problems.length - errors;
+  return [
+    errors ? t('{n, plural, one {# error} other {# errors}}', { n: errors }) : null,
+    warnings ? t('{n, plural, one {# warning} other {# warnings}}', { n: warnings }) : null,
+  ]
     .filter(Boolean)
     .join(', ');
 };
 
 // A document tag read aloud: the node's own end, which the tag marks with a
-// dot, said in words, in the order the relation runs.
-const tagWords = (out, rel, ends) =>
-  out ? `this node ${rel} ${ends}` : `${ends} ${rel} this node`;
+// dot, said in words, in the order the relation runs. `ends` are the other
+// ends' variables, and `hidden` how many more there are past them.
+const tagWords = (out, rel, ends, hidden) => {
+  const v = { rel, ends, n: hidden };
+  if (out) {
+    return hidden ? t('this node {rel} {ends} and {n} more', v) : t('this node {rel} {ends}', v);
+  }
+  return hidden ? t('{ends} and {n} more {rel} this node', v) : t('{ends} {rel} this node', v);
+};
 
 // The most document tags a node wears, and the most other ends one tag
 // lists. Past either, one fewer and a `+k` that lists them all: nearly every
@@ -85,7 +95,7 @@ export const UmrNode = React.memo(function UmrNode({
   // "s1l leave-02, root", then its problems.
   const label = [
     [node.var, node.concept].filter(Boolean).join(' '),
-    node.root ? 'root' : parent,
+    node.root ? t('root') : parent,
     problemWords(problems),
   ]
     .filter(Boolean)
@@ -95,10 +105,10 @@ export const UmrNode = React.memo(function UmrNode({
   // in it, so four `:full-affirmative` relations are one tag.
   const tagItems = (() => {
     const byKey = new Map();
-    (docTags || []).forEach((t) => {
-      const key = `${t.source === node.id ? 'out' : 'in'} ${t.rel}`;
+    (docTags || []).forEach((tag) => {
+      const key = `${tag.source === node.id ? 'out' : 'in'} ${tag.rel}`;
       if (!byKey.has(key)) byKey.set(key, { key, tags: [] });
-      byKey.get(key).tags.push(t);
+      byKey.get(key).tags.push(tag);
     });
     return [...byKey.values()];
   })();
@@ -108,11 +118,11 @@ export const UmrNode = React.memo(function UmrNode({
   // FIRST click. It is small and plainly a control of its own, and a click
   // there that only focused the node read as the tag not working.
   const clickable = !!onDocTagClick;
-  const clickTag = (t) =>
+  const clickTag = (tag) =>
     clickable
       ? (e) => {
           e.stopPropagation();
-          onDocTagClick(t);
+          onDocTagClick(tag);
         }
       : undefined;
   // The rest of a node's relations, past what it shows: read off the
@@ -124,8 +134,8 @@ export const UmrNode = React.memo(function UmrNode({
       key={key}
       className="umr-doc-tag-end umr-doc-more"
       role={editable ? 'button' : undefined}
-      title={list.map((t) => t.text).join('\n')}
-      aria-label={`${list.length} more document relations`}
+      title={list.map((tag) => tag.text).join('\n')}
+      aria-label={t('{n} more document relations', { n: list.length })}
       onClick={editable ? act('node.docRelations') : undefined}
     >
       +{list.length}
@@ -186,8 +196,14 @@ export const UmrNode = React.memo(function UmrNode({
           type="button"
           className="umr-chain"
           style={{ '--chain': chain.color }}
-          title={`Coreference chain ${chain.index + 1}: ${chain.size} mentions. Click for the next.`}
-          aria-label={`Next mention in coreference chain ${chain.index + 1}, ${chain.size} mentions`}
+          title={t('Coreference chain {chain}: {n} mentions. Click for the next.', {
+            chain: chain.index + 1,
+            n: chain.size,
+          })}
+          aria-label={t('Next mention in coreference chain {chain}, {n} mentions', {
+            chain: chain.index + 1,
+            n: chain.size,
+          })}
           onClick={(e) => {
             e.stopPropagation();
             onChainClick?.(chain.index, node.id);
@@ -206,7 +222,7 @@ export const UmrNode = React.memo(function UmrNode({
           <span
             className="umr-node-var"
             tabIndex={-1}
-            title={editable ? 'Double-click to rename' : undefined}
+            title={editable ? t('Double-click to rename') : undefined}
             onDoubleClick={editable ? act('node.variable') : undefined}
           >
             {node.var}
@@ -215,7 +231,7 @@ export const UmrNode = React.memo(function UmrNode({
         <span
           className="umr-node-concept"
           dir="auto"
-          title={editable ? 'Double-click to edit the concept' : undefined}
+          title={editable ? t('Double-click to edit the concept') : undefined}
           onDoubleClick={editable ? act('node.concept') : undefined}
         >
           {node.concept}
@@ -228,7 +244,7 @@ export const UmrNode = React.memo(function UmrNode({
               key={i}
               className="umr-chip"
               tabIndex={-1}
-              title={editable ? 'Double-click to edit the attributes' : `${a.rel} ${a.value}`}
+              title={editable ? t('Double-click to edit the attributes') : `${a.rel} ${a.value}`}
               onDoubleClick={editable ? act('node.attributes') : undefined}
             >
               <span className="umr-chip-rel">{a.rel.replace(/^:/, '')}</span>
@@ -242,12 +258,12 @@ export const UmrNode = React.memo(function UmrNode({
       {tagItems.length > 0 && (
         <div className="umr-node-doc">
           {shownItems.map(({ key, tags }) => {
-            const [t] = tags;
+            const [tag] = tags;
             // Which end of the triple this node is, marked with a dot where
             // its own variable would be: `● :before s3b` on the source,
             // `s3d :before ●` on the target. A :before read backwards is a
             // real annotation error.
-            const out = t.source === node.id;
+            const out = tag.source === node.id;
             const ends = tags.length > MAX_ENDS ? tags.slice(0, MAX_ENDS - 1) : tags;
             const endSpans = ends.map((one, i) => (
               <React.Fragment key={stableKey(one.id)}>
@@ -274,11 +290,7 @@ export const UmrNode = React.memo(function UmrNode({
             // One triple: the whole tag is its click. Several: each end is.
             const single = tags.length === 1;
             const hidden = tags.length - ends.length;
-            const said = tagWords(
-              out,
-              t.rel,
-              ends.map((one) => one.otherVar).join(' ') + (hidden ? ` and ${hidden} more` : ''),
-            );
+            const said = tagWords(out, tag.rel, ends.map((one) => one.otherVar).join(' '), hidden);
             const dot = <span aria-hidden="true">●</span>;
             // Marked when any relation it lists awaits review.
             const mark = worstMark(tags.map((one) => one.prov));
@@ -292,30 +304,30 @@ export const UmrNode = React.memo(function UmrNode({
                 role={single && clickable ? 'button' : 'group'}
                 aria-label={said}
                 tabIndex={single ? -1 : undefined}
-                data-triple-id={single ? t.id : undefined}
-                data-group={t.group}
-                data-default={(single && t.isDefault) || undefined}
+                data-triple-id={single ? tag.id : undefined}
+                data-group={tag.group}
+                data-default={(single && tag.isDefault) || undefined}
                 title={
                   single
                     ? [
-                        t.provTitle,
+                        tag.provTitle,
                         clickable
-                          ? 'Click to change. Shift+Backspace in the editor to delete.'
+                          ? t('Click to change. Shift+Backspace in the editor to delete.')
                           : null,
                       ]
                         .filter(Boolean)
                         .join('. ') || undefined
                     : undefined
                 }
-                onClick={single ? clickTag(t) : undefined}
+                onClick={single ? clickTag(tag) : undefined}
               >
                 {out ? (
                   <>
-                    {dot} {t.rel} {endSpans}
+                    {dot} {tag.rel} {endSpans}
                   </>
                 ) : (
                   <>
-                    {endSpans} {t.rel} {dot}
+                    {endSpans} {tag.rel} {dot}
                   </>
                 )}
               </span>
@@ -342,8 +354,8 @@ export const UmrNode = React.memo(function UmrNode({
           type="button"
           className="umr-more"
           tabIndex={-1}
-          aria-label={`Actions for ${node.var || node.concept}`}
-          title="Actions (or right-click)"
+          aria-label={t('Actions for {name}', { name: node.var || node.concept })}
+          title={t('Actions (or right-click)')}
           onClick={(e) => {
             e.stopPropagation();
             const r = e.currentTarget.getBoundingClientRect();
@@ -356,7 +368,7 @@ export const UmrNode = React.memo(function UmrNode({
       {!readOnly && !node.constant && (
         <span
           className="umr-grip"
-          title="Drag to a node, a word or empty space"
+          title={t('Drag to a node, a word or empty space')}
           onPointerDown={(e) => {
             if (e.button !== 0) return;
             onGripPointerDown?.(e);

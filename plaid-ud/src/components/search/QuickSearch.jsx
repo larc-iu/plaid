@@ -9,6 +9,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@ui/components/ui/select';
+import { t } from '@ui/lib/i18n.js';
 import { QUICK_FIELDS, MATCH_TYPES, quickPattern } from '../../grew/quickSearch.js';
 
 // A plain word lookup for people who do not write Grew.
@@ -31,33 +32,33 @@ export const QuickSearch = ({ onSearch, disabled }) => {
     <div className="flex flex-wrap items-center gap-2 rounded-md border bg-muted/30 px-3 py-2">
       <Search className="h-4 w-4 shrink-0 text-muted-foreground" />
       <Select value={field} onValueChange={setField} disabled={disabled}>
-        <SelectTrigger className="w-44" aria-label="Which field">
+        <SelectTrigger className="w-44" aria-label={t('Which field')}>
           <SelectValue />
         </SelectTrigger>
         <SelectContent>
           {QUICK_FIELDS.map((f) => (
             <SelectItem key={f.value} value={f.value}>
-              {f.label}
+              {t(f.label)}
             </SelectItem>
           ))}
         </SelectContent>
       </Select>
       <Select value={match} onValueChange={setMatch} disabled={disabled}>
-        <SelectTrigger className="w-28" aria-label="How to match">
+        <SelectTrigger className="w-28" aria-label={t('How to match')}>
           <SelectValue />
         </SelectTrigger>
         <SelectContent>
           {MATCH_TYPES.map((m) => (
             <SelectItem key={m.value} value={m.value}>
-              {m.label}
+              {t(m.label)}
             </SelectItem>
           ))}
         </SelectContent>
       </Select>
       <Input
         className="w-56"
-        placeholder="What to look for"
-        aria-label="What to look for"
+        placeholder={t('What to look for')}
+        aria-label={t('What to look for')}
         spellCheck={false}
         value={text}
         disabled={disabled}
@@ -70,7 +71,7 @@ export const QuickSearch = ({ onSearch, disabled }) => {
         }}
       />
       <Button disabled={disabled || !text.trim()} onClick={submit}>
-        Search
+        {t('Search')}
       </Button>
     </div>
   );

@@ -338,25 +338,25 @@ export const SentenceRow = React.memo(
               {/* Row headers — always visible, click to expand/collapse */}
               <RowLabelHeader
                 field="lemma"
-                label="LEMMA"
+                label="LEMMA" // i18n-ignore: a CoNLL-U column name
                 expanded={visibleFields.lemma}
                 onToggle={onToggleField}
               />
               <RowLabelHeader
                 field="xpos"
-                label="XPOS"
+                label="XPOS" // i18n-ignore: a CoNLL-U column name
                 expanded={visibleFields.xpos}
                 onToggle={onToggleField}
               />
               <RowLabelHeader
                 field="upos"
-                label="UPOS"
+                label="UPOS" // i18n-ignore: a CoNLL-U column name
                 expanded={visibleFields.upos}
                 onToggle={onToggleField}
               />
               <RowLabelHeader
                 field="feats"
-                label="FEATS"
+                label="FEATS" // i18n-ignore: a CoNLL-U column name
                 expanded={visibleFields.feats}
                 onToggle={onToggleField}
                 style={

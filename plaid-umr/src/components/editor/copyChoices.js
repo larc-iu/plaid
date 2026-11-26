@@ -1,16 +1,28 @@
 import { notifyError } from '@ui/lib/notify.js';
 import { humanizeError } from '@ui/lib/errors.js';
+import { t } from '@ui/lib/i18n.js';
 import { copyTextOnly, CopyKeptGraphs } from '../../domain/textOnlyCopy.js';
 
 // What the Details tab's Copy offers in plaid-umr: the whole document, or its
 // text alone for a second annotator (the owner's ruling umr-collab-blank-copy).
-// The shape is the shared page's `copyChoices` (DocumentDetailsPage.jsx).
+// The shape is the shared page's `copyChoices` (DocumentDetailsPage.jsx),
+// which shows `label` and `hint` as given: getters, so each is read in the
+// page's language when the dialog draws it.
 export const UMR_COPY_CHOICES = [
-  { value: 'all', label: 'Text and UMR graphs' },
+  {
+    value: 'all',
+    get label() {
+      return t('Text and UMR graphs');
+    },
+  },
   {
     value: 'text',
-    label: 'Text only',
-    hint: 'Words and glosses, without the UMR graphs.',
+    get label() {
+      return t('Text only');
+    },
+    get hint() {
+      return t('Words and glosses, without the UMR graphs.');
+    },
     copy: async ({ client, doc, name, onNameTaken }) => {
       try {
         return await copyTextOnly(client, doc, name, { onNameTaken });
@@ -19,13 +31,13 @@ export const UMR_COPY_CHOICES = [
         // here instead of opening it, and the toast stays until closed.
         if (error instanceof CopyKeptGraphs) {
           notifyError(
-            `Delete “${error.created.name}” before copying again.`,
-            `Copied to “${error.created.name}” with its UMR graphs`,
+            t('Delete “{name}” before copying again.', { name: error.created.name }),
+            t('Copied to “{name}” with its UMR graphs', { name: error.created.name }),
             { duration: Infinity },
           );
           return { ...error.created, notified: true, stay: true };
         }
-        notifyError(humanizeError(error), 'Failed to copy document');
+        notifyError(humanizeError(error), t('Failed to copy document'));
         return null;
       }
     },

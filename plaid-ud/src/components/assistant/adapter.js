@@ -12,6 +12,7 @@ import { APP_ROUTES, parseSentenceHref } from '../../appRoutes.js';
 import { documentGroupOf } from '@ui/components/assistant/documentGroup.js';
 import { ExampleCard } from './ExampleCard.jsx';
 import { citationTitle, sentenceHref } from './cite.js';
+import { msg, t } from '@ui/lib/i18n.js';
 
 // Cite tags, plus the older `{{Doc sN}}` braces and bare "s3.w2" references
 // (the service resolves those only when the turn read a single document).
@@ -39,10 +40,13 @@ const changeHref = (projectId, where) => {
 const changeTitle = (where) => {
   if (!where) return '';
   if (where.kind === 'token')
-    return (
-      `${where.documentName}, sentence ${where.sentence}` +
-      (where.word ? `, word ${where.word}` : '')
-    );
+    return where.word
+      ? t('{name}, sentence {sentence}, word {word}', {
+          name: where.documentName,
+          sentence: where.sentence,
+          word: where.word,
+        })
+      : t('{name}, sentence {sentence}', { name: where.documentName, sentence: where.sentence });
   if (where.kind === 'document') return where.documentName || '';
   return '';
 };
@@ -58,7 +62,12 @@ const changePlace = (projectId, where) => {
   if (where.kind !== 'token') return null;
   return where.word
     ? { href, title, name: where.surface, detail: where.ref }
-    : { href, title, name: `Sentence ${where.sentence}`, detail: where.surface };
+    : {
+        href,
+        title,
+        name: t('Sentence {sentence}', { sentence: where.sentence }),
+        detail: where.surface,
+      };
 };
 
 // A cited sentence as a Markdown table, for the conversation export: the
@@ -88,10 +97,19 @@ export const parseCitationHref = (href) => {
 
 export const UD_ASSISTANT = {
   app: 'ud',
-  intro: 'Ask about the corpus or the annotation, or ask for changes.',
+  // The tab's opening line, read when the tab is drawn: a getter, so the
+  // message is looked up in the language of the page, not at module load.
+  get intro() {
+    return t('Ask about the corpus or the annotation, or ask for changes.');
+  },
   // What a plan is rewriting when it changes the text rather than an
-  // annotation of it. This app's word for it, on the tab it is edited on.
-  textName: 'your text',
+  // annotation of it. This app's word for it, on the tab it is edited on, as
+  // the whole sentence the plan card shows (`textRewrites`). `textName` is
+  // the contract's older member, read only where `textRewrites` is missing.
+  textRewrites: msg(
+    '{n, plural, one {# change rewrites your text.} other {# changes rewrite your text.}}',
+  ),
+  textName: 'your text', // i18n-ignore: the old member, read only where textRewrites is missing
   convHref: (projectId, id) => `/projects/${projectId}/assistant?conversation=${id}`,
   CITE_RE,
   citationTitle,
@@ -105,9 +123,11 @@ export const UD_ASSISTANT = {
   // The assistant reads a project set up for UD, and no other.
   opensProject: isUdProject,
   projectLanguage: readProjectLanguage,
+  // Each stands in for the person's own message, so the tab shows and sends
+  // it in the interface's language (t() where shown).
   examples: [
-    'Which words in this project still have no lemma?',
-    'Are there dependency relations that look wrong?',
-    'Summarize the parts of speech used across the corpus.',
+    msg('Which words in this project still have no lemma?'),
+    msg('Are there dependency relations that look wrong?'),
+    msg('Summarize the parts of speech used across the corpus.'),
   ],
 };

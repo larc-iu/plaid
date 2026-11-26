@@ -1,3 +1,4 @@
+import { t } from '@ui/lib/i18n.js';
 import { useAuth } from '../../contexts/AuthContext.jsx';
 import { canManageProject } from '@ui/domain/permissions.js';
 import { getUmrLayerInfo } from '../../utils/umrLayerUtils.js';
@@ -30,21 +31,21 @@ export const ProjectTabs = ({ projectId, project }) => {
 
   const at = (section) => `/projects/${projectId}/${section}`;
   const tabs = [
-    { value: 'documents', label: 'Documents', to: at('documents') },
-    { value: 'guidelines', label: 'Guidelines', to: at('guidelines') },
+    { value: 'documents', label: t('Documents'), to: at('documents') },
+    { value: 'guidelines', label: t('Guidelines'), to: at('guidelines') },
     {
       value: 'assistant',
-      label: 'Assistant',
+      label: t('Assistant'),
       to: at('assistant'),
       show: assistantAvailable,
       alsoWhenActive: true,
     },
-    { value: 'validate', label: 'Validation', to: at('validate'), show: canManage },
-    { value: 'activity', label: 'Activity', to: at('activity'), show: canManage },
-    { value: 'import-export', label: 'Import and export', to: at('import-export') },
+    { value: 'validate', label: t('Validation'), to: at('validate'), show: canManage },
+    { value: 'activity', label: t('Activity'), to: at('activity'), show: canManage },
+    { value: 'import-export', label: t('Import and export'), to: at('import-export') },
     {
       value: 'settings',
-      label: 'Settings',
+      label: t('Settings'),
       to: at(configured ? 'general' : 'configuration'),
       match: SETTINGS,
       show: canManage,

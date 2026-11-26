@@ -17,6 +17,7 @@
 // text, not the graph.
 import { getUmrLayerInfo, UMR_NAMESPACE } from '../utils/umrLayerUtils.js';
 import { isRecordToken } from './sentenceGraph.js';
+import { t } from '../../../plaid-ui/src/lib/i18n.js';
 
 /** The record keys that hold graph, not text. */
 const RECORD_GRAPH_KEYS = [
@@ -107,7 +108,7 @@ export async function copyTextOnly(client, doc, name, { onNameTaken = null } = {
  * not be deleted either. */
 export class CopyKeptGraphs extends Error {
   constructor(created, cause) {
-    super(cause?.message || 'The UMR graphs could not be taken off the copy.');
+    super(cause?.message || t('The UMR graphs could not be taken off the copy.'));
     this.name = 'CopyKeptGraphs';
     this.created = created;
     this.cause = cause;

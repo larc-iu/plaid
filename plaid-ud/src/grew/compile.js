@@ -17,6 +17,7 @@
 // inside `not`; or/seq expansion <=128 branches; nesting <=64).
 
 import { GrewUnsupportedError } from './errors.js';
+import { t } from '../../../plaid-ui/src/lib/i18n.js';
 import {
   featDefinedRegex,
   featNeqRegex,
@@ -113,7 +114,9 @@ class Compiler {
     if (!layer || !layer.id) {
       throw new GrewUnsupportedError(
         `layer:${feature || key}`,
-        `This project does not record ${feature || key}. That constraint cannot be matched here.`,
+        t('This project does not record {layer}. That constraint cannot be matched here.', {
+          layer: feature || key,
+        }),
       );
     }
     return layer.id;
@@ -165,8 +168,10 @@ class Compiler {
     if (maxBranches != null && this.branches > maxBranches) {
       throw new GrewUnsupportedError(
         'branch-explosion',
-        `This query expands to too many alternatives (${this.branches} > ${maxBranches}). ` +
-          `Prefer value lists (a|b) over disjoint feature structures, or split the query.`,
+        t(
+          'This query expands to too many alternatives ({n} > {max}). Prefer value lists (a|b) over disjoint feature structures, or split the query.',
+          { n: this.branches, max: maxBranches },
+        ),
       );
     }
 
@@ -281,12 +286,15 @@ class Compiler {
     const variable = '?groupValue';
     const { node, field } = spec || {};
     if (!node || !field) {
-      throw new GrewUnsupportedError('count-by', 'Nothing to count by.');
+      throw new GrewUnsupportedError('count-by', t('Nothing to count by.'));
     }
 
     if (field === 'label') {
       if (!this.edgesById.has(node)) {
-        throw new GrewUnsupportedError('count-by', `The pattern has no edge named ${node}.`);
+        throw new GrewUnsupportedError(
+          'count-by',
+          t('The pattern has no edge named {name}.', { name: node }),
+        );
       }
       // Grouped by layer as well, so an extra `nsubj` is counted as `E:nsubj`
       // and not into the tree's (the enhanced layer stores the bare deprel).
@@ -300,7 +308,10 @@ class Compiler {
     }
 
     if (!this.topNodeIds.has(node)) {
-      throw new GrewUnsupportedError('count-by', `The pattern has no node named ${node}.`);
+      throw new GrewUnsupportedError(
+        'count-by',
+        t('The pattern has no node named {name}.', { name: node }),
+      );
     }
     const lower = String(field).toLowerCase();
 
@@ -311,7 +322,9 @@ class Compiler {
       // refused rather than answered wrongly.
       throw new GrewUnsupportedError(
         'count-by',
-        'Counting by form is not supported: a form is a span on a multi-word token and the text itself otherwise.',
+        t(
+          'Counting by form is not supported: a form is a span on a multi-word token and the text itself otherwise.',
+        ),
       );
     }
 
@@ -415,7 +428,10 @@ class Compiler {
         this.emitCross(item, ctx);
         break;
       default:
-        throw new GrewUnsupportedError(item.kind, `Unsupported clause: ${item.kind}`);
+        throw new GrewUnsupportedError(
+          item.kind,
+          t('Unsupported clause: {kind}', { kind: item.kind }),
+        );
     }
   }
 
@@ -524,7 +540,9 @@ class Compiler {
     if (mentionsLexicon(fi.value)) {
       throw new GrewUnsupportedError(
         'feats-lexicon',
-        'A lexicon field cannot be matched against FEATS. Match one feature (X [Number=lex.field]).',
+        t(
+          'A lexicon field cannot be matched against FEATS. Match one feature (X [Number=lex.field]).',
+        ),
       );
     }
     let value;
@@ -540,7 +558,7 @@ class Compiler {
     if (fi.op === 'undefined') {
       throw new GrewUnsupportedError(
         '!form',
-        'Matching tokens with no surface form is not supported.',
+        t('Matching tokens with no surface form is not supported.'),
       );
     }
     const vc =
@@ -584,7 +602,7 @@ class Compiler {
       if (ctx.inNot) {
         throw new GrewUnsupportedError(
           'featcmp-neq-in-without',
-          'A feature inequality (X.f <> Y.f) cannot appear inside a `without` block.',
+          t('A feature inequality (X.f <> Y.f) cannot appear inside a `without` block.'),
         );
       }
       const v1 = this.fresh('v'),
@@ -600,13 +618,15 @@ class Compiler {
     if (lower === 'form') {
       throw new GrewUnsupportedError(
         'form-cmp',
-        'Comparing `form` across nodes is not supported. Compare `lemma` instead.',
+        t('Comparing `form` across nodes is not supported. Compare `lemma` instead.'),
       );
     }
     if (lower === 'feats') {
       throw new GrewUnsupportedError(
         'feats-cmp',
-        'Comparing FEATS as a whole across nodes is not supported. Compare one feature (X.Number = Y.Number).',
+        t(
+          'Comparing FEATS as a whole across nodes is not supported. Compare one feature (X.Number = Y.Number).',
+        ),
       );
     }
     if (COLUMN_FEATS[lower])
@@ -625,7 +645,7 @@ class Compiler {
       if (ctx.inNot) {
         throw new GrewUnsupportedError(
           'feats-cmp-in-without',
-          'Comparing FEATS values across nodes is not supported inside a `without` block.',
+          t('Comparing FEATS values across nodes is not supported inside a `without` block.'),
         );
       }
       ctx.list.push(['span', av, { layer: layerSpec.layer, value: { var: vv } }]);
@@ -651,7 +671,7 @@ class Compiler {
       sides.push({ layer, value: this.edgeValueConstraint(split.enhanced, ctx) ?? ANY_VALUE });
     }
     if (!sides.length) {
-      throw new GrewUnsupportedError('edge-label', 'This edge label can match no edge.');
+      throw new GrewUnsupportedError('edge-label', t('This edge label can match no edge.'));
     }
     return sides;
   }
@@ -679,7 +699,13 @@ class Compiler {
     ) {
       throw new GrewUnsupportedError(
         'root-source',
-        `The head of a root relation is not a word. Write * -[${l.labels.filter((x) => bareLabel(x) === 'root').join('|')}]-> ${item.tgt.wild ? '*' : item.tgt.id} in a clause of its own.`,
+        t(
+          'The head of a root relation is not a word. Write * -[{labels}]-> {target} in a clause of its own.',
+          {
+            labels: l.labels.filter((x) => bareLabel(x) === 'root').join('|'),
+            target: item.tgt.wild ? '*' : item.tgt.id,
+          },
+        ),
       );
     }
     const rv = item.id ? `?e_${item.id}` : this.fresh('r');
@@ -726,7 +752,7 @@ class Compiler {
     if (item.left.wild || item.right.wild) {
       throw new GrewUnsupportedError(
         'dominates-wildcard',
-        'Transitive dominance (->>) requires named endpoints.',
+        t('Transitive dominance (->>) requires named endpoints.'),
       );
     }
     const a = this.lemmaSpan(item.left.id, ctx);
@@ -737,14 +763,16 @@ class Compiler {
     if (labelled && !(item.label.type === 'list' && !item.label.negated)) {
       throw new GrewUnsupportedError(
         'dominates-label',
-        'A transitive edge (->>) may only carry a plain label or label list, not a regex/negation/subtype.',
+        t(
+          'A transitive edge (->>) may only carry a plain label or label list, not a regex/negation/subtype.',
+        ),
       );
     }
     const split = labelled ? splitLabel(item.label) : { basic: null, enhanced: null };
     if (split.basic && split.enhanced) {
       throw new GrewUnsupportedError(
         'dominates-mixed',
-        'A transitive edge (->>) follows basic labels or E: labels, not both at once.',
+        t('A transitive edge (->>) follows basic labels or E: labels, not both at once.'),
       );
     }
     const m = split.enhanced
@@ -808,7 +836,10 @@ class Compiler {
     if (k < 0)
       throw new GrewUnsupportedError(
         'delta-negative-threshold',
-        `delta(X,Y) ${op} ${k} with a negative threshold is not supported. Use an exact delta or a non-negative threshold.`,
+        t(
+          'delta(X,Y) {op} {k} with a negative threshold is not supported. Use an exact delta or a non-negative threshold.',
+          { op, k },
+        ),
       );
     if (op === '>') {
       if (k === 0) ctx.list.push(['precedes*', a, b]);
@@ -835,7 +866,7 @@ class Compiler {
     if (k < 0)
       throw new GrewUnsupportedError(
         'length-negative',
-        'length(X,Y) requires a non-negative number.',
+        t('length(X,Y) requires a non-negative number.'),
       );
     // length = |delta|. Express via delta in both directions.
     if (op === '=') {
@@ -876,7 +907,7 @@ class Compiler {
     if (Math.abs(k) > MAX_LINEAR_DISTANCE) {
       throw new GrewUnsupportedError(
         'distance-too-large',
-        `delta/length distances above ${MAX_LINEAR_DISTANCE} are not supported.`,
+        t('delta/length distances above {max} are not supported.', { max: MAX_LINEAR_DISTANCE }),
       );
     }
   }
@@ -887,12 +918,12 @@ class Compiler {
     if (!e1 || !e2)
       throw new GrewUnsupportedError(
         'cross-unknown-edge',
-        `Edge crossing (><) needs two named edges declared in the pattern.`,
+        t('Edge crossing (><) needs two named edges declared in the pattern.'),
       );
     if (!e1.srcId || !e1.tgtId || !e2.srcId || !e2.tgtId) {
       throw new GrewUnsupportedError(
         'cross-wildcard',
-        'Edge crossing (><) requires both edges to have named endpoints.',
+        t('Edge crossing (><) requires both edges to have named endpoints.'),
       );
     }
     const ts = (id) => this.nodeTok(id, ctx);
@@ -956,14 +987,16 @@ class Compiler {
       else this.where.push(nonProj);
       return;
     }
-    throw new GrewUnsupportedError(name, `Unsupported global constraint: ${name}`);
+    throw new GrewUnsupportedError(name, t('Unsupported global constraint: {name}', { name }));
   }
 
   warnTreeInvariant() {
     if (this._treeWarned) return;
     this._treeWarned = true;
     this.warnings.push(
-      'Tree/cyclicity globals assume well-formed UD trees (one head per word, acyclic). Partially-annotated sentences may not satisfy that assumption.',
+      t(
+        'Tree/cyclicity globals assume well-formed UD trees (one head per word, acyclic). Partially-annotated sentences may not satisfy that assumption.',
+      ),
     );
   }
 
@@ -1042,7 +1075,7 @@ class Compiler {
       if (op === 'undefined')
         throw new GrewUnsupportedError(
           '!text',
-          'Matching sentences without text is not supported.',
+          t('Matching sentences without text is not supported.'),
         );
       const cm =
         op === '<>'
@@ -1054,7 +1087,7 @@ class Compiler {
     if (op === 'undefined') {
       throw new GrewUnsupportedError(
         'global-meta-undefined',
-        `Matching the absence of metadata (${key}) is not supported.`,
+        t('Matching the absence of metadata ({key}) is not supported.', { key }),
       );
     }
     const inner =
@@ -1079,7 +1112,7 @@ class Compiler {
       if (v.items.every((it) => it.type === 'lit')) return v.items.map((it) => it.value);
       throw new GrewUnsupportedError(
         'regex-disjunction',
-        'A disjunction mixing regexes is not supported. Use separate clauses or a single regex.',
+        t('A disjunction mixing regexes is not supported. Use separate clauses or a single regex.'),
       );
     }
     return undefined;
@@ -1095,7 +1128,10 @@ class Compiler {
       return { regex: featValueRegex(name, r.regex) };
     }
     if (v.type === 'any') return { regex: featDefinedRegex(name) };
-    throw new GrewUnsupportedError('feature-value', `Unsupported feature value for ${name}.`);
+    throw new GrewUnsupportedError(
+      'feature-value',
+      t('Unsupported feature value for {name}.', { name }),
+    );
   }
 
   // A person's regex, as the translator writes it for the server
@@ -1107,7 +1143,7 @@ class Compiler {
   refuseLexicon() {
     throw new GrewUnsupportedError(
       'lexicon',
-      'A lexicon (lex.field) only works in a rewriting rule.',
+      t('A lexicon (lex.field) only works in a rewriting rule.'),
     );
   }
 
@@ -1120,14 +1156,14 @@ class Compiler {
     if (!lex.fields.includes(v.field)) {
       throw new GrewUnsupportedError(
         'lexicon-field',
-        `Lexicon '${v.lex}' has no field '${v.field}'.`,
+        t("Lexicon ''{lex}'' has no field ''{field}''.", { lex: v.lex, field: v.field }),
       );
     }
     const values = [...new Set(lex.entries.map((e) => e[v.field]))];
     if (!values.length || values.length > MAX_LEXICON_VALUES) {
       throw new GrewUnsupportedError(
         'lexicon-size',
-        `Lexicon '${v.lex}' is too large to narrow the search.`,
+        t("Lexicon ''{lex}'' is too large to narrow the search.", { lex: v.lex }),
       );
     }
     return values;
@@ -1139,10 +1175,10 @@ class Compiler {
     if (v && v.type === 'regex') {
       throw new GrewUnsupportedError(
         'regex-inequality',
-        'A "<>" (not-equal) constraint must compare against a literal, not a regex.',
+        t('A "<>" (not-equal) constraint must compare against a literal, not a regex.'),
       );
     }
-    throw new GrewUnsupportedError('value', 'Expected a literal value.');
+    throw new GrewUnsupportedError('value', t('Expected a literal value.'));
   }
 
   edgeValueConstraint(label, _ctx) {
@@ -1156,7 +1192,7 @@ class Compiler {
       if (!label.feats.every((f) => /^[1-9][0-9]*$/.test(f.key) && !f.neg)) {
         throw new GrewUnsupportedError(
           'edge-feature',
-          'Only numbered edge features (1=, 2=, …) and `enhanced` are supported.',
+          t('Only numbered edge features (1=, 2=, …) and `enhanced` are supported.'),
         );
       }
       return { regex: featuresLabelRegex(label.feats) };
@@ -1169,7 +1205,7 @@ class Compiler {
     if (maxDepth != null && depth > maxDepth) {
       throw new GrewUnsupportedError(
         'nesting-too-deep',
-        `Query nesting exceeds ${maxDepth} levels.`,
+        t('Query nesting exceeds {max} levels.', { max: maxDepth }),
       );
     }
   }

@@ -67,7 +67,12 @@ import {
   unknownDocRelationProblem,
   valueGrammarProblem,
 } from './format/validate.js';
-import { countOf } from '../../../plaid-ui/src/lib/plural.js';
+import { listOf, msg, t } from '../../../plaid-ui/src/lib/i18n.js';
+
+// A write's label is the English message, marked msg(): DocumentModel shows
+// its translation and names the audit operation after the English. The
+// operation a write names itself (the third argument of `_queueWrite`) is an
+// audit label, sent to the server, and stays English.
 
 // A new name's letters are a to z: the official validator's document-level
 // check reads variables as ASCII (validate.py:406), so `s4pé` exports a file
@@ -83,24 +88,30 @@ const umrOf = (entity) => entity?.metadata?.[UMR_NAMESPACE] || {};
 // the first landed: `stage` is the request that failed ('changes' when it was
 // one of the first's own requests), and `counts` what the apply does, as
 // `{ deletions, changes, nodes, edges }` (new nodes and new edges).
+// Each side is a list of counted phrases, each its own message.
 const partlyApplied = (stage, { deletions, changes, nodes, edges }) => {
-  const list = (parts) =>
-    parts.length > 1 ? `${parts.slice(0, -1).join(', ')} and ${parts.at(-1)}` : parts[0];
+  const list = (parts) => listOf(parts.filter(Boolean));
   const altered =
-    list(
-      [deletions && countOf(deletions, 'deletion'), changes && countOf(changes, 'change')].filter(
-        Boolean,
-      ),
-    ) || 'changes';
-  const newNodes = nodes ? countOf(nodes, 'new node') : null;
-  const newEdges = edges ? countOf(edges, 'new edge') : null;
+    list([
+      deletions && t('{n, plural, one {# deletion} other {# deletions}}', { n: deletions }),
+      changes && t('{n, plural, one {# change} other {# changes}}', { n: changes }),
+    ]) || t('changes');
+  const newNodes = nodes
+    ? t('{n, plural, one {# new node} other {# new nodes}}', { n: nodes })
+    : null;
+  const newEdges = edges
+    ? t('{n, plural, one {# new edge} other {# new edges}}', { n: edges })
+    : null;
   const [saved, missing] =
     stage === 'changes'
-      ? [`some of the ${altered}`, ['the others', newNodes, newEdges]]
+      ? [t('some of the {changes}', { changes: altered }), [t('the others'), newNodes, newEdges]]
       : stage === 'nodes'
         ? [altered, [newNodes, newEdges]]
-        : [list([altered, newNodes].filter(Boolean)), [newEdges]];
-  return `Partly applied. Saved: ${saved}. Not saved: ${list(missing.filter(Boolean))}.`;
+        : [list([altered, newNodes]), [newEdges]];
+  return t('Partly applied. Saved: {saved}. Not saved: {missing}.', {
+    saved,
+    missing: list(missing),
+  });
 };
 
 /**
@@ -153,7 +164,7 @@ function entryChangeOf(node, lexicon) {
 // now ver-02." An entry renamed to its own new concept (kitap to kitab) is
 // named by the concept the node took from it.
 const entryChangeMessage = (v, { form, from, to }) =>
-  `${v} was picked from ${form === to ? from : form}, now ${to}.`;
+  t('{v} was picked from {form}, now {to}.', { v, form: form === to ? from : form, to });
 
 // Every string the model takes is in NFC, as the format requires of the file
 // (penman.js `nfc`): a concept, variable, relation or value typed with a
@@ -278,7 +289,7 @@ export class UmrDocument extends DocumentModel {
     const concept = nfc(change.to);
     const under = targets.map((n) => this._newlyUnderProblem(n, concept)).find(Boolean);
     if (this._refused(conceptProblem(concept), under)) return Promise.resolve(false);
-    const label = 'Failed to change the concept';
+    const label = msg('Failed to change the concept');
     if (!this._canWrite(label)) return Promise.resolve(false);
     const writes = targets.map((n) => ({
       id: n.id,
@@ -959,7 +970,7 @@ export class UmrDocument extends DocumentModel {
     );
     if (refused) return false;
     const parent = parentId ? this.node(parentId) : null;
-    const label = 'Failed to add the node';
+    const label = msg('Failed to add the node');
     if (!this._canWrite(label)) return false;
     const pieces = this._pendingPieces(this.piecesFor(sentence, wordIds));
     const variable = nextVariable(sentence.number ?? sentenceIndex, concept, this.takenVariables());
@@ -1084,7 +1095,7 @@ export class UmrDocument extends DocumentModel {
       this.refuse(refused);
       return false;
     }
-    const label = 'Failed to change the concept';
+    const label = msg('Failed to change the concept');
     if (!this._canWrite(label)) return false;
     // A person's edit carries the writer's stamp (write-contract rule 3): a
     // verifier's confirms a drafted node, a contributor's marks it
@@ -1103,7 +1114,7 @@ export class UmrDocument extends DocumentModel {
       ops,
       label,
       node.concept === concept
-        ? `Change the entry of ${node.var} ${concept}`
+        ? `Change the entry of ${node.var} ${concept}` // i18n-ignore: an audit label
         : `Change ${node.var} from ${node.concept} to ${concept}`,
       {
         // Sent again on a later version: no edge another user hung under
@@ -1211,19 +1222,27 @@ export class UmrDocument extends DocumentModel {
   // graph kept as text has, the kept graph of sentence `mending` aside.
   _newVariableProblem(variable, sentenceIndex, mending = null) {
     if (!VARIABLE.test(variable)) {
-      return `${variable} is not a variable: s, the sentence number, letters a to z, a number.`;
+      return t('{v} is not a variable: s, the sentence number, letters a to z, a number.', {
+        v: variable,
+      });
     }
     const n = Number(variable.match(/^s([0-9]+)/)[1]);
     const number =
       sentenceIndex == null ? null : (this.sentence(sentenceIndex)?.number ?? sentenceIndex);
     if (number != null && n !== number) {
-      return `${variable} names sentence ${n}, and the node is in sentence ${number}.`;
+      return t('{v} names sentence {n}, and the node is in sentence {number}.', {
+        v: variable,
+        n,
+        number,
+      });
     }
     // The file names each sentence's document-level block `s<n>s0`
     // (toUmrSentences), so a node called that is a second definition of it.
     if (DOC_GRAPH_VARIABLE.test(variable))
-      return `${variable} names the sentence's document graph.`;
-    if (this.takenVariables(mending).has(variable)) return `${variable} is already in use.`;
+      return t("{v} names the sentence's document graph.", { v: variable });
+    if (this.takenVariables(mending).has(variable)) {
+      return t('{v} is already in use.', { v: variable });
+    }
     return null;
   }
 
@@ -1317,6 +1336,7 @@ export class UmrDocument extends DocumentModel {
       const order = i >= 0 ? free.splice(i, 1)[0].order : tail++;
       return { rel: a.rel, value: a.value, order };
     });
+    // i18n-ignore: an audit label
     return this._patchNodeMeta(nodeId, { attrs: next }, `Set attributes of ${node.var}`);
   }
 
@@ -1328,7 +1348,7 @@ export class UmrDocument extends DocumentModel {
   async _patchNodeMeta(nodeId, changes, label, { recheck = null, records = [] } = {}) {
     const node = this.node(nodeId);
     if (!node) return false;
-    const failed = 'Failed to save the node';
+    const failed = msg('Failed to save the node');
     if (!this._canWrite(failed)) return false;
     const ops = [...umrOps(changes), ...this._editStampOps(node.metadata)];
     this._applyRawPatch((next, infoNext) => {
@@ -1366,7 +1386,7 @@ export class UmrDocument extends DocumentModel {
     const recorded = umrOf(node).words;
     const same = sameAs(node.wordIds || []) && (!recorded || !wordIds.length || sameAs(recorded));
     if (same) return false;
-    const label = 'Failed to change the anchor';
+    const label = msg('Failed to change the anchor');
     if (!this._canWrite(label)) return false;
     // A node made unaligned keeps standing over the text it stood on, as
     // reconcile puts an unaligned anchor (`unalignedStretch`), not over the
@@ -1468,20 +1488,32 @@ export class UmrDocument extends DocumentModel {
       return false;
     }
     if (source.sentence !== target.sentence) {
-      this.refuse('An edge joins two nodes of one sentence.');
+      this.refuse(t('An edge joins two nodes of one sentence.'));
       return false;
     }
     // The same edge twice, as createTriple refuses it: the file would write
     // the relation twice.
     if (this.hasEdge(source.id, target.id, role)) {
-      this.refuse(`${source.var} ${role} ${target.var} is already there.`);
+      this.refuse(
+        t('{source} {rel} {target} is already there.', {
+          source: source.var,
+          rel: role,
+          target: target.var,
+        }),
+      );
       return false;
     }
     if (this.wouldCycle(source.id, target.id, role)) {
-      this.refuse(`${role} from ${source.var} to ${target.var} would close a cycle.`);
+      this.refuse(
+        t('{rel} from {source} to {target} would close a cycle.', {
+          rel: role,
+          source: source.var,
+          target: target.var,
+        }),
+      );
       return false;
     }
-    const label = 'Failed to add the edge';
+    const label = msg('Failed to add the edge');
     if (!this._canWrite(label)) return false;
     const order = this.nextOrder(source);
     const stamp = this.writer.createStamp;
@@ -1550,10 +1582,16 @@ export class UmrDocument extends DocumentModel {
     // role was allowed to, which is refused as adding it would be.
     if (CYCLE_ROLES.has(edge.role) && this.wouldCycle(edge.source, edge.target, role)) {
       const name = (id) => this.node(id)?.var;
-      this.refuse(`${role} from ${name(edge.source)} to ${name(edge.target)} would close a cycle.`);
+      this.refuse(
+        t('{rel} from {source} to {target} would close a cycle.', {
+          rel: role,
+          source: name(edge.source),
+          target: name(edge.target),
+        }),
+      );
       return false;
     }
-    const label = 'Failed to change the relation';
+    const label = msg('Failed to change the relation');
     if (!this._canWrite(label)) return false;
     // Relabelling a drafted edge settles it, as re-typing a cell does in ud.
     const ok = await this._writeValue(
@@ -1581,7 +1619,7 @@ export class UmrDocument extends DocumentModel {
     const at = siblings.findIndex((e) => e.id === edge.id);
     const other = siblings[at + dir];
     if (at < 0 || !other) return false;
-    const label = 'Failed to reorder the edge';
+    const label = msg('Failed to reorder the edge');
     if (!this._canWrite(label)) return false;
     // Two edges written with one order would not swap: give the pair
     // distinct places, keeping their neighbours where they are.
@@ -1635,7 +1673,7 @@ export class UmrDocument extends DocumentModel {
   async deleteEdge(edgeId, { subtree = true } = {}) {
     const edge = this.edge(edgeId);
     if (!edge) return false;
-    const label = 'Failed to delete the edge';
+    const label = msg('Failed to delete the edge');
     if (!this._canWrite(label)) return false;
     const doomed = subtree ? this.exclusiveDescendants(edge.id) : [];
     const tokenIds = doomed.flatMap((n) => n.tokenIds);
@@ -1670,18 +1708,23 @@ export class UmrDocument extends DocumentModel {
     if (!edge || !source || edge.source === source.id) return false;
     const target = this.node(edge.target);
     if (source.sentence !== target.sentence) {
-      this.refuse('An edge joins two nodes of one sentence.');
+      this.refuse(t('An edge joins two nodes of one sentence.'));
       return false;
     }
     if (this.wouldCycle(source.id, edge.target, edge.role)) {
-      this.refuse(`Moving ${edge.role} under ${source.var} would close a cycle.`);
+      this.refuse(
+        t('Moving {rel} under {source} would close a cycle.', {
+          rel: edge.role,
+          source: source.var,
+        }),
+      );
       return false;
     }
     // Only a move that puts the node where it may not stand: an edge an
     // import brought under an attribute keeps moving as it came.
     const was = nodeUnderAttributeProblem(edge.role, this.node(edge.source)?.concept);
     if (!was && this._refused(nodeUnderAttributeProblem(edge.role, source.concept))) return false;
-    const label = 'Failed to move the edge';
+    const label = msg('Failed to move the edge');
     if (!this._canWrite(label)) return false;
     const order = this.nextOrder(source);
     // The re-parented edge is a NEW relation, hung where this person put it:
@@ -1741,7 +1784,7 @@ export class UmrDocument extends DocumentModel {
   async deleteNode(nodeId, { subtree = true } = {}) {
     const node = this.node(nodeId);
     if (!node) return false;
-    const label = 'Failed to delete the node';
+    const label = msg('Failed to delete the node');
     if (!this._canWrite(label)) return false;
     const below = subtree ? this.orphanedBy(node.id) : [];
     const doomed = [node, ...below];
@@ -1773,7 +1816,7 @@ export class UmrDocument extends DocumentModel {
     const node = this.node(nodeId);
     const sentence = node ? this.sentence(node.sentence) : null;
     if (!sentence || node.root) return false;
-    const label = 'Failed to set the root';
+    const label = msg('Failed to set the root');
     if (!this._canWrite(label)) return false;
     const old = sentence.nodes.filter((n) => n.root);
     const patches = [];
@@ -1867,7 +1910,7 @@ export class UmrDocument extends DocumentModel {
   confirmNode(nodeId) {
     const node = this.node(nodeId);
     if (!node || node.constant) return Promise.resolve(false);
-    return this._confirm([node], 'Failed to accept the node', `Accept ${node.var}`);
+    return this._confirm([node], msg('Failed to accept the node'), `Accept ${node.var}`);
   }
 
   /** Every node and edge of a sentence's graph, as `confirmNode` does one. */
@@ -1876,8 +1919,8 @@ export class UmrDocument extends DocumentModel {
     if (!sentence) return Promise.resolve(false);
     return this._confirm(
       sentence.nodes,
-      'Failed to accept the graph',
-      `Accept the graph of sentence ${sentence.number ?? sentenceIndex}`,
+      msg('Failed to accept the graph'),
+      `Accept the graph of sentence ${sentence.number ?? sentenceIndex}`, // i18n-ignore: an audit label
     );
   }
 
@@ -1963,7 +2006,7 @@ export class UmrDocument extends DocumentModel {
     if (!sentence) return Promise.resolve(false);
     const { nodes, relations, explicit } = this._discardPlan(sentence);
     if (!nodes.length && !relations.length) return Promise.resolve(false);
-    const label = 'Failed to discard the drafted graph';
+    const label = msg('Failed to discard the drafted graph');
     if (!this._canWrite(label)) return Promise.resolve(false);
     const spanIds = nodes.map((n) => n.id);
     const tokenIds = nodes.flatMap((n) => n.tokenIds);
@@ -1981,7 +2024,7 @@ export class UmrDocument extends DocumentModel {
           explicit.forEach((r) => b.relations.delete(settledId(r.id)));
           if (tokenIds.length) b.tokens.bulkDelete(tokenIds.map(settledId));
         }),
-      `Discard the drafted graph of sentence ${sentence.number ?? sentenceIndex}`,
+      `Discard the drafted graph of sentence ${sentence.number ?? sentenceIndex}`, // i18n-ignore: an audit label
     );
   }
 
@@ -2071,22 +2114,28 @@ export class UmrDocument extends DocumentModel {
     const isConst = (x) => DOC_CONSTANTS.includes(x);
     const nodeOf = (x) => (isConst(x) ? this.constantNode(x) : this.node(x));
     const s = nodeOf(source);
-    const t = nodeOf(target);
+    const tri = nodeOf(target);
     if (source === target) return false;
     if (!isConst(source) && !s) return false;
-    if (!isConst(target) && !t) return false;
+    if (!isConst(target) && !tri) return false;
     const g = group || groupOf(rel);
     if (this._refused(this.relationProblem(rel, { group: g }))) return false;
     // Already there, in this direction, or in either for a coreference.
     const same = (x, from, to) => x.rel === rel && x.target === to && x.source === from;
     const there =
-      (s && t && s.docOut.some((x) => same(x, s.id, t.id))) ||
-      (g === 'coref' && s && t && t.docOut.some((x) => same(x, t.id, s.id)));
+      (s && tri && s.docOut.some((x) => same(x, s.id, tri.id))) ||
+      (g === 'coref' && s && tri && tri.docOut.some((x) => same(x, tri.id, s.id)));
     if (there) {
-      this.refuse(`${s?.var || source} ${rel} ${t?.var || target} is already there.`);
+      this.refuse(
+        t('{source} {rel} {target} is already there.', {
+          source: s?.var || source,
+          rel,
+          target: tri?.var || target,
+        }),
+      );
       return false;
     }
-    const failed = 'Failed to add the document-level relation';
+    const failed = msg('Failed to add the document-level relation');
     if (!this._canWrite(failed)) return false;
     const meta = { group: g };
     // A triple between two constants belongs to no sentence by itself: the
@@ -2106,9 +2155,9 @@ export class UmrDocument extends DocumentModel {
     // carries their create stamp (ud's lemma span for a relation does the
     // same).
     const newSource = s ? null : this._pendingConstant(source);
-    const newTarget = t ? null : this._pendingConstant(target);
+    const newTarget = tri ? null : this._pendingConstant(target);
     const sourceId = s ? s.id : newSource.span.id;
-    const targetId = t ? t.id : newTarget.span.id;
+    const targetId = tri ? tri.id : newTarget.span.id;
     const tripleId = pendingId();
     this._applyRawPatch((next, infoNext) => {
       if (newSource) this._addConstant(infoNext, newSource);
@@ -2174,7 +2223,7 @@ export class UmrDocument extends DocumentModel {
         ids.set(tripleId, createdId(results[tripleAt]));
         this._settle(ids);
       },
-      `Add ${rel} from ${s?.var || source} to ${t?.var || target}`,
+      `Add ${rel} from ${s?.var || source} to ${tri?.var || target}`,
       {
         // Sent again on a later version: its node ends still there, a
         // constant it makes still missing, and a sentence named by number
@@ -2183,7 +2232,7 @@ export class UmrDocument extends DocumentModel {
         recheck: (fresh) => {
           const endHolds = (x, node) =>
             isConst(x) ? !!node === !!fresh.constantNode(x) : !!fresh.node(node.id);
-          if (!endHolds(source, s) || !endHolds(target, t)) return false;
+          if (!endHolds(source, s) || !endHolds(target, tri)) return false;
           if (!block) return true;
           const now = fresh.sentence(block.index);
           return (
@@ -2237,26 +2286,32 @@ export class UmrDocument extends DocumentModel {
   // `onRefused` is called when the server refused it after it was shown.
   async setTripleRelation(id, rel, { onRefused = null } = {}) {
     rel = nfc(rel);
-    const t = this.triple(id);
-    if (!t || !rel || t.rel === rel) return false;
+    const tri = this.triple(id);
+    if (!tri || !rel || tri.rel === rel) return false;
     if (this._refused(this.relationProblem(rel, { tripleId: id }))) return false;
     // The same pair under the same relation, as createTriple refuses it: the
     // node wore the tag twice and the file wrote the triple twice.
-    const source = this.node(t.source) || this.constantNode(t.source);
+    const source = this.node(tri.source) || this.constantNode(tri.source);
     const twin = (source?.docOut || []).find(
-      (x) => x.id !== t.id && x.rel === rel && x.target === t.target,
+      (x) => x.id !== tri.id && x.rel === rel && x.target === tri.target,
     );
     if (twin) {
       const name = (x) => this.node(x)?.var || x;
-      this.refuse(`${name(t.source)} ${rel} ${name(t.target)} is already there.`);
+      this.refuse(
+        t('{source} {rel} {target} is already there.', {
+          source: name(tri.source),
+          rel,
+          target: name(tri.target),
+        }),
+      );
       return false;
     }
-    const label = 'Failed to change the document-level relation';
+    const label = msg('Failed to change the document-level relation');
     if (!this._canWrite(label)) return false;
-    const raw = this._layers(this.layerInfo).triples.find((x) => x.id === t.id);
+    const raw = this._layers(this.layerInfo).triples.find((x) => x.id === tri.id);
     const stampOps = this._valueEditStampOps(raw?.metadata);
     this._applyRawPatch((next, infoNext) => {
-      const r = this._layers(infoNext).triples.find((x) => x.id === t.id);
+      const r = this._layers(infoNext).triples.find((x) => x.id === tri.id);
       if (!r) return;
       r.value = rel;
       if (stampOps.length) r.metadata = applyMetadataOps(r.metadata, stampOps);
@@ -2264,7 +2319,7 @@ export class UmrDocument extends DocumentModel {
     const ok = await this._queueWrite(
       label,
       async () => {
-        const serverId = settledId(t.id);
+        const serverId = settledId(tri.id);
         if (stampOps.length) {
           await this._client.batched(async (b) => {
             b.relations.update(serverId, rel);
@@ -2274,26 +2329,26 @@ export class UmrDocument extends DocumentModel {
           await this._client.relations.update(serverId, rel);
         }
       },
-      `Relabel ${t.rel} ${this._ends(t)} as ${rel}`,
+      `Relabel ${tri.rel} ${this._ends(tri)} as ${rel}`,
     );
     if (!ok) onRefused?.();
     return ok;
   }
 
   async deleteTriple(id) {
-    const t = this.triple(id);
-    if (!t) return false;
-    const label = 'Failed to delete the document-level relation';
+    const tri = this.triple(id);
+    if (!tri) return false;
+    const label = msg('Failed to delete the document-level relation');
     if (!this._canWrite(label)) return false;
     this._applyRawPatch((next, infoNext) => {
       infoNext.documentGraphLayer.relations = this._layers(infoNext).triples.filter(
-        (x) => x.id !== t.id,
+        (x) => x.id !== tri.id,
       );
     });
     return this._queueWrite(
       label,
-      () => this._client.relations.delete(settledId(t.id)),
-      `Delete ${t.rel} ${this._ends(t)}`,
+      () => this._client.relations.delete(settledId(tri.id)),
+      `Delete ${tri.rel} ${this._ends(tri)}`,
     );
   }
 
@@ -2361,14 +2416,14 @@ export class UmrDocument extends DocumentModel {
    */
   planPenman(sentenceIndex, text) {
     const sentence = this.sentence(sentenceIndex);
-    if (!sentence) return { errors: [{ message: 'No such sentence.' }] };
+    if (!sentence) return { errors: [{ message: t('No such sentence.') }] };
     const parsed = parsePenman(text, { several: true });
     if (parsed.errors.length) return { errors: parsed.errors };
     // An empty text names no node, so every node goes, as any node missing
     // from the text does (the owner's ruling). Text that is not empty and
     // holds no graph is a mistake, not a deletion.
     if (!parsed.root && String(text).trim()) {
-      return { errors: [{ message: 'The text has no graph.' }] };
+      return { errors: [{ message: t('The text has no graph.') }] };
     }
     // The text shows every node of the sentence, so every one is its to keep
     // or delete.
@@ -2506,7 +2561,7 @@ export class UmrDocument extends DocumentModel {
     // only elsewhere in the sentence is not.
     parsed.nodes.forEach((node, v) => {
       const why = conceptProblem(node.concept);
-      if (why) errors.push({ message: `${v}: ${why}` });
+      if (why) errors.push({ message: t('{label}: {error}', { label: v, error: why }) });
       const old = oldByVar.get(v);
       node.children.forEach((child) => {
         const edge =
@@ -2530,7 +2585,7 @@ export class UmrDocument extends DocumentModel {
               at.edgeId && nodeUnderAttributeProblem(child.rel, old.concept)
               ? null
               : nodeUnderAttributeProblem(child.rel, node.concept));
-        if (bad) errors.push({ message: `${v}: ${bad}` });
+        if (bad) errors.push({ message: t('{label}: {error}', { label: v, error: bad }) });
       });
     });
     // Judged on the graph the text writes. A new edge between two nodes an
@@ -2560,7 +2615,11 @@ export class UmrDocument extends DocumentModel {
       if (relabelled.get(pair) > 0) relabelled.set(pair, relabelled.get(pair) - 1);
       else {
         errors.push({
-          message: `${e.role} from ${e.sourceVar} to ${e.targetVar} would close a cycle.`,
+          message: t('{rel} from {source} to {target} would close a cycle.', {
+            rel: e.role,
+            source: e.sourceVar,
+            target: e.targetVar,
+          }),
         });
       }
     });
@@ -2689,7 +2748,7 @@ export class UmrDocument extends DocumentModel {
       return false;
     }
     if (!plan.changes) return 0;
-    const label = 'Failed to apply the text';
+    const label = msg('Failed to apply the text');
     if (!this._canWrite(label)) return false;
     // The sentence the text was written over, for a send again (below).
     const seen = this.penmanOf(sentenceIndex);
@@ -2959,6 +3018,7 @@ export class UmrDocument extends DocumentModel {
           const made = createdIds(results[at]);
           if (made.length !== list.length) {
             throw new Error(
+              // i18n-ignore: an invariant error, for developers
               `The server returned ${made.length} ${what} ids for ${list.length} ${what}s.`,
             );
           }
@@ -3046,7 +3106,8 @@ export class UmrDocument extends DocumentModel {
         }
         this._settle(ids);
       },
-      `Apply text to sentence ${sentence?.number ?? sentenceIndex} (${countOf(plan.changes, 'change')})`,
+      // i18n-ignore: an audit label
+      `Apply text to sentence ${sentence?.number ?? sentenceIndex} (${plan.changes.toLocaleString()} ${plan.changes === 1 ? 'change' : 'changes'})`,
       {
         // The text is the whole sentence: sent again on a later version, it
         // goes only while nobody else changed the sentence's graph (a node
@@ -3061,7 +3122,7 @@ export class UmrDocument extends DocumentModel {
               sentence,
               sentence.words.map((w) => w.id),
             )) ||
-          Object.assign(new Error('Changed elsewhere. Apply your text again.'), {
+          Object.assign(new Error(t('Changed elsewhere. Apply your text again.')), {
             changedElsewhere: true,
           }),
       },

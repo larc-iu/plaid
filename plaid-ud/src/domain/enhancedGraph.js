@@ -197,15 +197,15 @@ export const parseDeps = (column) => {
   let emptyHeads = 0;
   for (const part of text.split(/\|(?=\d+(?:\.\d+)?:)/)) {
     const cut = part.indexOf(':');
-    if (cut <= 0) throw new Error(`Invalid DEPS value: ${part}`);
+    if (cut <= 0) throw new Error(`Invalid DEPS value: ${part}`); // i18n-ignore: caught by the parser, never shown
     const headText = part.slice(0, cut);
     const deprel = part.slice(cut + 1);
-    if (!deprel) throw new Error(`Invalid DEPS value: ${part}`);
+    if (!deprel) throw new Error(`Invalid DEPS value: ${part}`); // i18n-ignore: caught by the parser, never shown
     if (/^\d+\.\d+$/.test(headText)) {
       emptyHeads += 1;
       continue;
     }
-    if (!/^\d+$/.test(headText)) throw new Error(`Invalid DEPS value: ${part}`);
+    if (!/^\d+$/.test(headText)) throw new Error(`Invalid DEPS value: ${part}`); // i18n-ignore: caught by the parser, never shown
     const head = parseInt(headText, 10);
     if (!edges.some((e) => e.head === head && e.deprel === deprel)) edges.push({ head, deprel });
   }

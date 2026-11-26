@@ -5,6 +5,8 @@
 // Loaded on demand and once, by language: a frame file is a megabyte, and a
 // project in Arapaho has none.
 
+import { msg } from '../../../plaid-ui/src/lib/i18n.js';
+
 const FILES = {
   en: () => import('../data/frames/english.json'),
   zh: () => import('../data/frames/chinese.json'),
@@ -14,14 +16,14 @@ const FILES = {
 
 /**
  * What each bundled file holds, for a screen that wants to SAY so without
- * fetching a megabyte to count. `frames.test.js` reads the files and fails
+ * fetching a megabyte to count. A name is a message: the screen calls t(). `frames.test.js` reads the files and fails
  * while a count here disagrees, so the shortcut cannot drift.
  */
 export const FRAME_LANGUAGES = Object.freeze({
-  en: { name: 'English', rolesets: 8733 },
-  zh: { name: 'Chinese', rolesets: 16891 },
-  ar: { name: 'Arabic', rolesets: 10041 },
-  pt: { name: 'Portuguese', rolesets: 1410 },
+  en: { name: msg('English'), rolesets: 8733 },
+  zh: { name: msg('Chinese'), rolesets: 16891 },
+  ar: { name: msg('Arabic'), rolesets: 10041 },
+  pt: { name: msg('Portuguese'), rolesets: 1410 },
 });
 
 /** The base of a BCP-47 tag: `en-US` and `en_GB` are both `en`. */

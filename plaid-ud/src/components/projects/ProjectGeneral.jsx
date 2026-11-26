@@ -16,6 +16,9 @@ import { Loading } from '@ui/components/shared/Loading.jsx';
 import { Button } from '@ui/components/ui/button';
 import { Input } from '@ui/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle } from '@ui/components/ui/card';
+import { t, tx } from '@ui/lib/i18n.js';
+
+const code = (c) => <code>{c}</code>;
 
 // "General": the shared page (name, language, delete) with UD's one section of
 // its own, the tokenizer locale the segmenter uses.
@@ -45,12 +48,9 @@ export const ProjectGeneral = ({ onProjectUpdate }) => {
         // The tag is on the PROJECT, in this app's half of its config.
         namespace: UD_NAMESPACE,
         saved: readProjectLanguage(project),
-        description: (
-          <>
-            The language this project annotates, as a BCP-47 tag (<code>en</code>, <code>de</code>,{' '}
-            <code>zh-Hans</code>). The parser starts on it, and tokenization uses it unless the
-            locale below is set.
-          </>
+        description: tx(
+          'The language this project annotates, as a BCP-47 tag (<code>en</code>, <code>de</code>, <code>zh-Hans</code>). The parser starts on it, and tokenization uses it unless the locale below is set.',
+          { code },
         ),
       }}
     >
@@ -79,8 +79,8 @@ const TokenizerLocaleCard = ({ project, onSaved }) => {
     setSaving(true);
     try {
       const client = getClient();
-      if (!client) throw new Error('Not authenticated');
-      if (!info.textLayer) throw new Error(NOT_SET_UP);
+      if (!client) throw new Error(t('Not authenticated'));
+      if (!info.textLayer) throw new Error(t(NOT_SET_UP));
       const loc = locale.trim();
       const expected = expectStored(info.textLayer, UD_NAMESPACE, TOKENIZER_LOCALE_KEY);
       if (loc)
@@ -101,10 +101,10 @@ const TokenizerLocaleCard = ({ project, onSaved }) => {
           expected,
         );
       await onSaved();
-      notifySuccess('Tokenizer locale saved');
+      notifySuccess(t('Tokenizer locale saved'));
     } catch (err) {
       console.error('Failed to save tokenizer locale:', err);
-      notifyError(err, 'Failed to save the tokenizer locale');
+      notifyError(err, t('Failed to save the tokenizer locale'));
       // Someone else saved since: show what is stored now.
       if (isConfigConflict(err)) onSaved();
     } finally {
@@ -115,32 +115,33 @@ const TokenizerLocaleCard = ({ project, onSaved }) => {
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Tokenizer locale</CardTitle>
+        <CardTitle>{t('Tokenizer locale')}</CardTitle>
       </CardHeader>
       <CardContent className="flex flex-col gap-4">
         <p className="text-sm text-muted-foreground">
-          Language tag for splitting text into tokens. It matters most for <code>ja</code>,{' '}
-          <code>zh</code> and <code>th</code>, which are split by dictionary lookup. Leave empty to
-          use the project language.
+          {tx(
+            'Language tag for splitting text into tokens. It matters most for <code>ja</code>, <code>zh</code> and <code>th</code>, which are split by dictionary lookup. Leave empty to use the project language.',
+            { code },
+          )}
         </p>
         {info.textLayer ? (
           <form className="flex items-end gap-2" onSubmit={handleSave}>
             <Input
               value={locale}
               onChange={(e) => setLocale(e.target.value)}
-              placeholder={language.trim() || 'Not set'}
+              placeholder={language.trim() || t('Not set')}
               className="w-56"
               spellCheck={false}
-              aria-label="Tokenizer locale"
+              aria-label={t('Tokenizer locale')}
               dir="ltr"
             />
             <Button type="submit" disabled={!changed || saving}>
-              {saving ? 'Saving…' : 'Save'}
+              {saving ? t('Saving…') : t('Save')}
             </Button>
           </form>
         ) : (
           <p className="rounded-md border bg-muted/40 px-3 py-2 text-sm text-muted-foreground">
-            Set the project up for UD first.
+            {t('Set the project up for UD first.')}
           </p>
         )}
       </CardContent>

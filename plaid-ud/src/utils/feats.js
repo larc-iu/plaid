@@ -12,6 +12,9 @@
 // the untrimmed name, so a typed `Gender =Fem` filed itself under `Gender ` and
 // left the word carrying two genders.
 
+// By its real path: the `node --test` suite has no `@ui` alias.
+import { msg, t } from '../../../plaid-ui/src/lib/i18n.js';
+
 /**
  * Read a `Key=Value` pair, trimming BOTH halves.
  *
@@ -42,17 +45,17 @@ export const normalizeFeature = (raw) => {
  */
 export const featureRefusal = (pair) =>
   /\s/.test(pair)
-    ? 'A feature name and value cannot contain spaces.'
+    ? t('A feature name and value cannot contain spaces.')
     : pair.includes('|')
-      ? 'A feature name and value cannot contain |.'
+      ? t('A feature name and value cannot contain |.')
       : null;
 
 // The same CoNLL-U rule for the other columns a person types into. Only the
 // fields it covers: a lemma or a form may hold a space (H17-3).
 const SPACE_FREE = {
-  upos: 'A UPOS value',
-  xpos: 'An XPOS value',
-  deprel: 'A dependency relation',
+  upos: msg('A UPOS value cannot contain spaces.'),
+  xpos: msg('An XPOS value cannot contain spaces.'),
+  deprel: msg('A dependency relation cannot contain spaces.'),
 };
 
 /**
@@ -65,9 +68,9 @@ const SPACE_FREE = {
  */
 export const spaceRefusal = (field, value) =>
   SPACE_FREE[field] && typeof value === 'string' && /\s/.test(value)
-    ? `${SPACE_FREE[field]} cannot contain spaces.`
+    ? t(SPACE_FREE[field])
     : field === 'deprel' && typeof value === 'string' && /^:|:$|::/.test(value)
       ? // An empty part ('nmod:', 'obl::', ':poss'), which a closed list,
         // reading only the part before the first colon, let through (H3-1-3).
-        'A dependency relation cannot start or end with a colon, or hold two in a row.'
+        t('A dependency relation cannot start or end with a colon, or hold two in a row.')
       : null;

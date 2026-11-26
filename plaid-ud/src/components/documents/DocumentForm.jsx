@@ -7,6 +7,7 @@ import { nameTakenMessage } from '@ui/lib/documentNames.js';
 import { Button } from '@ui/components/ui/button';
 import { Input } from '@ui/components/ui/input';
 import { Label } from '@ui/components/ui/label';
+import { t } from '@ui/lib/i18n.js';
 import {
   Dialog,
   DialogContent,
@@ -33,7 +34,7 @@ export const DocumentForm = ({ projectId, isOpen, onClose }) => {
 
     const name = documentName.trim();
     if (!name) {
-      setError('Name the document.');
+      setError(t('Name the document.'));
       return;
     }
 
@@ -54,7 +55,7 @@ export const DocumentForm = ({ projectId, isOpen, onClose }) => {
       // A name another document holds is said as core words it.
       setError(
         nameTakenMessage(err) ??
-          (isUnknownOutcome(err) ? humanizeError(err) : 'Failed to create the document.'),
+          (isUnknownOutcome(err) ? humanizeError(err) : t('Failed to create the document.')),
       );
       console.error('Error creating document:', err);
       setLoading(false);
@@ -65,7 +66,7 @@ export const DocumentForm = ({ projectId, isOpen, onClose }) => {
     <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
       <DialogContent className="max-w-md">
         <DialogHeader>
-          <DialogTitle>New document</DialogTitle>
+          <DialogTitle>{t('New document')}</DialogTitle>
         </DialogHeader>
         <form onSubmit={handleSubmit} className="flex flex-col gap-4">
           {error && (
@@ -78,7 +79,7 @@ export const DocumentForm = ({ projectId, isOpen, onClose }) => {
           )}
 
           <div className="flex flex-col gap-1.5">
-            <Label htmlFor="document-name">Document name</Label>
+            <Label htmlFor="document-name">{t('Document name')}</Label>
             <Input
               id="document-name"
               value={documentName}
@@ -93,10 +94,10 @@ export const DocumentForm = ({ projectId, isOpen, onClose }) => {
 
           <DialogFooter>
             <Button type="button" variant="outline" onClick={onClose} disabled={loading}>
-              Cancel
+              {t('Cancel')}
             </Button>
             <Button type="submit" disabled={loading}>
-              {loading ? 'Creating…' : 'Create document'}
+              {loading ? t('Creating…') : t('Create document')}
             </Button>
           </DialogFooter>
         </form>

@@ -12,7 +12,7 @@
 // By real path, so the node suite loads it (no `@ui` alias there).
 import { CATEGORICAL, DYES } from '../../../plaid-ui/src/domain/dyes.js';
 import { MODES, cleanDescriptions } from './udVocabMode.js';
-import { UPOS_DESCRIPTIONS, DEPREL_DESCRIPTIONS } from './udVocabDescriptions.js';
+import { shippedDescriptions } from './udVocabDescriptions.js';
 import { readUdConfig } from '../domain/udConfig.js';
 
 // UPOS is a CLOSED universal set of exactly 17 tags — not configurable.
@@ -330,10 +330,12 @@ const cleanInventory = (inventory) =>
 // stores nothing and follows the app's copy. A layer the project lacks writes
 // nothing.
 export const vocabCells = (info, drafts) => {
-  const storedDescriptions = (map, shipped) =>
+  // What ships, as the reader saw it: a description left as shown is not stored.
+  const shipped = shippedDescriptions();
+  const storedDescriptions = (map, ships) =>
     cleanDescriptions(
       Object.fromEntries(
-        Object.entries(map || {}).filter(([value, text]) => text !== (shipped?.[value] ?? '')),
+        Object.entries(map || {}).filter(([value, text]) => text !== (ships?.[value] ?? '')),
       ),
     );
   const cells = [];
@@ -351,7 +353,7 @@ export const vocabCells = (info, drafts) => {
     'relationLayers',
     info.relationLayer,
     'vocabDescriptions',
-    storedDescriptions(descriptions.deprel, DEPREL_DESCRIPTIONS),
+    storedDescriptions(descriptions.deprel, shipped.deprel),
   );
 
   add('spanLayers', info.uposLayer, 'vocab', drafts.uposVocab);
@@ -361,7 +363,7 @@ export const vocabCells = (info, drafts) => {
     'spanLayers',
     info.uposLayer,
     'vocabDescriptions',
-    storedDescriptions(descriptions.upos, UPOS_DESCRIPTIONS),
+    storedDescriptions(descriptions.upos, shipped.upos),
   );
 
   add('spanLayers', info.featuresLayer, 'inventory', cleanInventory(drafts.featureInventory));

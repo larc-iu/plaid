@@ -6,6 +6,7 @@ import { TOKEN_ROLE_WORDS, UMR_LAYER_WORDS } from '../../domain/restoreSummary.j
 import { COMPARE_SPOT, DRAFT_SPOT } from '../../utils/serviceDefaults.js';
 import { draftNotice } from '../../domain/draftNotice.js';
 import { compareNotice } from '../../domain/compareNotice.js';
+import { msg } from '@ui/lib/i18n.js';
 
 // Parent route of a document's tabs: plaid-ui's shell, with what is UMR's. The
 // one integration spot, Draft, is the shell's one services instance, so a run
@@ -24,11 +25,11 @@ const UMR_SHELL = {
   // Plaid IGT, and this app reads them.
   tabs: {
     list: [
-      { value: 'annotate', label: 'Annotate' },
-      { value: 'compare', label: 'Compare' },
-      { value: 'comments', label: 'Comments' },
-      { value: 'export', label: 'Export' },
-      { value: 'details', label: 'Details' },
+      { value: 'annotate', label: msg('Annotate') },
+      { value: 'compare', label: msg('Compare') },
+      { value: 'comments', label: msg('Comments') },
+      { value: 'export', label: msg('Export'), sense: 'noun' },
+      { value: 'details', label: msg('Details') },
     ],
     editor: 'annotate',
     past: ['annotate', 'export', 'details'],

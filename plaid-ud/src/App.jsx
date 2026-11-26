@@ -17,6 +17,7 @@ import { DocumentMetadataCard } from './components/documents/DocumentMetadataCar
 import { ProjectTabs } from './components/projects/ProjectTabs.jsx';
 import { UD_ASSISTANT } from './components/assistant/adapter.js';
 import { buildAnchorIndex } from './domain/commentAnchors.js';
+import { t } from '@ui/lib/i18n.js';
 import './App.css';
 
 // Screens a session opens rarely, if at all: they download when first opened
@@ -82,7 +83,7 @@ function App() {
           <Route
             path="/login"
             element={
-              <LoginForm tagline="Universal Dependencies tree editor" homePath="/projects" />
+              <LoginForm tagline={t('Universal Dependencies tree editor')} homePath="/projects" />
             }
           />
           {/* Unauthenticated by necessity: whoever follows an invite link has

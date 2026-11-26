@@ -14,6 +14,7 @@ import { GrewUnsupportedError } from '../errors.js';
 import { getFeat, liveNodes, liveWords, structureEdges, sortedEdges } from './graph.js';
 import { splitLabel, isEnhancedLabel, bareLabel } from '../edgeLabel.js';
 import { localMatches } from '../userRegex.js';
+import { t } from '../../../../plaid-ui/src/lib/i18n.js';
 
 const analysed = new WeakMap();
 
@@ -37,7 +38,9 @@ function analyse(rule) {
     ) {
       throw new GrewUnsupportedError(
         'feats-cmp',
-        'Comparing FEATS as a whole across nodes is not supported. Compare one feature (X.Number = Y.Number).',
+        t(
+          'Comparing FEATS as a whole across nodes is not supported. Compare one feature (X.Number = Y.Number).',
+        ),
       );
     }
   }
@@ -64,11 +67,16 @@ function lexConstraintsOf(items) {
     if (isFeatsWhole(feat)) {
       throw new GrewUnsupportedError(
         'feats-lexicon',
-        'A lexicon field cannot be matched against FEATS. Match one feature (X [Number=lex.field]).',
+        t(
+          'A lexicon field cannot be matched against FEATS. Match one feature (X [Number=lex.field]).',
+        ),
       );
     }
     if (op !== '=') {
-      throw new GrewUnsupportedError('lexicon-op', 'A lexicon field can only be matched with `=`.');
+      throw new GrewUnsupportedError(
+        'lexicon-op',
+        t('A lexicon field can only be matched with `=`.'),
+      );
     }
     out.push({ node, feat, lex: value.lex, field: value.field });
   };
@@ -80,7 +88,7 @@ function lexConstraintsOf(items) {
     if (item.alts.length > 1) {
       throw new GrewUnsupportedError(
         'lexicon-disj',
-        'A lexicon field cannot be used inside a feature-structure disjunction.',
+        t('A lexicon field cannot be used inside a feature-structure disjunction.'),
       );
     }
     for (const fi of item.alts[0]) add(item.id, fi.name, fi.op, fi.value);
@@ -97,11 +105,15 @@ function reduceLexicons(constraints, base, graph, nodes) {
   const out = { ...base };
   for (const c of constraints) {
     const lex = out[c.lex];
-    if (!lex) throw new GrewUnsupportedError('lexicon-unknown', `Unknown lexicon '${c.lex}'.`);
+    if (!lex)
+      throw new GrewUnsupportedError(
+        'lexicon-unknown',
+        t("Unknown lexicon ''{lex}''.", { lex: c.lex }),
+      );
     if (!lex.fields.includes(c.field)) {
       throw new GrewUnsupportedError(
         'lexicon-field',
-        `Lexicon '${c.lex}' has no field '${c.field}'.`,
+        t("Lexicon ''{lex}'' has no field ''{field}''.", { lex: c.lex, field: c.field }),
       );
     }
     const v = getFeat(graph.nodes.get(nodes.get(c.node)), c.feat);
@@ -261,16 +273,16 @@ function candidates(ctx, v, remaining, nodes) {
   for (const it of remaining) {
     if (it.kind !== 'edge') continue;
     const s = it.src.wild ? null : it.src.id;
-    const t = it.tgt.wild ? null : it.tgt.id;
-    if (s === v && t && nodes.has(t)) {
-      const tid = nodes.get(t);
+    const tgt = it.tgt.wild ? null : it.tgt.id;
+    if (s === v && tgt && nodes.has(tgt)) {
+      const tid = nodes.get(tgt);
       return uniq(
         sortedEdges(g)
           .filter((e) => e.tgt === tid && labelMatches(it.label, e.label))
           .map((e) => g.nodes.get(e.src)),
       );
     }
-    if (t === v && s && nodes.has(s)) {
+    if (tgt === v && s && nodes.has(s)) {
       const sid = nodes.get(s);
       return uniq(
         sortedEdges(g)
@@ -318,10 +330,12 @@ function runClauses(ctx, ready, nodes, edges, k, foreign = null) {
 
 function qualifyingEdges(g, it, nodes) {
   const s = it.src.wild ? null : nodes.get(it.src.id);
-  const t = it.tgt.wild ? null : nodes.get(it.tgt.id);
+  const tgt = it.tgt.wild ? null : nodes.get(it.tgt.id);
   return sortedEdges(g).filter(
     (e) =>
-      (s == null || e.src === s) && (t == null || e.tgt === t) && labelMatches(it.label, e.label),
+      (s == null || e.src === s) &&
+      (tgt == null || e.tgt === tgt) &&
+      labelMatches(it.label, e.label),
   );
 }
 
@@ -376,7 +390,10 @@ function checkClause(ctx, item, nodes) {
     case 'dominates':
       return checkDominates(g, item, nodes);
     default:
-      throw new GrewUnsupportedError(item.kind, `Unsupported clause: ${item.kind}`);
+      throw new GrewUnsupportedError(
+        item.kind,
+        t('Unsupported clause: {kind}', { kind: item.kind }),
+      );
   }
 }
 
@@ -471,7 +488,7 @@ function bareLabelMatches(label, actual) {
     if (!label.feats.every((f) => /^[1-9][0-9]*$/.test(f.key) && !f.neg)) {
       throw new GrewUnsupportedError(
         'edge-feature',
-        'Only numbered edge features (1=, 2=, …) and `enhanced` are supported.',
+        t('Only numbered edge features (1=, 2=, …) and `enhanced` are supported.'),
       );
     }
     // Each number names a part by position: `2=pass` is the second part.
@@ -490,7 +507,7 @@ function checkDominates(g, item, nodes) {
   if (item.left.wild || item.right.wild) {
     throw new GrewUnsupportedError(
       'dominates-wildcard',
-      'Transitive dominance (->>) requires named endpoints.',
+      t('Transitive dominance (->>) requires named endpoints.'),
     );
   }
   // A path runs through one graph, as the search compiler has it: the tree
@@ -499,14 +516,16 @@ function checkDominates(g, item, nodes) {
   if (labelled && !(item.label.type === 'list' && !item.label.negated)) {
     throw new GrewUnsupportedError(
       'dominates-label',
-      'A transitive edge (->>) may only carry a plain label or label list, not a regex/negation/subtype.',
+      t(
+        'A transitive edge (->>) may only carry a plain label or label list, not a regex/negation/subtype.',
+      ),
     );
   }
   const enhanced = labelled && item.label.labels.some(isEnhancedLabel);
   if (enhanced && !item.label.labels.every(isEnhancedLabel)) {
     throw new GrewUnsupportedError(
       'dominates-mixed',
-      'A transitive edge (->>) follows basic labels or E: labels, not both at once.',
+      t('A transitive edge (->>) follows basic labels or E: labels, not both at once.'),
     );
   }
   const allowed = labelled ? new Set(item.label.labels) : null;
@@ -540,7 +559,7 @@ function checkCross(ctx, item, edges) {
   if (!e1 || !e2) {
     throw new GrewUnsupportedError(
       'cross-unknown-edge',
-      'Edge crossing (><) needs two named edges declared in the pattern.',
+      t('Edge crossing (><) needs two named edges declared in the pattern.'),
     );
   }
   const span = (e) => [g.nodes.get(e.src).pos, g.nodes.get(e.tgt).pos].sort((a, b) => a - b);
@@ -572,7 +591,7 @@ function checkFlag(name, g) {
     case 'is_not_cyclic':
       return !hasCycle(g);
     default:
-      throw new GrewUnsupportedError(name, `Unsupported global constraint: ${name}`);
+      throw new GrewUnsupportedError(name, t('Unsupported global constraint: {name}', { name }));
   }
 }
 

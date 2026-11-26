@@ -1,5 +1,6 @@
-import { PROV_STATES } from '@larc-iu/plaid-client';
+import { PROV, PROV_STATES } from '@larc-iu/plaid-client';
 import { provDescription } from '@ui/domain/provDescription.js';
+import { t } from '@ui/lib/i18n.js';
 
 // Provenance, the cross-app convention: what a machine drafted or a
 // contributor made wears a dashed border in one of the two hues every app
@@ -19,14 +20,20 @@ const MARKS = {
 
 // `{ mark, title }`: `mark` is 'machine', 'contributed' or null, `title`
 // the tooltip's words ('Machine-made, unverified', 'Contributed, confirmed'),
-// null for hand-made material.
+// null for hand-made material. The tooltip is one message chosen by origin,
+// so another language words each whole.
 export const provMark = (metadata) => {
-  const { state, word } = provDescription(metadata);
+  const { state, origin } = provDescription(metadata);
   if (state === PROV_STATES.HUMAN) return { mark: null, title: null };
-  const how = state === PROV_STATES.VERIFIED ? 'confirmed' : 'unverified';
   return {
     mark: MARKS[state] || null,
-    title: `${word.charAt(0).toUpperCase()}${word.slice(1)}, ${how}`,
+    title: t(
+      '{origin, select, contributed {Contributed} other {Machine-made}}, {verified, select, yes {confirmed} other {unverified}}',
+      {
+        origin: origin === PROV.CONTRIBUTED ? 'contributed' : 'machine',
+        verified: state === PROV_STATES.VERIFIED ? 'yes' : 'no',
+      },
+    ),
   };
 };
 

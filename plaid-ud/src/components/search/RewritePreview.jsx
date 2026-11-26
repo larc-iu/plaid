@@ -6,7 +6,7 @@ import { Button } from '@ui/components/ui/button';
 import { useConfirm } from '@ui/components/shared/ConfirmProvider';
 import { detectDirection } from '@ui/domain/textDirection.js';
 import { lossPhrase } from '@ui/domain/annotationLoss.js';
-import { countOf } from '@ui/lib/plural.js';
+import { t } from '@ui/lib/i18n.js';
 
 // A native checkbox rather than a Radix one: the document header needs the
 // indeterminate state, which lives only on the DOM node and cannot be set from
@@ -55,6 +55,7 @@ export const RewritePreview = ({ rows, selected, onSelect, hrefFor, canApply, bu
   const chosen = applicable.filter((r) => selected.has(r.key));
   const chosenDocs = new Set(chosen.map((r) => r.docId));
   const errors = rows.length - applicable.length;
+  const counted = { n: rows.length, docs: new Set(rows.map((r) => r.docId)).size };
 
   const setMany = (keys, on) => {
     const next = new Set(selected);
@@ -76,13 +77,20 @@ export const RewritePreview = ({ rows, selected, onSelect, hrefFor, canApply, bu
   const cut = lossPhrase(sum((r) => r.loss?.shortened));
 
   const confirmApply = async () => {
+    // The description's parts are each a sentence of their own.
     const ok = await confirm({
-      title: 'Apply changes?',
-      description:
-        `${countOf(chosen.length, 'sentence')} in ${countOf(chosenDocs.size, 'document')}.` +
-        (lost ? ` Deletes ${lost} with the deleted words.` : '') +
-        (cut ? ` Shortens ${cut}.` : ''),
-      confirmLabel: 'Apply',
+      title: t('Apply changes?'),
+      description: [
+        t(
+          '{n, plural, one {# sentence} other {# sentences}} in {docs, plural, one {# document} other {# documents}}.',
+          { n: chosen.length, docs: chosenDocs.size },
+        ),
+        lost && t('Deletes {loss} with the deleted words.', { loss: lost }),
+        cut && t('Shortens {cut}.', { cut }),
+      ]
+        .filter(Boolean)
+        .join(' '),
+      confirmLabel: t('Apply'),
       destructive: Boolean(lost || cut),
     });
     if (ok) onApply();
@@ -93,9 +101,16 @@ export const RewritePreview = ({ rows, selected, onSelect, hrefFor, canApply, bu
       <div className="flex flex-wrap items-center justify-between gap-2">
         <p className="text-sm text-muted-foreground">
           {rows.length === 0
-            ? 'No sentences to change.'
-            : `${countOf(rows.length, 'sentence')} in ${countOf(new Set(rows.map((r) => r.docId)).size, 'document')}, ${chosen.length} selected` +
-              (errors ? `, ${countOf(errors, 'error')}` : '')}
+            ? t('No sentences to change.')
+            : errors
+              ? t(
+                  '{n, plural, one {# sentence} other {# sentences}} in {docs, plural, one {# document} other {# documents}}, {chosen} selected, {errors, plural, one {# error} other {# errors}}',
+                  { ...counted, chosen: chosen.length, errors },
+                )
+              : t(
+                  '{n, plural, one {# sentence} other {# sentences}} in {docs, plural, one {# document} other {# documents}}, {chosen} selected',
+                  { ...counted, chosen: chosen.length },
+                )}
         </p>
         {rows.length > 0 && (
           <div className="flex items-center gap-2">
@@ -109,14 +124,18 @@ export const RewritePreview = ({ rows, selected, onSelect, hrefFor, canApply, bu
                 )
               }
             >
-              {chosen.length !== applicable.length ? 'Select all' : 'Select none'}
+              {chosen.length !== applicable.length ? t('Select all') : t('Select none')}
             </Button>
             {canApply ? (
               <Button onClick={confirmApply} disabled={!chosen.length || busy}>
-                {busy ? 'Applying…' : `Apply to ${countOf(chosen.length, 'sentence')}`}
+                {busy
+                  ? t('Applying…')
+                  : t('Apply to {n, plural, one {# sentence} other {# sentences}}', {
+                      n: chosen.length,
+                    })}
               </Button>
             ) : (
-              <p className="text-sm text-muted-foreground">Maintainers only.</p>
+              <p className="text-sm text-muted-foreground">{t('Maintainers only.')}</p>
             )}
           </div>
         )}
@@ -135,7 +154,7 @@ export const RewritePreview = ({ rows, selected, onSelect, hrefFor, canApply, bu
                 indeterminate={on > 0 && on < keys.length}
                 disabled={!keys.length}
                 onChange={(e) => setMany(keys, e.currentTarget.checked)}
-                aria-label="Select document"
+                aria-label={t('Select document')}
               />
               <span dir="auto" className="truncate text-sm font-semibold">
                 {sentences[0].docName}
@@ -149,7 +168,7 @@ export const RewritePreview = ({ rows, selected, onSelect, hrefFor, canApply, bu
                     checked={selected.has(r.key)}
                     disabled={!!r.error}
                     onChange={(e) => setMany([r.key], e.currentTarget.checked)}
-                    aria-label="Select sentence"
+                    aria-label={t('Select sentence')}
                   />
                   <div className="flex min-w-0 flex-1 flex-col gap-1">
                     <div className="flex items-baseline gap-2">

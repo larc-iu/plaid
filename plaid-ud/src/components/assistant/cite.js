@@ -5,6 +5,7 @@
 // uninitialized and went blank.
 import { citationFocus } from '@ui/components/assistant/citations.js';
 import { APP_ROUTES } from '../../appRoutes.js';
+import { t } from '@ui/lib/i18n.js';
 
 // The sentence in the annotation editor. The route is `annotate`, and the
 // sentence rides in the URL so the link is shareable and a middle-click opens
@@ -17,8 +18,9 @@ export const sentenceHref = (origin, projectId, c) =>
 
 export const citationTitle = (c) => {
   const focus = citationFocus(c);
-  const head = `${c.documentName}, sentence ${c.sentence}`;
-  if (focus.length === 0) return head;
-  if (focus.length === 1) return `${head}, word ${focus[0]}`;
-  return `${head}, words ${focus.join(', ')}`;
+  const v = { name: c.documentName, sentence: c.sentence };
+  if (focus.length === 0) return t('{name}, sentence {sentence}', v);
+  if (focus.length === 1)
+    return t('{name}, sentence {sentence}, word {word}', { ...v, word: focus[0] });
+  return t('{name}, sentence {sentence}, words {words}', { ...v, words: focus.join(', ') });
 };

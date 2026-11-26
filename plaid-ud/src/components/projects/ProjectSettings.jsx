@@ -5,6 +5,7 @@ import { ProjectGeneral } from './ProjectGeneral.jsx';
 import { ProjectServicesSettings } from './ProjectServicesSettings.jsx';
 import { ProjectTabs } from './ProjectTabs.jsx';
 import { ROLE_OPTIONS } from '../../domain/roleGrants.js';
+import { msg } from '@ui/lib/i18n.js';
 
 // This app's settings sections, in order, for the shared shell
 // (@ui/components/shared/ProjectSettingsShell): general project settings (name,
@@ -21,13 +22,13 @@ import { ROLE_OPTIONS } from '../../domain/roleGrants.js';
 const SECTIONS = [
   {
     value: 'general',
-    label: 'General',
+    label: msg('General'),
     body: ({ reload }) => <ProjectGeneral onProjectUpdate={reload} />,
   },
-  { value: 'customization', label: 'UD settings', body: () => <ProjectCustomization /> },
+  { value: 'customization', label: msg('UD settings'), body: () => <ProjectCustomization /> },
   {
     value: 'management',
-    label: 'Access',
+    label: msg('Access'),
     body: ({ reload }) => (
       <ProjectAccessSettings
         roleOptions={ROLE_OPTIONS}
@@ -36,7 +37,7 @@ const SECTIONS = [
       />
     ),
   },
-  { value: 'services', label: 'Services', body: () => <ProjectServicesSettings /> },
+  { value: 'services', label: msg('Services'), body: () => <ProjectServicesSettings /> },
 ];
 
 export const ProjectSettings = () => (

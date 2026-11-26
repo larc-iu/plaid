@@ -17,6 +17,7 @@ import { UMR_COPY_CHOICES } from './components/editor/copyChoices.js';
 import { ProjectTabs } from './components/projects/ProjectTabs.jsx';
 import { UMR_ASSISTANT } from './components/assistant/adapter.js';
 import { buildAnchorIndex } from './domain/commentAnchors.js';
+import { t } from '@ui/lib/i18n.js';
 import './App.css';
 
 // Screens a session opens rarely download when first opened. The editor and
@@ -88,7 +89,10 @@ function App() {
           <Route
             path="/login"
             element={
-              <LoginForm tagline="Uniform Meaning Representation editor" homePath="/projects" />
+              <LoginForm
+                tagline={t('Uniform Meaning Representation editor')}
+                homePath="/projects"
+              />
             }
           />
           {/* Unauthenticated by necessity: whoever follows an invite link has

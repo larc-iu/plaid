@@ -6,6 +6,7 @@ import { groupSuggestions, probLabel } from '../../../utils/provenanceUi.js';
 import { notifyWarning } from '../../../utils/feedback.jsx';
 import { useEditorSession, controlledField } from './editorSession.js';
 import { textIncludes } from '@ui/domain/collation.js';
+import { t } from '@ui/lib/i18n.js';
 
 // Inline editor for a dependency-relation label, rendered inside the tree's
 // SVG <foreignObject>. Mirrors the grid's vocab cells: a Combobox seeded with
@@ -83,7 +84,7 @@ export function DeprelEditor({ relation, onCommit, onCancel, onDelete, onTab }) 
     if (isCommitting(next, typed)) {
       const refusal = validate?.(next);
       if (refusal) {
-        notifyWarning(refusal, 'Not in the list');
+        notifyWarning(refusal, t('Not in the list'));
         onCancel();
         return;
       }
@@ -165,8 +166,8 @@ export function DeprelEditor({ relation, onCommit, onCancel, onDelete, onTab }) 
           type="button"
           className="deprel-edit-delete"
           tabIndex={-1}
-          title="Delete (Shift+Backspace)"
-          aria-label="Delete relation"
+          title={t('Delete (Shift+Backspace)')}
+          aria-label={t('Delete relation')}
           onMouseDown={(e) => e.preventDefault()}
           onClick={(e) => {
             e.stopPropagation();
@@ -183,7 +184,7 @@ export function DeprelEditor({ relation, onCommit, onCancel, onDelete, onTab }) 
           if (literalValue && option.value === literalValue) {
             return (
               <span style={{ fontStyle: 'italic', opacity: 0.8 }}>
-                Use “{option.value}” as typed
+                {t('Use “{value}” as typed', { value: option.value })}
               </span>
             );
           }
@@ -260,7 +261,7 @@ export function DeprelEditor({ relation, onCommit, onCancel, onDelete, onTab }) 
               if (isCommitting(value, typedRef.current)) {
                 const refusal = validate?.(value);
                 if (refusal) {
-                  notifyWarning(refusal, 'Not in the list');
+                  notifyWarning(refusal, t('Not in the list'));
                   onCancel();
                   return;
                 }

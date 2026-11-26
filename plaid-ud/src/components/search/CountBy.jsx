@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import { Button } from '@ui/components/ui/button';
 import { DataTable } from '@ui/components/shared/data-table';
+import { t, tc } from '@ui/lib/i18n.js';
 import {
   Select,
   SelectContent,
@@ -59,14 +60,18 @@ export const CountBy = ({ nodes, edges, rows, total, busy, onCount, onPick }) =>
   const columns = [
     {
       key: 'value',
-      label: 'Value',
+      label: t('Value'),
       sort: (r) => String(r.value).toLowerCase(),
       render: (r) =>
         pick ? (
           <button
             type="button"
             className="text-left font-medium hover:underline"
-            title={`Narrow the search to ${pick.node}.${pick.field} = ${r.value}`}
+            title={t('Narrow the search to {node}.{field} = {value}', {
+              node: pick.node,
+              field: pick.field,
+              value: r.value,
+            })}
             onClick={() => onPick(pick.node, pick.field, r.value)}
           >
             {r.value}
@@ -77,7 +82,7 @@ export const CountBy = ({ nodes, edges, rows, total, busy, onCount, onPick }) =>
     },
     {
       key: 'count',
-      label: 'Matches',
+      label: t('Matches'),
       align: 'right',
       className: 'tabular-nums',
       sort: (r) => r.count,
@@ -85,7 +90,7 @@ export const CountBy = ({ nodes, edges, rows, total, busy, onCount, onPick }) =>
     },
     {
       key: 'share',
-      label: 'Share',
+      label: t('Share'),
       align: 'right',
       className: 'tabular-nums text-muted-foreground',
       sort: (r) => r.count,
@@ -96,10 +101,10 @@ export const CountBy = ({ nodes, edges, rows, total, busy, onCount, onPick }) =>
   return (
     <div className="flex flex-col gap-3">
       <div className="flex flex-wrap items-center gap-2">
-        <span className="text-sm text-muted-foreground">Count by</span>
+        <span className="text-sm text-muted-foreground">{t('Count by')}</span>
         <Select value={choice} onValueChange={setChoice} disabled={busy}>
-          <SelectTrigger className="h-8 w-48" aria-label="Count by">
-            <SelectValue placeholder="Pick a field" />
+          <SelectTrigger className="h-8 w-48" aria-label={t('Count by')}>
+            <SelectValue placeholder={t('Pick a field')} />
           </SelectTrigger>
           <SelectContent>
             {options.map((o) => (
@@ -110,7 +115,7 @@ export const CountBy = ({ nodes, edges, rows, total, busy, onCount, onPick }) =>
           </SelectContent>
         </Select>
         <Button size="sm" variant="outline" disabled={busy || !choice} onClick={run}>
-          {busy ? 'Counting…' : 'Count'}
+          {busy ? t('Counting…') : tc('verb', 'Count')}
         </Button>
       </div>
       {rows && (
@@ -119,8 +124,9 @@ export const CountBy = ({ nodes, edges, rows, total, busy, onCount, onPick }) =>
           rows={rows}
           columns={columns}
           rowKey={(r) => r.value}
-          empty="Nothing matched."
-          noun="value"
+          empty={t('Nothing matched.')}
+          countLabel={(v) => t('{total} {n, plural, one {value} other {values}}', v)}
+          noMatch={t('No values match.')}
           defaultSort={{ key: 'count', dir: 'desc' }}
           search
         />

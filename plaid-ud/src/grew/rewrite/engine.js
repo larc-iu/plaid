@@ -20,13 +20,14 @@
 // only ever loop, and the cap is the backstop.
 
 import { GrewRuntimeError } from '../errors.js';
+import { t } from '../../../../plaid-ui/src/lib/i18n.js';
 import { cloneGraph } from './graph.js';
 import { firstMatch } from './match.js';
 import { applyCommands } from './commands.js';
 
-// A rule as a refusal names it: "The rule" for one written without a name,
+// A refusal names its rule: "The rule" for one written without a name,
 // which the parser calls `rule`, a name the parser refuses for a named one.
-const ruleNamed = (name) => (name === 'rule' ? 'The rule' : `Rule '${name}'`);
+// Each message selects on `rule` for that.
 
 const MAX_APPLICATIONS = 1000;
 
@@ -53,7 +54,10 @@ export function rewriteSentence(grs, graph, { maxApplications = MAX_APPLICATIONS
     if (!m) return null;
     if (applications.length >= maxApplications) {
       throw new GrewRuntimeError(
-        `${ruleNamed(rule.name)} did not terminate after ${maxApplications} applications. Add a \`without\` clause that stops it.`,
+        t(
+          "{rule, select, rule {The rule} other {Rule ''{rule}''}} did not terminate after {max} applications. Add a `without` clause that stops it.",
+          { rule: rule.name, max: maxApplications },
+        ),
         { rule: rule.name, line: rule.line },
       );
     }
@@ -64,13 +68,13 @@ export function rewriteSentence(grs, graph, { maxApplications = MAX_APPLICATIONS
   };
 
   const run = (expr, g, depth = 0) => {
-    if (depth > 64) throw new GrewRuntimeError('Strategy nesting is too deep.');
+    if (depth > 64) throw new GrewRuntimeError(t('Strategy nesting is too deep.'));
     switch (expr.op) {
       case 'rule': {
         const rule = rules.get(expr.name);
         if (rule) return applyRule(rule, g);
         if (strats.has(expr.name)) return run(strats.get(expr.name), g, depth + 1);
-        throw new GrewRuntimeError(`Unknown rule or strategy '${expr.name}'.`);
+        throw new GrewRuntimeError(t("Unknown rule or strategy ''{name}''.", { name: expr.name }));
       }
       case 'Empty':
         return g;
@@ -102,7 +106,10 @@ export function rewriteSentence(grs, graph, { maxApplications = MAX_APPLICATIONS
           if (fingerprint(r) === fingerprint(cur)) {
             const last = applications[applications.length - 1];
             throw new GrewRuntimeError(
-              `${ruleNamed(last.rule)} matched but changed nothing and would match forever. Add a \`without\` clause that stops it.`,
+              t(
+                "{rule, select, rule {The rule} other {Rule ''{rule}''}} matched but changed nothing and would match forever. Add a `without` clause that stops it.",
+                { rule: last.rule },
+              ),
               { rule: last.rule, line: rules.get(last.rule)?.line ?? null },
             );
           }
@@ -110,7 +117,7 @@ export function rewriteSentence(grs, graph, { maxApplications = MAX_APPLICATIONS
         }
       }
       default:
-        throw new GrewRuntimeError(`Unknown strategy '${expr.op}'.`);
+        throw new GrewRuntimeError(t("Unknown strategy ''{name}''.", { name: expr.op }));
     }
   };
 

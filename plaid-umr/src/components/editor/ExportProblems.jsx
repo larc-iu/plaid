@@ -1,6 +1,6 @@
 import { Notice } from '@ui/components/shared/Notice.jsx';
 import { problemPlace } from '../../domain/format/umrFile.js';
-import { countOf } from '@ui/lib/plural.js';
+import { t } from '@ui/lib/i18n.js';
 
 // The most listed at once: a corpus with a bad value on every sentence would
 // otherwise push the page far below the button.
@@ -9,7 +9,7 @@ const SHOWN = 50;
 /** Why an export was refused: each stored value a .umr file cannot hold. */
 export const ExportProblems = ({ problems }) => (
   <Notice tone="error" role="alert">
-    <p className="font-medium">Failed to export. These cannot be written to a .umr file:</p>
+    <p className="font-medium">{t('Failed to export. These cannot be written to a .umr file:')}</p>
     <ul className="mt-1 list-disc ps-5">
       {problems.slice(0, SHOWN).map((p, i) => (
         <li key={i}>
@@ -17,7 +17,9 @@ export const ExportProblems = ({ problems }) => (
         </li>
       ))}
     </ul>
-    {problems.length > SHOWN && <p className="mt-1">{problems.length - SHOWN} more.</p>}
+    {problems.length > SHOWN && (
+      <p className="mt-1">{t('{n} more.', { n: problems.length - SHOWN })}</p>
+    )}
   </Notice>
 );
 
@@ -28,23 +30,31 @@ export const ExportProblems = ({ problems }) => (
 export const LeftOutOfExport = ({ parts }) => {
   const nodes = parts.reduce((sum, p) => sum + p.nodes, 0);
   const relations = parts.filter((p) => p.relation).length;
-  const counted = [
-    nodes ? countOf(nodes, 'node') : null,
-    relations ? countOf(relations, 'document-level relation') : null,
-  ]
-    .filter(Boolean)
-    .join(' and ');
+  const heading =
+    nodes && relations
+      ? t(
+          '{nodes, plural, one {# node} other {# nodes}} and {relations, plural, one {# document-level relation} other {# document-level relations}} left out of the file:',
+          { nodes, relations },
+        )
+      : nodes
+        ? t('{n, plural, one {# node} other {# nodes}} left out of the file:', { n: nodes })
+        : t(
+            '{n, plural, one {# document-level relation} other {# document-level relations}} left out of the file:',
+            { n: relations },
+          );
   return (
     <Notice tone="warning">
-      <p className="font-medium">{counted} left out of the file:</p>
+      <p className="font-medium">{heading}</p>
       <ul className="mt-1 list-disc ps-5">
         {parts.slice(0, SHOWN).map((p, i) => (
           <li key={i}>
-            <span className="font-medium">Sentence {p.sentence}</span>: {p.message}
+            <span className="font-medium">{t('Sentence {n}', { n: p.sentence })}</span>: {p.message}
           </li>
         ))}
       </ul>
-      {parts.length > SHOWN && <p className="mt-1">{parts.length - SHOWN} more.</p>}
+      {parts.length > SHOWN && (
+        <p className="mt-1">{t('{n} more.', { n: parts.length - SHOWN })}</p>
+      )}
     </Notice>
   );
 };

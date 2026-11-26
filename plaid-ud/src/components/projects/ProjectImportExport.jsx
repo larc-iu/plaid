@@ -9,11 +9,14 @@ import { ProjectImportExportPage } from '@ui/components/shared/ProjectImportExpo
 import { zip, unzip } from '@ui/lib/zip.js';
 import { readInOrder } from '@ui/lib/documentReads.js';
 import { ProjectTabs } from './ProjectTabs.jsx';
+import { t, tx } from '@ui/lib/i18n.js';
+
+const code = (c) => <code className="rounded bg-muted px-1 py-0.5 font-mono">{c}</code>;
 
 // `toConllu()` returns a `#`-prefixed sentinel (not a throw) for documents that
 // can't be serialized (project unconfigured or no tokenized content). A real
 // export begins with `# newdoc id = …`.
-const isExportError = (t) => t === NOT_SET_UP_FILE || t === NOT_TOKENIZED_FILE;
+const isExportError = (text) => text === NOT_SET_UP_FILE || text === NOT_TOKENIZED_FILE;
 
 // Per document of a file, the id its new document is created under, kept
 // while the page is open across every import of that file (the same name,
@@ -36,7 +39,7 @@ const prepareImport = async ({ client, project, projectId }) => {
   return async ({ file, text, index, name: base, push }) => {
     const chunks = splitConlluByNewdoc(text);
     if (chunks.length === 0) {
-      push({ key: `${index}-empty`, name: base, status: 'rejected', reason: 'File is empty' });
+      push({ key: `${index}-empty`, name: base, status: 'rejected', reason: t('File is empty') });
       return;
     }
     for (let c = 0; c < chunks.length; c++) {
@@ -86,14 +89,19 @@ const exportDocuments = async ({ client, projectId, onProgress }) => {
   for await (const { id: d, value: doc, error } of reads) {
     try {
       if (error) throw error;
-      const t = doc.toConllu();
-      if (isExportError(t)) {
-        skipped.push({ name: d.name, reason: t.replace(/^#\s*/, '') });
+      const text = doc.toConllu();
+      if (isExportError(text)) {
+        // The sentinel's own words, as a message.
+        const reason =
+          text === NOT_SET_UP_FILE
+            ? t('This project is not fully set up for UD.')
+            : t('No tokens.');
+        skipped.push({ name: d.name, reason });
       } else {
-        entries.push({ name: d.name, text: t });
+        entries.push({ name: d.name, text });
       }
     } catch (err) {
-      skipped.push({ name: d.name, reason: humanizeError(err, 'Failed to load it.') });
+      skipped.push({ name: d.name, reason: humanizeError(err, t('Failed to load it.')) });
     }
     onProgress(++done, docs.length);
   }
@@ -101,10 +109,16 @@ const exportDocuments = async ({ client, projectId, onProgress }) => {
 };
 
 const FORMAT = {
-  app: 'UD',
+  app: 'UD', // i18n-ignore: the app's name
   extension: '.conllu',
-  importTitle: 'Import CoNLL-U files',
-  exportWhat: 'CoNLL-U files',
+  // Read when the page is drawn: getters, so each message is looked up in the
+  // language of the page, not at module load.
+  get importTitle() {
+    return t('Import CoNLL-U files');
+  },
+  get exportNote() {
+    return tx('Every document in this project as a <code>.zip</code> of CoNLL-U files.', { code });
+  },
   layerInfo: getUdLayerInfo,
   prepareImport,
   exportDocuments,

@@ -46,7 +46,9 @@ JS_READER = os.path.abspath(os.path.join(HERE, '..', '..', 'plaid-umr', 'src', '
 
 def _node() -> str:
     """The node to run the app's reader with, or a skip that says why.
-    ``penman.js`` is ESM and imports nothing, so no node_modules are needed."""
+    ``penman.js`` is ESM. It imports plaid-ui's ``lib/i18n.js``, which resolves
+    from plaid-ui's node_modules, so those must be installed. plaid-umr's are
+    not needed."""
     if not os.path.isfile(JS_READER):
         _skip_or_fail('needs plaid-umr beside the agent')
     return node_or_skip("The PENMAN mirror runs the app's reader with it.")

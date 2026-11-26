@@ -4,6 +4,7 @@ import { cn } from '@ui/lib/utils';
 import { centeredScrollLeft } from '@ui/components/assistant/citations.js';
 import { citationTitle, sentenceHref } from './cite.js';
 import { layout } from './depTree.js';
+import { msg, t } from '@ui/lib/i18n.js';
 
 // A cited sentence as UD draws it, as a tree or as its CoNLL-U rows. The model
 // says which one with view= on its cite tag, and the reader can switch: the
@@ -16,9 +17,10 @@ import { layout } from './depTree.js';
 // in fields=. It was the CoNLL-U table minus some columns, chosen by the model
 // for a reader who could not choose differently, so it went (Luke's call).
 
+// The labels are messages, shown through t().
 const VIEWS = [
-  { id: 'tree', label: 'Tree' },
-  { id: 'table', label: 'CoNLL-U' },
+  { id: 'tree', label: msg('Tree') },
+  { id: 'table', label: 'CoNLL-U' }, // i18n-ignore: a format name
 ];
 
 const DepTree = ({ c, tree }) => {
@@ -37,7 +39,7 @@ const DepTree = ({ c, tree }) => {
       height={tree.height}
       viewBox={`0 0 ${tree.width} ${tree.height}`}
       role="img"
-      aria-label={`Dependency tree for sentence ${c.sentence}`}
+      aria-label={t('Dependency tree for sentence {sentence}', { sentence: c.sentence })}
     >
       {/* Arcs first, then every label, as the editor's tree does: SVG has no
           z-index, so paint order is what keeps a label from being drawn over
@@ -169,7 +171,7 @@ export const ExampleCard = ({ c, projectId }) => {
           target="_blank"
           rel="noopener noreferrer"
           className="inline-flex min-w-0 items-center gap-1.5 font-medium text-foreground hover:underline"
-          title="Open this sentence in the editor"
+          title={t('Open this sentence in the editor')}
         >
           <ExternalLink className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
           <span className="truncate">{citationTitle(c)}</span>
@@ -194,7 +196,7 @@ export const ExampleCard = ({ c, projectId }) => {
                   : 'text-muted-foreground hover:bg-muted',
               )}
             >
-              {v.label}
+              {t(v.label)}
             </button>
           ))}
         </div>
@@ -220,7 +222,7 @@ export const ExampleCard = ({ c, projectId }) => {
                     : 'bg-background text-muted-foreground hover:bg-muted',
                 )}
               >
-                All relations
+                {t('All relations')}
               </button>
             </div>
           )}

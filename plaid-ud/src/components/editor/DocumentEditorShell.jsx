@@ -6,6 +6,7 @@ import { TOKEN_ROLE_WORDS } from '../../domain/restoreSummary.js';
 import { TASKS } from '@larc-iu/plaid-client';
 import { parseNotice } from '../../domain/parseNotice.js';
 import { tokenizeNotice } from '../../domain/tokenizeNotice.js';
+import { msg } from '@ui/lib/i18n.js';
 
 // Parent route of the document tabs (/edit, /annotate, /comments, /export,
 // /details): plaid-ui's shell, with what is UD's. The Text Editor's dialog and
@@ -23,13 +24,14 @@ const UD_SHELL = {
   assistantApp: UD_ASSISTANT.app,
   documentPath: (projectId, documentId) => `/projects/${projectId}/documents/${documentId}`,
   // The order is every app's: the work tabs, then Comments, Export, Details.
+  // The labels are messages: the shell's tab row shows them through t().
   tabs: {
     list: [
-      { value: 'edit', label: 'Text Editor' },
-      { value: 'annotate', label: 'Annotate' },
-      { value: 'comments', label: 'Comments' },
-      { value: 'export', label: 'Export' },
-      { value: 'details', label: 'Details' },
+      { value: 'edit', label: msg('Text Editor') },
+      { value: 'annotate', label: msg('Annotate') },
+      { value: 'comments', label: msg('Comments') },
+      { value: 'export', label: msg('Export'), sense: 'noun' },
+      { value: 'details', label: msg('Details') },
     ],
     editor: 'annotate',
     past: ['annotate', 'export', 'details'],

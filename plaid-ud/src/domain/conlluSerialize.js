@@ -1,6 +1,6 @@
 import { isProvKey } from '../utils/provenanceUi.js';
 import { enhancedEdges, isSuppressor, serializeDeps } from './enhancedGraph.js';
-import { countOf } from '../../../plaid-ui/src/lib/plural.js';
+import { t } from '../../../plaid-ui/src/lib/i18n.js';
 
 // CoNLL-U export: the sentence rows and the layer info in, the file out.
 //
@@ -39,9 +39,9 @@ const uncoveredText = (sentence) => {
   const base = sentence.sentenceToken?.begin ?? 0;
   const covered = new Array(chars.length).fill(false);
   for (const entry of sentence.tokens || []) {
-    const t = entry.word || entry.token;
-    if (!t) continue;
-    for (let k = Math.max(t.begin, base); k < Math.min(t.end, base + chars.length); k += 1) {
+    const tok = entry.word || entry.token;
+    if (!tok) continue;
+    for (let k = Math.max(tok.begin, base); k < Math.min(tok.end, base + chars.length); k += 1) {
       covered[k - base] = true;
     }
   }
@@ -75,29 +75,37 @@ export function conlluLosses({ sentences, sentenceTokens } = {}) {
   // A sentence that holds no tokens has no rows, so the file has no lines
   // for it. `sentenceTokens` are the stored sentences, each row's own among them.
   const kept = new Set((sentences || []).map((s) => s.sentenceToken?.id));
-  const empty = (sentenceTokens || []).filter((t) => !kept.has(t.id)).length;
+  const empty = (sentenceTokens || []).filter((tok) => !kept.has(tok.id)).length;
   if (empty) {
     out.push(
-      `${countOf(empty, 'sentence')} ${empty === 1 ? 'holds' : 'hold'} no tokens and ` +
-        `${empty === 1 ? 'is' : 'are'} not in the file. Tokenize in the Text Editor to give ` +
-        `${empty === 1 ? 'it' : 'them'} tokens.`,
+      t(
+        '{n, plural, one {# sentence holds no tokens and is not in the file. Tokenize in the Text Editor to give it tokens.} other {# sentences hold no tokens and are not in the file. Tokenize in the Text Editor to give them tokens.}}',
+        { n: empty },
+      ),
     );
   }
   (sentences || []).forEach((sentence, i) => {
     const gaps = uncoveredText(sentence);
     if (gaps.length) {
       out.push(
-        `Sentence ${i + 1} has text in no token (${gaps.map((c) => `“${c}”`).join(', ')}), ` +
-          'so its # text line does not match its rows. Tokenize in the Text Editor to give ' +
-          'that text tokens.',
+        t(
+          'Sentence {n} has text in no token ({text}), so its # text line does not match its rows. Tokenize in the Text Editor to give that text tokens.',
+          { n: i + 1, text: gaps.map((c) => `“${c}”`).join(', ') },
+        ),
       );
     }
     const respelled = respelledLoneWords(sentence);
     if (respelled.length) {
       out.push(
-        `Sentence ${i + 1} has a word whose form is not its token’s text ` +
-          `(${respelled.map(([form, text]) => `“${form}” for “${text}”`).join(', ')}), ` +
-          'so its # text line does not match its rows.',
+        t(
+          'Sentence {n} has a word whose form is not its token’s text ({words}), so its # text line does not match its rows.',
+          {
+            n: i + 1,
+            words: respelled
+              .map(([form, text]) => t('“{form}” for “{text}”', { form, text }))
+              .join(', '),
+          },
+        ),
       );
     }
     const rows = sentence.enhancedRelations || [];
@@ -105,10 +113,10 @@ export function conlluLosses({ sentences, sentenceTokens } = {}) {
     const edges = enhancedEdges(sentence.relations, rows);
     if (edges.some((e) => e.value)) return;
     out.push(
-      `Sentence ${i + 1} leaves every relation out of the enhanced graph. ` +
-        'CoNLL-U writes that the same way as a sentence with no enhanced ' +
-        'annotation at all, so reading this file back gives every word its ' +
-        'tree relation again.',
+      t(
+        'Sentence {n} leaves every relation out of the enhanced graph. CoNLL-U writes that the same way as a sentence with no enhanced annotation at all, so reading this file back gives every word its tree relation again.',
+        { n: i + 1 },
+      ),
     );
   });
   return out;
@@ -117,8 +125,8 @@ export function conlluLosses({ sentences, sentenceTokens } = {}) {
 // What `buildConllu` returns, in place of a file, for a document it cannot
 // write. The export screen lists a document skipped for one of these, with the
 // text after the `#` as the reason.
-export const NOT_SET_UP_FILE = '# This project is not fully set up for UD.';
-export const NOT_TOKENIZED_FILE = '# No tokens.';
+export const NOT_SET_UP_FILE = '# This project is not fully set up for UD.'; // i18n-ignore: file content, compared by the export screen
+export const NOT_TOKENIZED_FILE = '# No tokens.'; // i18n-ignore: file content, compared by the export screen
 
 export function buildConllu({ name, layerInfo: info, sentences: sentenceData }) {
   if (!info.isConfigured) return NOT_SET_UP_FILE;

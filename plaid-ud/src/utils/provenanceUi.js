@@ -9,8 +9,11 @@
 
 import { provState, PROV_STATES, PROV, PROVENANCE_KEYS, isDoubtful } from '@larc-iu/plaid-client';
 import { provDescription } from '../../../plaid-ui/src/domain/provDescription.js';
+// By its real path: the `node --test` suite has no `@ui` alias.
+import { msg, t } from '../../../plaid-ui/src/lib/i18n.js';
 
-export const PARSER_GROUP = 'Parser suggestions';
+// A message: the group is named in the reader's language where it is made.
+export const PARSER_GROUP = msg('Parser suggestions');
 
 // The display mark an entity's provenance earns, or null when it renders plain:
 // 'machine' for a machine's unverified material (violet), 'contributed' for a
@@ -46,7 +49,7 @@ export const PROV_MARK_COLORS = Object.freeze({
 //    { group: 'All tags', items: the remaining vocab }]
 // Falls back to the plain list when there is no distribution. Labels the
 // parser suggested that are off-vocab still appear (they're what it thinks).
-export function groupSuggestions(suggestions, probs, { topK = 5, restLabel = 'All tags' } = {}) {
+export function groupSuggestions(suggestions, probs, { topK = 5, restLabel = t('All tags') } = {}) {
   const base = suggestions || [];
   if (!probs) return base;
   const ranked = Object.entries(probs)
@@ -56,7 +59,7 @@ export function groupSuggestions(suggestions, probs, { topK = 5, restLabel = 'Al
   if (!ranked.length) return base;
   const rankedSet = new Set(ranked);
   const rest = base.filter((s) => !rankedSet.has(s));
-  const groups = [{ group: PARSER_GROUP, items: ranked }];
+  const groups = [{ group: t(PARSER_GROUP), items: ranked }];
   if (rest.length) groups.push({ group: restLabel, items: rest });
   return groups;
 }
@@ -85,7 +88,7 @@ export const provDoubtful = (metadata, threshold) => isDoubtful(metadata, thresh
 export const isProvKey = (key) => PROV_KEYS.has(key);
 
 export function provCellTitle(base, metadata) {
-  const { state, word, note } = provDescription(metadata);
+  const { state, origin, note } = provDescription(metadata);
   if (state === PROV_STATES.HUMAN) return base;
   const detail = metadata?.[PROV.detailKey];
   const bits = [metadata?.[PROV.sourceKey]];
@@ -93,6 +96,15 @@ export function provCellTitle(base, metadata) {
   if (detail?.language) bits.push(detail.language);
   // Only while nobody has reviewed it: the number is the prediction's.
   if (note) bits.push(note);
-  const who = state === PROV_STATES.VERIFIED ? `${word}, human-verified` : `${word}, unverified`;
-  return `${base}: ${who} (${bits.filter(Boolean).join(' · ')})`;
+  // `base` is the cell's own title, a label in front of the sentence.
+  const values = { base, origin, detail: bits.filter(Boolean).join(' · ') };
+  return state === PROV_STATES.VERIFIED
+    ? t(
+        '{base}: {origin, select, contributed {contributed} other {machine-made}}, human-verified ({detail})',
+        values,
+      )
+    : t(
+        '{base}: {origin, select, contributed {contributed} other {machine-made}}, unverified ({detail})',
+        values,
+      );
 }

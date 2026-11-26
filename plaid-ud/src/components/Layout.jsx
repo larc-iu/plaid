@@ -1,5 +1,6 @@
 import { AppShell } from '@ui/components/shared/AppShell.jsx';
 import { UD_ASSISTANT } from './assistant/adapter.js';
+import { msg } from '@ui/lib/i18n.js';
 
 // The app shell, which is plaid-ui's: the header band, the assistant panel and
 // its chip and rail, and the one container every screen renders into. What this
@@ -9,7 +10,9 @@ import { UD_ASSISTANT } from './assistant/adapter.js';
 //
 // No keymap: this app's chords are hard-coded, by ruling, so there is no table
 // for a person's own bindings to lie over.
-const NAV = [{ to: '/projects', label: 'Projects', match: (path) => path.startsWith('/projects') }];
+const NAV = [
+  { to: '/projects', label: msg('Projects'), match: (path) => path.startsWith('/projects') },
+];
 
 export const Layout = () => (
   <AppShell

@@ -15,33 +15,37 @@
 // In a file of its own so `actionTables.test.js` can hold this table, the
 // keymap and `runAction` against each other: the three used to be able to
 // drift into a bound key that did nothing or a menu row that did nothing.
+//
+// Each label is a message, shown through t() by NodeMenu.
+import { msg } from '@ui/lib/i18n.js';
+
 export const ITEMS = [
-  [['node.confirm', 'Accept']],
+  [['node.confirm', msg('Accept')]],
   [
-    ['node.concept', 'Edit concept', 'fixed:canvas:Enter'],
-    ['node.takeEntry', 'Take entry value'],
-    ['node.takeEntryAll', 'Take entry value for all nodes'],
-    ['node.relation', 'Relation to parent'],
-    ['node.attributes', 'Attributes'],
-    ['node.variable', 'Rename variable'],
+    ['node.concept', msg('Edit concept'), 'fixed:canvas:Enter'],
+    ['node.takeEntry', msg('Take entry value')],
+    ['node.takeEntryAll', msg('Take entry value for all nodes')],
+    ['node.relation', msg('Relation to parent')],
+    ['node.attributes', msg('Attributes')],
+    ['node.variable', msg('Rename variable')],
   ],
   [
-    ['node.child', 'Add a child', 'fixed:canvas:Tab'],
-    ['node.anchor', 'Change anchor'],
-    ['node.move', 'Move under another node'],
-    ['node.reentrancy', 'Add a second parent'],
-    ['node.earlier', 'Move earlier'],
-    ['node.later', 'Move later'],
-    ['node.root', 'Make this the root'],
+    ['node.child', msg('Add a child'), 'fixed:canvas:Tab'],
+    ['node.anchor', msg('Change anchor')],
+    ['node.move', msg('Move under another node')],
+    ['node.reentrancy', msg('Add a second parent')],
+    ['node.earlier', msg('Move earlier')],
+    ['node.later', msg('Move later')],
+    ['node.root', msg('Make this the root')],
   ],
   [
-    ['node.coref', 'Coreference'],
-    ['node.temporal', 'Temporal relation'],
-    ['node.modal', 'Modal relation'],
-    ['node.docRelations', 'Change a document relation'],
+    ['node.coref', msg('Coreference')],
+    ['node.temporal', msg('Temporal relation')],
+    ['node.modal', msg('Modal relation')],
+    ['node.docRelations', msg('Change a document relation')],
   ],
   [
-    ['node.delete', 'Delete relation to parent'],
-    ['node.deleteNode', 'Delete node and all below it'],
+    ['node.delete', msg('Delete relation to parent')],
+    ['node.deleteNode', msg('Delete node and all below it')],
   ],
 ];

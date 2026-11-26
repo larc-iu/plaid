@@ -301,7 +301,10 @@ export function planRecordExtents(graph) {
   return out;
 }
 
-/** The audit label for what a pass changed, or null when it changed nothing. */
+/**
+ * The audit label for what a pass changed, or null when it changed nothing.
+ * English, as every audit label: it is stored on the server.
+ */
 export function describeUmrReconcile({
   removed = 0,
   rebound = 0,
@@ -313,7 +316,7 @@ export function describeUmrReconcile({
   recordsFitted = 0,
   wordSplits = 0,
 } = {}) {
-  const nodes = (n) => countOf(n, 'unaligned node');
+  const nodes = (n) => countOf(n, 'unaligned node'); // i18n-ignore: an audit label
   const parts = [];
   if (unanchored.length) {
     const names = unanchored.slice(0, 5).join(' ');
@@ -344,6 +347,7 @@ export function describeUmrReconcile({
   }
   if (recordsFitted) {
     parts.push(
+      // i18n-ignore: an audit label, as all of this
       `put ${countOf(recordsFitted, 'sentence record', 'sentence records')} back over ${recordsFitted === 1 ? 'its sentence' : 'their sentences'}`,
     );
   }
@@ -355,10 +359,12 @@ export function describeUmrReconcile({
     );
   }
   if (renumbered) {
+    // i18n-ignore: an audit label
     parts.push(`renumbered ${countOf(renumbered, 'variable', 'variables')} to match the sentences`);
   }
   if (readApart) {
     parts.push(
+      // i18n-ignore: an audit label
       `renamed ${countOf(readApart, 'variable', 'variables')} another node of the sentence also had`,
     );
   }

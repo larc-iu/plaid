@@ -19,6 +19,7 @@ export const EditorSessionContext = createContext(null);
 export const useEditorSession = () => {
   const session = useContext(EditorSessionContext);
   if (!session) {
+    // i18n-ignore: a developer-only invariant error
     throw new Error('The annotation grid must be rendered inside an EditorSessionContext.Provider');
   }
   return session;

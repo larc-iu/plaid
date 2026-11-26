@@ -4,6 +4,7 @@ import { getUmrLayerInfo } from '../../utils/umrLayerUtils.js';
 import { SETUP } from '../projects/setup.jsx';
 import { buttonVariants } from '@ui/components/ui/button';
 import { ProjectDocumentsPage } from '@ui/components/shared/ProjectDocumentsPage.jsx';
+import { t } from '@ui/lib/i18n.js';
 
 const tableLayers = (info) => ({ wordLayerId: info.wordTokenLayer?.id });
 
@@ -14,7 +15,7 @@ const rowHref = (projectId, documentId) =>
 // is no New document button here.
 const ImportUmr = ({ projectId }) => (
   <Link to={`/projects/${projectId}/import-export`} className={buttonVariants()}>
-    Import .umr
+    {t('Import .umr')}
   </Link>
 );
 

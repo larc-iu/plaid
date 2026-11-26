@@ -18,7 +18,7 @@ import { graphFromSentence } from './graph.js';
 import { rewriteSentence } from './engine.js';
 import { diffGraphs } from './diff.js';
 import { bareLabel } from '../edgeLabel.js';
-import { countOf } from '../../../../plaid-ui/src/lib/plural.js';
+import { t } from '../../../../plaid-ui/src/lib/i18n.js';
 import { makeValidators } from '../../utils/udVocabMode.js';
 import { featureRefusal, spaceRefusal } from '../../utils/feats.js';
 import { atVersion } from '../../../../plaid-ui/src/domain/atVersion.js';
@@ -84,11 +84,12 @@ export async function planRewrite(client, { project, user, layerInfo, grs }, onP
   const docs = new Map();
   const rows = [];
   let loaded = 0;
-  onProgress?.(`Loading document 1 of ${docIds.length}…`);
+  onProgress?.(t('Loading document 1 of {total}…', { total: docIds.length }));
   const loading = mapPool(docIds, LOAD_CONCURRENCY, async (docId) => {
     const doc = await ConlluDocument.load(client, { projectId, documentId: docId, project, user });
     loaded += 1;
-    if (loaded < docIds.length) onProgress?.(`Loading document ${loaded + 1} of ${docIds.length}…`);
+    if (loaded < docIds.length)
+      onProgress?.(t('Loading document {i} of {total}…', { i: loaded + 1, total: docIds.length }));
     return doc;
   });
   // Rewrite each document as soon as it arrives, in discovery order.
@@ -186,7 +187,7 @@ function offVocabulary(before, after, validators) {
     ]) {
       if (node[col] == null || (was && was[col] === node[col])) continue;
       const refusal = spaceRefusal(col, node[col]) || check(node[col]);
-      if (refusal) return `${node.form}: ${refusal}`;
+      if (refusal) return t('{form}: {reason}', { form: node.form, reason: refusal });
     }
     // `feats` is a Map on a real node, so iterate rather than mapping it.
     const had = new Set();
@@ -196,7 +197,7 @@ function offVocabulary(before, after, validators) {
       if (had.has(pair)) continue;
       // A pair the FEATS column cannot spell, under any list (utils/feats.js).
       const refusal = featureRefusal(pair) || validators.feats(pair);
-      if (refusal) return `${node.form}: ${refusal}`;
+      if (refusal) return t('{form}: {reason}', { form: node.form, reason: refusal });
     }
   }
   // `edges` is a Map keyed by relation id.
@@ -257,7 +258,7 @@ export async function applyRewrite(client, { rows, docs, label }, onProgress) {
     label,
     async () => {
       for (const [docId, docRows] of byDoc) {
-        onProgress?.(`Applying to document ${done + 1} of ${byDoc.size}…`);
+        onProgress?.(t('Applying to document {i} of {total}…', { i: done + 1, total: byDoc.size }));
         const doc = docs.get(docId);
         try {
           await atVersion(client, docId, doc.raw?.version, () =>
@@ -288,21 +289,37 @@ export async function applyRewrite(client, { rows, docs, label }, onProgress) {
 // The toast after an apply. `reason` turns the failure into a sentence, and
 // its own full stop is dropped so the sentence can end here.
 export function applySummary(out, reason) {
-  const applied = `${countOf(out.sentencesChanged, 'sentence')} in ${countOf(out.docsChanged, 'document')}`;
-  if (!out.failed) return `Changed ${applied}.`;
+  const applied = { n: out.sentencesChanged, docs: out.docsChanged };
+  if (!out.failed) {
+    return t(
+      'Changed {n, plural, one {# sentence} other {# sentences}} in {docs, plural, one {# document} other {# documents}}.',
+      applied,
+    );
+  }
   const { docName, status, partial, unsure } = out.failed;
-  const why = (status === 409 ? 'it changed since the preview' : reason(out.failed))
-    .trim()
-    .replace(/\.+$/, '');
-  const parts = [`Stopped at ${docName}: ${why}.`];
+  const parts = [
+    status === 409
+      ? t('Stopped at {name}: it changed since the preview.', { name: docName })
+      : t('Stopped at {name}: {reason}.', {
+          name: docName,
+          reason: reason(out.failed).trim().replace(/\.+$/, ''),
+        }),
+  ];
   parts.push(
     partial
-      ? `${docName} is partly changed.`
+      ? t('{name} is partly changed.', { name: docName })
       : unsure
-        ? `${docName} may have changed.`
-        : `${docName} is unchanged.`,
+        ? t('{name} may have changed.', { name: docName })
+        : t('{name} is unchanged.', { name: docName }),
   );
-  if (out.docsChanged) parts.push(`Changed ${applied} before it.`);
+  if (out.docsChanged) {
+    parts.push(
+      t(
+        'Changed {n, plural, one {# sentence} other {# sentences}} in {docs, plural, one {# document} other {# documents}} before it.',
+        applied,
+      ),
+    );
+  }
   return parts.join(' ');
 }
 
@@ -437,7 +454,7 @@ function queueMain(b, main, writer, createStamp, lemmaOf) {
         );
         break;
       default:
-        throw new Error(`Unknown write ${w.op}`);
+        throw new Error(`Unknown write ${w.op}`); // i18n-ignore: an invariant, for developers
     }
   }
 }

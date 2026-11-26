@@ -20,7 +20,7 @@ import { createOnce } from '../../../plaid-ui/src/lib/createOnce.js';
 import { pendingId } from '../../../plaid-ui/src/domain/pendingIds.js';
 import { humanizeError } from '../../../plaid-ui/src/lib/errors.js';
 import { CHUNK, sendInChunks } from '../../../plaid-ui/src/domain/bulkChunks.js';
-import { countOf } from '../../../plaid-ui/src/lib/plural.js';
+import { listOf, msg, t } from '../../../plaid-ui/src/lib/i18n.js';
 
 /**
  * @param {object} client
@@ -39,7 +39,7 @@ import { countOf } from '../../../plaid-ui/src/lib/plural.js';
  */
 export const importUmrDocument = (client, projectId, name, text, layerInfo, options = {}) =>
   client.withOperation(
-    `Import UMR document "${name}"`,
+    `Import UMR document "${name}"`, // i18n-ignore: an audit label, sent to the server
     () => importDocument(client, projectId, name, text, layerInfo, options),
     IMPORT_KIND,
   );
@@ -50,14 +50,14 @@ export const importUmrDocument = (client, projectId, name, text, layerInfo, opti
 const IMPORT_KIND = { kind: 'import', ref: 'format:umr' };
 
 async function importDocument(client, projectId, name, text, layerInfo, options) {
-  if (!name || !name.trim()) throw new Error('Document name is required');
-  if (!text || !text.trim()) throw new Error('No content to import');
+  if (!name || !name.trim()) throw new Error(t('Document name is required'));
+  if (!text || !text.trim()) throw new Error(t('No content to import'));
   if (!layerInfo?.isConfigured) {
     console.error(
       'UMR layers missing:',
       missingUmrLayerLabels(layerInfo?.missingLayers).join(', '),
     );
-    throw new Error('This project is not set up for UMR.');
+    throw new Error(t('This project is not set up for UMR.'));
   }
 
   const parsed = parseUmrFile(text);
@@ -68,10 +68,10 @@ async function importDocument(client, projectId, name, text, layerInfo, options)
     const noSeparator = parsed.warnings.some((w) => w.code === 'content-before-first-sentence');
     throw new Error(
       first
-        ? `Failed to read the file: ${first.message}`
+        ? t('Failed to read the file: {error}', { error: first.message })
         : noSeparator
-          ? 'No sentences found. Each sentence starts with a line of 80 #.'
-          : 'No sentences found in the file.',
+          ? t('No sentences found. Each sentence starts with a line of 80 #.')
+          : t('No sentences found in the file.'),
     );
   }
   const warnings = [];
@@ -82,7 +82,7 @@ async function importDocument(client, projectId, name, text, layerInfo, options)
   if (options.into) {
     const raw = await client.documents.get(options.into, true);
     const info = getUmrLayerInfo(raw);
-    if (!info.isConfigured) throw new Error('The document is not set up for UMR.');
+    if (!info.isConfigured) throw new Error(t('The document is not set up for UMR.'));
     const graph = buildDocumentGraph(info);
     if (standingOf(info, graph) === 'graph') throw new Error(hasGraph(raw.name));
     existing = { raw, info, graph };
@@ -96,7 +96,7 @@ async function importDocument(client, projectId, name, text, layerInfo, options)
     !resolveIlg(options.ilg).some((e) => e.source === 'stored')
   ) {
     warnings.push(
-      'Gloss lines stored but not shown. Add "Lines an import stored" in UMR settings.',
+      t('Gloss lines stored but not shown. Add "Lines an import stored" in UMR settings.'),
     );
   }
   // What an attach makes and changes, for the rollback below: the anchors,
@@ -249,7 +249,7 @@ async function importDocument(client, projectId, name, text, layerInfo, options)
       .map((s) => [had[s.index - 1]?.recordToken, s])
       .filter(([record]) => record);
     const recordTokens = new Map(
-      (existing?.info.nodeTokenLayer.tokens || []).map((t) => [t.id, t]),
+      (existing?.info.nodeTokenLayer.tokens || []).map((tr) => [tr.id, tr]),
     );
     await sendInChunks(recordWrites, (slice) => {
       for (const [record] of slice) {
@@ -279,13 +279,13 @@ async function importDocument(client, projectId, name, text, layerInfo, options)
       value: e.role,
       metadata: { [UMR_NAMESPACE]: { order: e.order } },
     }));
-    const tripleOps = plan.triples.map((t, i) => ({
+    const tripleOps = plan.triples.map((tr, i) => ({
       id: tripleIds[i],
       relationLayerId: layerInfo.documentGraphLayer.id,
-      source: spanOf(t.source),
-      target: spanOf(t.target),
-      value: t.rel,
-      metadata: { [UMR_NAMESPACE]: t.meta },
+      source: spanOf(tr.source),
+      target: spanOf(tr.target),
+      value: tr.rel,
+      metadata: { [UMR_NAMESPACE]: tr.meta },
     }));
     for (const ops of [edgeOps, tripleOps]) {
       await sendInChunks(ops, (slice) => {
@@ -327,7 +327,10 @@ async function importDocument(client, projectId, name, text, layerInfo, options)
       } catch (delErr) {
         console.error('Failed to clean up the document after an import failure:', delErr);
         const wrapped = new Error(
-          `${humanizeError(err, 'Failed to import.')} The partial document “${name.trim()}” was not deleted. Delete it by hand.`,
+          t('{error} The partial document “{name}” was not deleted. Delete it by hand.', {
+            error: humanizeError(err, t('Failed to import.')),
+            name: name.trim(),
+          }),
         );
         wrapped.cause = err;
         throw wrapped;
@@ -337,7 +340,7 @@ async function importDocument(client, projectId, name, text, layerInfo, options)
   }
 }
 
-const hasGraph = (name) => `"${name}" already has a graph.`;
+const hasGraph = (name) => t('"{name}" already has a graph.', { name });
 
 const standingOf = (info, graph) => {
   // Constants (author, root) are not a graph: a document whose only nodes
@@ -365,16 +368,18 @@ export function importTarget(raw) {
   const info = getUmrLayerInfo(raw);
   const standing = info.isConfigured ? standingOf(info, buildDocumentGraph(info)) : 'empty';
   if (standing === 'graph') throw new Error(hasGraph(raw.name));
-  if (standing === 'empty') return { into: null, note: `"${raw.name}" has no words.` };
+  if (standing === 'empty') {
+    return { into: null, note: t('"{name}" has no words.', { name: raw.name }) };
+  }
   return { into: raw.id };
 }
 
 // Notes the reader makes once per node, said once per sentence instead: the
 // Navajo sample has a space before the colon on every alignment line, and the
-// report was a line per node.
+// report was a line per node. Messages: shown through t().
 const PER_SENTENCE = {
-  'alignment-space-before-colon': 'Alignment lines have a space before the colon.',
-  'legacy-unaligned': "Alignment '-1--1' is UMR 1.0 for unaligned.",
+  'alignment-space-before-colon': msg('Alignment lines have a space before the colon.'),
+  'legacy-unaligned': msg("Alignment '-1--1' is UMR 1.0 for unaligned."),
 };
 
 // The number a sentence of the file goes by in the report: the file's own
@@ -405,7 +410,7 @@ export function readerNotes(parsed) {
     ...(parsed.errors || []).filter((e) => e.code !== 'sentence-graph'),
   ];
   notes.forEach(({ code, message: said, sentence }) => {
-    const message = PER_SENTENCE[code] ?? said;
+    const message = PER_SENTENCE[code] ? t(PER_SENTENCE[code]) : said;
     if (sentence == null) {
       if (!lines.includes(message)) lines.push(message);
       return;
@@ -417,8 +422,8 @@ export function readerNotes(parsed) {
   sentencesOf.forEach((sentences, message) => {
     lines.push(
       sentences.length === 1
-        ? `Sentence ${shown(sentences[0])}: ${message}`
-        : `${sentences.length} sentences: ${message}`,
+        ? t('Sentence {n}: {message}', { n: shown(sentences[0]), message })
+        : t('{n} sentences: {message}', { n: sentences.length, message }),
     );
   });
   return lines;
@@ -448,7 +453,10 @@ export function planImport(parsedSentences, warnings = [], { existing = null } =
   if (existing) {
     if (existing.sentences.length !== parsedSentences.length) {
       throw new WordsDiffer(
-        `The file has ${parsedSentences.length} sentences and the document ${existing.sentences.length}.`,
+        t('The file has {file} sentences and the document {doc}.', {
+          file: parsedSentences.length,
+          doc: existing.sentences.length,
+        }),
       );
     }
     parsedSentences.forEach((ps, i) => {
@@ -460,7 +468,11 @@ export function planImport(parsedSentences, warnings = [], { existing = null } =
       const have = existing.sentences[i].words.map((w) => nfc(wordForFile(w)));
       if (have.length !== ps.words.length || have.some((w, k) => w !== ps.words[k])) {
         throw new WordsDiffer(
-          `Sentence ${shown(i + 1)} differs: the file has "${ps.words.join(' ')}", the document "${have.join(' ')}".`,
+          t('Sentence {n} differs: the file has "{file}", the document "{doc}".', {
+            n: shown(i + 1),
+            file: ps.words.join(' '),
+            doc: have.join(' '),
+          }),
         );
       }
     });
@@ -500,9 +512,9 @@ export function planImport(parsedSentences, warnings = [], { existing = null } =
   const existingConstants = new Map((existing?.constants || []).map((c) => [c.var, c.id]));
   const existingTriples = new Set(
     (existing?.sentences || []).flatMap((s) =>
-      s.triples.map((t) => {
+      s.triples.map((tr) => {
         const name = (id) => existing.nodesById.get(id)?.var;
-        return `${name(t.source)} ${t.rel} ${name(t.target)}`;
+        return `${name(tr.source)} ${tr.rel} ${name(tr.target)}`;
       }),
     ),
   );
@@ -515,9 +527,9 @@ export function planImport(parsedSentences, warnings = [], { existing = null } =
   // for a sentence's record to list when attaching.
   const existingConstantTriples = new Map();
   (existing?.constants || []).forEach((c) =>
-    c.docOut.forEach((t) => {
-      const target = existing.nodesById.get(t.target);
-      if (target?.constant) existingConstantTriples.set(`${c.var} ${t.rel} ${target.var}`, t.id);
+    c.docOut.forEach((tr) => {
+      const target = existing.nodesById.get(tr.target);
+      if (target?.constant) existingConstantTriples.set(`${c.var} ${tr.rel} ${target.var}`, tr.id);
     }),
   );
 
@@ -573,7 +585,10 @@ export function planImport(parsedSentences, warnings = [], { existing = null } =
       meta.rawGraph = ps.raw?.graph || '';
       meta.rawAlignment = ps.raw?.alignment || '';
       warnings.push(
-        `Sentence ${shown(index)}: unreadable graph, stored as text (${ps.graph.errors[0].message}).`,
+        t('Sentence {n}: unreadable graph, stored as text ({error}).', {
+          n: shown(index),
+          error: ps.graph.errors[0].message,
+        }),
       );
     }
     if (readable) {
@@ -584,7 +599,11 @@ export function planImport(parsedSentences, warnings = [], { existing = null } =
         const docGraphOf = /^s([0-9]+)s0$/.exec(v)?.[1];
         if (docGraphOf) {
           warnings.push(
-            `Sentence ${shown(index)}: ${v} names the document graph of sentence ${Number(docGraphOf)}. Rename the node.`,
+            t('Sentence {n}: {v} names the document graph of sentence {other}. Rename the node.', {
+              n: shown(index),
+              v,
+              other: Number(docGraphOf),
+            }),
           );
         }
         const ranges = ps.alignment?.get(v) || [];
@@ -595,7 +614,12 @@ export function planImport(parsedSentences, warnings = [], { existing = null } =
           const last = words[b - 1];
           if (!first || !last) {
             warnings.push(
-              `Sentence ${shown(index)}: ${v} aligns to words ${a}-${b}, outside the sentence.`,
+              t('Sentence {n}: {v} aligns to words {a}-{b}, outside the sentence.', {
+                n: shown(index),
+                v,
+                a,
+                b,
+              }),
             );
             return;
           }
@@ -603,7 +627,12 @@ export function planImport(parsedSentences, warnings = [], { existing = null } =
           // begins, and the whole import failed on it.
           if (a > b) {
             warnings.push(
-              `Sentence ${shown(index)}: ${v} aligns to words ${a}-${b}, a range backwards.`,
+              t('Sentence {n}: {v} aligns to words {a}-{b}, a range backwards.', {
+                n: shown(index),
+                v,
+                a,
+                b,
+              }),
             );
             return;
           }
@@ -652,7 +681,9 @@ export function planImport(parsedSentences, warnings = [], { existing = null } =
       for (const [v, ranges] of ps.alignment || []) {
         const real = (ranges || []).some(([a, b]) => a !== 0 || b !== 0);
         if (real && !ps.graph.nodes.has(v)) {
-          warnings.push(`Sentence ${shown(index)}: the alignment of ${v} dropped, no node ${v}.`);
+          warnings.push(
+            t('Sentence {n}: the alignment of {v} dropped, no node {v}.', { n: shown(index), v }),
+          );
         }
       }
     }
@@ -708,7 +739,22 @@ export function planImport(parsedSentences, warnings = [], { existing = null } =
             return;
           }
           warnings.push(
-            `Sentence ${shown(index)}: (${a} ${rel} ${b}) dropped, no node ${missing.join(' or ')}.`,
+            missing.length === 1
+              ? t('Sentence {n}: ({a} {rel} {b}) dropped, no node {v}.', {
+                  n: shown(index),
+                  a,
+                  rel,
+                  b,
+                  v: missing[0],
+                })
+              : t('Sentence {n}: ({a} {rel} {b}) dropped, no node {v} or {w}.', {
+                  n: shown(index),
+                  a,
+                  rel,
+                  b,
+                  v: missing[0],
+                  w: missing[1],
+                }),
           );
           return;
         }
@@ -757,12 +803,11 @@ export function planImport(parsedSentences, warnings = [], { existing = null } =
 
   heldBy.forEach(({ count: n, kept }, index) => {
     const which = [...kept].sort((x, y) => x - y);
-    const names =
-      which.length === 1
-        ? `sentence ${which[0]}`
-        : `sentences ${which.slice(0, -1).join(', ')} and ${which.at(-1)}`;
     warnings.push(
-      `Sentence ${shown(index)}: ${countOf(n, 'document-level relation is', 'document-level relations are')} held until ${names} ${which.length === 1 ? 'is' : 'are'} mended.`,
+      t(
+        'Sentence {n}: {held, plural, one {# document-level relation is} other {# document-level relations are}} held until {k, plural, one {sentence {list} is} other {sentences {list} are}} mended.',
+        { n: shown(index), held: n, k: which.length, list: listOf(which) },
+      ),
     );
   });
 
@@ -780,7 +825,11 @@ export function planImport(parsedSentences, warnings = [], { existing = null } =
 
   // A graph kept as text is not "no graph": it has its own line above.
   const empty = parsedSentences.filter((ps) => !ps.graph?.root && !ps.graph?.errors?.length).length;
-  if (empty) warnings.push(`${countOf(empty, 'sentence has', 'sentences have')} no graph.`);
+  if (empty) {
+    warnings.push(
+      t('{n, plural, one {# sentence has} other {# sentences have}} no graph.', { n: empty }),
+    );
+  }
 
   return {
     body: bodyLines.join('\n') + '\n',

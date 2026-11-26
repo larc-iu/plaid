@@ -17,6 +17,7 @@ import { EditorLegend } from './annotation/EditorLegend.jsx';
 import { cn } from '@ui/lib/utils.js';
 import { DOC_GUTTER } from '@ui/lib/pageWidth.js';
 import { RunBar } from '@ui/components/shared/RunBar.jsx';
+import { t } from '@ui/lib/i18n.js';
 
 // The document's annotation page: the frame around the graph editor. The
 // canvas replaces SentenceList below; everything else here (the read-only
@@ -52,7 +53,7 @@ export const AnnotationEditor = () => {
   const sentParam = searchParams.get('sent');
   const varParam = searchParams.get('var');
 
-  useDocumentTitle('Annotate', doc?.name, project?.name);
+  useDocumentTitle(t('Annotate'), doc?.name, project?.name);
 
   // The initial repair, and the gate the body holds behind a spinner while it
   // runs. Strict mode, entered before it, also OCC-guards annotation edits:
@@ -109,7 +110,7 @@ export const AnnotationEditor = () => {
           />
         ) : null
       }
-      helpLabel="Keys and marks"
+      helpLabel={t('Keys and marks')}
       help={
         hasSentences && !readOnly ? (
           <EditorLegend project={shown.project} direction={shown.textDirection} />
@@ -124,7 +125,7 @@ export const AnnotationEditor = () => {
   // shell's banner, over every tab.
   const readOnlyBanner = !selectedEntry && !canEdit && (
     <Notice tone="info" className="mt-4">
-      Read-only. {readOnlyReason(project, user)}
+      {t('Read-only. {reason}', { reason: readOnlyReason(project, user) })}
     </Notice>
   );
 
@@ -154,10 +155,10 @@ export const AnnotationEditor = () => {
     <div className="min-h-screen w-full">
       {/* Only the BODY waits here: the breadcrumbs and tab strip are the
           shell's and stay on screen throughout. */}
-      {reconciling && <Loading label="Checking this document…" className={DOC_GUTTER} />}
+      {reconciling && <Loading label={t('Checking this document…')} className={DOC_GUTTER} />}
 
       {!reconciling && !activeDocument && (
-        <p className="py-10 text-center text-muted-foreground">Document not found</p>
+        <p className="py-10 text-center text-muted-foreground">{t('Document not found')}</p>
       )}
 
       {!reconciling && activeDocument && (

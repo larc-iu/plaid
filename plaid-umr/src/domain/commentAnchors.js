@@ -15,6 +15,7 @@
 // there directly.
 
 import { anchorExcerpt, documentAnchor, quoted } from '@ui/domain/commentAnchors';
+import { t } from '@ui/lib/i18n.js';
 
 /**
  * The anchor index for one document: its own thread, and one per sentence.
@@ -41,7 +42,7 @@ export function buildAnchorIndex(doc) {
     const excerpt = anchorExcerpt(sentence.text);
     index.set(sentence.tokenId, {
       kind: 'sentence',
-      label: `Sentence ${sentence.number ?? number}`,
+      label: t('Sentence {n}', { n: sentence.number ?? number }),
       detail: quoted(excerpt),
       excerpt,
       sentenceIndex: number,

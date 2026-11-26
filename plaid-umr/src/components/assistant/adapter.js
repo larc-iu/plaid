@@ -17,6 +17,7 @@ import { readProjectLanguage } from '../../utils/umrLayerUtils.js';
 import { documentGroupOf } from '@ui/components/assistant/documentGroup.js';
 import { ExampleCard } from './ExampleCard.jsx';
 import { citationTitle, deepLink, sentenceHref } from './cite.js';
+import { msg, t } from '@ui/lib/i18n.js';
 
 // Cite tags, plus the older `{{Doc sN}}` braces and bare "s3.s3e" references
 // (the service resolves those only when the turn read a single document). A
@@ -46,11 +47,16 @@ const changeHref = (projectId, where) => {
 
 const changeTitle = (where) => {
   if (!where) return '';
-  if (where.kind === 'token')
-    return (
-      `${where.documentName}, sentence ${where.number ?? where.sentence}` +
-      (where.node ? `, node ${where.node}` : '')
-    );
+  if (where.kind === 'token') {
+    const v = {
+      name: where.documentName,
+      sentence: where.number ?? where.sentence,
+      node: where.node,
+    };
+    return where.node
+      ? t('{name}, sentence {sentence}, node {node}', v)
+      : t('{name}, sentence {sentence}', v);
+  }
   if (where.kind === 'document') return where.documentName || '';
   return '';
 };
@@ -67,7 +73,7 @@ const changePlace = (projectId, where) => {
   // A node's variable carries its sentence's number already (`s19y`), so the
   // reference `s19.s19y` beside it said the variable twice: the sentence
   // stands there instead.
-  const sentence = `Sentence ${where.number ?? where.sentence}`;
+  const sentence = t('Sentence {sentence}', { sentence: where.number ?? where.sentence });
   return where.node
     ? { href, title, name: where.node, detail: sentence }
     : { href, title, name: sentence, detail: where.surface };
@@ -92,7 +98,7 @@ const citationToMarkdown = (c, { origin, projectId }) => {
   }
   if (c.penman) out.push(...fencedBlock(c.penman));
   const focus = citationFocus(c);
-  if (focus.length) out.push('', `Nodes cited: ${focus.join(', ')}`);
+  if (focus.length) out.push('', `Nodes cited: ${focus.join(', ')}`); // i18n-ignore: the exported file's text
   return out.join('\n');
 };
 
@@ -112,13 +118,20 @@ export const parseCitationHref = (href) => {
 
 export const UMR_ASSISTANT = {
   app: 'umr',
-  intro: 'Ask about the graphs or the corpus, or ask for changes.',
+  // The tab's opening line, read when the tab is drawn: a getter, so the
+  // message is looked up in the language of the page, not at module load.
+  get intro() {
+    return t('Ask about the graphs or the corpus, or ask for changes.');
+  },
   // What a change flagged on the card is replacing. This app never edits the
   // text, so the only kind that sets the flag is a guideline rewrite, and what
-  // approving one costs is the wording it replaces. Reads both ways: "1 change
-  // rewrites wording somebody wrote", "2 changes rewrite wording somebody
-  // wrote".
-  textName: 'wording somebody wrote',
+  // approving one costs is the wording it replaces. The whole sentence the
+  // plan card shows (`textRewrites`). `textName` is the contract's older
+  // member, read only where `textRewrites` is missing.
+  textRewrites: msg(
+    '{n, plural, one {# change rewrites wording somebody wrote.} other {# changes rewrite wording somebody wrote.}}',
+  ),
+  textName: 'wording somebody wrote', // i18n-ignore: the old member, read only where textRewrites is missing
   convHref: (projectId, id) => `/projects/${projectId}/assistant?conversation=${id}`,
   CITE_RE,
   citationTitle,
@@ -132,9 +145,11 @@ export const UMR_ASSISTANT = {
   // The assistant reads a project set up for UMR, and no other.
   opensProject: isUmrProject,
   projectLanguage: readProjectLanguage,
+  // The example questions, in the reader's language when clicked (the tab
+  // calls t() on each).
   examples: [
-    'Which sentences have a graph with no aspect on its root?',
-    'What does the document graph say about the first sentence?',
-    'Summarize the concepts used across the corpus.',
+    msg('Which sentences have a graph with no aspect on its root?'),
+    msg('What does the document graph say about the first sentence?'),
+    msg('Summarize the concepts used across the corpus.'),
   ],
 };

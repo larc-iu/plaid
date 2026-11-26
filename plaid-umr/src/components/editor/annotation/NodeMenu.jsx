@@ -9,6 +9,7 @@ import { stickyChromeBottom } from '@ui/lib/stickyChrome.js';
 import { keys } from '../../../lib/keymap.js';
 import { ITEMS } from './nodeMenuItems.js';
 import { wordsInDirection } from '../../../lib/siblingMoves.js';
+import { t } from '@ui/lib/i18n.js';
 
 // One menu per BLOCK, not per node: a document has hundreds of nodes and a
 // menu each would be hundreds of Radix subscriptions. It hangs off an
@@ -63,7 +64,7 @@ export function NodeMenu({ at, direction, disabled, labels, onAction, onClose, o
             {i > 0 && <DropdownMenuSeparator />}
             {group.map(([id, label, keyId]) => (
               <DropdownMenuItem key={id} disabled={!!disabled?.[id]} onSelect={() => onAction(id)}>
-                <span className="whitespace-nowrap">{labels?.[id] || label}</span>
+                <span className="whitespace-nowrap">{labels?.[id] || t(label)}</span>
                 <span className="ml-auto pl-6 font-mono text-[0.7rem] whitespace-nowrap text-muted-foreground">
                   {wordsInDirection(keys, keyId || id, direction)}
                 </span>

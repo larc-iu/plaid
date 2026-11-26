@@ -7,6 +7,7 @@ import { EditableCell } from './EditableCell.jsx';
 import { FeaturesCell } from './FeaturesCell.jsx';
 import { useEditorSession } from './editorSession.js';
 import { isEmptyMachineLemma } from '../../../domain/reviewTargets.js';
+import { t } from '@ui/lib/i18n.js';
 
 // One word's column: its form and its annotation cells.
 const Column = React.memo(
@@ -89,8 +90,8 @@ const Column = React.memo(
             className="word-accept"
             data-show={hoverShow || undefined}
             tabIndex={-1}
-            title="Accept this word's predictions (Ctrl/Cmd+Enter)"
-            aria-label="Accept this word's predictions"
+            title={t("Accept this word's predictions (Ctrl/Cmd+Enter)")}
+            aria-label={t("Accept this word's predictions")}
             onClick={() => onConfirmTokens([data.token.id])}
           >
             <Check width={12} height={12} />
@@ -104,7 +105,7 @@ const Column = React.memo(
           title={
             provState(data.form?.metadata) === PROV_STATES.HUMAN
               ? undefined
-              : provCellTitle('Form', data.form.metadata)
+              : provCellTitle(t('Form'), data.form.metadata)
           }
           ref={(el) => {
             if (el) {
@@ -134,7 +135,7 @@ const Column = React.memo(
           <div className="mwt-row" aria-hidden>
             {mwt && (
               <div className="mwt-bracket" style={{ width: `${mwt.width}px` }}>
-                <span className="mwt-bracket__form" dir="auto" title="Multi-word token">
+                <span className="mwt-bracket__form" dir="auto" title={t('Multi-word token')}>
                   {mwt.form}
                 </span>
               </div>

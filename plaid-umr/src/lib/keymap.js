@@ -10,6 +10,9 @@
 // are `outsideText`: a node is not a text box, and a picker's input is.
 
 import { createKeymap } from '@ui/lib/keymap.js';
+import { msg } from '@ui/lib/i18n.js';
+
+// Labels are messages (msg): the screen that shows one translates it.
 
 const fixed = (scope, ...keyList) =>
   keyList.map((k) => ({
@@ -22,8 +25,8 @@ const fixed = (scope, ...keyList) =>
   }));
 
 export const KEY_GROUPS = [
-  { id: 'canvas', label: 'Canvas' },
-  { id: 'node', label: 'Canvas: the focused node' },
+  { id: 'canvas', label: msg('Canvas') },
+  { id: 'node', label: msg('Canvas: the focused node') },
 ];
 
 export const KEY_ACTIONS = [
@@ -32,7 +35,7 @@ export const KEY_ACTIONS = [
     id: 'node.takeEntry',
     scope: 'canvas',
     group: 'node',
-    label: 'Take the new value of the vocabulary entry the concept was picked from',
+    label: msg('Take the new value of the vocabulary entry the concept was picked from'),
     keys: ['e'],
     outsideText: true,
   },
@@ -40,7 +43,7 @@ export const KEY_ACTIONS = [
     id: 'node.takeEntryAll',
     scope: 'canvas',
     group: 'node',
-    label: 'Take the new value of the vocabulary entry for every node picked from it',
+    label: msg('Take the new value of the vocabulary entry for every node picked from it'),
     keys: ['Shift+E'],
     outsideText: true,
   },
@@ -48,7 +51,7 @@ export const KEY_ACTIONS = [
     id: 'node.relation',
     scope: 'canvas',
     group: 'node',
-    label: 'Change the relation to the parent',
+    label: msg('Change the relation to the parent'),
     keys: [':'],
     outsideText: true,
   },
@@ -56,7 +59,7 @@ export const KEY_ACTIONS = [
     id: 'node.attributes',
     scope: 'canvas',
     group: 'node',
-    label: 'Edit the attributes',
+    label: msg('Edit the attributes'),
     keys: ['a'],
     outsideText: true,
   },
@@ -64,7 +67,7 @@ export const KEY_ACTIONS = [
     id: 'node.variable',
     scope: 'canvas',
     group: 'node',
-    label: 'Rename the variable',
+    label: msg('Rename the variable'),
     keys: ['v'],
     outsideText: true,
   },
@@ -72,7 +75,7 @@ export const KEY_ACTIONS = [
     id: 'node.anchor',
     scope: 'canvas',
     group: 'node',
-    label: 'Change the anchor: click words or type their numbers, Escape to finish',
+    label: msg('Change the anchor: click words or type their numbers, Escape to finish'),
     keys: ['u'],
     outsideText: true,
   },
@@ -80,7 +83,7 @@ export const KEY_ACTIONS = [
     id: 'node.move',
     scope: 'canvas',
     group: 'node',
-    label: 'Move under another node: pick it',
+    label: msg('Move under another node: pick it'),
     keys: ['m'],
     outsideText: true,
   },
@@ -88,21 +91,21 @@ export const KEY_ACTIONS = [
     id: 'node.earlier',
     scope: 'canvas',
     group: 'node',
-    label: 'Move earlier among its siblings',
+    label: msg('Move earlier among its siblings'),
     keys: ['Alt+ArrowLeft'],
   },
   {
     id: 'node.later',
     scope: 'canvas',
     group: 'node',
-    label: 'Move later among its siblings',
+    label: msg('Move later among its siblings'),
     keys: ['Alt+ArrowRight'],
   },
   {
     id: 'node.reentrancy',
     scope: 'canvas',
     group: 'node',
-    label: 'Add a second parent: pick it',
+    label: msg('Add a second parent: pick it'),
     keys: ['r'],
     outsideText: true,
   },
@@ -110,35 +113,35 @@ export const KEY_ACTIONS = [
     id: 'node.root',
     scope: 'canvas',
     group: 'node',
-    label: 'Make this node the root',
+    label: msg('Make this node the root'),
     keys: ['Mod+Shift+R'],
   },
   {
     id: 'node.confirm',
     scope: 'canvas',
     group: 'node',
-    label: 'Accept the node and its relation to its parent',
+    label: msg('Accept the node and its relation to its parent'),
     keys: ['Mod+Enter'],
   },
   {
     id: 'node.delete',
     scope: 'canvas',
     group: 'node',
-    label: 'Delete the edge to the parent, with what only it reached',
+    label: msg('Delete the edge to the parent, with what only it reached'),
     keys: ['Shift+Backspace', 'Shift+Delete'],
   },
   {
     id: 'node.deleteNode',
     scope: 'canvas',
     group: 'node',
-    label: 'Delete the node and everything under it',
+    label: msg('Delete the node and everything under it'),
     keys: ['Mod+Shift+Backspace', 'Mod+Shift+Delete'],
   },
   {
     id: 'node.coref',
     scope: 'canvas',
     group: 'node',
-    label: 'Coreference with another node: pick it',
+    label: msg('Coreference with another node: pick it'),
     keys: ['c'],
     outsideText: true,
   },
@@ -146,7 +149,7 @@ export const KEY_ACTIONS = [
     id: 'node.temporal',
     scope: 'canvas',
     group: 'node',
-    label: 'Temporal relation: pick the other end',
+    label: msg('Temporal relation: pick the other end'),
     keys: ['t'],
     outsideText: true,
   },
@@ -154,7 +157,7 @@ export const KEY_ACTIONS = [
     id: 'node.modal',
     scope: 'canvas',
     group: 'node',
-    label: 'Modal relation: pick the conceiver',
+    label: msg('Modal relation: pick the conceiver'),
     keys: ['o'],
     outsideText: true,
   },
@@ -162,7 +165,7 @@ export const KEY_ACTIONS = [
     id: 'node.docRelations',
     scope: 'canvas',
     group: 'node',
-    label: 'Change a document relation: pick it',
+    label: msg('Change a document relation: pick it'),
     keys: ['d'],
     outsideText: true,
   },
@@ -170,7 +173,7 @@ export const KEY_ACTIONS = [
     id: 'canvas.nextSentence',
     scope: 'canvas',
     group: 'canvas',
-    label: 'Next sentence',
+    label: msg('Next sentence'),
     keys: ['PageDown'],
     // Never from a text box (SentenceBlock), so a letter may take it.
     outsideText: true,
@@ -179,7 +182,7 @@ export const KEY_ACTIONS = [
     id: 'canvas.previousSentence',
     scope: 'canvas',
     group: 'canvas',
-    label: 'Previous sentence',
+    label: msg('Previous sentence'),
     keys: ['PageUp'],
     // Never from a text box (SentenceBlock), so a letter may take it.
     outsideText: true,
@@ -188,7 +191,7 @@ export const KEY_ACTIONS = [
     id: 'canvas.newRoot',
     scope: 'canvas',
     group: 'canvas',
-    label: 'New node with no parent',
+    label: msg('New node with no parent'),
     keys: ['n'],
     outsideText: true,
   },

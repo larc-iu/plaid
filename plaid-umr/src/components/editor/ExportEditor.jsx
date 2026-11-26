@@ -6,12 +6,13 @@ import { Loading } from '@ui/components/shared/Loading.jsx';
 import { DOC_GUTTER } from '@ui/lib/pageWidth.js';
 import { useRepairOnOpen } from './hooks/useRepairOnOpen.js';
 import { ExportProblems, LeftOutOfExport } from './ExportProblems.jsx';
+import { t, tc } from '@ui/lib/i18n.js';
 
 export const ExportEditor = () => {
   // Project, document and the breadcrumbs/tab strip all come from
   // DocumentEditorShell, which guarantees both are loaded before this renders.
   const { doc, project } = useDocumentEditor();
-  useDocumentTitle('Export', doc?.name, project?.name);
+  useDocumentTitle(tc('noun', 'Export'), doc?.name, project?.name);
   // The repair on open, as Annotate runs it, so the file carries the names
   // it gives (a sentence IGT moved renumbers its variables).
   const reconciling = useRepairOnOpen();
@@ -22,14 +23,14 @@ export const ExportEditor = () => {
     doc?.loadLexicon?.().catch((err) => console.warn('Could not read the vocabularies:', err));
   }, [doc]);
 
-  if (reconciling) return <Loading label="Checking this document…" className={DOC_GUTTER} />;
+  if (reconciling) return <Loading label={t('Checking this document…')} className={DOC_GUTTER} />;
   // A value the file cannot hold refuses the export and is listed instead.
   const problems = doc.exportProblems;
   // What the file leaves out, when it is written at all.
   const leftOut = problems.length ? [] : (doc.leftOutOfExport ?? []);
   return (
     <DocumentFileExport
-      heading="UMR"
+      heading="UMR" // i18n-ignore: a format name
       extension=".umr"
       name={doc?.name}
       content={problems.length ? '' : doc.toUmr()}

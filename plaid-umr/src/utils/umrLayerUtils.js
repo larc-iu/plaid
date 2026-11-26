@@ -1,4 +1,6 @@
 import { ROLES, findByRole } from '@larc-iu/plaid-client';
+// Relative, not @ui: the plain-node tests load this file.
+import { msg } from '../../../plaid-ui/src/lib/i18n.js';
 
 // The app's private config namespace. Substrate layers (text, sentences,
 // words, morphemes) are found by their shared `config.plaid.role`; everything
@@ -28,14 +30,15 @@ export const UMR_LAYER_FLAGS = {
   documentGraph: 'documentGraph',
 };
 
+// Messages (msg): the screen that shows one translates it.
 const UMR_LAYER_LABELS = {
-  textLayer: 'Text layer',
-  sentenceTokenLayer: 'Sentence layer',
-  wordTokenLayer: 'Word layer',
-  nodeTokenLayer: 'UMR node layer',
-  conceptLayer: 'UMR concept layer',
-  relationLayer: 'UMR relation layer',
-  documentGraphLayer: 'UMR document graph layer',
+  textLayer: msg('Text layer'),
+  sentenceTokenLayer: msg('Sentence layer'),
+  wordTokenLayer: msg('Word layer'),
+  nodeTokenLayer: msg('UMR node layer'),
+  conceptLayer: msg('UMR concept layer'),
+  relationLayer: msg('UMR relation layer'),
+  documentGraphLayer: msg('UMR document graph layer'),
 };
 
 const REQUIRED = [

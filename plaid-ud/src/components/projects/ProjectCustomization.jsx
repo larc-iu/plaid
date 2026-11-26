@@ -33,6 +33,9 @@ import { ROW_DELETE_CLASS } from '@ui/lib/destructive.js';
 import { Button } from '@ui/components/ui/button';
 import { Input } from '@ui/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle } from '@ui/components/ui/card';
+import { t, tx, msg } from '@ui/lib/i18n.js';
+
+const code = (c) => <code>{c}</code>;
 
 // What the tab shows for a project, read from its layer and project config.
 const seedFrom = (project) => {
@@ -85,20 +88,20 @@ const snapshot = (state) =>
 // the settings changed there take the new value. Every other change on the
 // tab stays as it was typed.
 const VOCAB_CARDS = {
-  upos: 'UPOS tags',
-  xpos: 'XPOS tags',
-  deprel: 'Dependency relations',
-  feats: 'Feature inventory',
+  upos: msg('UPOS tags'),
+  xpos: msg('XPOS tags'),
+  deprel: msg('Dependency relations'),
+  feats: msg('Feature inventory'),
 };
 const SETTINGS = [
-  ['uposVocab', 'UPOS tags'],
-  ['xposVocab', 'XPOS tags'],
-  ['deprelVocab', 'Dependency relations'],
-  ['deprelColors', 'Relation colors'],
-  ['uposColors', 'UPOS colors'],
-  ['featureInventory', 'Feature inventory'],
-  ['documentFields', 'Document fields'],
-  ['sentenceFields', 'Sentence fields'],
+  ['uposVocab', msg('UPOS tags')],
+  ['xposVocab', msg('XPOS tags')],
+  ['deprelVocab', msg('Dependency relations')],
+  ['deprelColors', msg('Relation colors')],
+  ['uposColors', msg('UPOS colors')],
+  ['featureInventory', msg('Feature inventory')],
+  ['documentFields', msg('Document fields')],
+  ['sentenceFields', msg('Sentence fields')],
   ...['modes', 'descriptions'].flatMap((head) =>
     Object.entries(VOCAB_CARDS).map(([vocab, card]) => [`${head}.${vocab}`, card]),
   ),
@@ -128,10 +131,13 @@ const conflictSummary = (draft, loaded, latest) => {
 };
 
 const conflictMessage = ({ replaced, kept }) => {
-  const latest = replaced.length
-    ? `Changed elsewhere, now showing the latest: ${replaced.join(', ')}.`
-    : 'Changed elsewhere.';
-  return kept ? `${latest} Save again for the rest.` : latest;
+  if (!replaced.length) {
+    return kept ? t('Changed elsewhere. Save again for the rest.') : t('Changed elsewhere.');
+  }
+  const cards = replaced.map((card) => t(card)).join(', ');
+  return kept
+    ? t('Changed elsewhere, now showing the latest: {cards}. Save again for the rest.', { cards })
+    : t('Changed elsewhere, now showing the latest: {cards}.', { cards });
 };
 
 // Every config cell this tab writes, with the value the tab's state stores
@@ -198,7 +204,9 @@ export const ProjectCustomization = () => {
     }) !== baseline;
 
   // Leaving the tab, the page or the window with a change made asks first.
-  useUnsavedDraft(dirty ? 'The change to these settings' : null);
+  useUnsavedDraft(dirty ? 'The change to these settings' : null, null, {
+    one: t('The change to these settings is not saved. Leaving loses it.'),
+  });
 
   // Seed the editors from the project's current layer config. A project read
   // again (after a Save, or after one refused because of a save elsewhere)
@@ -260,19 +268,22 @@ export const ProjectCustomization = () => {
     const notColor = drawn.find(([, color]) => color && !isHexColor(color));
     if (notColor) {
       notifyError(
-        `${notColor[0]}: "${notColor[1]}" is not a color of the form #RGB or #RRGGBB.`,
-        'UD settings not saved',
+        t('{tag}: "{color}" is not a color of the form #RGB or #RRGGBB.', {
+          tag: notColor[0],
+          color: notColor[1],
+        }),
+        t('UD settings not saved'),
       );
       return;
     }
     // An empty list is stored as no list, and the shipped one stands in for
     // it (readVocab), so the page would say saved and show it emptied (H3-7-2).
     const empty = [
-      [uposVocab, 'UPOS tags'],
-      [deprelVocab, 'Dependency relations'],
+      [uposVocab, () => t('UPOS tags: the list is empty.')],
+      [deprelVocab, () => t('Dependency relations: the list is empty.')],
     ].find(([list]) => !list.length);
     if (empty) {
-      notifyError(`${empty[1]}: the list is empty.`, 'UD settings not saved');
+      notifyError(empty[1](), t('UD settings not saved'));
       return;
     }
     setSaving(true);
@@ -291,7 +302,7 @@ export const ProjectCustomization = () => {
     const loadedSeed = seedFrom(project);
     try {
       const client = getClient();
-      if (!client) throw new Error('Not authenticated');
+      if (!client) throw new Error(t('Not authenticated'));
       const info = getUdLayerInfo(project);
       const loaded = new Map(configCells(loadedSeed, info, project).map((c) => [c.id, c]));
       const changed = configCells(current, info, project).filter(
@@ -300,7 +311,7 @@ export const ProjectCustomization = () => {
       await client.batched((b) => queueVocabCells(b, project, changed));
 
       await fetchProject();
-      notifySuccess('UD settings saved');
+      notifySuccess(t('UD settings saved'));
     } catch (err) {
       console.error('Failed to save customization:', err);
       if (isConfigConflict(err)) {
@@ -311,9 +322,9 @@ export const ProjectCustomization = () => {
         const summary = latest
           ? conflictSummary(current, loadedSeed, seedFrom(latest))
           : { replaced: [], kept: true };
-        notifyError(conflictMessage(summary), 'UD settings not saved');
+        notifyError(conflictMessage(summary), t('UD settings not saved'));
       } else {
-        notifyError(err, 'Failed to save the UD settings');
+        notifyError(err, t('Failed to save the UD settings'));
       }
     } finally {
       setSaving(false);
@@ -333,7 +344,7 @@ export const ProjectCustomization = () => {
   if (!info.isConfigured) {
     return (
       <p className="rounded-md border bg-muted/40 px-3 py-2 text-sm text-muted-foreground">
-        Set the project up for UD first.
+        {t('Set the project up for UD first.')}
       </p>
     );
   }
@@ -348,24 +359,24 @@ export const ProjectCustomization = () => {
     <div className="flex flex-col gap-6">
       <Card>
         <CardHeader className="flex-row items-center justify-between space-y-0">
-          <CardTitle>UPOS tags</CardTitle>
-          {resetButton(() => setUposVocab([...UPOS_TAGS]), 'Reset to universal 17')}
+          <CardTitle>{t('UPOS tags')}</CardTitle>
+          {resetButton(() => setUposVocab([...UPOS_TAGS]), t('Reset to universal 17'))}
         </CardHeader>
         <CardContent className="flex flex-col gap-3">
           <p className="text-sm text-muted-foreground">
-            Part-of-speech tags offered while annotating. The 17 universal tags by default. Off-list
-            values are accepted unless refused below. Imports and parsers may write values outside
-            the list. The Validation tab lists what is off-list.
+            {t(
+              'Part-of-speech tags offered while annotating. The 17 universal tags by default. Off-list values are accepted unless refused below. Imports and parsers may write values outside the list. The Validation tab lists what is off-list.',
+            )}
           </p>
           <TagList
             value={uposVocab}
             onChange={setUposVocab}
-            label="UPOS tags"
-            placeholder="Add a UPOS tag and press Enter"
+            label={t('UPOS tags')}
+            placeholder={t('Add a UPOS tag and press Enter')}
           />
           <VocabModeSwitch
             id="upos-closed"
-            noun="tags"
+            label={t('Refuse tags outside this list')}
             closed={modes.upos === MODES.CLOSED}
             onChange={setMode('upos')}
           />
@@ -379,21 +390,21 @@ export const ProjectCustomization = () => {
 
       <Card>
         <CardHeader>
-          <CardTitle>XPOS tags</CardTitle>
+          <CardTitle>{t('XPOS tags')}</CardTitle>
         </CardHeader>
         <CardContent className="flex flex-col gap-3">
           <p className="text-sm text-muted-foreground">
-            Language-specific part-of-speech tags offered while annotating.
+            {t('Language-specific part-of-speech tags offered while annotating.')}
           </p>
           <TagList
             value={xposVocab}
             onChange={setXposVocab}
-            label="XPOS tags"
-            placeholder="Add an XPOS tag and press Enter"
+            label={t('XPOS tags')}
+            placeholder={t('Add an XPOS tag and press Enter')}
           />
           <VocabModeSwitch
             id="xpos-closed"
-            noun="tags"
+            label={t('Refuse tags outside this list')}
             closed={modes.xpos === MODES.CLOSED}
             onChange={setMode('xpos')}
           />
@@ -407,30 +418,34 @@ export const ProjectCustomization = () => {
 
       <Card>
         <CardHeader className="flex-row items-center justify-between space-y-0">
-          <CardTitle>Dependency relations</CardTitle>
-          {resetButton(() => setDeprelVocab([...UNIVERSAL_DEPRELS]), 'Reset to universal 38')}
+          <CardTitle>{t('Dependency relations')}</CardTitle>
+          {resetButton(() => setDeprelVocab([...UNIVERSAL_DEPRELS]), t('Reset to universal 38'))}
         </CardHeader>
         <CardContent className="flex flex-col gap-3">
           <p className="text-sm text-muted-foreground">
-            Relations suggested when labeling edges. Subtypes (e.g. <code>nsubj:pass</code>) are
-            allowed.
+            {tx(
+              'Relations suggested when labeling edges. Subtypes (e.g. <code>nsubj:pass</code>) are allowed.',
+              { code },
+            )}
           </p>
           <TagList
             value={deprelVocab}
             onChange={setDeprelVocab}
-            label="Dependency relations"
-            placeholder="Add a relation and press Enter"
+            label={t('Dependency relations')}
+            placeholder={t('Add a relation and press Enter')}
           />
           <VocabModeSwitch
             id="deprel-closed"
-            noun="relations"
+            label={t('Refuse relations outside this list')}
             closed={modes.deprel === MODES.CLOSED}
             onChange={setMode('deprel')}
           />
           {modes.deprel === MODES.CLOSED && (
             <p className="text-xs text-muted-foreground">
-              A subtype is judged by its base relation. <code>nsubj:pass</code> is allowed wherever{' '}
-              <code>nsubj</code> is.
+              {tx(
+                'A subtype is judged by its base relation. <code>nsubj:pass</code> is allowed wherever <code>nsubj</code> is.',
+                { code },
+              )}
             </p>
           )}
           <DescriptionList
@@ -443,13 +458,13 @@ export const ProjectCustomization = () => {
 
       <Card>
         <CardHeader>
-          <CardTitle>Relation colors</CardTitle>
+          <CardTitle>{t('Relation colors')}</CardTitle>
         </CardHeader>
         <CardContent className="flex flex-col gap-3">
           <p className="text-sm text-muted-foreground">
-            Dependency edges are colored by their base relation. Each shows its current color, an
-            automatic one by default. Pick a color to override, or empty the field to go back to
-            automatic.
+            {t(
+              'Dependency edges are colored by their base relation. Each shows its current color, an automatic one by default. Pick a color to override, or empty the field to go back to automatic.',
+            )}
           </p>
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
             {[...new Set(deprelVocab.map(baseRel))].sort().map((rel) => (
@@ -467,12 +482,13 @@ export const ProjectCustomization = () => {
 
       <Card>
         <CardHeader>
-          <CardTitle>UPOS colors</CardTitle>
+          <CardTitle>{t('UPOS colors')}</CardTitle>
         </CardHeader>
         <CardContent className="flex flex-col gap-3">
           <p className="text-sm text-muted-foreground">
-            The UPOS tags above, colored in the annotation grid. Each shows its current color. Pick
-            one to override, or empty the field to go back to automatic.
+            {t(
+              'The UPOS tags above, colored in the annotation grid. Each shows its current color. Pick one to override, or empty the field to go back to automatic.',
+            )}
           </p>
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
             {[...new Set(uposVocab)].map((tag) => (
@@ -490,12 +506,13 @@ export const ProjectCustomization = () => {
 
       <Card>
         <CardHeader>
-          <CardTitle>Feature inventory</CardTitle>
+          <CardTitle>{t('Feature inventory')}</CardTitle>
         </CardHeader>
         <CardContent className="flex flex-col gap-3">
           <p className="text-sm text-muted-foreground">
-            Feature names and values offered in the FEATS picker. New keys and values are still
-            allowed while annotating.
+            {t(
+              'Feature names and values offered in the FEATS picker. New keys and values are still allowed while annotating.',
+            )}
           </p>
           {featureInventory.map((entry, i) => (
             <div key={i} className="flex items-start gap-2 rounded-md border p-3">
@@ -503,8 +520,8 @@ export const ProjectCustomization = () => {
                 className="w-40 shrink-0"
                 spellCheck={false}
                 value={entry.key}
-                placeholder="e.g. Number"
-                aria-label="Feature name"
+                placeholder={t('e.g. Number')}
+                aria-label={t('Feature name')}
                 onChange={(e) =>
                   setFeatureInventory((prev) =>
                     prev.map((x, j) => (j === i ? { ...x, key: e.target.value } : x)),
@@ -514,8 +531,8 @@ export const ProjectCustomization = () => {
               <div className="min-w-0 flex-1">
                 <TagList
                   value={entry.values}
-                  label={`${entry.key || 'Feature'} values`}
-                  placeholder="Add a value and press Enter"
+                  label={entry.key ? t('{name} values', { name: entry.key }) : t('Feature values')}
+                  placeholder={t('Add a value and press Enter')}
                   onChange={(vals) =>
                     setFeatureInventory((prev) =>
                       prev.map((x, j) => (j === i ? { ...x, values: vals } : x)),
@@ -527,7 +544,9 @@ export const ProjectCustomization = () => {
                 variant="ghost"
                 size="icon"
                 className={`h-9 w-9 shrink-0 ${ROW_DELETE_CLASS}`}
-                aria-label={`Remove ${entry.key || 'feature'}`}
+                aria-label={
+                  entry.key ? t('Remove {name}', { name: entry.key }) : t('Remove feature')
+                }
                 onClick={() => setFeatureInventory((prev) => prev.filter((_, j) => j !== i))}
               >
                 <Trash2 className="h-4 w-4" />
@@ -540,17 +559,19 @@ export const ProjectCustomization = () => {
             className="self-start"
             onClick={() => setFeatureInventory((prev) => [...prev, { key: '', values: [] }])}
           >
-            Add feature
+            {t('Add feature')}
           </Button>
           <VocabModeSwitch
             id="feats-closed"
-            noun="features"
+            label={t('Refuse features outside this list')}
             closed={modes.feats === MODES.CLOSED}
             onChange={setMode('feats')}
           />
           {modes.feats === MODES.CLOSED && (
             <p className="text-xs text-muted-foreground">
-              Both the key and the value are checked. A key with no values listed accepts any value.
+              {t(
+                'Both the key and the value are checked. A key with no values listed accepts any value.',
+              )}
             </p>
           )}
           <DescriptionList
@@ -563,40 +584,42 @@ export const ProjectCustomization = () => {
 
       <Card>
         <CardHeader>
-          <CardTitle>Document fields</CardTitle>
+          <CardTitle>{t('Document fields')}</CardTitle>
         </CardHeader>
         <CardContent className="flex flex-col gap-3">
           <p className="text-sm text-muted-foreground">
-            Notes kept about each document as a whole, edited on its Details tab. A treebank usually
-            records where a text came from and what it may be used for, as <code>source</code>,{' '}
-            <code>genre</code> or <code>license</code>.
+            {tx(
+              'Notes kept about each document as a whole, edited on its Details tab. A treebank usually records where a text came from and what it may be used for, as <code>source</code>, <code>genre</code> or <code>license</code>.',
+              { code },
+            )}
           </p>
           <MetadataFieldList
             value={documentFields}
             onChange={setDocumentFields}
             validate={(name, taken) => metadataFieldError(name, 'document', taken)}
-            label="Document fields"
-            placeholder="Add a field and press Enter"
+            label={t('Document fields')}
+            placeholder={t('Add a field and press Enter')}
           />
         </CardContent>
       </Card>
 
       <Card>
         <CardHeader>
-          <CardTitle>Sentence fields</CardTitle>
+          <CardTitle>{t('Sentence fields')}</CardTitle>
         </CardHeader>
         <CardContent className="flex flex-col gap-3">
           <p className="text-sm text-muted-foreground">
-            Notes kept about each sentence, edited under the sentence in the Annotate view. Every
-            sentence already carries <code>sent_id</code>. A free translation is usually{' '}
-            <code>text_en</code>, naming the language it is in.
+            {tx(
+              'Notes kept about each sentence, edited under the sentence in the Annotate view. Every sentence already carries <code>sent_id</code>. A free translation is usually <code>text_en</code>, naming the language it is in.',
+              { code },
+            )}
           </p>
           <MetadataFieldList
             value={sentenceFields}
             onChange={setSentenceFields}
             validate={(name, taken) => metadataFieldError(name, 'sentence', taken)}
-            label="Sentence fields"
-            placeholder="Add a field and press Enter"
+            label={t('Sentence fields')}
+            placeholder={t('Add a field and press Enter')}
           />
         </CardContent>
       </Card>
@@ -604,9 +627,11 @@ export const ProjectCustomization = () => {
       {/* Held at the bottom of the window, so a change at the top of a long
           page has its Save in view. */}
       <div className="sticky bottom-0 z-10 flex items-center justify-end gap-3 border-t bg-background py-3">
-        {dirty && !saving && <span className="text-sm text-muted-foreground">Not saved</span>}
+        {dirty && !saving && (
+          <span className="text-sm text-muted-foreground">{t('Not saved')}</span>
+        )}
         <Button onClick={handleSave} disabled={!dirty || saving}>
-          {saving ? 'Saving…' : 'Save'}
+          {saving ? t('Saving…') : t('Save')}
         </Button>
       </div>
     </div>

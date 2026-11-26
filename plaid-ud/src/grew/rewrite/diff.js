@@ -27,6 +27,7 @@ import { notSetUp } from '../../../../plaid-ui/src/domain/setupGuard.js';
 import { lossPhrase } from '../../../../plaid-ui/src/domain/annotationLoss.js';
 import { otherDeleteLoss } from '../../domain/otherLoss.js';
 import { lemmaFromForm } from '../../domain/newUdWord.js';
+import { t, msg } from '../../../../plaid-ui/src/lib/i18n.js';
 
 const COLUMN_LAYER = {
   form: 'formLayer',
@@ -40,7 +41,7 @@ export function diffGraphs(before, rewritten, layerInfo) {
   const changes = [];
   const writes = { tokens: [], lemmaCreates: [], main: [] };
   const layer = (key) => layerInfo[key]?.id;
-  const formOf = (g, id) => (id === ANCHOR ? '(root)' : (g.nodes.get(id)?.form ?? '?'));
+  const formOf = (g, id) => (id === ANCHOR ? t('(root)') : (g.nodes.get(id)?.form ?? '?'));
   const serverSrc = (e) => (e.src === ANCHOR ? e.tgt : e.src);
   const deleted = new Set();
 
@@ -51,7 +52,11 @@ export function diffGraphs(before, rewritten, layerInfo) {
     if (b.deleted || b.anchor) continue;
     if (a.deleted) {
       deleted.add(id);
-      changes.push({ kind: 'node', node: id, ...line`${b.form}: word deleted` });
+      changes.push({
+        kind: 'node',
+        node: id,
+        ...line(msg('{form}: word deleted'), { form: b.form }),
+      });
       continue;
     }
     for (const col of ['form', 'lemma', 'upos', 'xpos']) {
@@ -59,7 +64,12 @@ export function diffGraphs(before, rewritten, layerInfo) {
       changes.push({
         kind: 'feat',
         node: id,
-        ...line`${b.form}: ${col} ${describe(b[col])} → ${describe(a[col])}`,
+        ...line(msg('{form}: {column} {from} → {to}'), {
+          form: b.form,
+          column: col,
+          from: describe(b[col]),
+          to: describe(a[col]),
+        }),
       });
       if (col === 'lemma' && a.lemma === undefined) {
         // A cleared lemma keeps its span, with no value. The span is the
@@ -85,10 +95,18 @@ export function diffGraphs(before, rewritten, layerInfo) {
       if (bv === av) continue;
       const spanId = b.spanIds.features.get(key);
       if (av === undefined) {
-        changes.push({ kind: 'feat', node: id, ...line`${b.form}: ${key}=${bv} removed` });
+        changes.push({
+          kind: 'feat',
+          node: id,
+          ...line(msg('{form}: {key}={value} removed'), { form: b.form, key, value: bv }),
+        });
         writes.main.push({ op: 'deleteSpan', id: spanId });
       } else if (bv === undefined) {
-        changes.push({ kind: 'feat', node: id, ...line`${b.form}: ${key}=${av} added` });
+        changes.push({
+          kind: 'feat',
+          node: id,
+          ...line(msg('{form}: {key}={value} added'), { form: b.form, key, value: av }),
+        });
         writes.main.push({
           op: 'createSpan',
           layer: layer('featuresLayer'),
@@ -96,7 +114,11 @@ export function diffGraphs(before, rewritten, layerInfo) {
           value: `${key}=${av}`,
         });
       } else {
-        changes.push({ kind: 'feat', node: id, ...line`${b.form}: ${key} ${bv} → ${av}` });
+        changes.push({
+          kind: 'feat',
+          node: id,
+          ...line(msg('{form}: {key} {from} → {to}'), { form: b.form, key, from: bv, to: av }),
+        });
         writes.main.push({
           op: 'updateSpan',
           id: spanId,
@@ -152,7 +174,7 @@ export function diffGraphs(before, rewritten, layerInfo) {
         kind: 'node',
         node: id,
         loss: true,
-        ...line`${b.form}: word deleted, with ${phrase}`,
+        ...line(msg('{form}: word deleted, with {loss}'), { form: b.form, loss: phrase }),
       };
       last = { at, form: b.form, phrase };
     }
@@ -172,8 +194,12 @@ export function diffGraphs(before, rewritten, layerInfo) {
         node: changes[at].node,
         loss: true,
         ...(phrase
-          ? line`${form}: word deleted, with ${phrase}, and shortens ${cut}`
-          : line`${form}: word deleted, and shortens ${cut}`),
+          ? line(msg('{form}: word deleted, with {loss}, and shortens {cut}'), {
+              form,
+              loss: phrase,
+              cut,
+            })
+          : line(msg('{form}: word deleted, and shortens {cut}'), { form, cut })),
       };
     }
   }
@@ -222,23 +248,44 @@ export function diffGraphs(before, rewritten, layerInfo) {
       if (touchesDeleted(b)) continue; // cascades with the word
       changes.push({
         kind: 'edge',
-        ...line`${formOf(before, b.src)} → ${formOf(before, b.tgt)}: ${b.label} removed`,
+        ...line(msg('{src} → {tgt}: {label} removed'), {
+          src: formOf(before, b.src),
+          tgt: formOf(before, b.tgt),
+          label: b.label,
+        }),
       });
       writes.main.push({ op: 'deleteRelation', id });
       continue;
     }
     const lines = [];
     if (a.label !== b.label) {
-      lines.push(line`${formOf(after, a.src)} → ${formOf(after, a.tgt)}: ${b.label} → ${a.label}`);
+      lines.push(
+        line(msg('{src} → {tgt}: {from} → {to}'), {
+          src: formOf(after, a.src),
+          tgt: formOf(after, a.tgt),
+          from: b.label,
+          to: a.label,
+        }),
+      );
     }
     if (a.src !== b.src) {
       lines.push(
-        line`${a.label} of ${formOf(after, a.tgt)}: head ${formOf(before, b.src)} → ${formOf(after, a.src)}`,
+        line(msg('{label} of {word}: head {from} → {to}'), {
+          label: a.label,
+          word: formOf(after, a.tgt),
+          from: formOf(before, b.src),
+          to: formOf(after, a.src),
+        }),
       );
     }
     if (a.tgt !== b.tgt) {
       lines.push(
-        line`${a.label} from ${formOf(after, a.src)}: ${formOf(before, b.tgt)} → ${formOf(after, a.tgt)}`,
+        line(msg('{label} from {word}: {from} → {to}'), {
+          label: a.label,
+          word: formOf(after, a.src),
+          from: formOf(before, b.tgt),
+          to: formOf(after, a.tgt),
+        }),
       );
     }
     // The relation as it stands on the server now, which is where it is drawn
@@ -286,7 +333,11 @@ export function diffGraphs(before, rewritten, layerInfo) {
   }
   for (const [id, a] of after.edges) {
     if (before.edges.has(id)) continue;
-    const added = line`${formOf(after, a.src)} → ${formOf(after, a.tgt)}: ${a.label} added`;
+    const added = line(msg('{src} → {tgt}: {label} added'), {
+      src: formOf(after, a.src),
+      tgt: formOf(after, a.tgt),
+      label: a.label,
+    });
     if (isEnhancedLabel(a.label)) {
       pendingExtras.push({
         a,
@@ -332,11 +383,11 @@ export function diffGraphs(before, rewritten, layerInfo) {
     byPair.get(pairOf(p.a)).push(p);
   }
   // What a drop comes to: the stored row goes, and the line names that row,
-  // not where the edge was headed.
-  const drop = (p, why) => {
+  // not where the edge was headed. `message` is the line, which says why.
+  const drop = (p, message) => {
     if (!p.row) return; // nothing was stored, so nothing is written
     emit(
-      [line`${p.row.src} → ${p.row.tgt}: ${p.row.label} removed${why}`],
+      [line(message, { src: p.row.src, tgt: p.row.tgt, label: p.row.label })],
       [{ op: 'deleteRelation', id: p.row.id }],
     );
   };
@@ -349,9 +400,9 @@ export function diffGraphs(before, rewritten, layerInfo) {
       const twin = kept.find((k) => bareLabel(k.a.label) === bareLabel(p.a.label));
       if (!twin) kept.push(p);
       else if (!twin.row && p.row) {
-        drop(twin, ', the graph already has it');
+        drop(twin, msg('{src} → {tgt}: {label} removed, the graph already has it'));
         kept[kept.indexOf(twin)] = p;
-      } else drop(p, ', the graph already has it');
+      } else drop(p, msg('{src} → {tgt}: {label} removed, the graph already has it'));
     }
     const basics = basicLabels.get(pair);
     const relabels = kept.some((p) => !basics?.has(bareLabel(p.a.label)));
@@ -362,7 +413,12 @@ export function diffGraphs(before, rewritten, layerInfo) {
       if (treeGivesIt(p)) {
         // A row that is already an extra is dropped because the tree says the
         // same thing. One on its way out of the tree is just deleted.
-        drop(p, isEnhancedLabel(p.row?.label) ? ', the tree gives it' : '');
+        drop(
+          p,
+          isEnhancedLabel(p.row?.label)
+            ? msg('{src} → {tgt}: {label} removed, the tree gives it')
+            : msg('{src} → {tgt}: {label} removed'),
+        );
         continue;
       }
       emit(p.lines, p.ops || [], p.needs);
@@ -372,7 +428,11 @@ export function diffGraphs(before, rewritten, layerInfo) {
       const { a, layerId } = kept[0];
       changes.push({
         kind: 'edge',
-        ...line`${formOf(after, a.src)} → ${formOf(after, a.tgt)}: ${[...basics].join(', ')} left out of the enhanced graph`,
+        ...line(msg('{src} → {tgt}: {labels} left out of the enhanced graph'), {
+          src: formOf(after, a.src),
+          tgt: formOf(after, a.tgt),
+          labels: [...basics].join(', '),
+        }),
       });
       writeCreate(a, layerId, { value: null, metadata: { [SUPPRESS_KEY]: true } });
     }
@@ -409,7 +469,11 @@ export function diffGraphs(before, rewritten, layerInfo) {
       const label = [...(basicLabels.get(pair) || [])].join(', ');
       changes.push({
         kind: 'edge',
-        ...line`${formOf(after, s.src)} → ${formOf(after, s.tgt)}: ${label} back in the enhanced graph`,
+        ...line(msg('{src} → {tgt}: {labels} back in the enhanced graph'), {
+          src: formOf(after, s.src),
+          tgt: formOf(after, s.tgt),
+          labels: label,
+        }),
       });
     }
     writes.main.push({ op: 'deleteRelation', id: s.id });
@@ -428,7 +492,11 @@ export function diffGraphs(before, rewritten, layerInfo) {
       ? { value: n.lemma }
       : lemmaFromForm(n.id, { form: n.form, text: n.form });
     if (!gained)
-      changes.push({ kind: 'feat', node: n.id, ...line`${b.form}: lemma ${value} added` });
+      changes.push({
+        kind: 'feat',
+        node: n.id,
+        ...line(msg('{form}: lemma {lemma} added'), { form: b.form, lemma: value }),
+      });
     writes.lemmaCreates.push({
       op: 'createSpan',
       layer: layer('lemmaLayer'),
@@ -459,7 +527,7 @@ export function diffGraphs(before, rewritten, layerInfo) {
   const now = tree(after);
   for (const [id, n] of now.count) {
     if (n > 1 && n > (was.count.get(id) || 0))
-      errors.push(`${formOf(after, id)} would have ${n} heads.`);
+      errors.push(t('{word} would have {n} heads.', { word: formOf(after, id), n }));
   }
   if (!errors.length) {
     const known = new Set(cyclesOf(was.headOf).map((c) => [...c].sort().join(' ')));
@@ -468,8 +536,8 @@ export function diffGraphs(before, rewritten, layerInfo) {
       const forms = cycle.map((id) => formOf(after, id));
       errors.push(
         forms.length === 1
-          ? `${forms[0]} would head itself.`
-          : `${forms.join(', ')} would form a cycle.`,
+          ? t('{word} would head itself.', { word: forms[0] })
+          : t('{words} would form a cycle.', { words: forms.join(', ') }),
       );
     }
   }
@@ -545,15 +613,21 @@ function columnWrite(list, node, col, value, layerId) {
   else list.push({ op: 'createSpan', layer: layerId, tokens: [node.id], value });
 }
 
-const describe = (v) => (v === undefined ? '(none)' : String(v));
+const describe = (v) => (v === undefined ? t('(none)') : String(v));
 
 // A change line as `text` and as `parts`: the line's own words at even
 // indices and each value it names (a form, a label, a feature) at odd ones.
 // The preview isolates every value, since an Arabic form on each side of an
 // arrow otherwise joins the arrow into one right-to-left run and the line
-// reads as the relation going the other way.
-function line(strings, ...values) {
-  const parts = [strings[0]];
-  values.forEach((v, i) => parts.push(String(v), strings[i + 1]));
+// reads as the relation going the other way. `message` is the whole line, in
+// the interface's language, which may put its values in another order: each
+// value goes in as a marker and the translation is cut at the markers.
+const MARK = String.fromCharCode(1);
+function line(message, values) {
+  const names = Object.keys(values);
+  const marked = Object.fromEntries(names.map((k, i) => [k, `${MARK}${i}${MARK}`]));
+  const parts = t(message, marked)
+    .split(MARK)
+    .map((piece, i) => (i % 2 ? String(values[names[Number(piece)]]) : piece));
   return { text: parts.join(''), parts };
 }

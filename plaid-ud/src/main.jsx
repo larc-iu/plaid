@@ -28,7 +28,10 @@ configureAuth({ loginRoute: '#/login' });
 // The interface's language, settled before anything renders, so no screen
 // shows first in one language and then in another.
 await initI18n({
-  fr: async () => (await Promise.all([import('@ui/locales/fr.js')])).map((m) => m.default),
+  fr: async () =>
+    (await Promise.all([import('@ui/locales/fr.js'), import('./locales/fr.js')])).map(
+      (m) => m.default,
+    ),
 });
 
 createRoot(document.getElementById('root')).render(

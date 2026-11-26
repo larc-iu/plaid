@@ -5,4 +5,4 @@
 //
 // A path is added here when its work is finished, and never taken out to
 // make a change pass.
-export const I18N_DONE = ['plaid-ui/src', 'plaid-igt/src'];
+export const I18N_DONE = ['plaid-ui/src', 'plaid-igt/src', 'plaid-ud/src', 'plaid-umr/src'];

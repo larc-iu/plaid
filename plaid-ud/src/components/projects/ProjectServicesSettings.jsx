@@ -5,6 +5,7 @@ import { useAuth } from '../../contexts/AuthContext.jsx';
 import { ServiceDefaultsSettings } from '@ui/components/shared/ServiceDefaultsSettings.jsx';
 import { canManageProject } from '@ui/domain/permissions.js';
 import { BUILTIN_TOKENIZE_SEGMENTER } from '../../utils/serviceDefaults.js';
+import { msg } from '@ui/lib/i18n.js';
 
 // The app's service integration spots: each is a place in the UI where an
 // external service can be plugged in, keyed by the task vocabulary services
@@ -12,22 +13,22 @@ import { BUILTIN_TOKENIZE_SEGMENTER } from '../../utils/serviceDefaults.js';
 const SPOTS = [
   {
     key: TASKS.PARSE,
-    label: 'Parse',
-    description:
-      'Fills in lemmas, POS tags, features and dependencies for a document. ' +
-      'The Parse button in the text and annotation editors.',
+    label: msg('Parse'),
+    description: msg(
+      'Fills in lemmas, POS tags, features and dependencies for a document. The Parse button in the text and annotation editors.',
+    ),
     builtins: [],
   },
   {
     key: TASKS.TOKENIZE,
-    label: 'Tokenize',
-    description:
-      'Splits a document into sentences, tokens and words. ' +
-      'The Tokenize button in the text editor.',
+    label: msg('Tokenize'),
+    description: msg(
+      'Splits a document into sentences, tokens and words. The Tokenize button in the text editor.',
+    ),
     builtins: [
       {
         name: BUILTIN_TOKENIZE_SEGMENTER,
-        label: 'Unicode segmentation (this browser)',
+        label: msg('Unicode segmentation (this browser)'),
       },
     ],
   },

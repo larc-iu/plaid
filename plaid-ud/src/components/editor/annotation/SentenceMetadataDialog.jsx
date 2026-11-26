@@ -8,6 +8,7 @@ import {
 } from '@ui/components/ui/dialog';
 import { MetadataFields } from '../../common/MetadataFields.jsx';
 import { metadataRows, metadataFieldError } from '../../../utils/udMetadata.js';
+import { t } from '@ui/lib/i18n.js';
 
 // Everything CoNLL-U writes above a sentence: `# sent_id`, `# text_en`, the
 // fields this project declares and whatever else an import brought along. It is
@@ -15,12 +16,15 @@ import { metadataRows, metadataFieldError } from '../../../utils/udMetadata.js';
 // sixteen of these, and sixteen boxes laid across the editor bury the
 // annotation they sit under.
 //
+// `description` is the dialog's line under its title, a whole sentence naming
+// the sentence it is for.
+//
 // `# text` is not here: the exporter writes it from the document body, so a
 // field that could edit it would silently desync the two.
 export const SentenceMetadataDialog = ({
   open,
   onOpenChange,
-  label,
+  description,
   fields,
   values,
   readOnly,
@@ -40,8 +44,8 @@ export const SentenceMetadataDialog = ({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-2xl">
         <DialogHeader>
-          <DialogTitle>Sentence metadata</DialogTitle>
-          <DialogDescription>{`The CoNLL-U comment lines on ${label}.`}</DialogDescription>
+          <DialogTitle>{t('Sentence metadata')}</DialogTitle>
+          <DialogDescription>{description}</DialogDescription>
         </DialogHeader>
 
         <MetadataFields

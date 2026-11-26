@@ -1,5 +1,6 @@
 import { NewProjectDialog } from '@ui/components/shared/NewProjectDialog.jsx';
 import { createUdProject } from '../../domain/udProjectSetup.js';
+import { t } from '@ui/lib/i18n.js';
 
 // New project: the shared dialog (@ui/components/shared/NewProjectDialog) plus
 // what this app builds under one, in its own words. The setup itself is
@@ -9,9 +10,9 @@ export const ProjectForm = ({ isOpen, onClose, onSuccess }) => (
     isOpen={isOpen}
     onClose={onClose}
     onSuccess={onSuccess}
-    title="New UD project"
+    title={t('New UD project')}
     create={createUdProject}
   >
-    <p>Sentences, tokens and words, with lemma, UPOS, XPOS, features and dependencies.</p>
+    <p>{t('Sentences, tokens and words, with lemma, UPOS, XPOS, features and dependencies.')}</p>
   </NewProjectDialog>
 );

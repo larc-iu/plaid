@@ -11,6 +11,7 @@ import { byPosition, tokensWithin } from '../../domain/sentenceRows.js';
 import { notifyError, notifyInfo } from '../../utils/feedback.jsx';
 import { stableKey } from '@ui/domain/pendingIds.js';
 import { useFollowedState } from '@ui/hooks/useFollowedState.js';
+import { t } from '@ui/lib/i18n.js';
 import classes from './TokenVisualizer.module.css';
 
 // Raw-text overlay editor for the three-layer token hierarchy. The editable
@@ -236,7 +237,7 @@ export const TokenVisualizer = ({
     focusWordAt.current = null;
     const panel = panelRef.current;
     if (!panel || panel.contains(document.activeElement)) return;
-    panel.querySelector(`input[aria-label="Word ${at + 1}"]`)?.focus();
+    panel.querySelector(`input[aria-label="${t('Word {n}', { n: at + 1 })}"]`)?.focus();
   });
   useEffect(
     () => () => {
@@ -272,9 +273,14 @@ export const TokenVisualizer = ({
     const current = currentFormsOf(word).map((f) => f.trim());
     closePanel();
     const empty = draftForms.length - forms.length;
-    if (empty > 0 && forms.length === 0) notifyInfo('No words. Nothing saved.');
-    else if (empty === 1) notifyInfo('Empty word left out.');
-    else if (empty > 1) notifyInfo(`${empty} empty words left out.`);
+    if (empty > 0 && forms.length === 0) notifyInfo(t('No words. Nothing saved.'));
+    else if (empty > 0) {
+      notifyInfo(
+        t('{n, plural, one {Empty word left out.} other {{n} empty words left out.}}', {
+          n: empty,
+        }),
+      );
+    }
     const changed = forms.length > 0 && JSON.stringify(forms) !== JSON.stringify(current);
     if (changed && onSetWordMorphemes) {
       try {
@@ -346,7 +352,7 @@ export const TokenVisualizer = ({
     end = utf16ToCp(text, end);
 
     if (wordTokens.some((w) => start < w.end && end > w.begin)) {
-      reportError('The selection overlaps an existing token.');
+      reportError(t('The selection overlaps an existing token.'));
       return;
     }
     onWordCreate(start, end);
@@ -459,8 +465,8 @@ export const TokenVisualizer = ({
     requestClose();
   };
 
-  const toggleTitle = onSentenceToggle ? 'Click to toggle the sentence boundary.' : null;
-  const handOffTitle = onOpenInAnnotate ? 'Alt+click to annotate this sentence.' : null;
+  const toggleTitle = onSentenceToggle ? t('Click to toggle the sentence boundary.') : null;
+  const handOffTitle = onOpenInAnnotate ? t('Alt+click to annotate this sentence.') : null;
 
   const renderWordBadge = (word) => {
     const sentenceToken = sentenceTokenAt(word.begin);
@@ -524,7 +530,7 @@ export const TokenVisualizer = ({
                   checked={isSentStart}
                   onCheckedChange={() => toggleSentence(word)}
                 />
-                <Label htmlFor={`sent-${word.id}`}>Start of sentence</Label>
+                <Label htmlFor={`sent-${word.id}`}>{t('Start of sentence')}</Label>
               </div>
             )}
 
@@ -532,14 +538,14 @@ export const TokenVisualizer = ({
               <>
                 <div className="border-t" />
                 <span className="text-xs text-muted-foreground">
-                  Words{isMwt ? ' (multi-word token)' : ''}
+                  {isMwt ? t('Words (multi-word token)') : t('Words')}
                 </span>
                 <div className="flex flex-col gap-1.5">
                   {draftForms.map((form, i) => (
                     <div key={i} className="flex items-center gap-2">
                       <Input
                         value={form}
-                        aria-label={`Word ${i + 1}`}
+                        aria-label={t('Word {n}', { n: i + 1 })}
                         autoFocus={focusAddedWord.current && i === draftForms.length - 1}
                         onFocus={() => {
                           focusAddedWord.current = false;
@@ -567,7 +573,7 @@ export const TokenVisualizer = ({
                             focusWordAt.current = Math.min(i, draftForms.length - 2);
                             setDraftForms((prev) => prev.filter((_, idx) => idx !== i));
                           }}
-                          aria-label="Remove word"
+                          aria-label={t('Remove word')}
                         >
                           <X className="h-3.5 w-3.5" />
                         </Button>
@@ -584,7 +590,7 @@ export const TokenVisualizer = ({
                     }}
                   >
                     <Plus className="h-3.5 w-3.5" />
-                    Add word
+                    {t('Add word')}
                   </Button>
                 </div>
               </>
@@ -600,14 +606,14 @@ export const TokenVisualizer = ({
                   onClick={() => handleDeleteClick(word)}
                 >
                   <Trash2 className="h-3.5 w-3.5" />
-                  Delete
+                  {t('Delete')}
                 </Button>
               ) : (
                 <span />
               )}
               {onSetWordMorphemes && (
                 <Button size="sm" className="h-7 px-3 text-xs" onClick={() => saveWords(word)}>
-                  Save
+                  {t('Save')}
                 </Button>
               )}
             </div>
@@ -687,8 +693,10 @@ export const TokenVisualizer = ({
     if (invalid.length) {
       blocks.push(
         <p key="invalid" dir="ltr" className="mt-2 text-xs text-warning-foreground">
-          {invalid.length} token{invalid.length !== 1 ? 's' : ''} no longer match the edited text.
-          Save and re-tokenize to resync.
+          {t(
+            '{n, plural, one {{n} token} other {{n} tokens}} no longer match the edited text. Save and re-tokenize to resync.',
+            { n: invalid.length },
+          )}
         </p>,
       );
     }
@@ -713,7 +721,7 @@ export const TokenVisualizer = ({
   );
 
   if (!text) {
-    return <p className="py-8 text-center text-muted-foreground">No text.</p>;
+    return <p className="py-8 text-center text-muted-foreground">{t('No text.')}</p>;
   }
 
   if (wordTokens.length === 0) {
@@ -728,7 +736,7 @@ export const TokenVisualizer = ({
           {text}
         </div>
         <p className="mt-4 text-center text-sm text-muted-foreground">
-          No tokens. Tokenize the text, or select text to create a token.
+          {t('No tokens. Tokenize the text, or select text to create a token.')}
         </p>
       </div>
     );
@@ -736,10 +744,10 @@ export const TokenVisualizer = ({
 
   // Only what works here: a read-only document keeps the hand-off to Annotate.
   const hint = [
-    onSentenceToggle && 'Click a token to toggle its sentence boundary.',
-    (onSetWordMorphemes || onWordDelete) && 'Hover a token to edit its words or delete it.',
-    onWordCreate && 'Select text to create a token.',
-    onOpenInAnnotate && 'Alt+click a token to annotate its sentence.',
+    onSentenceToggle && t('Click a token to toggle its sentence boundary.'),
+    (onSetWordMorphemes || onWordDelete) && t('Hover a token to edit its words or delete it.'),
+    onWordCreate && t('Select text to create a token.'),
+    onOpenInAnnotate && t('Alt+click a token to annotate its sentence.'),
   ]
     .filter(Boolean)
     .join(' ');
@@ -748,7 +756,7 @@ export const TokenVisualizer = ({
     <div>
       {isTextDirty && (
         <Notice tone="info" className="mb-2">
-          Token positions are shown against the unsaved text. Save the text to apply them.
+          {t('Token positions are shown against the unsaved text. Save the text to apply them.')}
         </Notice>
       )}
       <div

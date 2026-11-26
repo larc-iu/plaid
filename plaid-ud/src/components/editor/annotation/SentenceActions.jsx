@@ -7,6 +7,7 @@ import { SENTENCE_ACTION, SENTENCE_REVIEW } from '@ui/components/shared/sentence
 import { SentenceComments } from '@ui/components/shared/SentenceComments';
 import { SentenceMetadataDialog } from './SentenceMetadataDialog.jsx';
 import { useEditorSession } from './editorSession.js';
+import { t } from '@ui/lib/i18n.js';
 
 // Everything the sentence itself offers, BELOW the grid and left-aligned with
 // the first token so it reads as belonging to this sentence. Two kinds, told
@@ -74,10 +75,12 @@ export const SentenceActions = React.memo(
                   'accept-predictions-btn plaid-review plaid-review--accept',
                 )}
                 onClick={handleConfirmSentence}
-                title="Accept every proposal in this sentence as it stands. Ctrl/Cmd+Enter to do one word."
+                title={t(
+                  'Accept every proposal in this sentence as it stands. Ctrl/Cmd+Enter to do one word.',
+                )}
               >
                 <Check width={12} height={12} />
-                Accept predictions
+                {t('Accept predictions')}
               </button>
             )}
             {!isReadOnly && onDiscardTokens && hasMachine && (
@@ -88,10 +91,12 @@ export const SentenceActions = React.memo(
                   'discard-predictions-btn plaid-review plaid-review--discard',
                 )}
                 onClick={handleDiscardSentence}
-                title="Delete every machine annotation in this sentence that nobody has confirmed. Ctrl/Cmd+Backspace to do one word."
+                title={t(
+                  'Delete every machine annotation in this sentence that nobody has confirmed. Ctrl/Cmd+Backspace to do one word.',
+                )}
               >
                 <Undo2 width={12} height={12} />
-                Discard predictions
+                {t('Discard predictions')}
               </button>
             )}
             {sentenceToken && (
@@ -99,31 +104,31 @@ export const SentenceActions = React.memo(
                 type="button"
                 className={cn(SENTENCE_ACTION, 'sentence-meta__toggle sentence-action')}
                 onClick={() => setMetaOpen(true)}
-                title="Edit this sentence's CoNLL-U comment lines"
+                title={t("Edit this sentence's CoNLL-U comment lines")}
               >
                 <Tags width={12} height={12} />
-                Edit metadata
+                {t('Edit metadata')}
               </button>
             )}
             {editTextTo && (
               <Link
                 to={editTextTo}
                 className={cn(SENTENCE_ACTION, 'edit-text-btn sentence-action')}
-                title="Open this sentence in the Text Editor. Alt+click a word to do the same."
+                title={t('Open this sentence in the Text Editor. Alt+click a word to do the same.')}
               >
                 <PenLine width={12} height={12} />
-                Edit text
+                {t('Edit text')}
               </Link>
             )}
             {onAskAssistant && (
               <button
                 type="button"
                 className={cn(SENTENCE_ACTION, 'sentence-action')}
-                onClick={() => onAskAssistant({ ref: `s${sentenceNumber}`, label: 'Sentence' })}
-                title="Ask the assistant about this sentence"
+                onClick={() => onAskAssistant({ ref: `s${sentenceNumber}`, label: t('Sentence') })}
+                title={t('Ask the assistant about this sentence')}
               >
                 <AssistantMark className="h-3.5 w-3.5" />
-                Ask
+                {t('Ask')}
               </button>
             )}
             {comments && sentenceToken?.id && (
@@ -143,7 +148,7 @@ export const SentenceActions = React.memo(
           <SentenceMetadataDialog
             open={metaOpen}
             onOpenChange={setMetaOpen}
-            label={`sentence ${sentenceNumber}`}
+            description={t('The CoNLL-U comment lines on sentence {n}.', { n: sentenceNumber })}
             fields={sentenceFields}
             values={sentenceMeta}
             readOnly={isReadOnly || !onSentenceMetadata}

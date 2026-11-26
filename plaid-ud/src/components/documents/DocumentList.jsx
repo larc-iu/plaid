@@ -5,6 +5,7 @@ import { ProjectTabs } from '../projects/ProjectTabs.jsx';
 import { getUdLayerInfo } from '../../utils/udLayerUtils.js';
 import { SETUP } from '../projects/setup.jsx';
 import { Button } from '@ui/components/ui/button';
+import { t } from '@ui/lib/i18n.js';
 import { ProjectDocumentsPage } from '@ui/components/shared/ProjectDocumentsPage.jsx';
 
 // UD counts its words (the morpheme layer), and a document with no words yet
@@ -31,7 +32,7 @@ const NewDocument = ({ projectId }) => {
   return (
     <>
       <Button onClick={() => setOpen(true)}>
-        <Plus className="h-4 w-4" /> New document
+        <Plus className="h-4 w-4" /> {t('New document')}
       </Button>
       <DocumentForm projectId={projectId} isOpen={open} onClose={() => setOpen(false)} />
     </>

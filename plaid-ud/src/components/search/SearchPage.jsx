@@ -29,6 +29,7 @@ import { refinePattern } from './refine.js';
 import { RewritePreview } from './RewritePreview.jsx';
 import { useDocumentTitle } from '@ui/hooks/useDocumentTitle.js';
 import { useProject } from '@ui/hooks/useProject.js';
+import { t, tc } from '@ui/lib/i18n.js';
 
 // Ask for everything the query API will return. The server hard-caps an
 // entities query at 100k rows and has no offset/cursor, so this is effectively
@@ -48,8 +49,8 @@ export const SearchPage = () => {
     loading,
     error: readError,
   } = useProject({ withDocuments: 'optional' });
-  const loadError = readError ? humanizeError(readError, 'Failed to load the project.') : '';
-  useDocumentTitle('Search', project?.name);
+  const loadError = readError ? humanizeError(readError, t('Failed to load the project.')) : '';
+  useDocumentTitle(tc('noun', 'Search'), project?.name);
 
   // The request last run lives in the URL (`?q=`, written with replace), so a
   // reload, a bookmark or a shared link runs it again. A rewrite is the same
@@ -95,10 +96,10 @@ export const SearchPage = () => {
     } else if (isQueryTimeout(err)) {
       setError({
         name: 'ServerError',
-        message: 'The query was too broad and timed out. Add more constraints.',
+        message: t('The query was too broad and timed out. Add more constraints.'),
       });
     } else {
-      setError({ name: 'ServerError', message: humanizeError(err, 'Failed to search.') });
+      setError({ name: 'ServerError', message: humanizeError(err, t('Failed to search.')) });
     }
   }, []);
 
@@ -257,24 +258,26 @@ export const SearchPage = () => {
         plan.rows.filter((r) => !r.error && !selected.has(r.key)).map((r) => r.key),
       );
       // A rule written without a name is called `rule` (grew/parser.js), a
-      // keyword no rule can be named: History says "Rewrite" for it.
+      // keyword no rule can be named: History says "Rewrite" for it. The
+      // label is the audit operation stored on the server, so it stays English.
       const names = plan.grs.rules
         .map((r) => r.name)
         .filter((n) => n !== 'rule')
         .join(', ');
       const out = await applyRewrite(
         getClient(),
+        // i18n-ignore: the audit operation, stored on the server
         { rows, docs: plan.docs, label: names ? `Rewrite: ${names}` : 'Rewrite' },
         setProgress,
       );
       const summary = applySummary(out, (failed) => humanizeError(failed));
-      if (out.failed) notifyError(summary, 'Failed to apply the changes');
+      if (out.failed) notifyError(summary, t('Failed to apply the changes'));
       else notifySuccess(summary);
       // Show what the same rules would still change now that these are
       // applied, with the sentences left out still left out.
       await runPreview(plan.grs, plan.text, unticked);
     } catch (err) {
-      notifyError(err, 'Failed to apply the changes');
+      notifyError(err, t('Failed to apply the changes'));
     } finally {
       setProgress('');
       setApplying(false);
@@ -299,7 +302,7 @@ export const SearchPage = () => {
       <ProjectTabs projectId={projectId} project={project} />
 
       <div className="flex flex-col gap-6">
-        <h2 className="text-2xl font-semibold tracking-tight">Search</h2>
+        <h2 className="text-2xl font-semibold tracking-tight">{tc('noun', 'Search')}</h2>
 
         {!layerInfo.isConfigured ? (
           <NotSetUpNotice app="UD" canManage={canManage} setupHref={setupHref(projectId)} />
@@ -322,7 +325,7 @@ export const SearchPage = () => {
               onRun={run}
               running={running}
               error={error}
-              action={isRewrite ? 'Preview changes' : 'Search'}
+              action={isRewrite ? t('Preview changes') : t('Search')}
             />
             {progress && <p className="text-sm text-muted-foreground">{progress}</p>}
             {plan ? (

@@ -9,6 +9,7 @@ import { loadFrames } from '../../../domain/lexicon.js';
 import { EMPTY_LEXICON } from '../../../domain/vocabLexicon.js';
 import { buildAnchorIndex } from '../../../domain/commentAnchors.js';
 import { anchorCaption } from '@ui/domain/commentAnchors';
+import { t } from '@ui/lib/i18n.js';
 
 // The frame file of the project's language, once it has loaded; null for a
 // language without one, or until it arrives.
@@ -294,7 +295,7 @@ export const UmrCanvas = ({
       <>
         {top(null)}
         <p className="py-10 text-center text-muted-foreground">
-          No sentences. Import a .umr file, or add text to this document in Plaid IGT.
+          {t('No sentences. Import a .umr file, or add text to this document in Plaid IGT.')}
         </p>
       </>
     );

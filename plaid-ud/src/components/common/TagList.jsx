@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { X } from 'lucide-react';
 import { Input } from '@ui/components/ui/input';
+import { t } from '@ui/lib/i18n.js';
 
 // An editable list of short strings: the current values as removable chips, and
 // one input that appends on Enter. Replaces Mantine's TagsInput, which has no
@@ -10,7 +11,7 @@ import { Input } from '@ui/components/ui/input';
 // tags, a feature's values), a duplicate is silently ignored rather than
 // rejected with a message, and Backspace on an empty box removes the last chip
 // the way every tag field does.
-export const TagList = ({ value, onChange, placeholder = 'Add and press Enter', label }) => {
+export const TagList = ({ value, onChange, placeholder = t('Add and press Enter'), label }) => {
   const [draft, setDraft] = useState('');
   const tags = value || [];
 
@@ -21,7 +22,7 @@ export const TagList = ({ value, onChange, placeholder = 'Add and press Enter', 
     setDraft('');
   };
 
-  const remove = (tag) => onChange(tags.filter((t) => t !== tag));
+  const remove = (tag) => onChange(tags.filter((other) => other !== tag));
 
   return (
     <div className="flex flex-col gap-2">
@@ -36,7 +37,7 @@ export const TagList = ({ value, onChange, placeholder = 'Add and press Enter', 
               <button
                 type="button"
                 className="text-muted-foreground hover:text-destructive"
-                aria-label={`Remove ${tag}`}
+                aria-label={t('Remove {name}', { name: tag })}
                 onClick={() => remove(tag)}
               >
                 <X className="h-3 w-3" />

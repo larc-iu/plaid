@@ -3,6 +3,7 @@
 import { WordsDiffer, importTarget, importUmrDocument } from '../../domain/umrImport.js';
 import { getUmrLayerInfo, readIlgConfig } from '../../utils/umrLayerUtils.js';
 import { sameName } from '@ui/lib/nameKey.js';
+import { t } from '@ui/lib/i18n.js';
 
 // Per file, the id its new document is created under, kept while the page is
 // open across every import of that file (the same name, size and time), so an
@@ -33,7 +34,7 @@ export const prepareImport = async ({ client, project, projectId }) => {
   return async ({ file, text, index, name, push }) => {
     const key = mintKey(projectId, name, file);
     if (!text.trim()) {
-      push({ key: `${index}-empty`, name, status: 'rejected', reason: 'File is empty' });
+      push({ key: `${index}-empty`, name, status: 'rejected', reason: t('File is empty') });
       return;
     }
     // A document by the file's name with words and no graph takes the file's
@@ -46,7 +47,10 @@ export const prepareImport = async ({ client, project, projectId }) => {
     const matches = (existingDocs || []).filter((d) => sameName(d.name, name));
     if (matches.length > 1) {
       throw new Error(
-        `${matches.length} documents are named "${name}". Rename the file, or the documents.`,
+        t('{n} documents are named "{name}". Rename the file, or the documents.', {
+          n: matches.length,
+          name,
+        }),
       );
     }
     const target = matches.length
@@ -55,7 +59,7 @@ export const prepareImport = async ({ client, project, projectId }) => {
     const { into } = target;
     const asNew = (why) => (res) => {
       res.warnings = [
-        `Imported as new document "${res.document.name}": ${why}`,
+        t('Imported as new document "{name}": {why}', { name: res.document.name, why }),
         ...(res.warnings || []),
       ];
       return res;

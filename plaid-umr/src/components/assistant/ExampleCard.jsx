@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { ExternalLink } from 'lucide-react';
 import { cn } from '@ui/lib/utils';
 import { citationTitle, sentenceHref } from './cite.js';
+import { msg, t } from '@ui/lib/i18n.js';
 
 // A cited sentence as UMR draws it: its graph in PENMAN, or the words with the
 // gloss lines under them. The model says which one with view= on its cite tag,
@@ -12,8 +13,8 @@ import { citationTitle, sentenceHref } from './cite.js';
 // lay a graph out, and a reader who wants it has the link in the header.
 
 const VIEWS = [
-  { id: 'graph', label: 'Graph' },
-  { id: 'words', label: 'Words' },
+  { id: 'graph', label: msg('Graph') },
+  { id: 'words', label: msg('Words') },
 ];
 
 // The graph with the cited nodes picked out. Marking is per LINE: a variable
@@ -106,7 +107,7 @@ export const ExampleCard = ({ c, projectId }) => {
           target="_blank"
           rel="noopener noreferrer"
           className="inline-flex min-w-0 items-center gap-1.5 font-medium text-foreground hover:underline"
-          title="Open this document in the editor"
+          title={t('Open this document in the editor')}
         >
           <ExternalLink className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
           <span className="truncate">{citationTitle(c)}</span>
@@ -131,7 +132,7 @@ export const ExampleCard = ({ c, projectId }) => {
                   : 'text-muted-foreground hover:bg-muted',
               )}
             >
-              {v.label}
+              {t(v.label)}
             </button>
           ))}
         </div>

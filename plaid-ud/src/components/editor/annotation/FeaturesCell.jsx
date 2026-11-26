@@ -5,6 +5,7 @@ import { notifyWarning } from '../../../utils/feedback.jsx';
 import { provDoubtful, provMark } from '../../../utils/provenanceUi.js';
 import { NO_OPTIONS, tabTooSoon } from './cellInput.js';
 import { useEditorSession } from './editorSession.js';
+import { t } from '@ui/lib/i18n.js';
 
 // Features cell component with hover-only delete buttons
 // FEATS is a token-field (chip input): the cell IS one slim input, with the
@@ -97,7 +98,7 @@ export const FeaturesCell = React.memo(
       // value in that key's list.
       const refusal = validate?.(feature.pair);
       if (refusal) {
-        notifyWarning(refusal, 'Not in the inventory');
+        notifyWarning(refusal, t('Not in the inventory'));
         return 'refused';
       }
       setText('');
@@ -292,7 +293,7 @@ export const FeaturesCell = React.memo(
                   removePill(index);
                 }}
                 className={`feature-delete-btn ${hoveredFeatureIndex === index || selectedPill === index ? 'feature-delete-btn--visible' : 'feature-delete-btn--hidden'}`}
-                title="Remove feature"
+                title={t('Remove feature')}
                 tabIndex={-1}
               >
                 ×
@@ -370,9 +371,9 @@ export const FeaturesCell = React.memo(
             // first inventory key.
             autoHighlight={text.length > 0}
             data-tab-order={tabOrder}
-            aria-label={`Add feature for ${tokenForm ?? ''}`.trim()}
-            placeholder="+"
-            title="Add feature (Key=Value)"
+            aria-label={t('Add feature for {form}', { form: tokenForm ?? '' }).trim()}
+            placeholder="+" // i18n-ignore: a sign, not a word
+            title={t('Add feature (Key=Value)')}
             // Always empty when untouched, so Ctrl/Cmd+Backspace over it is the
             // word's discard gesture and, once something is typed, the
             // browser's delete-a-word.

@@ -4,12 +4,13 @@ import { DocumentFileExport } from '@ui/components/shared/DocumentFileExport.jsx
 import { useDocumentEditor } from '@ui/hooks/useDocumentEditor.js';
 import { useDocumentTitle } from '@ui/hooks/useDocumentTitle.js';
 import { ConlluPreview } from './ConlluPreview.jsx';
+import { t, tc } from '@ui/lib/i18n.js';
 
 export const ExportEditor = () => {
   // Project, document and the breadcrumbs/tab strip all come from
   // DocumentEditorShell, which guarantees both are loaded before this renders.
   const { doc, project, reload } = useDocumentEditor();
-  useDocumentTitle('Export', doc?.name, project?.name);
+  useDocumentTitle(tc('noun', 'Export'), doc?.name, project?.name);
   // The file is written from this page's copy, so it is read again first: an
   // edit saved from another tab is in the server's document and not in it.
   useEffect(() => {
@@ -24,14 +25,14 @@ export const ExportEditor = () => {
 
   return (
     <DocumentFileExport
-      heading="CoNLL-U"
+      heading="CoNLL-U" // i18n-ignore: a format name
       extension=".conllu"
       name={doc?.name}
       content={conlluContent}
       notice={
         losses.length > 0 && (
           <Notice tone="warning">
-            <p className="font-medium">This file cannot say everything the document does.</p>
+            <p className="font-medium">{t('This file cannot say everything the document does.')}</p>
             <ul className="mt-1 list-disc ps-5">
               {losses.map((line) => (
                 <li key={line}>{line}</li>

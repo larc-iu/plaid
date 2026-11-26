@@ -3,6 +3,7 @@ import { AlertTriangle, Plus, Trash2 } from 'lucide-react';
 import { Button } from '@ui/components/ui/button';
 import { Input } from '@ui/components/ui/input';
 import { Label } from '@ui/components/ui/label';
+import { t } from '@ui/lib/i18n.js';
 
 // One metadata field: its name and its value, committed on blur or Enter. Each
 // field is its own write, so a slow save on one never holds another up and
@@ -45,7 +46,7 @@ const Field = ({ name, declared, value, readOnly, onCommit, onRemove }) => {
   // tooltip on the name rather than a line of its own, because a CoNLL-U import
   // brings in a dozen of these at a time and a dozen copies of one sentence is
   // noise, not an explanation.
-  const hint = declared ? undefined : `${name} is not one of this project's fields.`;
+  const hint = declared ? undefined : t("{name} is not one of this project's fields.", { name });
 
   return (
     <div className="flex flex-col gap-1.5">
@@ -86,8 +87,10 @@ const Field = ({ name, declared, value, readOnly, onCommit, onRemove }) => {
             variant="ghost"
             size="icon"
             className="h-9 w-9 shrink-0 text-muted-foreground hover:text-destructive"
-            aria-label={`Remove ${name}`}
-            title={declared ? `Clear the value of ${name}` : `Remove ${name}`}
+            aria-label={t('Remove {name}', { name })}
+            title={
+              declared ? t('Clear the value of {name}', { name }) : t('Remove {name}', { name })
+            }
             onClick={() => {
               cancelledRef.current = false;
               setDraft('');
@@ -147,7 +150,7 @@ const AddField = ({ taken, validateName, onAdd }) => {
         onClick={() => setAdding(true)}
       >
         <Plus className="h-4 w-4" />
-        Add field
+        {t('Add field')}
       </Button>
     );
   }
@@ -158,8 +161,8 @@ const AddField = ({ taken, validateName, onAdd }) => {
         autoFocus
         value={name}
         spellCheck={false}
-        placeholder="field name"
-        aria-label="New field name"
+        placeholder={t('field name')}
+        aria-label={t('New field name')}
         onChange={(e) => {
           cancelledRef.current = false;
           setName(e.target.value);

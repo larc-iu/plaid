@@ -1,4 +1,5 @@
 import { ChevronRight } from 'lucide-react';
+import { t } from '@ui/lib/i18n.js';
 
 // Clickable row header (LEMMA/XPOS/UPOS/FEATS). Always shown so a collapsed row
 // can be re-expanded; the leading chevron reflects state (rotated down = expanded,
@@ -14,7 +15,13 @@ export const RowLabelHeader = ({ field, label, expanded, onToggle, style }) => {
       onClick={interactive ? () => onToggle(field) : undefined}
       role={interactive ? 'button' : undefined}
       tabIndex={interactive ? -1 : undefined}
-      title={interactive ? `${expanded ? 'Hide' : 'Show'} ${label}` : undefined}
+      title={
+        interactive
+          ? expanded
+            ? t('Hide {field}', { field: label })
+            : t('Show {field}', { field: label })
+          : undefined
+      }
     >
       {interactive && (
         <ChevronRight

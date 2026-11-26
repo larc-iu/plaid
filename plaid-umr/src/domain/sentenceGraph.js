@@ -58,7 +58,7 @@ import { UMR_NAMESPACE } from '../utils/umrLayerUtils.js';
 import { treeEdges, serializePenman } from './format/penman.js';
 import { perWordStored } from './ilg.js';
 import { CYCLE_ROLES, DOC_CONSTANTS } from './format/inventory.js';
-import { countOf } from '../../../plaid-ui/src/lib/plural.js';
+import { t } from '../../../plaid-ui/src/lib/i18n.js';
 import { equalsBefore, morphemeMorphType } from '../../../plaid-ui/src/domain/morphemes.js';
 
 const umrMeta = (entity) => entity?.metadata?.[UMR_NAMESPACE] || {};
@@ -751,19 +751,26 @@ export const unreachedByRoot = (graph) => {
         if (!n || part.has(n.id) || written.has(n.id)) continue;
         part.add(n.id);
         n.out.forEach((e) => {
-          const t = graph.nodesById.get(e.target);
-          if (t?.sentence === s.index) stack.push(t);
+          const next = graph.nodesById.get(e.target);
+          if (next?.sentence === s.index) stack.push(next);
         });
       }
       const n = part.size - 1;
-      const what = n ? `${r.var} and ${countOf(n, 'node')} under it are` : `${r.var} is`;
       out.push({
         level: 'error',
         code: 'unreached-by-root',
         sentence: s.index,
         var: r.var,
         nodes: part.size,
-        message: `${what} not reached from the root ${root}, and the export leaves ${n ? 'them' : 'it'} out.`,
+        message: n
+          ? t(
+              '{v} and {n, plural, one {# node} other {# nodes}} under it are not reached from the root {root}, and the export leaves them out.',
+              { v: r.var, n, root },
+            )
+          : t('{v} is not reached from the root {root}, and the export leaves it out.', {
+              v: r.var,
+              root,
+            }),
       });
     });
   });
@@ -921,13 +928,22 @@ export const crossSentenceEdges = (graph) => {
       if (!target || target.sentence === s.index) return;
       // The number the sentence goes by, as its header shows it.
       const into = graph.sentences[target.sentence - 1]?.number ?? target.sentence;
-      const where = target.sentence == null ? 'outside every sentence' : `into sentence ${into}`;
       out.push({
         level: 'error',
         code: 'edge-across-sentences',
         sentence: s.index,
         var: graph.nodesById.get(e.source)?.var ?? null,
-        message: `${e.role} to ${target.var} reaches ${where}, and the export leaves it out.`,
+        message:
+          target.sentence == null
+            ? t('{role} to {v} reaches outside every sentence, and the export leaves it out.', {
+                role: e.role,
+                v: target.var,
+              })
+            : t('{role} to {v} reaches into sentence {n}, and the export leaves it out.', {
+                role: e.role,
+                v: target.var,
+                n: into,
+              }),
       });
     }),
   );
@@ -973,7 +989,7 @@ export const variablesSharedInSentence = (graph) => {
         code: 'non-unique-node-id',
         sentence,
         var: v,
-        message: `Variable '${v}' names ${count} nodes.`,
+        message: t("Variable ''{v}'' names {n} nodes.", { v, n: count }),
       });
     });
   });
@@ -1040,7 +1056,7 @@ export const relationsLeftOut = (graph) => {
         sentence: s.index,
         nodes: 0,
         relation: true,
-        message: `(${a} ${rel} ${b}) names a node left out.`,
+        message: t('({a} {rel} {b}) names a node left out.', { a, rel, b }),
       }),
     );
   });

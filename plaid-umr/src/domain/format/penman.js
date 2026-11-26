@@ -14,6 +14,7 @@
 
 import { CYCLE_ROLES } from './inventory.js';
 import { NOT_IN_UMR_CONCEPT } from '../../../../plaid-ui/src/domain/umrProject.js';
+import { t } from '../../../../plaid-ui/src/lib/i18n.js';
 
 /**
  * `text` in Unicode NFC, which the format requires of the whole file
@@ -39,7 +40,7 @@ const TIME = /^[0-9]+:[0-9]+(?![^\s()#])/;
 /** Why `concept` cannot be written, or null when it can. */
 export const conceptProblem = (concept) =>
   NOT_IN_UMR_CONCEPT.test(concept)
-    ? `A concept cannot hold spaces, brackets, colons, quotes or #: ${concept}`
+    ? t('A concept cannot hold spaces, brackets, colons, quotes or #: {concept}', { concept })
     : null;
 
 // The UMR variable convention, ÚFAL's regex (validate.py:142). The letter run
@@ -61,10 +62,10 @@ const STRING = /^"(?:\\.|[^"\\])*"/;
 export const relationProblem = (relation) => {
   const text = String(relation ?? '').trim();
   const bare = text.startsWith(':') ? text.slice(1) : text;
-  if (!bare) return 'A relation needs a name after its colon.';
+  if (!bare) return t('A relation needs a name after its colon.');
   return /^[-A-Za-z0-9]+$/.test(bare)
     ? null
-    : `A relation holds letters, digits and hyphens only: :${bare}`;
+    : t('A relation holds letters, digits and hyphens only: :{rel}', { rel: bare });
 };
 
 /**
@@ -74,20 +75,27 @@ export const relationProblem = (relation) => {
  */
 export const attrValueProblem = (value) => {
   const text = String(value ?? '').trim();
-  if (!text) return 'An attribute needs a value.';
+  if (!text) return t('An attribute needs a value.');
   if (text.startsWith('"')) {
     return STRING.test(text) && STRING.exec(text)[0] === text
       ? null
-      : `A quoted value needs its closing quote: ${text}`;
+      : t('A quoted value needs its closing quote: {value}', { value: text });
   }
-  if (text.includes('"')) return `A value holds a quote only around the whole of it: ${text}`;
+  if (text.includes('"')) {
+    return t('A value holds a quote only around the whole of it: {value}', { value: text });
+  }
   if (TIME.exec(text)?.[0] === text) return null;
   if (NOT_IN_UMR_CONCEPT.test(text)) {
-    return `A value cannot hold spaces, brackets, colons or #, unless it is quoted: ${text}`;
+    return t('A value cannot hold spaces, brackets, colons or #, unless it is quoted: {value}', {
+      value: text,
+    });
   }
   // Read back as a reference to a node, not as the value.
-  return VARIABLE.test(text) ? `A value cannot be a variable, unless it is quoted: ${text}` : null;
+  return VARIABLE.test(text) ? variableValue(text) : null;
 };
+
+const variableValue = (value) =>
+  t('A value cannot be a variable, unless it is quoted: {value}', { value });
 
 // A relation as the writer must find it stored: colon included, nothing
 // around it.
@@ -102,10 +110,10 @@ const RELATION_EXACT = /^:[-A-Za-z0-9]+$/;
  */
 export const variableFormProblem = (variable) => {
   const text = typeof variable === 'string' ? variable : '';
-  if (!text) return 'A node needs a variable.';
+  if (!text) return t('A node needs a variable.');
   const front = VARIABLE_PREFIX.exec(text)?.[0];
   return NOT_IN_UMR_CONCEPT.test(text) || text.includes('/') || (front && front !== text)
-    ? `A variable cannot be written as it is: ${text}`
+    ? t('A variable cannot be written as it is: {v}', { v: text })
     : null;
 };
 
@@ -128,12 +136,15 @@ export function penmanProblems(graph) {
     const badVar = variableFormProblem(variable);
     if (badVar) at(badVar);
     const concept = typeof node.concept === 'string' ? node.concept : '';
-    const badConcept = concept ? conceptProblem(concept) : 'A node needs a concept.';
+    const badConcept = concept ? conceptProblem(concept) : t('A node needs a concept.');
     if (badConcept) at(badConcept);
     for (const child of node.children) {
       const rel = typeof child.rel === 'string' ? child.rel : '';
       if (!RELATION_EXACT.test(rel)) {
-        at(relationProblem(rel) ?? `A relation starts with a colon and holds no spaces: ${rel}`);
+        at(
+          relationProblem(rel) ??
+            t('A relation starts with a colon and holds no spaces: {rel}', { rel }),
+        );
       }
       if (child.kind === 'node') {
         const badTarget = variableFormProblem(child.value);
@@ -143,8 +154,7 @@ export function penmanProblems(graph) {
         // whatever shape the variable has.
         const text = String(child.value ?? '').trim();
         const badValue =
-          attrValueProblem(child.value) ||
-          (nodes.has(text) ? `A value cannot be a variable, unless it is quoted: ${text}` : null);
+          attrValueProblem(child.value) || (nodes.has(text) ? variableValue(text) : null);
         if (badValue) at(badValue);
       }
     }
@@ -186,18 +196,16 @@ function definedVariables(masked) {
   return found;
 }
 
-// What to call a space that does not look like one.
+// What to call a space that does not look like one, as the `space` of the
+// "found" message (Scanner.found).
 const SPACE_NAMES = {
-  '\u00a0': 'a no-break space',
-  '\u202f': 'a narrow no-break space',
-  '\u2007': 'a figure space',
-  '\u3000': 'an ideographic space',
+  '\u00a0': 'nbsp',
+  '\u202f': 'narrow',
+  '\u2007': 'figure',
+  '\u3000': 'ideographic',
 };
 
-const spaceName = (ch) => {
-  const code = `U+${ch.codePointAt(0).toString(16).toUpperCase().padStart(4, '0')}`;
-  return `${SPACE_NAMES[ch] ?? 'a special space'} (${code})`;
-};
+const spaceCode = (ch) => `U+${ch.codePointAt(0).toString(16).toUpperCase().padStart(4, '0')}`;
 
 class Scanner {
   constructor(text) {
@@ -272,8 +280,12 @@ class Scanner {
    * by a no-break space read as two tokens, and the message showed only `cat`.
    */
   found(fallback = '') {
-    const quoted = `'${this.rest() || fallback}'`;
-    return this.oddSpace ? `${quoted}, after ${spaceName(this.oddSpace)}` : quoted;
+    const text = this.rest() || fallback;
+    if (!this.oddSpace) return `'${text}'`;
+    return t(
+      "''{text}'', after {space, select, nbsp {a no-break space} narrow {a narrow no-break space} figure {a figure space} ideographic {an ideographic space} other {a special space}} ({code})",
+      { text, space: SPACE_NAMES[this.oddSpace] ?? 'other', code: spaceCode(this.oddSpace) },
+    );
   }
 }
 
@@ -315,7 +327,7 @@ export function parsePenman(text, { several = false } = {}) {
     if (ch === '"') {
       const raw = scanner.take(STRING);
       if (raw === null) {
-        fail(`Unterminated string: ${scanner.rest()}`, at);
+        fail(t('Unterminated string: {text}', { text: scanner.rest() }), at);
         scanner.advance(scanner.text.length - scanner.i);
         return;
       }
@@ -324,7 +336,13 @@ export function parsePenman(text, { several = false } = {}) {
     }
     const token = scanner.take(TIME) ?? scanner.take(TOKEN);
     if (token === null) {
-      fail(`Expected a value after '${rel}', found ${scanner.found('end of graph')}.`, at);
+      fail(
+        t("Expected a value after ''{rel}'', found {found}.", {
+          rel,
+          found: scanner.found(t('end of graph')),
+        }),
+        at,
+      );
       return;
     }
     if (defined.has(token)) {
@@ -332,7 +350,7 @@ export function parsePenman(text, { several = false } = {}) {
       return;
     }
     if (VARIABLE.test(token)) {
-      fail(`Variable '${token}' is not defined.`, at);
+      fail(t("Variable ''{v}'' is not defined.", { v: token }), at);
       children.push({ rel, kind: 'node', value: token, inline: false });
       return;
     }
@@ -345,7 +363,10 @@ export function parsePenman(text, { several = false } = {}) {
     scanner.skip();
     const variable = scanner.take(VARIABLE_PREFIX) ?? scanner.take(TOKEN);
     if (variable === null || variable === undefined) {
-      fail(`Expected a node variable id, found ${scanner.found()}.`, scanner.here());
+      fail(
+        t('Expected a node variable id, found {found}.', { found: scanner.found() }),
+        scanner.here(),
+      );
       return null;
     }
     scanner.skip();
@@ -353,15 +374,15 @@ export function parsePenman(text, { several = false } = {}) {
       scanner.advance(1);
       scanner.skip();
     } else {
-      fail(`Expected slash and concept string after '${variable}'.`, scanner.here());
+      fail(t("Expected slash and concept string after ''{v}''.", { v: variable }), scanner.here());
     }
     const concept = scanner.peek() === ')' ? null : scanner.take(TOKEN);
     if (concept === null) {
-      fail(`Expected a concept string for '${variable}'.`, scanner.here());
+      fail(t("Expected a concept string for ''{v}''.", { v: variable }), scanner.here());
     }
     const node = { var: variable, concept: concept ?? '', children: [] };
     if (nodes.has(variable)) {
-      fail(`Variable '${variable}' is used twice.`, open);
+      fail(t("Variable ''{v}'' is used twice.", { v: variable }), open);
     } else {
       nodes.set(variable, node);
     }
@@ -369,7 +390,7 @@ export function parsePenman(text, { several = false } = {}) {
     for (;;) {
       scanner.skip();
       if (scanner.done) {
-        fail(`Graph ended without closing node '${variable}'.`, scanner.here());
+        fail(t("Graph ended without closing node ''{v}''.", { v: variable }), scanner.here());
         return variable;
       }
       const ch = scanner.peek();
@@ -381,7 +402,7 @@ export function parsePenman(text, { several = false } = {}) {
         const at = scanner.here();
         const rel = scanner.take(RELATION);
         if (rel === null) {
-          fail(`Expected a relation label, found ${scanner.found()}.`, at);
+          fail(t('Expected a relation label, found {found}.', { found: scanner.found() }), at);
           scanner.advance(1);
           continue;
         }
@@ -390,7 +411,10 @@ export function parsePenman(text, { several = false } = {}) {
       }
       // Anything else here is junk: report it once and step past the whole
       // token so the rest of the graph is still read.
-      fail(`Expected a relation or a closing bracket, found ${scanner.found()}.`, scanner.here());
+      fail(
+        t('Expected a relation or a closing bracket, found {found}.', { found: scanner.found() }),
+        scanner.here(),
+      );
       if (scanner.take(TOKEN) === null) scanner.advance(1);
     }
   }
@@ -399,7 +423,9 @@ export function parsePenman(text, { several = false } = {}) {
   if (scanner.done) return { root: null, tops: [], nodes, errors };
   if (scanner.peek() !== '(') {
     fail(
-      `Expected the opening bracket of the root node, found ${scanner.found()}.`,
+      t('Expected the opening bracket of the root node, found {found}.', {
+        found: scanner.found(),
+      }),
       scanner.here(),
     );
     return { root: null, tops: [], nodes, errors };
@@ -416,7 +442,9 @@ export function parsePenman(text, { several = false } = {}) {
   }
   if (!scanner.done) {
     fail(
-      `Unexpected content after the topmost closing bracket: '${scanner.rest()}'.`,
+      t("Unexpected content after the topmost closing bracket: ''{text}''.", {
+        text: scanner.rest(),
+      }),
       scanner.here(),
     );
   }

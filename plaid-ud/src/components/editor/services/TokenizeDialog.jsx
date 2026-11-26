@@ -1,5 +1,6 @@
 import { Scissors } from 'lucide-react';
 import { ServiceSpotDialog } from '@ui/components/services/ServiceSpotDialog.jsx';
+import { t } from '@ui/lib/i18n.js';
 
 // Tokenizing: the button in the Text Editor toolbar and the dialog behind it.
 //
@@ -18,9 +19,11 @@ export function TokenizeDialog({
   const { spot } = tokenize;
   return (
     <ServiceSpotDialog
-      label="Tokenize"
+      label={t('Tokenize')}
       icon={Scissors}
-      description="Splits untokenized text into tokens and words, and a text with no sentences into sentences."
+      description={t(
+        'Splits untokenized text into tokens and words, and a text with no sentences into sentences.',
+      )}
       spot={spot}
       onRun={() => tokenize.start(text)}
       writeLock={writeLockHeld}

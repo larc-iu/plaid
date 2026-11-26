@@ -30,6 +30,7 @@ import {
 } from '../utils/umrLayerUtils.js';
 import { relationRules } from './umrConstraints.js';
 import { createOnce } from '../../../plaid-ui/src/lib/createOnce.js';
+import { t } from '../../../plaid-ui/src/lib/i18n.js';
 import { proposeIlg } from './ilg.js';
 import {
   declarePreserveOnSplit,
@@ -167,7 +168,10 @@ const bootstrap = async (client, projectName, mint) => {
       if (!created) throw err;
       console.error('Setup failed:', err, 'Delete failed:', deleteErr);
       const wrapped = new Error(
-        `Failed to set up the project, and the partial project was not deleted. Delete “${projectName.trim()}” by hand.`,
+        t(
+          'Failed to set up the project, and the partial project was not deleted. Delete “{name}” by hand.',
+          { name: projectName.trim() },
+        ),
       );
       wrapped.cause = err;
       throw wrapped;
@@ -185,6 +189,7 @@ const bootstrap = async (client, projectName, mint) => {
  * @returns {Promise<object>} the created project
  */
 export const createUmrProject = (client, projectName, mint = { current: null }) =>
+  // i18n-ignore: an audit label, sent to the server
   client.withOperation(`Create UMR project "${projectName.trim()}"`, () =>
     bootstrap(client, projectName, mint),
   );
@@ -206,11 +211,12 @@ export const createUmrProject = (client, projectName, mint = { current: null }) 
  * @returns {Promise<boolean>} true when something was created
  */
 export const adoptSubstrate = (client, page) =>
+  // i18n-ignore: an audit label, sent to the server
   client.withOperation('Set the project up for UMR', async () => {
     const project = await client.projects.get(page.id);
     const layerInfo = getUmrLayerInfo(project);
     const { textLayer } = layerInfo;
-    if (!textLayer) throw new Error('The project has no text layer to build on.');
+    if (!textLayer) throw new Error(t('The project has no text layer to build on.'));
     let created = false;
     await client.batched(async (b) => {
       let nodeLayerId = layerInfo.nodeTokenLayer?.id;

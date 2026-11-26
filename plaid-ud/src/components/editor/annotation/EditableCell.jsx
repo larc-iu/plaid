@@ -17,6 +17,7 @@ import { textIncludes } from '@ui/domain/collation.js';
 import { useConflictCell } from '@ui/hooks/useConflictCell.js';
 import { ConflictNote } from '@ui/components/shared/conflict-note.jsx';
 import { fieldName } from '../../../utils/fieldNames.js';
+import { t } from '@ui/lib/i18n.js';
 
 // Editable cell component for annotation fields
 
@@ -230,7 +231,7 @@ export const EditableCell = React.memo(
       if (changed || retyped) {
         const refusal = validate?.(newValue);
         if (refusal) {
-          notifyWarning(refusal, 'Not in the list');
+          notifyWarning(refusal, t('Not in the list'));
           setValue(value || '');
           return;
         }
@@ -243,7 +244,7 @@ export const EditableCell = React.memo(
           newValue,
           taken?.saved ?? (value || ''),
           () => onUpdate(tokenId, field, newValue || null),
-          { field: fieldName(field) },
+          { field: t(fieldName(field)) },
         );
       } else {
         // Revert to original if unchanged
@@ -417,10 +418,13 @@ export const EditableCell = React.memo(
     //
     // Machine-origin record for the tooltip + the producer's distribution (when
     // one was recorded in provDetail) for ranking the dropdown.
-    const cellTitle = provCellTitle(`Edit ${fieldName(field)}`, provMeta);
+    const cellTitle = provCellTitle(t('Edit {field}', { field: t(fieldName(field)) }), provMeta);
     // The name a screen reader gives the cell: its row and its word, as igt's
     // grid says "Gloss for dog". The tooltip stays a description.
-    const cellName = `${fieldName(field)} for ${tokenForm ?? ''}`.trim();
+    const cellName = t('{field} for {form}', {
+      field: t(fieldName(field)),
+      form: tokenForm ?? '',
+    }).trim();
     const fieldProbs = readValueProbs(provMeta);
 
     // Read-only (viewer access or time travel): render the value as static text,
@@ -434,7 +438,7 @@ export const EditableCell = React.memo(
             cursor: 'default',
             ...(hasContent && cellColor && !mark ? { color: cellColor } : {}),
           }}
-          title={provCellTitle(field, provMeta)}
+          title={provCellTitle(t(fieldName(field)), provMeta)}
         >
           {hasContent ? displayValue : ' '}
         </div>

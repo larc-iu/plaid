@@ -9,6 +9,7 @@ import {
 } from '../../../utils/serviceDefaults.js';
 import { draftNotice } from '../../../domain/draftNotice.js';
 import { compareNotice } from '../../../domain/compareNotice.js';
+import { t } from '@ui/lib/i18n.js';
 
 // How long a service may say NOTHING, not a cap on the run: the client restarts
 // this clock on every progress event. A document is one model call per
@@ -45,15 +46,17 @@ export const useUmrServices = ({ client, projectId, doc, project, acquireWriteLo
     projectId,
     doc,
     acquireWriteLock,
-    label: 'Draft',
+    // The run's name, which the write lock holds: DraftDialog names it the
+    // same, so its button knows the run as its own.
+    label: t('Draft'),
     timeout: DRAFT_SILENCE_MS,
     args: requestArgs,
     copy: {
-      successTitle: 'Drafted',
-      successMessage: 'The draft finished.',
-      errorTitle: 'Failed to draft',
-      errorMessage: 'The draft did not run.',
-      stoppedTitle: 'Draft',
+      successTitle: t('Drafted'),
+      successMessage: t('The draft finished.'),
+      errorTitle: t('Failed to draft'),
+      errorMessage: t('The draft did not run.'),
+      stoppedTitle: t('Draft'),
       // The words for the counts the service reports. A run that skipped
       // every sentence warns rather than congratulates.
       notice: draftNotice,
@@ -68,18 +71,19 @@ export const useUmrServices = ({ client, projectId, doc, project, acquireWriteLo
     projectId,
     doc,
     acquireWriteLock,
-    label: 'Compare',
+    // The run's name, which CompareEditor's heldBy reads back.
+    label: t('Compare'),
     timeout: COMPARE_SILENCE_MS,
     args: requestArgs,
     copy: {
-      successTitle: 'Compared',
-      successMessage: 'The comparison finished.',
-      errorTitle: 'Failed to compare',
-      errorMessage: 'The comparison did not run.',
-      stoppedTitle: 'Compare',
+      successTitle: t('Compared'),
+      successMessage: t('The comparison finished.'),
+      errorTitle: t('Failed to compare'),
+      errorMessage: t('The comparison did not run.'),
+      stoppedTitle: t('Compare'),
       // Said while the document is as it was: a stopped run that changed it
       // says so instead (plaid-ui useServiceRequest).
-      stoppedMessage: 'No report was written.',
+      stoppedMessage: t('No report was written.'),
       notice: compareNotice,
     },
   });

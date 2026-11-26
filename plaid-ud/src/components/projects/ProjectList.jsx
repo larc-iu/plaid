@@ -1,6 +1,7 @@
 import { ProjectListPage } from '@ui/components/shared/ProjectListPage.jsx';
 import { ProjectForm } from './ProjectForm';
 import { getUdLayerInfo } from '../../utils/udLayerUtils.js';
+import { t } from '@ui/lib/i18n.js';
 
 // "Words" = the morpheme layer: in the sentence>word>morpheme UD model the
 // morpheme layer holds the syntactic words (the CoNLL-U token rows where
@@ -14,7 +15,7 @@ export const ProjectList = () => (
   <ProjectListPage
     wordLayerId={wordLayerId}
     seedLayerId={seedLayerId}
-    newProject="New UD project"
+    newProject={t('New UD project')}
     form={ProjectForm}
   />
 );

@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { t } from '@ui/lib/i18n.js';
 import { useParams } from 'react-router-dom';
 import { ArrowDown, ArrowUp, Plus, Trash2 } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext.jsx';
@@ -57,9 +58,12 @@ export const UmrSettings = () => {
       out.push({ value: 'morphemes', label: layerInfo.morphemeTokenLayer.name });
     }
     layerInfo.glossLayers.forEach((g) => {
-      out.push({ value: `layer:${g.layer.id}`, label: `${g.layer.name} · ${g.scope}` });
+      out.push({
+        value: `layer:${g.layer.id}`,
+        label: t('{name} · {scope}', { name: g.layer.name, scope: g.scope }),
+      });
     });
-    out.push({ value: STORED, label: 'Lines an import stored' });
+    out.push({ value: STORED, label: t('Lines an import stored') });
     // A line whose layer is gone (an archive import or a restore made the
     // layers afresh) draws nothing until it is given a layer here.
     // Numbered when there are several, so they read apart in the select.
@@ -67,8 +71,13 @@ export const UmrSettings = () => {
       ...new Set(rows.filter((r) => layerGone(r, layerInfo)).map((r) => r.source)),
     ].filter((source) => !out.some((s) => s.value === source));
     gone.forEach((source, i) => {
-      const label = 'Layer no longer in the project';
-      out.push({ value: source, label: gone.length > 1 ? `${label} (${i + 1})` : label });
+      out.push({
+        value: source,
+        label:
+          gone.length > 1
+            ? t('Layer no longer in the project ({n})', { n: i + 1 })
+            : t('Layer no longer in the project'),
+      });
     });
     return out;
   }, [layerInfo, rows]);
@@ -135,10 +144,10 @@ export const UmrSettings = () => {
         expectStored(project, UMR_NAMESPACE, 'ilg'),
       );
       await fetchProject();
-      notifySuccess('Gloss lines saved');
+      notifySuccess(t('Gloss lines saved'));
     } catch (err) {
       console.error('Failed to save the gloss lines:', err);
-      notifyError(err, 'Failed to save the gloss lines');
+      notifyError(err, t('Failed to save the gloss lines'));
       // Someone else saved since: show what is stored now.
       if (isConfigConflict(err)) fetchProject();
     } finally {
@@ -151,12 +160,13 @@ export const UmrSettings = () => {
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Gloss lines</CardTitle>
+        <CardTitle>{t('Gloss lines')}</CardTitle>
       </CardHeader>
       <CardContent className="flex flex-col gap-4">
         <p className="text-sm text-muted-foreground">
-          The lines under each sentence and in an exported .umr file, in this order. Index and Words
-          are always written.
+          {t(
+            'The lines under each sentence and in an exported .umr file, in this order. Index and Words are always written.',
+          )}
         </p>
         <div className="flex flex-col gap-2">
           {rows.map((row, i) => {
@@ -169,7 +179,7 @@ export const UmrSettings = () => {
                   onValueChange={(v) => update(i, { source: v })}
                   disabled={saving}
                 >
-                  <SelectTrigger className="w-[260px]" aria-label="Source">
+                  <SelectTrigger className="w-[260px]" aria-label={t('Source')}>
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
@@ -184,7 +194,7 @@ export const UmrSettings = () => {
                   // As wide as a header and a language, so the row's buttons
                   // line up with the other rows'.
                   <span className="w-[288px] whitespace-nowrap text-sm text-muted-foreground">
-                    Written as stored
+                    {t('Written as stored')}
                   </span>
                 ) : (
                   <>
@@ -193,8 +203,8 @@ export const UmrSettings = () => {
                       onValueChange={(v) => update(i, { header: v })}
                       disabled={saving}
                     >
-                      <SelectTrigger className="w-[200px]" aria-label="Header">
-                        <SelectValue placeholder="Header" />
+                      <SelectTrigger className="w-[200px]" aria-label={t('Header')}>
+                        <SelectValue placeholder={t('Header')} />
                       </SelectTrigger>
                       <SelectContent>
                         {HEADERS.map((h) => (
@@ -207,8 +217,8 @@ export const UmrSettings = () => {
                     <Input
                       value={header?.lang ? row.lang || '' : ''}
                       onChange={(e) => update(i, { lang: e.target.value.trim() })}
-                      placeholder="lang"
-                      aria-label="Language code"
+                      placeholder="lang" // i18n-ignore: a language code, as typed
+                      aria-label={t('Language code')}
                       className="w-20"
                       disabled={saving || !header?.lang}
                     />
@@ -218,7 +228,7 @@ export const UmrSettings = () => {
                   type="button"
                   variant="ghost"
                   size="icon"
-                  aria-label="Move up"
+                  aria-label={t('Move up')}
                   onClick={() => move(i, -1)}
                   disabled={!canMove(i, -1)}
                 >
@@ -228,7 +238,7 @@ export const UmrSettings = () => {
                   type="button"
                   variant="ghost"
                   size="icon"
-                  aria-label="Move down"
+                  aria-label={t('Move down')}
                   onClick={() => move(i, 1)}
                   disabled={!canMove(i, 1)}
                 >
@@ -238,7 +248,7 @@ export const UmrSettings = () => {
                   type="button"
                   variant="ghost"
                   size="icon"
-                  aria-label="Remove"
+                  aria-label={t('Remove')}
                   onClick={() => remove(i)}
                 >
                   <Trash2 className="h-4 w-4" />
@@ -249,13 +259,13 @@ export const UmrSettings = () => {
         </div>
         <div className="flex flex-wrap gap-2">
           <Button type="button" variant="outline" onClick={add} disabled={saving}>
-            <Plus className="h-4 w-4" /> Add line
+            <Plus className="h-4 w-4" /> {t('Add line')}
           </Button>
           <Button type="button" variant="outline" onClick={propose} disabled={saving}>
-            Propose lines
+            {t('Propose lines')}
           </Button>
           <Button type="button" onClick={save} disabled={saving || incomplete || !changed}>
-            {saving ? 'Saving…' : 'Save'}
+            {saving ? t('Saving…') : t('Save')}
           </Button>
         </div>
       </CardContent>

@@ -3,7 +3,16 @@ import { Button } from '@ui/components/ui/button';
 import { useUnsavedDraft } from '@ui/hooks/useUnsavedDraft.js';
 import { chordText } from '@ui/lib/chords.js';
 import { parsePenman } from '../../../domain/format/penman.js';
-import { countOf } from '@ui/lib/plural.js';
+import { msg, t } from '@ui/lib/i18n.js';
+
+// What leaving loses, for the question every way out asks: the phrase that
+// names it, and the question's own whole sentences for one and for several.
+const TYPED = msg('The graph you have typed');
+const TYPED_SEVERAL = msg('graphs');
+const typedSaid = () => ({
+  one: t('The graph you have typed is not saved. Leaving loses it.'),
+  several: (n) => t('{n} graphs are not saved. Leaving loses them.', { n }),
+});
 
 // The text mode of one sentence: its graph as PENMAN in a textarea, applied
 // as one operation on Apply. Every node of the sentence is in the text: the
@@ -40,7 +49,7 @@ export function PenmanEditor({
   // Typed and not applied. Every way out of this screen asks first: the tab
   // strip, a link, the browser's Back, a reload. One editor per sentence, so
   // several can be typed in at once and the question counts them.
-  useUnsavedDraft(dirty ? 'The graph you have typed' : null, 'graphs');
+  useUnsavedDraft(dirty ? t(TYPED) : null, t(TYPED_SEVERAL), typedSaid());
   useEffect(() => {
     if (!dirtyRef) return undefined;
     dirtyRef.current = dirty;
@@ -62,7 +71,7 @@ export function PenmanEditor({
     const parsed = parsePenman(text, { several: true });
     if (parsed.errors.length) return { ...none, problem: parsed.errors[0] };
     if (!parsed.root && text.trim()) {
-      return { ...none, problem: { message: 'The text has no graph.' } };
+      return { ...none, problem: { message: t('The text has no graph.') } };
     }
     if (!plan || !dirty) return { ...none, problem: null };
     const p = plan(text);
@@ -116,7 +125,7 @@ export function PenmanEditor({
           spellCheck={false}
           onChange={(e) => setText(e.target.value)}
           onKeyDown={onKeyDown}
-          aria-label="PENMAN"
+          aria-label="PENMAN" // i18n-ignore: the format's name
         />
       </div>
       <div className="umr-penman-foot">
@@ -125,13 +134,15 @@ export function PenmanEditor({
           className={`umr-penman-status${problem ? ' umr-penman-status--error' : ''}`}
         >
           {problem
-            ? `${problem.message}${problem.line ? ` (line ${problem.line})` : ''}`
+            ? problem.line
+              ? t('{message} (line {line})', { message: problem.message, line: problem.line })
+              : problem.message
             : dirty
-              ? `Changed. Click Apply to save it.${renameNote(rename)}${conceptNote(concepts)}${lossNote(losses)}`
-              : 'As stored.'}
+              ? `${t('Changed. Click Apply to save it.')}${renameNote(rename)}${conceptNote(concepts)}${lossNote(losses)}`
+              : t('As stored.')}
         </span>
         <Button type="button" variant="outline" size="sm" onClick={() => onCancel(dirty)}>
-          Cancel
+          {t('Cancel')}
         </Button>
         <Button
           type="button"
@@ -139,7 +150,7 @@ export function PenmanEditor({
           disabled={!!problem || !dirty || applying}
           onClick={() => onApply(text)}
         >
-          Apply
+          {t('Apply')}
         </Button>
         <span className="text-xs text-muted-foreground">
           {chordText('Mod+Enter', { words: true })}
@@ -190,7 +201,7 @@ function shiftLines(text, a, b, step) {
 // rather than leaving the annotator to wonder what became of the old one.
 function renameNote(rename) {
   if (!rename.length) return '';
-  const one = (r) => `${r.from} is now ${r.to}`;
+  const one = (r) => t('{from} is now {to}', { from: r.from, to: r.to });
   return ` ${rename.map(one).join(', ')}.`;
 }
 
@@ -203,20 +214,32 @@ function conceptNote(concepts) {
   if (!concepts.length) return '';
   const [first, ...rest] = concepts;
   const parts = [
-    `${first.var} changes from ${first.from} to ${first.concept}`,
-    ...rest.map((c) => `${c.var} from ${c.from} to ${c.concept}`),
+    t('{name} changes from {from} to {concept}', {
+      name: first.var,
+      from: first.from,
+      concept: first.concept,
+    }),
+    ...rest.map((c) =>
+      t('{name} from {from} to {concept}', { name: c.var, from: c.from, concept: c.concept }),
+    ),
   ];
   return ` ${parts.join(', ')}.`;
 }
 
 function lossNote(losses) {
   if (!losses.length) return '';
-  const one = ({ var: v, anchored, relations }) => {
-    const what = [
-      anchored && 'its anchor',
-      relations && countOf(relations, 'document-level relation'),
-    ].filter(Boolean);
-    return `${v} with ${what.join(' and ')}`;
-  };
-  return ` It deletes ${losses.map(one).join(', ')}.`;
+  // Every loss has an anchor, a relation or both (UmrDocument's planPenman).
+  const one = ({ var: name, anchored, relations }) =>
+    anchored && relations
+      ? t(
+          '{name} with its anchor and {n, plural, one {# document-level relation} other {# document-level relations}}',
+          { name, n: relations },
+        )
+      : anchored
+        ? t('{name} with its anchor', { name })
+        : t(
+            '{name} with {n, plural, one {# document-level relation} other {# document-level relations}}',
+            { name, n: relations },
+          );
+  return ` ${t('It deletes {list}.', { list: losses.map(one).join(', ') })}`;
 }

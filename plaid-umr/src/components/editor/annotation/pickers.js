@@ -17,19 +17,31 @@ import {
 import { DOC_RELATIONS } from '../../../domain/format/inventory.js';
 import { conceptProblem, attrValueProblem } from '../../../domain/format/penman.js';
 import { valueGrammarProblem } from '../../../domain/format/validate.js';
+// Relative, not @ui: the plain-node tests load this file.
+import { msg, t } from '../../../../../plaid-ui/src/lib/i18n.js';
 
 // How a temporal relation reads, child first: the label of `:before` in
 // `(document-creation-time :before s9p)` is "s9p before document-creation-time".
 // UMR's temporal labels say how the child (the target) stands to its
-// reference time (the source), which the triple's own order hides.
+// reference time (the source), which the triple's own order hides. Each
+// relation is a key of the one message that words the label.
 const TEMPORAL_READING = {
   ':before': 'before',
   ':after': 'after',
-  ':overlap': 'overlaps',
-  ':contained': 'within',
+  ':overlap': 'overlap',
+  ':contained': 'contained',
   ':contains': 'contains',
-  ':depends-on': 'depends on',
+  ':depends-on': 'dependsOn',
 };
+const temporalLabel = (rel, ends) =>
+  t(
+    '{rel} {target} {reading, select, before {before} after {after} overlap {overlaps} contained {within} contains {contains} dependsOn {depends on} other {{rel}}} {source}',
+    { rel, target: ends.target, source: ends.source, reading: TEMPORAL_READING[rel] || 'other' },
+  );
+
+// A document-level group's heading.
+const docGroupName = (group) =>
+  t('{group, select, temporal {Temporal} modal {Modal} coref {Coref} other {{group}}}', { group });
 
 // The relations of one document-level group, the validator's set first.
 // Given the triple's two ends by name, a temporal relation is labelled with
@@ -41,16 +53,16 @@ export const docRelationOptions = (group, sets = 'validator', ends = null) => {
     group === 'temporal' && ends
       ? rels.map((rel) => ({
           value: rel,
-          label: `${rel} ${ends.target} ${TEMPORAL_READING[rel] || rel} ${ends.source}`,
+          label: temporalLabel(rel, ends),
         }))
       : rels;
-  return [{ group: group.charAt(0).toUpperCase() + group.slice(1), items }];
+  return [{ group: docGroupName(group), items }];
 };
 
 // Every node of the document as an option, `var concept`, sentence by sentence.
 export const nodeOptions = (graph, exceptId = null) =>
   graph.sentences.map((s) => ({
-    group: `Sentence ${s.number ?? s.index}`,
+    group: t('Sentence {n}', { n: s.number ?? s.index }),
     items: s.nodes
       .filter((n) => n.id !== exceptId && n.var)
       .map((n) => ({ value: n.var, label: `${n.var} ${n.concept}`, nodeId: n.id })),
@@ -91,22 +103,22 @@ export const roleOptions = (
           },
         ]
       : []),
-    { group: 'Core', items: ARG_ROLES },
-    { group: 'Participant', items: flat(ROLES.participant) },
-    { group: 'Non-participant', items: flat(ROLES.nonParticipant) },
-    { group: 'Spatial', items: flat(ROLES.spatial) },
-    { group: 'Discourse', items: flat(ROLES.discourse) },
+    { group: t('Core'), items: ARG_ROLES },
+    { group: t('Participant'), items: flat(ROLES.participant) },
+    { group: t('Non-participant'), items: flat(ROLES.nonParticipant) },
+    { group: t('Spatial'), items: flat(ROLES.spatial) },
+    { group: t('Discourse'), items: flat(ROLES.discourse) },
   ];
 };
 
 // A role typed without its colon gets one. A label picked from a list
 // (`:ARG0 giver`) is the role alone.
 export const normalizeRole = (text) => {
-  const t = String(text || '')
+  const role = String(text || '')
     .trim()
     .split(/\s+/)[0];
-  if (!t) return '';
-  return t.startsWith(':') ? t : `:${t}`;
+  if (!role) return '';
+  return role.startsWith(':') ? role : `:${role}`;
 };
 
 // Concepts for a node anchored to `words`: the frame file's senses of those
@@ -119,11 +131,13 @@ const nameOf = (c) => (typeof c === 'string' ? c : c.name);
 // (`:day`, `:year`) are relations, not concepts: listed, they made Enter on
 // a typed `day` take `:day`, which a concept cannot hold.
 const { dateSubroles: _dateRoles, ...CONCEPT_TABLES } = ABSTRACT_CONCEPTS;
+// Each group's name is a message, read in the page's language where the
+// options are built.
 const STATIC_CONCEPT_GROUPS = [
-  { group: 'Abstract', items: uniq(flat(CONCEPT_TABLES).map(nameOf)) },
-  { group: 'Rolesets', items: uniq(flat(ROLESETS_91).map(nameOf)) },
+  { group: msg('Abstract'), items: uniq(flat(CONCEPT_TABLES).map(nameOf)) },
+  { group: msg('Rolesets'), items: uniq(flat(ROLESETS_91).map(nameOf)) },
   {
-    group: 'Discourse',
+    group: msg('Discourse'),
     items: uniq(flat(DISCOURSE_CONCEPTS.validator || DISCOURSE_CONCEPTS).map(nameOf)),
   },
 ];
@@ -149,13 +163,13 @@ export const conceptOptions = (words = [], frames = null, typed = '', vocab = nu
     : [];
   const entryItem = (e) => ({ value: e.concept, label: entryLabel(e), entryId: e.id });
   return [
-    ...(senses.length ? [{ group: 'Senses', items: senses.map(senseItem) }] : []),
-    ...(entries.length ? [{ group: 'Vocabulary', items: entries.map(entryItem) }] : []),
+    ...(senses.length ? [{ group: t('Senses'), items: senses.map(senseItem) }] : []),
+    ...(entries.length ? [{ group: t('Vocabulary'), items: entries.map(entryItem) }] : []),
     ...(byPrefix.length
-      ? [{ group: 'Rolesets', items: byPrefix.map((x) => senseItem(x.id)) }]
+      ? [{ group: t('Rolesets'), items: byPrefix.map((x) => senseItem(x.id)) }]
       : []),
-    ...(surface.length ? [{ group: 'Word', items: surface }] : []),
-    ...STATIC_CONCEPT_GROUPS,
+    ...(surface.length ? [{ group: t('Word'), items: surface }] : []),
+    ...STATIC_CONCEPT_GROUPS.map((g) => ({ ...g, group: t(g.group) })),
   ];
 };
 
@@ -189,12 +203,16 @@ export const readAttrLine = (
   const fail = (problem) => ({ attrs, problem });
   while (rest) {
     const rel = /^(:[^\s]*)(\s+|$)/.exec(rest);
-    if (!rel) return fail(`An attribute starts with its relation, after a colon: ${rest}`);
+    if (!rel) {
+      return fail(
+        t('An attribute starts with its relation, after a colon: {text}', { text: rest }),
+      );
+    }
     const relProblem = relationProblem(rel[1]);
     if (relProblem) return fail(relProblem);
     rest = rest.slice(rel[0].length);
     const value = /^("(?:[^"\\]|\\.)*"|[^\s]+)(\s+|$)/.exec(rest);
-    if (!value) return fail(`${rel[1]} has no value.`);
+    if (!value) return fail(t('{rel} has no value.', { rel: rel[1] }));
     const valueWhy = valueProblem(rel[1], value[1]);
     if (valueWhy) return fail(valueWhy);
     attrs.push({ rel: rel[1], value: value[1] });

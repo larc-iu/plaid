@@ -3,6 +3,7 @@ import { Button } from '@ui/components/ui/button';
 import { Notice } from '@ui/components/shared/Notice.jsx';
 import { highlightGrew } from './grewSyntax.js';
 import { CodeEditor } from './CodeEditor.jsx';
+import { t } from '@ui/lib/i18n.js';
 
 // The query editor: a syntax-highlighted code box (CodeEditor + our tolerant
 // Grew highlighter) + Run, plus an inline error panel. Parse/compile errors
@@ -18,7 +19,14 @@ const EDITOR_STYLE = {
   minHeight: 72,
 };
 
-export const GrewQueryInput = ({ value, onChange, onRun, running, error, action = 'Search' }) => {
+export const GrewQueryInput = ({
+  value,
+  onChange,
+  onRun,
+  running,
+  error,
+  action = t('Search'),
+}) => {
   const onKeyDown = (e) => {
     if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
       e.preventDefault();
@@ -36,8 +44,8 @@ export const GrewQueryInput = ({ value, onChange, onRun, running, error, action 
           onKeyDown={onKeyDown}
           padding={10}
           textareaId="grew-query"
-          label="Grew pattern"
-          placeholder={'pattern { X [upos=VERB]; Y [upos=NOUN]; X -[nsubj]-> Y }'}
+          label={t('Grew pattern')}
+          placeholder={'pattern { X [upos=VERB]; Y [upos=NOUN]; X -[nsubj]-> Y }'} // i18n-ignore: Grew syntax
           spellCheck={false}
           style={EDITOR_STYLE}
         />
@@ -45,7 +53,7 @@ export const GrewQueryInput = ({ value, onChange, onRun, running, error, action 
       <div>
         <Button onClick={onRun} disabled={running}>
           <Search className="h-4 w-4" />
-          {running ? 'Running…' : action}
+          {running ? t('Running…') : action}
         </Button>
       </div>
       {error && <QueryError error={error} />}
@@ -55,14 +63,19 @@ export const GrewQueryInput = ({ value, onChange, onRun, running, error, action 
 
 function QueryError({ error }) {
   const isUnsupported = error.name === 'GrewUnsupportedError';
+  const { line } = error;
   const title =
     error.name === 'GrewParseError'
-      ? `Syntax error${error.line ? ` (line ${error.line})` : ''}`
+      ? line
+        ? t('Syntax error (line {line})', { line })
+        : t('Syntax error')
       : isUnsupported
-        ? 'Unsupported feature'
+        ? t('Unsupported feature')
         : error.name === 'GrewRuntimeError'
-          ? `Rule error${error.line ? ` (line ${error.line})` : ''}`
-          : 'Failed to search';
+          ? line
+            ? t('Rule error (line {line})', { line })
+            : t('Rule error')
+          : t('Failed to search');
   return (
     <Notice tone={isUnsupported ? 'warning' : 'error'} role="alert">
       <div className="flex min-w-0 flex-col gap-1">

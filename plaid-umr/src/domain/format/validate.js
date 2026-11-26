@@ -22,6 +22,7 @@ import {
   RENAMED_RELATIONS,
 } from './inventory.js';
 import { nfc, treeEdges } from './penman.js';
+import { t } from '../../../../plaid-ui/src/lib/i18n.js';
 
 const OP = /^:op([1-9][0-9]*)$/;
 // ASCII as validate.py's document-level check reads it (validate.py:406): a
@@ -35,8 +36,9 @@ const ARG_OF = /^:ARG[0-6]-of$/;
 
 const uninvert = (relation) => relation.replace(/-of$/, '');
 
-// "a node", "an atom": the kinds a child of a node comes in.
-const aKind = (kind) => `${/^[aeiou]/.test(kind) ? 'an' : 'a'} ${kind}`;
+// Why a node is an event (detectEvents), or an entity or event by a
+// coreference relation (checkCorefKinds): `{ why, what }`, which the messages
+// that name it say as a whole clause, by `why`.
 
 // The bare values validate.py reads (validate.py:393-398): an atom of
 // lowercase letters, digits, `+` and `-`, or a number with a decimal point
@@ -67,9 +69,12 @@ export const unknownRelationProblem = (relation) => {
   const base = uninvert(rel);
   const renamed = RENAMED_RELATIONS[base];
   if (renamed) {
-    return `Unknown relation '${rel}': UMR 2.0 renamed it ${renamed}${base === rel ? '' : '-of'}.`;
+    return t("Unknown relation ''{rel}'': UMR 2.0 renamed it {renamed}.", {
+      rel,
+      renamed: `${renamed}${base === rel ? '' : '-of'}`,
+    });
   }
-  return `Unknown relation '${rel}'.`;
+  return t("Unknown relation ''{rel}''.", { rel });
 };
 
 /**
@@ -82,7 +87,7 @@ export const unknownDocRelationProblem = (group, relation, sets = 'validator') =
   const known = DOC_RELATIONS[group]?.[sets] ?? DOC_RELATIONS[group]?.validator ?? [];
   return known.includes(relation)
     ? null
-    : `Unknown document-level ${group} relation '${relation}'.`;
+    : t("Unknown document-level {group} relation ''{rel}''.", { group, rel: relation });
 };
 
 // The value set a relation's atom is judged against. An attribute validate.py
@@ -145,7 +150,7 @@ function detectEvents(sentence, sets, { sameEvent = true } = {}) {
   for (const [variable, node] of nodes) {
     if (discourse.has(node.concept) || nonEvent.has(node.concept)) continue;
     let reason = null;
-    if (ROLESET.test(node.concept)) reason = `its concept is ${node.concept}`;
+    if (ROLESET.test(node.concept)) reason = { why: 'concept', what: node.concept };
     if (!reason) {
       for (const child of outgoing(node)) {
         // validate.py:1620 lists `:modstr`, the pre-1.0 spelling, not
@@ -153,7 +158,7 @@ function detectEvents(sentence, sets, { sameEvent = true } = {}) {
         // not an event there. Kept as-is so the two agree on what needs
         // `:aspect`.
         if (ARG.test(child.rel) || child.rel === ':aspect' || child.rel === ':modstr') {
-          reason = `it has the outgoing relation ${child.rel}`;
+          reason = { why: 'outgoing', what: child.rel };
           break;
         }
       }
@@ -161,7 +166,7 @@ function detectEvents(sentence, sets, { sameEvent = true } = {}) {
     if (!reason) {
       for (const child of incoming.get(variable) ?? []) {
         if (ARG_OF.test(child.rel)) {
-          reason = `it has the incoming relation ${child.rel}`;
+          reason = { why: 'incoming', what: child.rel };
           break;
         }
       }
@@ -174,7 +179,7 @@ function detectEvents(sentence, sets, { sameEvent = true } = {}) {
     if (relation !== ':same-event') continue;
     [a, b].forEach((variable) => {
       if (nodes.has(variable) && !events.has(variable)) {
-        events.set(variable, 'it participates in a :same-event relation');
+        events.set(variable, { why: 'sameEvent', what: '' });
       }
     });
   }
@@ -238,7 +243,7 @@ function checkGraph(sentence, findings, options) {
       findings.push({
         level: 'error',
         code: 'non-unique-node-id',
-        message: `Variable '${variable}' is used twice in the document.`,
+        message: t("Variable ''{v}'' is used twice in the document.", { v: variable }),
         var: variable,
       });
     }
@@ -246,7 +251,7 @@ function checkGraph(sentence, findings, options) {
       findings.push({
         level: 'error',
         code: 'missing-concept-string',
-        message: `Node '${variable}' has no concept.`,
+        message: t("Node ''{v}'' has no concept.", { v: variable }),
         var: variable,
       });
     }
@@ -254,7 +259,10 @@ function checkGraph(sentence, findings, options) {
       findings.push({
         level: 'warning',
         code: 'invalid-variable',
-        message: `Variable '${variable}' is not of the form sNx (s, the sentence number, letters a to z, a number).`,
+        message: t(
+          "Variable ''{v}'' is not of the form sNx (s, the sentence number, letters a to z, a number).",
+          { v: variable },
+        ),
         var: variable,
       });
     }
@@ -267,8 +275,10 @@ function checkGraph(sentence, findings, options) {
       if (!defined.has(child.value)) {
         const code = previous.has(child.value) ? 'cross-sentence-reference' : 'unknown-node-id';
         const message = previous.has(child.value)
-          ? `Sentence level graph cannot contain nodes from other sentences: '${child.value}'.`
-          : `Variable '${child.value}' is not defined in this sentence.`;
+          ? t("Sentence level graph cannot contain nodes from other sentences: ''{v}''.", {
+              v: child.value,
+            })
+          : t("Variable ''{v}'' is not defined in this sentence.", { v: child.value });
         findings.push({ level: 'error', code, message, var: variable });
         return;
       }
@@ -278,7 +288,10 @@ function checkGraph(sentence, findings, options) {
         findings.push({
           level: 'error',
           code: 'cycle',
-          message: `The node '${child.value}' dominates itself. Use inverted relations to prevent cycles.`,
+          message: t(
+            "The node ''{v}'' dominates itself. Use inverted relations to prevent cycles.",
+            { v: child.value },
+          ),
           var: child.value,
         });
       }
@@ -289,7 +302,11 @@ function checkGraph(sentence, findings, options) {
     findings.push({
       level: 'warning',
       code: 'forward-reference',
-      message: `'${variable} ${child.rel} ${child.value}' refers to a node written out later.`,
+      message: t("''{v} {rel} {target}'' refers to a node written out later.", {
+        v: variable,
+        rel: child.rel,
+        target: child.value,
+      }),
       var: variable,
     });
   });
@@ -326,7 +343,10 @@ export function valueGrammarProblem(value, rel = null) {
   if (/^-?[0-9]+$/.test(text) || text.startsWith('"')) return null;
   return {
     code: 'unexpected-value',
-    message: `The value '${text}' of '${rel}' is neither a number nor a quoted label. ${listItemTakes(rel)}`,
+    message: `${t("The value ''{value}'' of ''{rel}'' is neither a number nor a quoted label.", {
+      value: text,
+      rel,
+    })} ${listItemTakes(rel)}`,
   };
 }
 
@@ -353,15 +373,19 @@ export function nodeUnderAttributeProblem(rel, concept = null) {
     r === ':wiki' ||
     (nfc(concept) === 'name' && OP.test(r)) ||
     (knownRelation(r)?.values ?? []).length > 0;
-  return valueOnly ? `'${r}' takes a value, not a node.` : null;
+  return valueOnly ? t("''{rel}'' takes a value, not a node.", { rel: r }) : null;
 }
 
 const listItemTakes = (rel) =>
-  `'${rel}' takes the item's place in the list (-1 for the last) or its label in quotes, such as "(a)".`;
+  t(
+    "''{rel}'' takes the item's place in the list (-1 for the last) or its label in quotes, such as \"(a)\".",
+    { rel },
+  );
 
 function grammarProblem(value, rel) {
   const text = String(value ?? '');
-  const of = rel ? ` of '${rel}'` : '';
+  // Whether the message names the relation: `of` and `rel` in each.
+  const of = { of: rel ? 'yes' : 'no', rel: rel ?? '' };
   if (text.startsWith('"')) {
     const inner = /^"([\s\S]*)"$/.exec(text)?.[1];
     // An unclosed string is the export's refusal (umrFileProblems).
@@ -369,16 +393,25 @@ function grammarProblem(value, rel) {
     if (/[\r\n\u2028\u2029]/.test(inner)) {
       return {
         code: 'invalid-line',
-        message: `The string value${of} runs over more than one line.`,
+        message: t(
+          "The string value{of, select, yes { of ''{rel}''} other {}} runs over more than one line.",
+          of,
+        ),
       };
     }
     if (!inner) {
-      return { code: 'missing-node-definition', message: `The string value${of} is empty.` };
+      return {
+        code: 'missing-node-definition',
+        message: t("The string value{of, select, yes { of ''{rel}''} other {}} is empty.", of),
+      };
     }
     if (inner.includes('"')) {
       return {
         code: 'invalid-sentence-level',
-        message: `The string value${of} holds a quote: ${text}`,
+        message: t(
+          "The string value{of, select, yes { of ''{rel}''} other {}} holds a quote: {value}",
+          { ...of, value: text },
+        ),
       };
     }
     return null;
@@ -387,19 +420,28 @@ function grammarProblem(value, rel) {
   if (front) {
     return {
       code: 'invalid-sentence-level',
-      message: `The value '${text}'${of} is read as the variable '${front}'. Quote it.`,
+      message: t(
+        "The value ''{value}''{of, select, yes { of ''{rel}''} other {}} is read as the variable ''{v}''. Quote it.",
+        { ...of, value: text, v: front },
+      ),
     };
   }
   if (ATOM.test(text) || NUMBER.test(text)) return null;
   if (UPPER_ATOM.test(text)) {
     return {
       code: 'value-wrong-chars',
-      message: `The value '${text}'${of} holds a capital letter or an underscore.`,
+      message: t(
+        "The value ''{value}''{of, select, yes { of ''{rel}''} other {}} holds a capital letter or an underscore.",
+        { ...of, value: text },
+      ),
     };
   }
   return {
     code: 'missing-node-definition',
-    message: `The value '${text}'${of} is not a number or a word of lowercase letters, digits, + and -.`,
+    message: t(
+      "The value ''{value}''{of, select, yes { of ''{rel}''} other {}} is not a number or a word of lowercase letters, digits, + and -.",
+      { ...of, value: text },
+    ),
   };
 }
 
@@ -418,14 +460,26 @@ function checkNormalization(sentence, findings) {
     findings.push({ level: 'error', code: 'unicode-normalization', message, var: variable });
   const off = (text) => typeof text === 'string' && nfc(text) !== text;
   for (const [variable, node] of sentence.graph?.nodes ?? new Map()) {
-    if (off(variable)) push(`The variable '${variable}' is not in Unicode NFC.`, variable);
+    if (off(variable)) {
+      push(t("The variable ''{v}'' is not in Unicode NFC.", { v: variable }), variable);
+    }
     if (off(node.concept)) {
-      push(`The concept '${node.concept}' of '${variable}' is not in Unicode NFC.`, variable);
+      push(
+        t("The concept ''{concept}'' of ''{v}'' is not in Unicode NFC.", {
+          concept: node.concept,
+          v: variable,
+        }),
+        variable,
+      );
     }
     for (const child of node.children ?? []) {
       if (child.kind !== 'node' && off(child.value)) {
         push(
-          `The value ${child.value} of '${variable} ${child.rel}' is not in Unicode NFC.`,
+          t("The value {value} of ''{v} {rel}'' is not in Unicode NFC.", {
+            value: child.value,
+            v: variable,
+            rel: child.rel,
+          }),
           variable,
         );
       }
@@ -443,7 +497,9 @@ function checkAlignment(sentence, findings, options) {
       findings.push({
         level: 'error',
         code: 'unknown-node-id',
-        message: `Alignment of '${variable}': no such node is defined in this sentence.`,
+        message: t("Alignment of ''{v}'': no such node is defined in this sentence.", {
+          v: variable,
+        }),
         var: variable,
       });
     }
@@ -453,7 +509,11 @@ function checkAlignment(sentence, findings, options) {
         findings.push({
           level: 'error',
           code: 'invalid-token-range',
-          message: `Alignment of '${variable}': ${begin}-${end} runs backwards.`,
+          message: t("Alignment of ''{v}'': {begin}-{end} runs backwards.", {
+            v: variable,
+            begin,
+            end,
+          }),
           var: variable,
         });
         continue;
@@ -462,7 +522,12 @@ function checkAlignment(sentence, findings, options) {
         findings.push({
           level: 'error',
           code: 'invalid-token-range',
-          message: `Alignment of '${variable}': segment ${begin}-${end} must start after ${previousEnd + 1}.`,
+          message: t("Alignment of ''{v}'': segment {begin}-{end} must start after {after}.", {
+            v: variable,
+            begin,
+            end,
+            after: previousEnd + 1,
+          }),
           var: variable,
         });
       }
@@ -471,7 +536,12 @@ function checkAlignment(sentence, findings, options) {
         findings.push({
           level: 'error',
           code: 'invalid-token-index',
-          message: `Alignment of '${variable}': ${begin}-${end} is out of range. There are ${words.length} words.`,
+          message: t("Alignment of ''{v}'': {begin}-{end} is out of range. There are {n} words.", {
+            v: variable,
+            begin,
+            end,
+            n: words.length,
+          }),
           var: variable,
         });
         continue;
@@ -481,7 +551,7 @@ function checkAlignment(sentence, findings, options) {
           findings.push({
             level: 'warning',
             code: 'overlapping-alignment',
-            message: `Several nodes are aligned to word ${i}.`,
+            message: t('Several nodes are aligned to word {n}.', { n: i }),
             var: variable,
           });
         }
@@ -496,7 +566,9 @@ function checkAlignment(sentence, findings, options) {
         findings.push({
           level: 'error',
           code: 'missing-alignment',
-          message: `Missing alignment of node '${variable}'. Even unaligned nodes are marked '0-0'.`,
+          message: t("Missing alignment of node ''{v}''. Even unaligned nodes are marked '0-0'.", {
+            v: variable,
+          }),
           var: variable,
         });
       }
@@ -509,7 +581,7 @@ function checkAlignment(sentence, findings, options) {
       findings.push({
         level: 'warning',
         code: 'unaligned-token',
-        message: `Word ${i + 1} ('${word}') is not aligned to any node.`,
+        message: t("Word {n} (''{word}'') is not aligned to any node.", { n: i + 1, word }),
         word: i + 1,
       });
     });
@@ -548,7 +620,7 @@ function checkDocGraph(sentence, findings, options) {
         findings.push({
           level: 'error',
           code: 'unknown-node-id',
-          message: `Variable '${[a, b][i]}' is not defined so far.`,
+          message: t("Variable ''{v}'' is not defined so far.", { v: [a, b][i] }),
           var: [a, b][i],
         });
       });
@@ -566,7 +638,11 @@ function checkDocGraph(sentence, findings, options) {
         findings.push({
           level: 'error',
           code: 'misplaced-document-relation',
-          message: `At least one node of '${a} ${relation} ${b}' must be from this sentence.`,
+          message: t("At least one node of ''{a} {rel} {b}'' must be from this sentence.", {
+            a,
+            rel: relation,
+            b,
+          }),
         });
       }
     }
@@ -619,7 +695,7 @@ function checkContents(sentence, findings, options) {
         findings.push({
           level: 'error',
           code: 'unexpected-value',
-          message: `${listItemTakes(child.rel)} Found the node '${child.value}'.`,
+          message: `${listItemTakes(child.rel)} ${t("Found the node ''{v}''.", { v: child.value })}`,
           var: variable,
         });
         return;
@@ -629,7 +705,10 @@ function checkContents(sentence, findings, options) {
           findings.push({
             level: 'error',
             code: 'unexpected-value',
-            message: `Expected a child node because '${child.rel}' is a relation. Found the ${child.kind} '${child.value}'.`,
+            message: t(
+              "Expected a child node because ''{rel}'' is a relation. Found the {kind, select, string {string} atom {atom} other {{kind}}} ''{value}''.",
+              { rel: child.rel, kind: child.kind, value: child.value },
+            ),
             var: variable,
           });
         }
@@ -640,7 +719,10 @@ function checkContents(sentence, findings, options) {
         findings.push({
           level: 'error',
           code: 'unexpected-value',
-          message: `Unexpected value '${value}' of attribute '${child.rel}'.`,
+          message: t("Unexpected value ''{value}'' of attribute ''{rel}''.", {
+            value,
+            rel: child.rel,
+          }),
           var: variable,
         });
       }
@@ -662,7 +744,11 @@ function checkContents(sentence, findings, options) {
         findings.push({
           level: 'error',
           code: 'repeated-relation',
-          message: `Node '${variable}' has ${count} '${relation}' relations but may have one.`,
+          message: t("Node ''{v}'' has {n} ''{rel}'' relations but may have one.", {
+            v: variable,
+            n: count,
+            rel: relation,
+          }),
           var: variable,
         });
       }
@@ -679,7 +765,11 @@ function checkContents(sentence, findings, options) {
         findings.push({
           level: 'error',
           code: 'skipped-op-relation',
-          message: `Node '${variable}' has ':op${ops[i]}' but no ':op${ops[i] - 1}'.`,
+          message: t("Node ''{v}'' has '':op{n}'' but no '':op{before}''.", {
+            v: variable,
+            n: ops[i],
+            before: ops[i] - 1,
+          }),
           var: variable,
         });
         break;
@@ -703,7 +793,9 @@ function checkName(variable, node, incoming, findings) {
     findings.push({
       level: 'warning',
       code: 'wrong-incoming-name',
-      message: `Incoming relation to a 'name' concept should not be '${child.rel}'.`,
+      message: t("Incoming relation to a 'name' concept should not be ''{rel}''.", {
+        rel: child.rel,
+      }),
       var: variable,
     });
   });
@@ -713,7 +805,9 @@ function checkName(variable, node, incoming, findings) {
       findings.push({
         level: 'warning',
         code: 'wrong-outgoing-name',
-        message: `Outgoing relation from a 'name' concept should not be '${child.rel}'.`,
+        message: t("Outgoing relation from a 'name' concept should not be ''{rel}''.", {
+          rel: child.rel,
+        }),
         var: variable,
       });
       return;
@@ -723,7 +817,10 @@ function checkName(variable, node, incoming, findings) {
       findings.push({
         level: 'error',
         code: 'unexpected-value',
-        message: `Expected a quoted string for '${child.rel}' of a 'name' concept, found ${aKind(child.kind)}.`,
+        message: t(
+          "Expected a quoted string for ''{rel}'' of a 'name' concept, found {kind, select, node {a node} atom {an atom} other {a {kind}}}.",
+          { rel: child.rel, kind: child.kind },
+        ),
         var: variable,
       });
     }
@@ -732,7 +829,7 @@ function checkName(variable, node, incoming, findings) {
     findings.push({
       level: 'warning',
       code: 'missing-incoming-name',
-      message: `Missing incoming ':name' relation to the 'name' concept ${variable}.`,
+      message: t("Missing incoming ':name' relation to the 'name' concept {v}.", { v: variable }),
       var: variable,
     });
   }
@@ -740,7 +837,7 @@ function checkName(variable, node, incoming, findings) {
     findings.push({
       level: 'warning',
       code: 'missing-outgoing-name',
-      message: `Missing outgoing ':op1' relation from the 'name' concept ${variable}.`,
+      message: t("Missing outgoing ':op1' relation from the 'name' concept {v}.", { v: variable }),
       var: variable,
     });
   }
@@ -753,7 +850,10 @@ function checkWiki(variable, children, findings) {
       findings.push({
         level: 'error',
         code: 'unexpected-value',
-        message: `Expected a quoted string for ':wiki', found ${aKind(child.kind)}.`,
+        message: t(
+          "Expected a quoted string for ':wiki', found {kind, select, node {a node} atom {an atom} other {a {kind}}}.",
+          { kind: child.kind },
+        ),
         var: variable,
       });
       return;
@@ -763,7 +863,9 @@ function checkWiki(variable, children, findings) {
       findings.push({
         level: 'error',
         code: 'unexpected-value',
-        message: `Expected a Wikidata id (Q + number) for ':wiki', found '${value}'.`,
+        message: t("Expected a Wikidata id (Q + number) for ':wiki', found ''{value}''.", {
+          value,
+        }),
         var: variable,
       });
     }
@@ -793,7 +895,10 @@ function checkEvents(sentence, findings, options) {
         findings.push({
           level: 'error',
           code: 'missing-attribute',
-          message: `Missing ':aspect'. Node '${variable}' is an event because ${events.get(variable)}.`,
+          message: t(
+            "Missing ':aspect'. Node ''{v}'' is an event because {why, select, concept {its concept is {what}} outgoing {it has the outgoing relation {what}} incoming {it has the incoming relation {what}} sameEvent {it participates in a :same-event relation} other {it is in a {what} relation}}.",
+            { v: variable, ...events.get(variable) },
+          ),
           var: variable,
         });
       }
@@ -802,14 +907,20 @@ function checkEvents(sentence, findings, options) {
         findings.push({
           level: 'warning',
           code: 'sentence-level-modal-strength',
-          message: `':modal-strength' on '${variable}' is deprecated. Modal annotation belongs in the document graph.`,
+          message: t(
+            "':modal-strength' on ''{v}'' is deprecated. Modal annotation belongs in the document graph.",
+            { v: variable },
+          ),
           var: variable,
         });
         if (strength.kind !== 'atom') {
           findings.push({
             level: 'error',
             code: 'invalid-attribute',
-            message: `':modal-strength' on '${variable}' takes an atom, not ${aKind(strength.kind)}.`,
+            message: t(
+              "':modal-strength' on ''{v}'' takes an atom, not {kind, select, node {a node} atom {an atom} other {a {kind}}}.",
+              { v: variable, kind: strength.kind },
+            ),
             var: variable,
           });
         }
@@ -821,7 +932,10 @@ function checkEvents(sentence, findings, options) {
           findings.push({
             level: 'error',
             code: 'missing-temporal',
-            message: `Missing a temporal relation for the event '${variable} / ${node.concept}'.`,
+            message: t("Missing a temporal relation for the event ''{v} / {concept}''.", {
+              v: variable,
+              concept: node.concept,
+            }),
             var: variable,
           });
         }
@@ -833,7 +947,10 @@ function checkEvents(sentence, findings, options) {
         findings.push({
           level: 'error',
           code: 'unexpected-attribute',
-          message: `'${child.rel}' is not expected because '${node.concept}' is not an event.`,
+          message: t("''{rel}'' is not expected because ''{concept}'' is not an event.", {
+            rel: child.rel,
+            concept: node.concept,
+          }),
           var: variable,
         });
       });
@@ -872,12 +989,15 @@ function checkCorefKinds(sentence, findings, options) {
         findings.push({
           level: 'error',
           code: 'coref-entity-event-mismatch',
-          message: `'${variable}' cannot be in a ${relation} relation. It is an ${rule.not} because ${against}.`,
+          message: t(
+            "''{v}'' cannot be in a {rel} relation. It is an {kind, select, entity {entity} other {event}} because {why, select, concept {its concept is {what}} outgoing {it has the outgoing relation {what}} incoming {it has the incoming relation {what}} sameEvent {it participates in a :same-event relation} other {it is in a {what} relation}}.",
+            { v: variable, rel: relation, kind: rule.not, ...against },
+          ),
           var: variable,
         });
       }
       if (!kinds[rule.is].has(variable)) {
-        kinds[rule.is].set(variable, `it is in a ${relation} relation`);
+        kinds[rule.is].set(variable, { why: 'relation', what: relation });
       }
     });
   }
@@ -936,7 +1056,10 @@ function corefWikiMismatches(sentences) {
         findings.push({
           level: 'error',
           code: 'coref-wiki-mismatch',
-          message: `'${v}' has the Wikidata id ${wiki}, and it corefers with '${first.v}', whose Wikidata id is ${first.wiki}.`,
+          message: t(
+            "''{v}'' has the Wikidata id {wiki}, and it corefers with ''{other}'', whose Wikidata id is {otherWiki}.",
+            { v, wiki, other: first.v, otherWiki: first.wiki },
+          ),
           var: v,
           sentence: where.get(v).sentence,
         });
@@ -956,7 +1079,9 @@ function corefWikiMismatches(sentences) {
 // `temporal-mismatch`, and the older one stays.
 const OPPOSITE = { ':before': ':after', ':after': ':before' };
 
-const saying = (relation) => (relation === ':identity' ? 'corefers with' : relation);
+// A relation as the contradiction message says it: `identity` its select
+// says "corefers with" for.
+const saying = (relation) => (relation === ':identity' ? 'identity' : relation);
 
 // A reason is the list of stated relations a temporal relation follows from:
 // a stated relation's is `[triple]`, and an inferred one's joins two reasons
@@ -1139,7 +1264,17 @@ function inferTemporalMismatches(sentences) {
     findings.push({
       level: 'error',
       code: 'temporal-mismatch',
-      message: `The temporal relations contradict each other: they give both '${n0} ${saying(older.relation)} ${n1}' (from ${from(older.reason)}) and '${n0} ${saying(relation)} ${n1}' (from ${from(reason)}).`,
+      message: t(
+        "The temporal relations contradict each other: they give both ''{a} {older, select, identity {corefers with} other {{older}}} {b}'' (from {olderFrom}) and ''{a} {newer, select, identity {corefers with} other {{newer}}} {b}'' (from {newerFrom}).",
+        {
+          a: n0,
+          b: n1,
+          older: saying(older.relation),
+          newer: saying(relation),
+          olderFrom: from(older.reason),
+          newerFrom: from(reason),
+        },
+      ),
       ...current,
     });
   });

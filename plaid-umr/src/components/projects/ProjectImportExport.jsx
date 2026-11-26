@@ -1,3 +1,4 @@
+import { t, tx } from '@ui/lib/i18n.js';
 import { setupHref } from './setup.jsx';
 import { exportProjectUmr } from '../../domain/umrExport.js';
 import { UnwritableUmrError } from '../../domain/format/umrFile.js';
@@ -18,16 +19,22 @@ const exportDocuments = async ({ client, project, projectId, onProgress }) => {
 const exportFailure = (err) =>
   err instanceof UnwritableUmrError ? <ExportProblems problems={err.problems} /> : null;
 
+const code = (text) => <code className="rounded bg-muted px-1 py-0.5 font-mono">{text}</code>;
+
+// The page reads the two lines a person sees when it draws, so they are
+// getters: the language is known by then.
 const FORMAT = {
   app: 'UMR',
   extension: '.umr',
   accept: '.umr,.txt,.zip',
-  importTitle: 'Import UMR files',
-  exportWhat: (
-    <>
-      <code className="rounded bg-muted px-1 py-0.5 font-mono">.umr</code> files
-    </>
-  ),
+  get importTitle() {
+    return t('Import UMR files');
+  },
+  get exportNote() {
+    return tx('Every document in this project as a <code>.zip</code> of <code>.umr</code> files.', {
+      code,
+    });
+  },
   layerInfo: getUmrLayerInfo,
   prepareImport,
   exportDocuments,

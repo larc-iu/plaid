@@ -14,13 +14,15 @@
 // this file, has no alias (see sentenceGraph.js).
 import { morphemeJoiner } from '../../../plaid-ui/src/domain/morphemes.js';
 
+// `header` is the .umr file format's own name for the line, as the file
+// writes it and the Settings screen names it.
 export const HEADERS = [
   { key: 'morphemes', header: 'Morphemes', scope: 'morpheme', lang: false },
-  { key: 'morpheme-gloss', header: 'Morpheme Gloss', scope: 'morpheme', lang: true },
-  { key: 'morpheme-category', header: 'Morpheme Category', scope: 'morpheme', lang: false },
-  { key: 'word-gloss', header: 'Word Gloss', scope: 'word', lang: true },
-  { key: 'pos', header: 'Part of Speech', scope: 'word', lang: false },
-  { key: 'sentence-gloss', header: 'Sentence Gloss', scope: 'sentence', lang: true },
+  { key: 'morpheme-gloss', header: 'Morpheme Gloss', scope: 'morpheme', lang: true }, // i18n-ignore: a file header
+  { key: 'morpheme-category', header: 'Morpheme Category', scope: 'morpheme', lang: false }, // i18n-ignore: a file header
+  { key: 'word-gloss', header: 'Word Gloss', scope: 'word', lang: true }, // i18n-ignore: a file header
+  { key: 'pos', header: 'Part of Speech', scope: 'word', lang: false }, // i18n-ignore: a file header
+  { key: 'sentence-gloss', header: 'Sentence Gloss', scope: 'sentence', lang: true }, // i18n-ignore: a file header
   { key: 'sentence', header: 'Sentence', scope: 'sentence', lang: false },
 ];
 

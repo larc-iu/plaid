@@ -1,5 +1,6 @@
 import { Zap } from 'lucide-react';
 import { ServiceSpotDialog } from '@ui/components/services/ServiceSpotDialog.jsx';
+import { t } from '@ui/lib/i18n.js';
 
 // Parsing: the button in the editor toolbars and the dialog behind it.
 //
@@ -17,14 +18,17 @@ export function ParseDialog({
 }) {
   return (
     <ServiceSpotDialog
-      label="Parse"
+      label={t('Parse')}
       icon={Zap}
-      description="Lemmas, parts of speech, features and dependency relations, written into this document."
+      description={t(
+        'Lemmas, parts of speech, features and dependency relations, written into this document.',
+      )}
       spot={parse.spot}
       onRun={() => parse.start()}
       writeLock={writeLockHeld}
       blockedHint={blockedHint}
-      noun="parsing"
+      searching={t('Looking for a parsing service.')}
+      noneOnline={t('No parsing service is online for this project.')}
       isDiscovering={isDiscovering}
       onOpen={onOpen}
       size={size}

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo } from 'react';
+import { msg, t } from '@ui/lib/i18n.js';
 import { TASKS } from '@larc-iu/plaid-client';
 import { useServiceRequest } from '@ui/hooks/useServiceRequest.js';
 import { useConfirm } from '@ui/components/shared/ConfirmProvider';
@@ -16,12 +17,14 @@ import { tokenizeNotice } from '../../../domain/tokenizeNotice.js';
 const PARSE_SILENCE_MS = 5 * 60 * 1000;
 
 // The browser's own segmenter, always available. It reads the project's
-// tokenizer locale and declares no options of its own.
+// tokenizer locale and declares no options of its own. Its label and
+// description are messages, put in the page's language where the hook reads
+// them.
 const TOKENIZE_BUILTINS = [
   {
     name: BUILTIN_TOKENIZE_SEGMENTER,
-    label: 'Unicode segmentation (this browser)',
-    description: "Sentences by line, tokens and words by the project's tokenizer locale",
+    label: msg('Unicode segmentation (this browser)'),
+    description: msg("Sentences by line, tokens and words by the project's tokenizer locale"),
   },
 ];
 
@@ -61,36 +64,42 @@ export const useEditorServices = ({ client, projectId, doc, project, acquireWrit
     projectId,
     doc,
     acquireWriteLock,
-    label: 'Parse',
+    label: t('Parse'),
     timeout: PARSE_SILENCE_MS,
     copy: {
-      successTitle: 'Parsed',
-      successMessage: 'The parser finished.',
-      errorTitle: 'Failed to parse',
-      errorMessage: 'The parse did not run.',
-      stoppedTitle: 'Parse',
+      successTitle: t('Parsed'),
+      successMessage: t('The parser finished.'),
+      errorTitle: t('Failed to parse'),
+      errorMessage: t('The parse did not run.'),
+      stoppedTitle: t('Parse'),
       // The words for the counts the service reports. A run that skipped
       // every sentence warns rather than congratulates (C8).
       notice: parseNotice,
     },
   });
 
+  const tokenizeBuiltins = useMemo(
+    () =>
+      TOKENIZE_BUILTINS.map((b) => ({ ...b, label: t(b.label), description: t(b.description) })),
+    [],
+  );
+
   const tokenize = useServiceRun({
     request,
     task: TASKS.TOKENIZE,
     storageId: 'tokenize',
-    builtins: TOKENIZE_BUILTINS,
+    builtins: tokenizeBuiltins,
     project,
     projectId,
     doc,
     acquireWriteLock,
-    label: 'Tokenize',
+    label: t('Tokenize'),
     copy: {
-      successTitle: 'Tokenized',
-      successMessage: 'The tokenizer finished.',
-      errorTitle: 'Failed to tokenize',
-      errorMessage: 'The tokenizer did not run.',
-      stoppedTitle: 'Tokenize',
+      successTitle: t('Tokenized'),
+      successMessage: t('The tokenizer finished.'),
+      errorTitle: t('Failed to tokenize'),
+      errorMessage: t('The tokenizer did not run.'),
+      stoppedTitle: t('Tokenize'),
       notice: tokenizeNotice,
     },
   });
@@ -100,11 +109,11 @@ export const useEditorServices = ({ client, projectId, doc, project, acquireWrit
   // page that started it.
   const runBuiltinTokenize = useCallback(
     async (textContent) => {
-      const lock = acquireWriteLock('Tokenize');
+      const lock = acquireWriteLock(t('Tokenize'));
       if (!lock) return;
       try {
         const ok = await doc.tokenize(textContent);
-        if (ok) notifySuccess('Tokenized');
+        if (ok) notifySuccess(t('Tokenized'));
       } finally {
         lock.release();
       }
@@ -137,9 +146,9 @@ export const useEditorServices = ({ client, projectId, doc, project, acquireWrit
       const loss = lossPhrase(doc?.parseLoss() ?? {});
       if (loss) {
         const ok = await confirm({
-          title: 'Parse?',
-          description: `Deletes up to ${loss}.`,
-          confirmLabel: 'Parse',
+          title: t('Parse?'),
+          description: t('Deletes up to {loss}.', { loss }),
+          confirmLabel: t('Parse'),
           destructive: true,
         });
         if (!ok) return;

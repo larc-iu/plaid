@@ -1,3 +1,4 @@
+import { t } from '@ui/lib/i18n.js';
 import { NewProjectDialog } from '@ui/components/shared/NewProjectDialog.jsx';
 import { createUmrProject } from '../../domain/umrProjectSetup.js';
 
@@ -9,9 +10,9 @@ export const ProjectForm = ({ isOpen, onClose, onSuccess }) => (
     isOpen={isOpen}
     onClose={onClose}
     onSuccess={onSuccess}
-    title="New UMR project"
+    title={t('New UMR project')}
     create={createUmrProject}
   >
-    <p>Sentence and document graphs over each text&rsquo;s words.</p>
+    <p>{t('Sentence and document graphs over each text’s words.')}</p>
   </NewProjectDialog>
 );

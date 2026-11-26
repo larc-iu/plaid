@@ -19,6 +19,7 @@ import { writtenIds } from './sentenceGraph.js';
 import { parsePenman } from './format/penman.js';
 // By real path, so the node suite loads it (no `@ui` alias there).
 import { readInOrder } from '../../../plaid-ui/src/lib/documentReads.js';
+import { t } from '../../../plaid-ui/src/lib/i18n.js';
 
 /**
  * The ids of the project's documents that hold at least one UMR node, from
@@ -76,7 +77,7 @@ export function reportOf(doc) {
     rows.push({
       level: 'error',
       code: 'unreadable-graph',
-      message: first ? `Unreadable graph: ${first}` : 'Unreadable graph.',
+      message: first ? t('Unreadable graph: {error}', { error: first }) : t('Unreadable graph.'),
       sentence: s.index,
     });
   });
@@ -121,9 +122,10 @@ export function reportOf(doc) {
       row.problem
         ? {
             ...row.problem,
-            message: `No graph. ${row.count} ${
-              row.count === 1 ? 'word is' : 'words are'
-            } not aligned to any node.`,
+            message: t(
+              'No graph. {n, plural, one {{n} word is} other {{n} words are}} not aligned to any node.',
+              { n: row.count },
+            ),
           }
         : row,
     )
@@ -157,7 +159,10 @@ function foldTemporal(rows) {
     if (row.length === 1) return first;
     return {
       ...first,
-      message: `${row.length} contradictions follow from the temporal relation ${first.cause}.`,
+      message: t('{n} contradictions follow from the temporal relation {cause}.', {
+        n: row.length,
+        cause: first.cause,
+      }),
       details: row.map((r) => r.message),
     };
   });

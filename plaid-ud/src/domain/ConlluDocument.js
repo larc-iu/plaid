@@ -67,16 +67,21 @@ import { fieldName } from '../utils/fieldNames.js';
 import { isProvKey } from '../utils/provenanceUi.js';
 import { SENT_ID } from '../utils/udMetadata.js';
 import { isEmptyMachineLemma } from './reviewTargets.js';
+import { operationOf, shownLabel, writeLabel } from './writeLabel.js';
+// By its real path: the `node --test` suite has no `@ui` alias.
+import { msg, t } from '../../../plaid-ui/src/lib/i18n.js';
 
 // The rows of an edit, each made under the id this page minted for it, as
 // `_settle` takes them.
 const madeAsMinted = (...rows) => new Map(rows.flat().map((r) => [r.id, r.id]));
 
 // What a text save whose draft cannot be put onto the stored text is refused with.
-const TEXT_CONFLICT = 'The same passage was changed elsewhere. Discard changes and redo the edit.';
+const TEXT_CONFLICT = msg(
+  'The same passage was changed elsewhere. Discard changes and redo the edit.',
+);
 
 // What a text save is refused with when the stored text's digest cannot be read.
-const TEXT_UNREAD = 'The saved text could not be read. Try again.';
+const TEXT_UNREAD = msg('The saved text could not be read. Try again.');
 
 // The body `gaps` make of `base`.
 const gapsBody = (base, gaps) => applyTextOps(base, gapsToOps(gaps));
@@ -90,7 +95,7 @@ const sentenceFieldKeys = (sentence) =>
 
 // What a Text Editor save says when its text landed and the cut of its
 // sentences after it did not.
-const SENTENCES_NOT_CUT = 'The text is saved. Its sentences were not split at line breaks.';
+const SENTENCES_NOT_CUT = msg('The text is saved. Its sentences were not split at line breaks.');
 
 export class ConlluDocument extends DocumentModel {
   // Import a CoNLL-U text into a new document in the given project. The work
@@ -165,7 +170,7 @@ export class ConlluDocument extends DocumentModel {
     if (isReservedMetadataKey(key)) return false;
     const next = value == null || value === '' ? null : String(value);
     if ((this.metadata[key] ?? null) === next) return false;
-    const label = 'Failed to save document metadata';
+    const label = msg('Failed to save document metadata');
     if (!this._canWrite(label)) return false;
     this._applyRawPatch((raw) => {
       raw.metadata = mergeMetadata(raw.metadata, { [key]: next });
@@ -173,7 +178,7 @@ export class ConlluDocument extends DocumentModel {
     return this._queueWrite(
       label,
       () => this._client.documents.patchMetadata(this.id, metadataOps({ [key]: next })),
-      `Set document ${key}`,
+      `Set document ${key}`, // i18n-ignore: an audit label, sent to the server
     );
   }
 
@@ -185,7 +190,7 @@ export class ConlluDocument extends DocumentModel {
     if (isReservedMetadataKey(key)) return false;
     const info = this.layerInfo;
     const token = (info.sentenceTokenLayer?.tokens || []).find(
-      (t) => t.id === settledId(sentenceTokenId),
+      (tok) => tok.id === settledId(sentenceTokenId),
     );
     if (!token) return false;
     const next = value == null || value === '' ? null : String(value);
@@ -193,23 +198,23 @@ export class ConlluDocument extends DocumentModel {
     // A sent_id names one sentence and holds no space, as UD's validator
     // requires, and as the exporter keeps the ids it makes.
     if (key === SENT_ID && next !== null) {
-      if (/\s/u.test(next)) return this.refuse('A sent_id cannot contain spaces.');
-      const others = (info.sentenceTokenLayer?.tokens || []).filter((t) => t.id !== token.id);
-      if (others.some((t) => t.metadata?.[SENT_ID] === next)) {
-        return this.refuse(`Another sentence has sent_id ${next}.`);
+      if (/\s/u.test(next)) return this.refuse(t('A sent_id cannot contain spaces.'));
+      const others = (info.sentenceTokenLayer?.tokens || []).filter((tok) => tok.id !== token.id);
+      if (others.some((tok) => tok.metadata?.[SENT_ID] === next)) {
+        return this.refuse(t('Another sentence has sent_id {id}.', { id: next }));
       }
     }
-    const label = 'Failed to save sentence metadata';
+    const label = msg('Failed to save sentence metadata');
     if (!this._canWrite(label)) return false;
     this._applyRawPatch((raw, infoNext) => {
-      for (const t of infoNext.sentenceTokenLayer?.tokens || []) {
-        if (t.id === token.id) t.metadata = mergeMetadata(t.metadata, { [key]: next });
+      for (const tok of infoNext.sentenceTokenLayer?.tokens || []) {
+        if (tok.id === token.id) tok.metadata = mergeMetadata(tok.metadata, { [key]: next });
       }
     });
     return this._queueWrite(
       label,
       () => this._client.tokens.patchMetadata(settledId(token.id), metadataOps({ [key]: next })),
-      `Set sentence ${key}`,
+      `Set sentence ${key}`, // i18n-ignore: an audit label, sent to the server
     );
   }
 
@@ -247,7 +252,7 @@ export class ConlluDocument extends DocumentModel {
   // The text is read then, and the document with it when the stored text
   // is not the one answered.
   async saveText(log, { onStored = null } = {}) {
-    const label = 'Failed to save text';
+    const label = msg('Failed to save text');
     if (!this._canWrite(label)) return false;
     const { textLayer } = this.layerInfo;
     const text = textLayer?.text;
@@ -306,7 +311,7 @@ export class ConlluDocument extends DocumentModel {
         if (!stored) await this._reloadInSend();
         plan.keys = null;
       },
-      conflict: TEXT_CONFLICT,
+      conflict: t(TEXT_CONFLICT),
     });
     if ('stored' in result || result.nothing) {
       const now = 'stored' in result ? result.stored : this._storedText(text.id);
@@ -364,7 +369,7 @@ export class ConlluDocument extends DocumentModel {
     } catch (err) {
       if (isUnreachable(err) || isUnknownOutcome(err)) throw err;
       console.error(SENTENCES_NOT_CUT, err);
-      this.refuse(SENTENCES_NOT_CUT);
+      this.refuse(t(SENTENCES_NOT_CUT));
     }
     try {
       await this._reloadInSend();
@@ -385,8 +390,8 @@ export class ConlluDocument extends DocumentModel {
         return this._storedText(textId);
       },
       keySeed: () => this._client.keySeed?.(),
-      conflict: TEXT_CONFLICT,
-      unread: TEXT_UNREAD,
+      conflict: t(TEXT_CONFLICT),
+      unread: t(TEXT_UNREAD),
     });
   }
 
@@ -412,18 +417,18 @@ export class ConlluDocument extends DocumentModel {
     const wordTokens = wordTokenLayer?.tokens || [];
 
     if (!textContent.trim()) {
-      this.refuse('No text to tokenize.');
+      this.refuse(t('No text to tokenize.'));
       return false;
     }
     if (!text?.id) {
-      this.refuse('The text is not saved.');
+      this.refuse(t('The text is not saved.'));
       return false;
     }
     if (!sentenceTokenLayer?.id || !wordTokenLayer?.id || !morphemeTokenLayer?.id) {
       this.refuse(notSetUp('UD token layers missing'));
       return false;
     }
-    const label = 'Failed to create tokens';
+    const label = msg('Failed to create tokens');
     if (!this._canWrite(label)) return false;
 
     const body = textContent;
@@ -451,7 +456,7 @@ export class ConlluDocument extends DocumentModel {
       readIgnoredTokens(wordTokenLayer.config),
     );
     if (keepSentences && wordRanges.length === 0) {
-      this.refuse('No untokenized text.');
+      this.refuse(t('No untokenized text.'));
       return false;
     }
 
@@ -476,15 +481,15 @@ export class ConlluDocument extends DocumentModel {
           layers,
           countPartitionLoss(layers, infoNext.sentenceTokenLayer.id, sentenceRanges).relationIds,
         );
-        infoNext.sentenceTokenLayer.tokens = sentences.map((t) => ({ ...t }));
+        infoNext.sentenceTokenLayer.tokens = sentences.map((tok) => ({ ...tok }));
       }
       infoNext.wordTokenLayer.tokens = [
         ...(infoNext.wordTokenLayer.tokens || []),
-        ...words.map((t) => ({ ...t })),
+        ...words.map((tok) => ({ ...tok })),
       ].sort(byBegin);
       infoNext.morphemeTokenLayer.tokens = [
         ...(infoNext.morphemeTokenLayer.tokens || []),
-        ...morphemes.map((t) => ({ ...t })),
+        ...morphemes.map((tok) => ({ ...tok })),
       ].sort(byBegin);
       if (lemmas.length && infoNext.lemmaLayer) {
         infoNext.lemmaLayer.spans = [
@@ -550,7 +555,7 @@ export class ConlluDocument extends DocumentModel {
     const found = this._clearRoots();
     const loss = countDeleteLoss(
       info.textLayer?.tokenLayers || [],
-      (found?.roots || []).map((t) => t.id),
+      (found?.roots || []).map((tok) => tok.id),
       { content: true },
     );
     const of = (layer) => (layer ? loss.byLayer.get(layer.id) || 0 : 0);
@@ -615,7 +620,7 @@ export class ConlluDocument extends DocumentModel {
   // a click there joins, and never splits off a sentence of no words.
   _boundaryAt(charPos) {
     const sentences = this.layerInfo.sentenceTokenLayer?.tokens || [];
-    const s = sentences.find((t) => t.begin < charPos && charPos < t.end);
+    const s = sentences.find((tok) => tok.begin < charPos && charPos < tok.end);
     if (!s) return charPos;
     const words = this.layerInfo.wordTokenLayer?.tokens || [];
     return words.some((w) => w.begin >= s.begin && w.begin < charPos) ? charPos : s.begin;
@@ -711,7 +716,7 @@ export class ConlluDocument extends DocumentModel {
     const sentences = sentenceTokenLayer?.tokens || [];
     if (!sentenceTokenLayer || sentences.length > 1) return { annotations: 0, links: 0 };
     const layers = textLayer?.tokenLayers || [];
-    const ids = sentences.map((t) => t.id);
+    const ids = sentences.map((tok) => tok.id);
     const reset = countDeleteLoss(layers, ids, { content: holdsPersonsWork });
     const cut = countPartitionLoss(layers, sentenceTokenLayer.id, 'any', { deleting: ids });
     return { annotations: reset.annotations + cut.annotations, links: reset.links };
@@ -733,11 +738,11 @@ export class ConlluDocument extends DocumentModel {
   // to words, morphemes, spans and relations server-side, another app's
   // layers nested under them included. Locally the whole cascade goes at once.
   async clearTokens() {
-    const label = 'Failed to clear tokens';
+    const label = msg('Failed to clear tokens');
     if (!this._canWrite(label)) return false;
     const found = this._clearRoots();
     if (!found) return false;
-    const roots = found.roots.map((t) => t.id);
+    const roots = found.roots.map((tok) => tok.id);
     this._applyRawPatch((next, infoNext) =>
       applyTokenDelete(infoNext.textLayer?.tokenLayers || [], roots),
     );
@@ -749,7 +754,7 @@ export class ConlluDocument extends DocumentModel {
   // or merge (remove).
   async toggleSentenceBoundary(at) {
     const charPos = this._boundaryAt(at);
-    const label = 'Failed to update sentence boundary';
+    const label = msg('Failed to update sentence boundary');
     const { sentenceTokenLayer } = this.layerInfo;
     const sentenceTokens = sentenceTokenLayer?.tokens || [];
 
@@ -759,14 +764,14 @@ export class ConlluDocument extends DocumentModel {
       // only widens a sentence, so no dependency relation can become invalid.
       const { prevSent, between, startsHere } = join;
       if (!this._canWrite(label)) return false;
-      const joined = new Set([...between, startsHere].map((t) => t.id));
-      const beganAt = new Map([...between, startsHere].map((t) => [t.id, t.begin]));
+      const joined = new Set([...between, startsHere].map((tok) => tok.id));
+      const beganAt = new Map([...between, startsHere].map((tok) => [tok.id, tok.begin]));
       this._applyRawPatch((next, info) => {
         const layer = info.sentenceTokenLayer;
         if (layer?.tokens) {
-          const p = layer.tokens.find((t) => t.id === prevSent.id);
+          const p = layer.tokens.find((tok) => tok.id === prevSent.id);
           if (p) p.end = startsHere.end;
-          layer.tokens = layer.tokens.filter((t) => !joined.has(t.id));
+          layer.tokens = layer.tokens.filter((tok) => !joined.has(tok.id));
         }
         // The merge moves the joined sentences' spans (another app's
         // sentence fields) onto the survivor, and a field's one-span rule
@@ -793,8 +798,8 @@ export class ConlluDocument extends DocumentModel {
       }
       return this._queueWrite(label, () =>
         this._client.batched(async (b) => {
-          for (const t of [...between, startsHere]) {
-            b.tokens.merge(settledId(prevSent.id), settledId(t.id));
+          for (const tok of [...between, startsHere]) {
+            b.tokens.merge(settledId(prevSent.id), settledId(tok.id));
           }
         }),
       );
@@ -821,7 +826,7 @@ export class ConlluDocument extends DocumentModel {
       const layers = info.textLayer?.tokenLayers || [];
       dropRelations(layers, countSplitLoss(layers, containing.id, charPos).relationIds);
       if (info.sentenceTokenLayer?.tokens) {
-        const s = info.sentenceTokenLayer.tokens.find((t) => t.id === containing.id);
+        const s = info.sentenceTokenLayer.tokens.find((tok) => tok.id === containing.id);
         if (s) s.end = charPos;
         info.sentenceTokenLayer.tokens.push({ id: rightId, begin: charPos, end: containing.end });
       }
@@ -859,7 +864,7 @@ export class ConlluDocument extends DocumentModel {
   async setWordMorphemes(word, forms) {
     const cleanForms = forms.map((f) => (f || '').trim()).filter((f) => f.length > 0);
     if (cleanForms.length === 0) return false;
-    const label = 'Failed to set words';
+    const label = msg('Failed to set words');
     const { textLayer, morphemeTokenLayer, lemmaLayer, formLayer } = this.layerInfo;
     const text = textLayer?.text;
     if (!morphemeTokenLayer?.id || !text?.id) {
@@ -912,7 +917,7 @@ export class ConlluDocument extends DocumentModel {
 
     this._applyRawPatch((next, info) => {
       if (wordFormOps) {
-        const w = (info.wordTokenLayer?.tokens || []).find((t) => t.id === settledId(word.id));
+        const w = (info.wordTokenLayer?.tokens || []).find((tok) => tok.id === settledId(word.id));
         if (w) w.metadata = applyMetadataOps(w.metadata, wordFormOps);
       }
       applyTokenDelete(info.textLayer?.tokenLayers || [], removedMorphIds);
@@ -990,7 +995,7 @@ export class ConlluDocument extends DocumentModel {
 
     this._applyRawPatch((next, info) => {
       if (wordFormOps) {
-        const w = (info.wordTokenLayer?.tokens || []).find((t) => t.id === settledId(word.id));
+        const w = (info.wordTokenLayer?.tokens || []).find((tok) => tok.id === settledId(word.id));
         if (w) w.metadata = applyMetadataOps(w.metadata, wordFormOps);
       }
       const layer = info.formLayer;
@@ -1073,7 +1078,7 @@ export class ConlluDocument extends DocumentModel {
     const ids = new Set(morphemes.map((m) => m.id));
     const on = (layer) =>
       (layer?.spans || []).filter(
-        (s) => Array.isArray(s.tokens) && s.tokens.some((t) => ids.has(t)),
+        (s) => Array.isArray(s.tokens) && s.tokens.some((tok) => ids.has(tok)),
       );
     const formSpans = on(info.formLayer);
     const forms = new Map(formSpans.map((s) => [s.tokens[0], s.value]));
@@ -1115,12 +1120,12 @@ export class ConlluDocument extends DocumentModel {
   // provenance. `{ tokens, words, annotations, relations, sentences,
   // sentenceFields }`.
   textDeleteLoss(ranges) {
-    const inside = (t) => ranges.some(([b, e]) => b <= t.begin && t.end <= e);
+    const inside = (tok) => ranges.some(([b, e]) => b <= tok.begin && tok.end <= e);
     const tokens = (this.layerInfo.wordTokenLayer?.tokens || []).filter(inside);
-    const sentences = (this.layerInfo.sentenceTokenLayer?.tokens || []).filter((t) =>
-      deletesSentenceOrRow(ranges, t, this.body),
+    const sentences = (this.layerInfo.sentenceTokenLayer?.tokens || []).filter((tok) =>
+      deletesSentenceOrRow(ranges, tok, this.body),
     );
-    const sentenceFields = sentences.reduce((n, t) => n + sentenceFieldKeys(t).length, 0);
+    const sentenceFields = sentences.reduce((n, tok) => n + sentenceFieldKeys(tok).length, 0);
     const relations = new Set();
     let words = 0;
     let annotations = 0;
@@ -1144,7 +1149,7 @@ export class ConlluDocument extends DocumentModel {
   // server-side). Locally we mirror the cascade so the UI updates
   // immediately without a refetch.
   async deleteWord(rawWordId) {
-    const label = 'Failed to delete token';
+    const label = msg('Failed to delete token');
     if (!this._canWrite(label)) return false;
     const wordId = settledId(rawWordId);
     // Optimistic: the word and its cascade go locally before the round trip.
@@ -1184,11 +1189,11 @@ export class ConlluDocument extends DocumentModel {
     // line, one covering the whole text.
     const selRange = { begin, end };
     if (sentenceTokens.length > 0 && !sentenceTokens.some((s) => containsToken(s, selRange))) {
-      this.refuse('Selection must be inside an existing sentence.');
+      this.refuse(t('Selection must be inside an existing sentence.'));
       return false;
     }
 
-    const label = 'Failed to create token';
+    const label = msg('Failed to create token');
     if (!this._canWrite(label)) return false;
     // Token offsets are code points; .length is UTF-16 units and overshoots
     // on astral characters.
@@ -1279,7 +1284,7 @@ export class ConlluDocument extends DocumentModel {
       features: info.featuresLayer,
     };
     if (!Object.prototype.hasOwnProperty.call(layerByField, field)) {
-      this.refuse(`Unknown field: ${field}`);
+      this.refuse(t('Unknown field: {field}', { field }));
       return false;
     }
     const targetLayer = layerByField[field];
@@ -1303,7 +1308,7 @@ export class ConlluDocument extends DocumentModel {
     if (field === 'features') {
       feature = normalizeFeature(value);
       if (!feature) {
-        this.refuse('A feature is written Key=Value.');
+        this.refuse(t('A feature is written Key=Value.'));
         return false;
       }
       const refusal = featureRefusal(feature.pair);
@@ -1313,7 +1318,11 @@ export class ConlluDocument extends DocumentModel {
       }
     }
 
-    const label = `Failed to update ${fieldName(field)}`;
+    const label = writeLabel(
+      msg('Failed to update {field}'),
+      { field: fieldName(field) },
+      { field: t(fieldName(field)) },
+    );
     if (!this._canWrite(label)) return false;
     if (field === 'features') {
       // Adding a name the token already carries overwrites that value rather
@@ -1482,7 +1491,7 @@ export class ConlluDocument extends DocumentModel {
 
   async deleteFeature(rawSpanId) {
     const spanId = settledId(rawSpanId);
-    const label = 'Failed to delete feature';
+    const label = msg('Failed to delete feature');
     if (!this._canWrite(label)) return false;
     // Optimistic: drop the feature tag locally before the round trip.
     this._applyRawPatch((next, info) => {
@@ -1522,7 +1531,7 @@ export class ConlluDocument extends DocumentModel {
       if (existingByToken) return existingByToken.id;
       const planned = pending.find((span) => span.tokens[0] === tokenId);
       if (planned) return planned.id;
-      const token = info.tokenLayer?.tokens?.find((t) => t.id === tokenId);
+      const token = info.tokenLayer?.tokens?.find((tok) => tok.id === tokenId);
       const form = formSpans.find((sp) => sp.tokens?.includes(tokenId))?.value;
       const span = lemmaFromForm(tokenId, {
         form,
@@ -1573,7 +1582,7 @@ export class ConlluDocument extends DocumentModel {
   _makeWords(ids) {
     const info = this.layerInfo;
     const { morphemeTokenLayer, wordTokenLayer, lemmaLayer, textLayer } = info;
-    const stored = new Set((morphemeTokenLayer?.tokens || []).map((t) => t.id));
+    const stored = new Set((morphemeTokenLayer?.tokens || []).map((tok) => tok.id));
     const words = [];
     const lemmas = [];
     const madeFor = new Map();
@@ -1584,12 +1593,12 @@ export class ConlluDocument extends DocumentModel {
       const earlier = settledId(id);
       if (earlier !== id && stored.has(earlier)) return earlier;
       if (madeFor.has(id)) return madeFor.get(id);
-      const token = (wordTokenLayer?.tokens || []).find((t) => t.id === standInTokenId(id));
+      const token = (wordTokenLayer?.tokens || []).find((tok) => tok.id === standInTokenId(id));
       if (!token || !morphemeTokenLayer?.id || !textLayer?.text?.id) return id;
       // A reload since the screen took the stand-in may have brought the
       // token's UD word from another tab: it names that word, and a token
       // split into several since names none of them.
-      const now = (morphemeTokenLayer.tokens || []).filter((t) => containsToken(token, t));
+      const now = (morphemeTokenLayer.tokens || []).filter((tok) => containsToken(token, tok));
       if (now.length === 1) return now[0].id;
       if (now.length > 1) {
         split = true;
@@ -1628,16 +1637,22 @@ export class ConlluDocument extends DocumentModel {
     const ids = new Set([...made.words, ...made.lemmas].map((r) => r.id));
     this._applyRawPatch((next, infoNext) => {
       const layer = infoNext.morphemeTokenLayer;
-      if (layer?.tokens) layer.tokens = layer.tokens.filter((t) => !ids.has(t.id));
+      if (layer?.tokens) layer.tokens = layer.tokens.filter((tok) => !ids.has(tok.id));
       const lemmas = infoNext.lemmaLayer;
       if (lemmas?.spans) lemmas.spans = lemmas.spans.filter((sp) => !ids.has(sp.id));
     });
   }
 
   // A write that makes words is queued: what it made is its to send.
-  _queueWrite(...args) {
+  // A write's label is the English message (writeLabel.js): the screen is
+  // shown its translation, and the audit log the English operation.
+  _queueWrite(label, send, named = operationOf(label), options) {
     if (this._making) this._making.queued = true;
-    return super._queueWrite(...args);
+    return super._queueWrite(shownLabel(label), send, named, options);
+  }
+
+  _canWrite(label) {
+    return super._canWrite(shownLabel(label));
   }
 
   // The words `made` names and their lemmas, first on batch `b`.
@@ -1730,7 +1745,7 @@ export class ConlluDocument extends DocumentModel {
       return false;
     }
 
-    const label = 'Failed to create relation';
+    const label = msg('Failed to create relation');
     if (!this._canWrite(label)) return false;
     // Optimistic, as every write is: the relation (and a lemma span for a
     // word that had none) shows under a pending id before the round trip,
@@ -1870,7 +1885,7 @@ export class ConlluDocument extends DocumentModel {
       return false;
     }
 
-    const label = 'Failed to create enhanced relation';
+    const label = msg('Failed to create enhanced relation');
     if (!this._canWrite(label)) return false;
     // Optimistic, for createRelation's reason.
     const {
@@ -1968,7 +1983,7 @@ export class ConlluDocument extends DocumentModel {
     const existing = suppressorFor(basic, info.enhancedRelationLayer.relations);
     if (Boolean(existing) === Boolean(suppressed)) return true;
 
-    const label = 'Failed to update the enhanced graph';
+    const label = msg('Failed to update the enhanced graph');
     if (!this._canWrite(label)) return false;
     if (existing) {
       // Optimistic, as every delete is.
@@ -2017,7 +2032,7 @@ export class ConlluDocument extends DocumentModel {
       .flatMap((layer) => layer.relations || [])
       .find((r) => r.id === relationId);
     if (spaced && stored?.value !== deprel) return this.refuse(spaced);
-    const label = 'Failed to update relation';
+    const label = msg('Failed to update relation');
     if (!this._canWrite(label)) return false;
     // Human edit of a machine relation verifies it (provenance write
     // contract) — same shape as updateAnnotation: one optimistic patch,
@@ -2050,7 +2065,7 @@ export class ConlluDocument extends DocumentModel {
   //     this must not undo.
   async deleteRelation(rawRelationId) {
     const relationId = settledId(rawRelationId);
-    const label = 'Failed to delete relation';
+    const label = msg('Failed to delete relation');
     if (!this._canWrite(label)) return false;
     const info = this.layerInfo;
     const basic = (info.relationLayer?.relations || []).find((r) => r.id === relationId);
@@ -2097,7 +2112,7 @@ export class ConlluDocument extends DocumentModel {
   async confirmTokens(tokenIds) {
     const idSet = new Set(tokenIds || []);
     if (idSet.size === 0) return false;
-    const label = 'Failed to accept annotations';
+    const label = msg('Failed to accept annotations');
     if (!this._canWrite(label)) return false;
     const info = this.layerInfo;
     const spanLayers = [
@@ -2123,7 +2138,7 @@ export class ConlluDocument extends DocumentModel {
     for (const layer of spanLayers) {
       const [label, refuse] = closedField.get(layer.id) || [];
       for (const span of layer.spans || []) {
-        if (Array.isArray(span.tokens) && span.tokens.some((t) => idSet.has(t))) {
+        if (Array.isArray(span.tokens) && span.tokens.some((tok) => idSet.has(tok))) {
           // An empty machine lemma holds nothing to accept (REV-JOIN20-2).
           if (layer === info.lemmaLayer && isEmptyMachineLemma(span)) continue;
           const verify = this.writer.confirmStamp(span.metadata);
@@ -2144,7 +2159,7 @@ export class ConlluDocument extends DocumentModel {
       const basic = layer.id === info.relationLayer?.id;
       for (const rel of layer.relations || []) {
         const targetTokens = lemmaTokensBySpan.get(rel.target) || [];
-        if (targetTokens.some((t) => idSet.has(t))) {
+        if (targetTokens.some((tok) => idSet.has(tok))) {
           const verify = this.writer.confirmStamp(rel.metadata);
           if (!verify) continue;
           if (basic && validators.deprel(rel.value)) {
@@ -2169,7 +2184,7 @@ export class ConlluDocument extends DocumentModel {
         ...[...relPatchById].map(([id, patch]) => ['relation', id, patch]),
       ],
       label,
-      'Accept predicted annotations',
+      'Accept predicted annotations', // i18n-ignore: an audit label, sent to the server
       { kind: 'review' },
     );
     return landed && left.length === 0;
@@ -2192,8 +2207,12 @@ export class ConlluDocument extends DocumentModel {
       return form ? `${value} (${label}, ${form})` : `${value} (${label})`;
     });
     const shown = items.slice(0, 5).join(', ');
-    const more = items.length > 5 ? `, and ${items.length - 5} more` : '';
-    return `Not on the list, not accepted: ${shown}${more}.`;
+    return items.length > 5
+      ? t('Not on the list, not accepted: {values}, and {more} more.', {
+          values: shown,
+          more: items.length - 5,
+        })
+      : t('Not on the list, not accepted: {values}.', { values: shown });
   }
 
   // Throw away the unreviewed MACHINE proposal on the given tokens: delete the
@@ -2218,7 +2237,7 @@ export class ConlluDocument extends DocumentModel {
   async discardTokens(tokenIds) {
     const idSet = new Set(tokenIds || []);
     if (idSet.size === 0) return false;
-    const label = 'Failed to discard predictions';
+    const label = msg('Failed to discard predictions');
     if (!this._canWrite(label)) return false;
     const info = this.layerInfo;
 
@@ -2242,7 +2261,7 @@ export class ConlluDocument extends DocumentModel {
         continue;
       }
       const targetTokens = lemmaTokensBySpan.get(rel.target) || [];
-      if (targetTokens.some((t) => idSet.has(t))) relIds.add(rel.id);
+      if (targetTokens.some((tok) => idSet.has(tok))) relIds.add(rel.id);
       // A machine relation anchored elsewhere on a lemma span this gesture
       // deletes goes with it. It is the same machine's proposal, and the
       // optimistic patch below drops it so the tree matches the server.
@@ -2260,7 +2279,7 @@ export class ConlluDocument extends DocumentModel {
     ].filter(Boolean)) {
       const isLemma = layer.id === info.lemmaLayer?.id;
       for (const span of layer.spans || []) {
-        if (!Array.isArray(span.tokens) || !span.tokens.some((t) => idSet.has(t))) continue;
+        if (!Array.isArray(span.tokens) || !span.tokens.some((tok) => idSet.has(tok))) continue;
         if (!isMachine(span.metadata)) continue;
         if (isLemma && keptRelSpanIds.has(span.id)) continue;
         spanIds.add(span.id);
@@ -2305,7 +2324,7 @@ export class ConlluDocument extends DocumentModel {
           for (const id of relIds) b.relations.delete(settledId(id));
           for (const id of spanIds) b.spans.delete(settledId(id));
         }),
-      'Discard predicted annotations',
+      'Discard predicted annotations', // i18n-ignore: an audit label, sent to the server
     );
   }
 
@@ -2325,7 +2344,7 @@ export class ConlluDocument extends DocumentModel {
         ? this.resendsByEntity(() => write.apply(this, sent))
         : write.apply(this, sent);
     if (!this._asOf && !this.layerInfo.isConfigured) {
-      return this.refuse('This project is not set up for UD.');
+      return this.refuse(t('This project is not set up for UD.'));
     }
     if (SKIPS_STAND_INS.has(name)) {
       args[0] = (args[0] || []).filter((id) => !isVirtualWordId(id));
@@ -2337,11 +2356,11 @@ export class ConlluDocument extends DocumentModel {
       at && !this._asOf && !this._deleted
         ? this._makeWords(at.map((i) => args[i]))
         : { ids: null, made: null };
-    if (refusal) return this.refuse(refusal);
+    if (refusal) return this.refuse(t(refusal));
     if (ids) at.forEach((i, k) => (args[i] = ids[k]));
     if (args.some(namesStandIn)) {
       if (made) this._unmakeWords(made);
-      return this.refuse('This word is not stored yet.');
+      return this.refuse(t('This word is not stored yet.'));
     }
     // Read by the write before its first await (`_making`), and marked when
     // it queues: one that sends nothing takes the words back.
@@ -2417,7 +2436,7 @@ const UD_WRITES = [
   'confirmTokens',
   'discardTokens',
 ];
-const WORD_SPLIT_SINCE = 'This word is now split into several words.';
+const WORD_SPLIT_SINCE = msg('This word is now split into several words.');
 const SKIPS_STAND_INS = new Set(['confirmTokens', 'discardTokens']);
 // The arguments that name a word, by write.
 const MAKES_WORDS = {

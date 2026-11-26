@@ -1,4 +1,6 @@
 import { cpLength, cpSlicer } from '@larc-iu/plaid-client';
+// By its real path: the `node --test` suite has no `@ui` alias.
+import { t } from '../../../plaid-ui/src/lib/i18n.js';
 import { formOf } from './newUdWord.js';
 
 // The annotation grid's row model: the sentence > word > morpheme hierarchy,
@@ -241,5 +243,5 @@ export function buildSentenceRows(body, layerInfo) {
 // before the UD set-up has tokens but no UD words layer to show them on.
 export const historicalEmptyNotice = (layerInfo) =>
   layerInfo?.morphemeTokenLayer
-    ? 'This state has no tokens.'
-    : 'This state is from before the project was set up for UD.';
+    ? t('This state has no tokens.')
+    : t('This state is from before the project was set up for UD.');

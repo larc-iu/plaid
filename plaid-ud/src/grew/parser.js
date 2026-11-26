@@ -20,12 +20,16 @@ import { GrewParseError, GrewUnsupportedError } from './errors.js';
 import { BLOCK_TYPES } from './ast.js';
 import { regexError } from './userRegex.js';
 import { splitLabel } from './edgeLabel.js';
+import { t, msg } from '../../../plaid-ui/src/lib/i18n.js';
 
 const STRAT_OPS = new Set(['Onf', 'Iter', 'Seq', 'Alt', 'Pick', 'Try', 'Empty']);
 const FIELD_SEP = '\t';
 const GRS_KEYWORDS = new Set(['rule', 'strat', 'commands', 'package', 'include', 'import']);
 // Refused: see parseGlobalItem.
 const TREE_FLAGS = new Set(['is_tree', 'is_not_tree']);
+// Two expectations more than one place names.
+const NODE_ID = msg('Expected a node identifier but found {found}');
+const FEATURE_NAME = msg('Expected a feature name but found {found}');
 
 export function parse(src) {
   return createParser(src).request();
@@ -43,14 +47,18 @@ export function looksLikeGrs(src) {
   try {
     const toks = lex(src);
     for (let i = 0; i < toks.length; i++) {
-      const t = toks[i];
-      if (t.type !== TT.IDENT) continue;
+      const tok = toks[i];
+      if (tok.type !== TT.IDENT) continue;
       const brace = (k) => toks[i + k]?.type === TT.LBRACE;
-      if (t.value === 'commands' && brace(1)) return true;
-      if ((t.value === 'rule' || t.value === 'strat') && toks[i + 1]?.type === TT.IDENT && brace(2))
+      if (tok.value === 'commands' && brace(1)) return true;
+      if (
+        (tok.value === 'rule' || tok.value === 'strat') &&
+        toks[i + 1]?.type === TT.IDENT &&
+        brace(2)
+      )
         return true;
-      if (t.value === 'package' || t.value === 'include' || t.value === 'import') return true;
-      if (t.type === TT.LEXICON) return true;
+      if (tok.value === 'package' || tok.value === 'include' || tok.value === 'import') return true;
+      if (tok.type === TT.LEXICON) return true;
     }
     return false;
   } catch {
@@ -72,11 +80,18 @@ function createParser(src) {
     const lines = src.split('\n');
     throw new GrewParseError(msg, tok.line, tok.col, lines[tok.line - 1] ?? '');
   };
-  const expect = (type, what) => {
-    if (!at(type)) fail(`Expected ${what || type} but found ${describe(peek())}`);
+  // `expected` is the whole message, a msg() taking `found`.
+  const expect = (type, expected) => {
+    if (!at(type)) fail(t(expected, { found: describe(peek()) }));
     return next();
   };
-  const expectNode = () => expect(TT.IDENT, 'a node identifier').value;
+  // `token` is code, as the person writes it: "'{'".
+  const expectToken = (type, token) => {
+    if (!at(type))
+      fail(t('Expected {token} but found {found}', { token, found: describe(peek()) }));
+    return next();
+  };
+  const expectNode = () => expect(TT.IDENT, NODE_ID).value;
 
   // --- entry points ---
 
@@ -84,11 +99,16 @@ function createParser(src) {
     const blocks = [];
     while (!at(TT.EOF)) {
       if (at(TT.IDENT) && GRS_KEYWORDS.has(peek().value)) {
-        fail(`\`${peek().value}\` is a rewriting keyword. A search takes only pattern blocks.`);
+        fail(
+          t('`{keyword}` is a rewriting keyword. A search takes only pattern blocks.', {
+            keyword: peek().value,
+          }),
+        );
       }
       blocks.push(parseBlock());
     }
-    if (blocks.length === 0) fail('Empty query. Expected a `pattern { … }` block.');
+    if (blocks.length === 0)
+      fail(t('Empty query. Expected a `{block}` block.', { block: 'pattern { … }' }));
     refuseEdgeConstraints(blocks);
     return { blocks, nonInjective: [...nonInjective] };
   }
@@ -99,34 +119,41 @@ function createParser(src) {
     const names = new Set();
     let anon = null; // blocks of an anonymous rule, until its `commands`
     const addRule = (rule) => {
-      if (names.has(rule.name)) fail(`Rule '${rule.name}' is declared twice`, peek(-1));
+      if (names.has(rule.name))
+        fail(t("Rule ''{name}'' is declared twice", { name: rule.name }), peek(-1));
       names.add(rule.name);
       rules.push(rule);
     };
     while (!at(TT.EOF)) {
       if (atKw('rule')) {
-        if (anon) fail('Expected a `commands { … }` block to close the pattern above');
+        if (anon)
+          fail(
+            t('Expected a `{block}` block to close the pattern above', { block: 'commands { … }' }),
+          );
         addRule(parseRule());
       } else if (at(TT.LEXICON)) {
         // A lexicon goes with the anonymous rule around it: the one being
         // written, or the one just closed.
         const last = rules[rules.length - 1];
         const owner = anon || (last?.name === 'rule' ? last : null);
-        if (!owner) fail('A lexicon belongs inside a rule');
+        if (!owner) fail(t('A lexicon belongs inside a rule'));
         addLexicon(owner, next());
       } else if (atKw('strat')) {
         strats.push(parseStrat());
       } else if (atKw('package') || atKw('include') || atKw('import')) {
         throw new GrewUnsupportedError(
           peek().value,
-          `\`${peek().value}\` is not supported. Put every rule in this one box.`,
+          t('`{keyword}` is not supported. Put every rule in this one box.', {
+            keyword: peek().value,
+          }),
           peek().line,
         );
       } else if (at(TT.IDENT) && BLOCK_TYPES.has(peek().value)) {
         if (!anon) anon = { blocks: [], lexicons: {}, line: peek().line };
         anon.blocks.push(parseBlock());
       } else if (atKw('commands')) {
-        if (!anon) fail('`commands` needs a `pattern { … }` block before it');
+        if (!anon)
+          fail(t('`commands` needs a `{block}` block before it', { block: 'pattern { … }' }));
         const commands = parseCommands();
         addRule({
           name: 'rule',
@@ -138,11 +165,12 @@ function createParser(src) {
         });
         anon = null;
       } else {
-        fail('Expected `rule`, `strat`, or a pattern block');
+        fail(t('Expected `rule`, `strat`, or a pattern block'));
       }
     }
-    if (anon) fail('Expected a `commands { … }` block after the pattern');
-    if (rules.length === 0) fail('Empty rule set. Expected a `rule` or a pattern with `commands`.');
+    if (anon) fail(t('Expected a `{block}` block after the pattern', { block: 'commands { … }' }));
+    if (rules.length === 0)
+      fail(t('Empty rule set. Expected a `rule` or a pattern with `commands`.'));
     rules.forEach(resolveLexiconRefs);
     rules.forEach((rule) => refuseEdgeConstraints(rule.blocks));
     return { rules, strats };
@@ -154,7 +182,7 @@ function createParser(src) {
   // lines and `%` lines ignored, every row as wide as the header.
   function addLexicon(rule, tok) {
     const { name, body, bodyLine } = tok.value;
-    if (rule.lexicons[name]) fail(`Lexicon '${name}' is declared twice`, tok);
+    if (rule.lexicons[name]) fail(t("Lexicon ''{name}'' is declared twice", { name }), tok);
     const lines = body.split('\n');
     let fields = null;
     const entries = [];
@@ -168,7 +196,7 @@ function createParser(src) {
         // with spaces for tabs.
         if (cells.some((c) => /\s/.test(c))) {
           throw new GrewParseError(
-            `Lexicon '${name}': fields are separated by tabs, not spaces`,
+            t("Lexicon ''{name}'': fields are separated by tabs, not spaces", { name }),
             bodyLine + k,
             1,
             sourceLine(),
@@ -179,7 +207,10 @@ function createParser(src) {
       }
       if (cells.length !== fields.length) {
         throw new GrewParseError(
-          `Lexicon '${name}': ${cells.length} fields on a line, ${fields.length} in the header (fields are tab-separated)`,
+          t(
+            "Lexicon ''{name}'': {n} fields on a line, {header} in the header (fields are tab-separated)",
+            { name, n: cells.length, header: fields.length },
+          ),
           bodyLine + k,
           1,
           sourceLine(),
@@ -187,7 +218,7 @@ function createParser(src) {
       }
       entries.push(Object.fromEntries(fields.map((f, i) => [f, cells[i]])));
     });
-    if (!fields) fail(`Lexicon '${name}' has no header line`, tok);
+    if (!fields) fail(t("Lexicon ''{name}'' has no header line", { name }), tok);
     rule.lexicons[name] = { fields, entries };
   }
 
@@ -205,7 +236,7 @@ function createParser(src) {
         if (lexRight && lexLeft) {
           throw new GrewUnsupportedError(
             'lexicon-cmp',
-            'Comparing two lexicon fields is not supported.',
+            t('Comparing two lexicon fields is not supported.'),
             item.line,
           );
         }
@@ -242,7 +273,10 @@ function createParser(src) {
         if (side) {
           throw new GrewUnsupportedError(
             'edge-constraint',
-            `\`${side.node}.${side.feat}\` is not supported in a pattern. Name the label in the edge: e: X -[nsubj]-> Y.`,
+            t(
+              '`{node}.{feat}` is not supported in a pattern. Name the label in the edge: e: X -[nsubj]-> Y.',
+              { node: side.node, feat: side.feat },
+            ),
             item.line,
           );
         }
@@ -260,19 +294,21 @@ function createParser(src) {
 
   function parseRule() {
     const kw = next(); // 'rule'
-    const nameTok = expect(TT.IDENT, 'a rule name');
+    const nameTok = expect(TT.IDENT, msg('Expected a rule name but found {found}'));
     const name = nameTok.value;
     // `rule` is what the parser calls a rule written without a name.
-    if (name === 'rule') fail("A rule cannot be named 'rule'", nameTok);
+    if (name === 'rule') fail(t("A rule cannot be named 'rule'"), nameTok);
     if (at(TT.LPAREN)) {
       // `rule r (lex from "file.lex")`: lexicon files.
       throw new GrewUnsupportedError(
         'lexicon-file',
-        'Lexicon files are not supported. Put the lexicon in the rule between #BEGIN name and #END.',
+        t(
+          'Lexicon files are not supported. Put the lexicon in the rule between #BEGIN name and #END.',
+        ),
         peek().line,
       );
     }
-    expect(TT.LBRACE, "'{'");
+    expectToken(TT.LBRACE, "'{'");
     const rule = {
       name,
       blocks: [],
@@ -283,47 +319,47 @@ function createParser(src) {
     };
     while (!at(TT.RBRACE) && !at(TT.EOF)) {
       if (at(TT.IDENT) && BLOCK_TYPES.has(peek().value)) {
-        if (rule.commands) fail('Pattern blocks go before `commands`');
+        if (rule.commands) fail(t('Pattern blocks go before `commands`'));
         rule.blocks.push(parseBlock());
       } else if (atKw('commands')) {
-        if (rule.commands) fail('A rule has one `commands` block');
+        if (rule.commands) fail(t('A rule has one `commands` block'));
         rule.commands = parseCommands();
       } else if (at(TT.LEXICON)) {
         addLexicon(rule, next());
       } else {
-        fail('Expected pattern, with, without, global, commands, or a #BEGIN lexicon');
+        fail(t('Expected pattern, with, without, global, commands, or a #BEGIN lexicon'));
       }
     }
-    expect(TT.RBRACE, "'}'");
-    if (rule.blocks.length === 0) fail(`Rule '${name}' has no \`pattern\` block`, kw);
-    if (!rule.commands) fail(`Rule '${name}' has no \`commands\` block`, kw);
+    expectToken(TT.RBRACE, "'}'");
+    if (rule.blocks.length === 0) fail(t("Rule ''{name}'' has no `pattern` block", { name }), kw);
+    if (!rule.commands) fail(t("Rule ''{name}'' has no `commands` block", { name }), kw);
     rule.nonInjective = takeNonInjective();
     return rule;
   }
 
   function parseStrat() {
     const kw = next(); // 'strat'
-    const name = expect(TT.IDENT, 'a strategy name').value;
-    expect(TT.LBRACE, "'{'");
+    const name = expect(TT.IDENT, msg('Expected a strategy name but found {found}')).value;
+    expectToken(TT.LBRACE, "'{'");
     const expr = parseStratExpr();
-    expect(TT.RBRACE, "'}'");
+    expectToken(TT.RBRACE, "'}'");
     return { name, expr, line: kw.line };
   }
 
   function parseStratExpr() {
-    const tok = expect(TT.IDENT, 'a strategy');
+    const tok = expect(TT.IDENT, msg('Expected a strategy but found {found}'));
     const op = tok.value;
     if (!STRAT_OPS.has(op)) return { op: 'rule', name: op };
     if (op === 'Empty') return { op };
-    expect(TT.LPAREN, "'('");
+    expectToken(TT.LPAREN, "'('");
     const args = [parseStratExpr()];
     while (at(TT.COMMA)) {
       next();
       args.push(parseStratExpr());
     }
-    expect(TT.RPAREN, "')'");
+    expectToken(TT.RPAREN, "')'");
     if ((op === 'Seq' || op === 'Alt') === false && args.length !== 1) {
-      fail(`${op} takes exactly one strategy`, tok);
+      fail(t('{op} takes exactly one strategy', { op }), tok);
     }
     return { op, args };
   }
@@ -332,18 +368,18 @@ function createParser(src) {
 
   function parseCommands() {
     next(); // 'commands'
-    expect(TT.LBRACE, "'{'");
+    expectToken(TT.LBRACE, "'{'");
     const items = [];
     while (!at(TT.RBRACE) && !at(TT.EOF)) {
       items.push(parseCommand());
       while (at(TT.SEMI)) next();
     }
-    expect(TT.RBRACE, "'}'");
+    expectToken(TT.RBRACE, "'}'");
     return items;
   }
 
   function parseCommand() {
-    const tok = expect(TT.IDENT, 'a command');
+    const tok = expect(TT.IDENT, msg('Expected a command but found {found}'));
     const kw = tok.value;
     const line = tok.line;
     switch (kw) {
@@ -353,10 +389,10 @@ function createParser(src) {
           return { kind: 'del_edge', edge: next().value, line };
         }
         const src = expectNode();
-        expect(TT.EDGE_OPEN, "'-['");
+        expectToken(TT.EDGE_OPEN, "'-['");
         const label = parseLabelExpr();
-        expect(TT.RBRACK, "']'");
-        expect(TT.ARROW, "'->'");
+        expectToken(TT.RBRACK, "']'");
+        expectToken(TT.ARROW, "'->'");
         const tgt = expectNode();
         return { kind: 'del_edge', src, tgt, label, line };
       }
@@ -373,11 +409,11 @@ function createParser(src) {
         if (at(TT.EDGE_OPEN)) {
           next();
           label = parseLabelExpr();
-          expect(TT.RBRACK, "']'");
+          expectToken(TT.RBRACK, "']'");
         }
-        expect(TT.ARROW, "'->'");
+        expectToken(TT.ARROW, "'->'");
         const tgt = expectNode();
-        if (!label && !id) fail('add_edge needs a label: add_edge X -[label]-> Y', tok);
+        if (!label && !id) fail(t('add_edge needs a label: add_edge X -[label]-> Y'), tok);
         return { kind: 'add_edge', id, src, tgt, label, line };
       }
       case 'del_node':
@@ -398,9 +434,9 @@ function createParser(src) {
         let filter = { type: 'any' };
         if (at(TT.SHIFT)) next();
         else {
-          expect(TT.SHIFT_OPEN, "'==>' or '=['");
+          expectToken(TT.SHIFT_OPEN, "'==>' or '=['");
           filter = parseLabelExpr();
-          expect(TT.SHIFT_CLOSE, "']=>'");
+          expectToken(TT.SHIFT_CLOSE, "']=>'");
         }
         const tgt = expectNode();
         const mode = kw === 'shift' ? 'all' : kw === 'shift_in' ? 'in' : 'out';
@@ -418,9 +454,9 @@ function createParser(src) {
         let filter = null;
         if (at(TT.SHIFT)) next();
         else {
-          expect(TT.SHIFT_OPEN, "'==>' or '=['");
+          expectToken(TT.SHIFT_OPEN, "'==>' or '=['");
           filter = parseLabelExpr();
-          expect(TT.SHIFT_CLOSE, "']=>'");
+          expectToken(TT.SHIFT_CLOSE, "']=>'");
         }
         const tgt = expectNode();
         return { kind: kw, src, tgt, sep, filter, line };
@@ -429,15 +465,15 @@ function createParser(src) {
       case 'insert':
         throw new GrewUnsupportedError(
           kw,
-          `\`${kw}\` is not supported: word order follows the text.`,
+          t('`{keyword}` is not supported: word order follows the text.', { keyword: kw }),
           line,
         );
       default: {
         // `X.upos = VERB`, `X.lemma = Y.lemma + "s"`, `e.2 = pass`
-        if (!at(TT.DOT)) fail(`Unknown command '${kw}'`, tok);
+        if (!at(TT.DOT)) fail(t("Unknown command ''{command}''", { command: kw }), tok);
         next();
         const feat = expectFeatName();
-        expect(TT.EQ, "'='");
+        expectToken(TT.EQ, "'='");
         const expr = parseExpr();
         return { kind: 'set_feat', node: kw, feat, expr, line };
       }
@@ -446,12 +482,12 @@ function createParser(src) {
 
   function expectFeatName() {
     if (at(TT.IDENT) || at(TT.NUMBER)) return String(next().value);
-    fail(`Expected a feature name but found ${describe(peek())}`);
+    fail(t(FEATURE_NAME, { found: describe(peek()) }));
   }
 
   function parseFeatRef() {
     const node = expectNode();
-    expect(TT.DOT, "'.'");
+    expectToken(TT.DOT, "'.'");
     return { node, feat: expectFeatName() };
   }
 
@@ -475,30 +511,30 @@ function createParser(src) {
       if (at(TT.LBRACK)) {
         next();
         const start = at(TT.NUMBER) ? parseInt(next().value, 10) : null;
-        expect(TT.COLON, "':'");
+        expectToken(TT.COLON, "':'");
         const end = at(TT.NUMBER) ? parseInt(next().value, 10) : null;
-        expect(TT.RBRACK, "']'");
+        expectToken(TT.RBRACK, "']'");
         slice = [start, end];
       }
       return { type: 'ref', node, feat, slice };
     }
-    fail(`Expected a value but found ${describe(peek())}`);
+    fail(t('Expected a value but found {found}', { found: describe(peek()) }));
   }
 
   // --- blocks ---
 
   function parseBlock() {
     if (!at(TT.IDENT) || !BLOCK_TYPES.has(peek().value)) {
-      fail('Expected a block keyword: pattern, with, without, or global');
+      fail(t('Expected a block keyword: pattern, with, without, or global'));
     }
     const kw = next();
-    expect(TT.LBRACE, "'{'");
+    expectToken(TT.LBRACE, "'{'");
     const items = [];
     while (!at(TT.RBRACE) && !at(TT.EOF)) {
       items.push(kw.value === 'global' ? parseGlobalItem() : parseClause());
       while (at(TT.SEMI)) next(); // optional clause separators
     }
-    expect(TT.RBRACE, "'}'");
+    expectToken(TT.RBRACE, "'}'");
     return { type: kw.value, items, line: kw.line };
   }
 
@@ -520,7 +556,7 @@ function createParser(src) {
       return parseEdgeRest(null, { wild: true });
     }
 
-    const idTok = expect(TT.IDENT, 'a node/edge identifier');
+    const idTok = expect(TT.IDENT, msg('Expected a node/edge identifier but found {found}'));
     const id = idTok.value;
 
     // Named edge:  e: X -[..]-> Y
@@ -556,7 +592,7 @@ function createParser(src) {
         return parseEdgeRest(null, { wild: false, id });
       case TT.CROSS: {
         next();
-        const right = expect(TT.IDENT, 'an edge identifier').value;
+        const right = expect(TT.IDENT, msg('Expected an edge identifier but found {found}')).value;
         return { kind: 'cross', left: id, right, line: idTok.line };
       }
       default:
@@ -570,7 +606,7 @@ function createParser(src) {
       next();
       return { wild: true };
     }
-    const id = expect(TT.IDENT, 'a node identifier').value;
+    const id = expect(TT.IDENT, NODE_ID).value;
     if (at(TT.DOLLAR)) {
       next();
       nonInjective.add(id);
@@ -588,7 +624,7 @@ function createParser(src) {
   }
 
   function parseFeatureStruct() {
-    expect(TT.LBRACK, "'['");
+    expectToken(TT.LBRACK, "'['");
     const items = [];
     if (!at(TT.RBRACK)) {
       items.push(parseFeatItem());
@@ -597,17 +633,17 @@ function createParser(src) {
         items.push(parseFeatItem());
       }
     }
-    expect(TT.RBRACK, "']'");
+    expectToken(TT.RBRACK, "']'");
     return items;
   }
 
   function parseFeatItem() {
     if (at(TT.BANG)) {
       next();
-      const name = expect(TT.IDENT, 'a feature name').value;
+      const name = expect(TT.IDENT, FEATURE_NAME).value;
       return { name, op: 'undefined', value: null };
     }
-    const name = expect(TT.IDENT, 'a feature name').value;
+    const name = expect(TT.IDENT, FEATURE_NAME).value;
     if (at(TT.EQ)) {
       next();
       return { name, op: '=', value: parseValueExpr() };
@@ -643,7 +679,9 @@ function createParser(src) {
       const error = regexError(enhanced);
       if (error)
         fail(
-          `After the E: prefix, ${error.replace(/^[A-Z](?=[a-z])/, (c) => c.toLowerCase())}`,
+          t('After the E: prefix, {reason}', {
+            reason: error.replace(/^[A-Z](?=[a-z])/, (c) => c.toLowerCase()),
+          }),
           tok,
         );
     }
@@ -670,25 +708,29 @@ function createParser(src) {
       // `lex.field`: a lexicon reference (only meaningful in a rule).
       const lex = next().value;
       next();
-      return { type: 'lexref', lex, field: expect(TT.IDENT, 'a lexicon field').value };
+      return {
+        type: 'lexref',
+        lex,
+        field: expect(TT.IDENT, msg('Expected a lexicon field but found {found}')).value,
+      };
     }
     if (at(TT.IDENT) || at(TT.NUMBER)) {
       // allow subtyped values like Number=Sing[psor]? — keep simple: ident/number
       return { type: 'lit', value: next().value };
     }
-    fail(`Expected a value but found ${describe(peek())}`);
+    fail(t('Expected a value but found {found}', { found: describe(peek()) }));
   }
 
   function parseNodeDotConstraint(id, line) {
-    expect(TT.DOT, "'.'");
-    const feat = expect(TT.IDENT, 'a feature name').value;
-    const op = at(TT.NEQ) ? '<>' : (expect(TT.EQ, "'=' or '<>'"), '=');
+    expectToken(TT.DOT, "'.'");
+    const feat = expect(TT.IDENT, FEATURE_NAME).value;
+    const op = at(TT.NEQ) ? '<>' : (expectToken(TT.EQ, "'=' or '<>'"), '=');
     if (op === '<>') next();
     // Right side: Y.feat (cross-node) or a value.
     if (at(TT.IDENT) && at(TT.DOT, 1)) {
       const rnode = next().value;
       next(); // '.'
-      const rfeat = expect(TT.IDENT, 'a feature name').value;
+      const rfeat = expect(TT.IDENT, FEATURE_NAME).value;
       return {
         kind: 'featcmp',
         left: { node: id, feat },
@@ -704,7 +746,7 @@ function createParser(src) {
   function parseOrder(id) {
     const tok = next();
     const op = tok.type === TT.LTLT || tok.type === TT.GTGT ? '<<' : '<';
-    const other = expect(TT.IDENT, 'a node identifier').value;
+    const other = expect(TT.IDENT, NODE_ID).value;
     if (tok.type === TT.GT || tok.type === TT.GTGT)
       return { kind: 'order', op, left: other, right: id };
     return { kind: 'order', op, left: id, right: other };
@@ -715,7 +757,7 @@ function createParser(src) {
     if (at(TT.EDGE_OPEN)) {
       next();
       label = parseLabelExpr();
-      expect(TT.RBRACK, "']'");
+      expectToken(TT.RBRACK, "']'");
     }
     let transitive;
     if (at(TT.ARROW)) {
@@ -724,7 +766,13 @@ function createParser(src) {
     } else if (at(TT.DOMINATES)) {
       next();
       transitive = true;
-    } else fail(`Expected '->' or '->>' but found ${describe(peek())}`);
+    } else
+      fail(
+        t('Expected {token} but found {found}', {
+          token: "'->' or '->>'",
+          found: describe(peek()),
+        }),
+      );
     const tgt = parseRef();
     if (transitive) return { kind: 'dominates', id: edgeId, left: src, right: tgt, label };
     return { kind: 'edge', id: edgeId, src, tgt, label };
@@ -745,10 +793,10 @@ function createParser(src) {
       do {
         if (at(TT.BANG)) {
           next();
-          feats.push({ key: expect(TT.IDENT, 'a feature name').value, neg: true });
+          feats.push({ key: expect(TT.IDENT, FEATURE_NAME).value, neg: true });
         } else {
           const key = next().value;
-          expect(TT.EQ, "'='");
+          expectToken(TT.EQ, "'='");
           feats.push({ key, val: parseLabelAtom() });
         }
       } while (at(TT.COMMA) && (next(), true));
@@ -768,27 +816,27 @@ function createParser(src) {
   // splits into IDENT COLON IDENT — reassemble it here.
   function parseLabelAtom() {
     if (at(TT.STRING)) return next().value;
-    let s = String(expect(TT.IDENT, 'an edge label').value);
+    let s = String(expect(TT.IDENT, msg('Expected an edge label but found {found}')).value);
     while (at(TT.COLON)) {
       next();
-      s += ':' + expect(TT.IDENT, 'a label subtype').value;
+      s += ':' + expect(TT.IDENT, msg('Expected a label subtype but found {found}')).value;
     }
     return s;
   }
 
   function parseDist() {
     const fn = next().value; // delta | length
-    expect(TT.LPAREN, "'('");
-    const a = expect(TT.IDENT, 'a node identifier').value;
-    expect(TT.COMMA, "','");
-    const b = expect(TT.IDENT, 'a node identifier').value;
-    expect(TT.RPAREN, "')'");
+    expectToken(TT.LPAREN, "'('");
+    const a = expect(TT.IDENT, NODE_ID).value;
+    expectToken(TT.COMMA, "','");
+    const b = expect(TT.IDENT, NODE_ID).value;
+    expectToken(TT.RPAREN, "')'");
     const opTok = next();
     const op = { [TT.EQ]: '=', [TT.LT]: '<', [TT.LE]: '<=', [TT.GT]: '>', [TT.GE]: '>=' }[
       opTok.type
     ];
-    if (!op) fail(`Expected a comparison operator after ${fn}(…)`, opTok);
-    const nTok = expect(TT.NUMBER, 'a number');
+    if (!op) fail(t('Expected a comparison operator after {fn}(…)', { fn }), opTok);
+    const nTok = expect(TT.NUMBER, msg('Expected a number but found {found}'));
     return { kind: 'dist', fn, a, b, op, n: parseInt(nTok.value, 10) };
   }
 
@@ -802,23 +850,23 @@ function createParser(src) {
     }
     if (at(TT.BANG)) {
       next();
-      const key = expect(TT.IDENT, 'a metadata key').value;
+      const key = expect(TT.IDENT, msg('Expected a metadata key but found {found}')).value;
       return { kind: 'globalmeta', key, op: 'undefined', value: null };
     }
-    const idTok = expect(TT.IDENT, 'a global constraint');
+    const idTok = expect(TT.IDENT, msg('Expected a global constraint but found {found}'));
     if (/^is_/.test(idTok.value) && !at(TT.EQ) && !at(TT.NEQ)) {
       // An import keeps words with no head, so whether a sentence is one tree
       // is a question the search cannot answer from the invariant.
       if (TREE_FLAGS.has(idTok.value)) {
         throw new GrewUnsupportedError(
           idTok.value,
-          `\`${idTok.value}\` is not supported.`,
+          t('`{keyword}` is not supported.', { keyword: idTok.value }),
           idTok.line,
         );
       }
       return { kind: 'globalflag', name: idTok.value, line: idTok.line };
     }
-    const op = at(TT.NEQ) ? '<>' : (expect(TT.EQ, "'=' or '<>'"), '=');
+    const op = at(TT.NEQ) ? '<>' : (expectToken(TT.EQ, "'=' or '<>'"), '=');
     if (op === '<>') next();
     return { kind: 'globalmeta', key: idTok.value, op, value: parseValueExpr(), line: idTok.line };
   }
@@ -826,10 +874,11 @@ function createParser(src) {
   return { request, grs };
 }
 
+// What was found instead, as it stands after "but found".
 function describe(tok) {
-  if (tok.type === TT.EOF) return 'end of input';
-  if (tok.type === TT.STRING) return `string "${tok.value}"`;
-  if (tok.type === TT.REGEX) return 'a regex literal';
+  if (tok.type === TT.EOF) return t('end of input');
+  if (tok.type === TT.STRING) return t('string "{value}"', { value: tok.value });
+  if (tok.type === TT.REGEX) return t('a regex literal');
   if (tok.type === TT.IDENT || tok.type === TT.NUMBER) return `'${tok.value}'`;
   return `'${tok.value ?? tok.type}'`;
 }

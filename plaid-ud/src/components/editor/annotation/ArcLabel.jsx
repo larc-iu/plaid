@@ -1,6 +1,7 @@
 import { provState, PROV_STATES } from '@larc-iu/plaid-client';
 import { provCellTitle, provMark } from '../../../utils/provenanceUi.js';
 import { DeprelEditor } from './DeprelEditor.jsx';
+import { t } from '@ui/lib/i18n.js';
 import {
   LABEL_EDITOR_HEIGHT,
   LABEL_EDITOR_LIFT,
@@ -38,7 +39,9 @@ import {
  */
 const arcName = (label, ends) => {
   if (!ends?.dependent) return label;
-  return ends.head ? `${label}, ${ends.dependent} to ${ends.head}` : `${label}, ${ends.dependent}`;
+  return ends.head
+    ? t('{label}, {dependent} to {head}', { label, dependent: ends.dependent, head: ends.head })
+    : t('{label}, {dependent}', { label, dependent: ends.dependent });
 };
 
 export const ArcLabel = ({
@@ -90,7 +93,7 @@ export const ArcLabel = ({
     title !== undefined
       ? title
       : provState(relation?.metadata) !== PROV_STATES.HUMAN
-        ? provCellTitle('deprel', relation?.metadata)
+        ? provCellTitle('deprel', relation?.metadata) // i18n-ignore: a CoNLL-U column name, as UPOS and XPOS
         : null;
 
   return (
@@ -136,7 +139,7 @@ export const ArcLabel = ({
         else labelRef?.delete(relation.id);
       }}
     >
-      {relation.value || 'dep'}
+      {relation.value || 'dep' /* i18n-ignore: a relation label, data */}
       {/* One hover record to a label, as an SVG-native tooltip. */}
       {hoverRecord && <title>{hoverRecord}</title>}
     </text>

@@ -1,4 +1,5 @@
 import { cn } from '@ui/lib/utils';
+import { t } from '@ui/lib/i18n.js';
 import { FORM_PAGE_WIDTH } from '@ui/lib/pageWidth.js';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
@@ -35,12 +36,12 @@ const problemHref = (projectId, p) => {
 };
 
 // A problem's level decides how loud its row is. Anything unrecognized reads
-// as a warning rather than as nothing.
+// as a warning rather than as nothing, under its own name.
 const levelBadge = (level) =>
   level === 'error' ? (
-    <Badge variant="destructive">error</Badge>
+    <Badge variant="destructive">{t('error')}</Badge>
   ) : (
-    <Badge variant="secondary">{level || 'warning'}</Badge>
+    <Badge variant="secondary">{!level || level === 'warning' ? t('warning') : level}</Badge>
   );
 
 export const ProjectValidation = () => {
@@ -48,7 +49,7 @@ export const ProjectValidation = () => {
   const { getClient } = useAuth();
   const client = getClient();
 
-  useDocumentTitle('Validation', project?.name);
+  useDocumentTitle(t('Validation'), project?.name);
 
   const layerInfo = useMemo(() => (project ? getUmrLayerInfo(project) : null), [project]);
   const [problems, setProblems] = useState(null);
@@ -86,7 +87,7 @@ export const ProjectValidation = () => {
       setOpened(new Set());
     } catch (err) {
       console.error('Validation scan failed:', err);
-      notifyError(err, 'Failed to read the project');
+      notifyError(err, t('Failed to read the project'));
     } finally {
       setBusy(false);
     }
@@ -100,19 +101,19 @@ export const ProjectValidation = () => {
     () => [
       {
         key: 'document',
-        label: 'Document',
+        label: t('Document'),
         sort: (p) => p.documentName?.toLowerCase() ?? '',
         // A real anchor, to the sentence: middle-click and cmd-click open it
         // in a new browser tab.
         render: (p) => (
           <Link to={problemHref(projectId, p)} className="font-medium hover:underline" dir="auto">
-            {p.documentName || '(untitled)'}
+            {p.documentName || t('(untitled)')}
           </Link>
         ),
       },
       {
         key: 'sentence',
-        label: 'Sentence',
+        label: t('Sentence'),
         align: 'right',
         sort: (p) => p.sentenceIndex ?? null,
         // The sentence's number as the editor shows it. A problem about the
@@ -128,13 +129,13 @@ export const ProjectValidation = () => {
       },
       {
         key: 'level',
-        label: 'Level',
+        label: t('Level'),
         sort: (p) => p.level ?? '',
         render: (p) => levelBadge(p.level),
       },
       {
         key: 'message',
-        label: 'Problem',
+        label: t('Problem'),
         sort: (p) => p.message?.toLowerCase() ?? '',
         render: (p) => {
           const isOpen = opened.has(p.key);
@@ -150,7 +151,7 @@ export const ProjectValidation = () => {
                   aria-expanded={isOpen}
                   onClick={() => toggleOpened(p.key)}
                 >
-                  {isOpen ? 'Hide list' : 'Show list'}
+                  {isOpen ? t('Hide list') : t('Show list')}
                 </Button>
               )}
               {p.details && isOpen && (
@@ -179,7 +180,7 @@ export const ProjectValidation = () => {
       {/* The same width in every app: a form's, from the page's left edge. */}
       <div className={cn('w-full', FORM_PAGE_WIDTH)}>
         <ValidationHeader
-          description="Problems in this project's UMR annotation."
+          description={t("Problems in this project's UMR annotation.")}
           busy={busy}
           disabled={!configured}
           onCheck={scan}
@@ -187,14 +188,14 @@ export const ProjectValidation = () => {
 
         {!configured && (
           <p className="rounded-md border bg-muted/40 px-3 py-2 text-sm text-muted-foreground">
-            Set the project up for UMR first.
+            {t('Set the project up for UMR first.')}
           </p>
         )}
 
         {configured && problems?.length === 0 && !busy && (
           <p className="flex items-center gap-2 rounded-md border px-3 py-2 text-sm text-muted-foreground">
             <Check className="h-4 w-4 text-success" />
-            Every check passed.
+            {t('Every check passed.')}
           </p>
         )}
 
@@ -206,14 +207,15 @@ export const ProjectValidation = () => {
             columns={columns}
             rowKey={(p) => p.key}
             defaultSort={{ key: 'document', dir: 'asc' }}
-            noun="problem"
+            countLabel={(v) => t('{total} {n, plural, one {problem} other {problems}}', v)}
+            noMatch={t('No problems match.')}
             // In the URL, so Back from the sentence a row links to returns to
             // the page the row was on.
             pageParam="page"
             loading={busy}
-            empty="Every check passed."
+            empty={t('Every check passed.')}
             search={{
-              placeholder: 'Search problems…',
+              placeholder: t('Search problems…'),
               match: (p, q) =>
                 textIncludes(p.documentName || '', q) ||
                 textIncludes(p.message || '', q) ||

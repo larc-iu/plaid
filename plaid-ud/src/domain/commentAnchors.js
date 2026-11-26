@@ -16,6 +16,7 @@
 // anchor.
 
 import { anchorExcerpt, documentAnchor, quoted } from '@ui/domain/commentAnchors';
+import { t } from '@ui/lib/i18n.js';
 
 export { anchorCaption } from '@ui/domain/commentAnchors';
 
@@ -38,7 +39,7 @@ export function buildAnchorIndex(doc) {
 
   (doc.sentences || []).forEach((sentence, index_) => {
     const sentId = sentence.sentenceToken?.metadata?.sent_id;
-    const position = `Sentence ${index_ + 1}`;
+    const position = t('Sentence {n}', { n: index_ + 1 });
     const excerpt = anchorExcerpt(sentence.text);
     index.set(sentence.id, {
       kind: 'sentence',
