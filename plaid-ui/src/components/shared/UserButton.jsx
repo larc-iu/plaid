@@ -1,5 +1,5 @@
 import { Link } from 'react-router-dom';
-import { User, LogOut } from 'lucide-react';
+import { Check, User, LogOut } from 'lucide-react';
 import { UserAvatar } from './UserAvatar.jsx';
 import {
   DropdownMenu,
@@ -9,6 +9,7 @@ import {
   DropdownMenuLabel,
   DropdownMenuSeparator,
 } from '../ui/dropdown-menu.jsx';
+import { LANGUAGES, language, setLanguage, t } from '../../lib/i18n.js';
 
 // The account in the header band: who is signed in, and everything about
 // being signed in. Logout lives in here rather than beside it, so the band
@@ -36,14 +37,25 @@ export function UserButton({ user, client, onLogout, profileHref }) {
         </span>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-48">
-        <DropdownMenuLabel>Account</DropdownMenuLabel>
+        <DropdownMenuLabel>{t('Account')}</DropdownMenuLabel>
         {/* A real anchor, not an onClick: Profile is a destination, so
             middle-click and cmd-click open it in a new tab like any link. */}
         <DropdownMenuItem asChild>
           <Link to={profileHref}>
-            <User className="h-4 w-4" /> Profile
+            <User className="h-4 w-4" /> {t('Profile')}
           </Link>
         </DropdownMenuItem>
+        <DropdownMenuSeparator />
+        {/* The interface's language, each named in itself so a person who
+            cannot read the current one still finds their own. Picking one
+            reloads the page. */}
+        <DropdownMenuLabel>{t('Language')}</DropdownMenuLabel>
+        {LANGUAGES.map((l) => (
+          <DropdownMenuItem key={l.code} lang={l.code} onClick={() => setLanguage(l.code)}>
+            <Check className={l.code === language() ? 'h-4 w-4' : 'h-4 w-4 invisible'} />
+            {l.name}
+          </DropdownMenuItem>
+        ))}
         <DropdownMenuSeparator />
         {/* `() => onLogout()` and not `onLogout`: logout takes an optional
             reason to show on the login page, and the click event went in as
@@ -52,7 +64,7 @@ export function UserButton({ user, client, onLogout, profileHref }) {
           className="text-destructive focus:text-destructive"
           onClick={() => onLogout()}
         >
-          <LogOut className="h-4 w-4" /> Sign out
+          <LogOut className="h-4 w-4" /> {t('Sign out')}
         </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>

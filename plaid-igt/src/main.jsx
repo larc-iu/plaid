@@ -2,6 +2,7 @@ import React from 'react';
 import ReactDOM from 'react-dom/client';
 import { Toaster } from '@ui/components/ui/sonner';
 import { configureUi } from '@ui/lib/uiConfig.js';
+import { initI18n } from '@ui/lib/i18n.js';
 import { configureAuth, onSignOut } from '@ui/services/auth.js';
 import { attachCompose } from '@/lib/composeInput.js';
 import { forgetPrecedent } from '@/domain/precedentCache.js';
@@ -31,6 +32,15 @@ configureAuth({ loginRoute: '#/login' });
 // The precedent counts a tab keeps in the browser hold this login's word
 // forms and values, so signing out forgets them.
 onSignOut(forgetPrecedent);
+
+// The interface's language, settled before anything renders, so no screen
+// shows first in one language and then in another.
+await initI18n({
+  fr: async () =>
+    (await Promise.all([import('@ui/locales/fr.js'), import('./locales/fr.js')])).map(
+      (m) => m.default,
+    ),
+});
 
 ReactDOM.createRoot(document.getElementById('root')).render(
   <React.StrictMode>

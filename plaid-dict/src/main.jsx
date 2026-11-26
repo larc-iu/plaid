@@ -2,6 +2,7 @@ import React from 'react';
 import ReactDOM from 'react-dom/client';
 import { Toaster } from '@ui/components/ui/sonner';
 import { configureUi } from '@ui/lib/uiConfig.js';
+import { initI18n } from '@ui/lib/i18n.js';
 import { configureAuth } from '@ui/services/auth.js';
 import App from './App';
 // The provenance palette the apps share, then this app's own tokens.
@@ -15,9 +16,16 @@ import './index.css';
 configureUi({ appName: 'Plaid Dictionary', appPrefix: 'plaid_dict', configNamespace: 'dict' });
 configureAuth({ loginRoute: '#/login' });
 
-ReactDOM.createRoot(document.getElementById('root')).render(
-  <React.StrictMode>
-    <Toaster richColors closeButton position="bottom-right" />
-    <App />
-  </React.StrictMode>,
-);
+// The interface's language, settled before anything renders, so no screen
+// shows first in one language and then in another. A promise rather than a
+// top-level await: this app's build target has none.
+initI18n({
+  fr: async () => (await Promise.all([import('@ui/locales/fr.js')])).map((m) => m.default),
+}).then(() => {
+  ReactDOM.createRoot(document.getElementById('root')).render(
+    <React.StrictMode>
+      <Toaster richColors closeButton position="bottom-right" />
+      <App />
+    </React.StrictMode>,
+  );
+});
