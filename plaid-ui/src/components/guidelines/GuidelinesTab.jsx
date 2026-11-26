@@ -22,6 +22,7 @@ import { notifyError, notifySuccess } from '../../lib/notify.js';
 import { useGuidelineCaps } from './guidelineCaps.js';
 import { cn } from '../../lib/utils.js';
 import { EmptyState } from '../shared/EmptyState.jsx';
+import { t } from '../../lib/i18n.js';
 
 // Where the counter appears, as a fraction of the server's body cap: below it a
 // guideline is nowhere near the ceiling and the number is noise.
@@ -78,7 +79,7 @@ const GuidelineRow = ({ entry, selected, to, onSelect }) => (
   >
     <span className="flex items-center gap-1.5">
       {entry.pinned && (
-        <Pin className="h-3 w-3 shrink-0 text-muted-foreground" aria-label="Pinned" />
+        <Pin className="h-3 w-3 shrink-0 text-muted-foreground" aria-label={t('Pinned')} />
       )}
       <span dir="auto" className="truncate text-sm font-medium">
         {entry.title}
@@ -133,7 +134,7 @@ export function GuidelinesTab({ client, projectId, project, canWrite }) {
       setLoadError(null);
     } catch (error) {
       if (!isCurrent()) return;
-      setLoadError(humanizeError(error, 'Failed to load the guidelines.'));
+      setLoadError(humanizeError(error, t('Failed to load the guidelines.')));
     } finally {
       if (isCurrent()) setLoading(false);
     }
@@ -159,7 +160,7 @@ export function GuidelinesTab({ client, projectId, project, canWrite }) {
       } catch (error) {
         if (cancelled || !isCurrent()) return;
         setOpened(null);
-        notifyError(humanizeError(error, 'Failed to open that guideline.'));
+        notifyError(humanizeError(error, t('Failed to open that guideline.')));
       }
     })();
     return () => {
@@ -198,13 +199,14 @@ export function GuidelinesTab({ client, projectId, project, canWrite }) {
   const save = async () => {
     const title = draft.title.trim();
     if (!title) {
-      notifyError('A guideline needs a title.');
+      notifyError(t('A guideline needs a title.'));
       return;
     }
     // The server's own sentence, said before the round trip rather than after
     // it, so the text stays on screen with the count beside it.
     if (draft.body.length > bodyMax) {
-      notifyError(`Guideline body exceeds ${bodyMax} characters`);
+      // The number as a string, unformatted, as the server words it.
+      notifyError(t('Guideline body exceeds {max} characters', { max: String(bodyMax) }));
       return;
     }
     setSaving(true);
@@ -245,7 +247,7 @@ export function GuidelinesTab({ client, projectId, project, canWrite }) {
       await load();
       // Reopen so the pane shows what was saved rather than what was loaded.
       if (draft.id) setOpened(await client.guidelines.get(draft.id));
-      notifySuccess(draft.id ? 'Guideline saved.' : 'Guideline created.');
+      notifySuccess(draft.id ? t('Guideline saved.') : t('Guideline created.'));
     } catch (error) {
       if (statusOf(error) === 409) {
         // NOT humanizeError's 409 wording. That one is written for a document,
@@ -255,11 +257,13 @@ export function GuidelinesTab({ client, projectId, project, canWrite }) {
         // exactly as it is and the next save wins.
         setOverwrite(true);
         notifyError(
-          'Someone else changed this guideline after you opened it. Save again to overwrite it.',
+          t('Someone else changed this guideline after you opened it. Save again to overwrite it.'),
         );
       } else {
         notifyError(
-          isUnknownOutcome(error) ? error : humanizeError(error, 'Failed to save the guideline.'),
+          isUnknownOutcome(error)
+            ? error
+            : humanizeError(error, t('Failed to save the guideline.')),
         );
       }
     } finally {
@@ -295,7 +299,7 @@ export function GuidelinesTab({ client, projectId, project, canWrite }) {
       },
       {
         resendWhenBack: isUnknownOutcome,
-        refused: (error) => notifyError(humanizeError(error, 'Failed to change that.')),
+        refused: (error) => notifyError(humanizeError(error, t('Failed to change that.'))),
         resync,
       },
     );
@@ -303,9 +307,9 @@ export function GuidelinesTab({ client, projectId, project, canWrite }) {
 
   const remove = async () => {
     const ok = await confirm({
-      title: 'Delete guideline?',
+      title: t('Delete guideline?'),
       description: opened.title,
-      confirmLabel: 'Delete',
+      confirmLabel: t('Delete'),
       destructive: true,
     });
     if (!ok) return;
@@ -324,7 +328,7 @@ export function GuidelinesTab({ client, projectId, project, canWrite }) {
       },
       {
         resendWhenBack: isUnknownOutcome,
-        refused: (error) => notifyError(humanizeError(error, 'Failed to delete the guideline.')),
+        refused: (error) => notifyError(humanizeError(error, t('Failed to delete the guideline.'))),
         resync,
       },
     );
@@ -334,7 +338,7 @@ export function GuidelinesTab({ client, projectId, project, canWrite }) {
   // Every way out of this screen asks before it drops the text: the app's tabs
   // and links through the shared guard, and another guideline or New here.
   const typed = editing && (draft.title !== draft.base.title || draft.body !== draft.base.body);
-  useUnsavedDraft(typed ? 'The guideline you have typed' : null);
+  useUnsavedDraft(typed ? t('The guideline you have typed') : null);
   const guardLeaving = useUnsavedGuard();
   // Titles are not unique and the server does not police them, so this is a
   // note and not a blocker: it is said while the title is being typed, which is
@@ -353,13 +357,13 @@ export function GuidelinesTab({ client, projectId, project, canWrite }) {
       <div className="rounded-md border">
         <EmptyState
           project={project}
-          title="No guidelines yet."
+          title={t('No guidelines yet.')}
           className="py-16"
           action={
             canWrite && (
               <Button type="button" size="sm" onClick={startNew}>
                 <Plus className="h-4 w-4" />
-                New guideline
+                {t('New guideline')}
               </Button>
             )
           }
@@ -387,14 +391,14 @@ export function GuidelinesTab({ client, projectId, project, canWrite }) {
                 }}
               >
                 <Plus className="h-4 w-4" />
-                New
+                {t('New')}
               </Button>
             )}
           </div>
           <SearchInput
             value={query}
             onChange={setQuery}
-            placeholder="Search guidelines…"
+            placeholder={t('Search guidelines…')}
             inputClassName="h-8"
           />
         </div>
@@ -408,9 +412,11 @@ export function GuidelinesTab({ client, projectId, project, canWrite }) {
           ) : loadError ? (
             <p className="px-3 py-6 text-center text-sm text-destructive">{loadError}</p>
           ) : paged.pageItems.length === 0 && entries.length === 0 ? (
-            <EmptyState project={project} title="No guidelines yet." className="px-3 py-6" />
+            <EmptyState project={project} title={t('No guidelines yet.')} className="px-3 py-6" />
           ) : paged.pageItems.length === 0 ? (
-            <p className="px-3 py-6 text-center text-sm text-muted-foreground">Nothing matches.</p>
+            <p className="px-3 py-6 text-center text-sm text-muted-foreground">
+              {t('Nothing matches.')}
+            </p>
           ) : (
             paged.pageItems.map((entry) => (
               <GuidelineRow
@@ -435,20 +441,20 @@ export function GuidelinesTab({ client, projectId, project, canWrite }) {
           <div className="flex flex-col gap-3">
             <div className="flex flex-col gap-1">
               <label className="text-xs font-medium" htmlFor="guideline-title">
-                Title
+                {t('Title')}
               </label>
               <Input
                 id="guideline-title"
                 value={draft.title}
                 maxLength={titleMax}
                 spellCheck={false}
-                placeholder="Glossing conventions"
+                placeholder={t('Glossing conventions')}
                 aria-describedby={titleTaken ? 'guideline-title-taken' : undefined}
                 onChange={(e) => setDraft({ ...draft, title: e.target.value })}
               />
               {titleTaken && (
                 <p id="guideline-title-taken" className="text-xs text-muted-foreground">
-                  Another guideline has this title.
+                  {t('Another guideline has this title.')}
                 </p>
               )}
             </div>
@@ -466,12 +472,15 @@ export function GuidelinesTab({ client, projectId, project, canWrite }) {
                   draft.body.length > bodyMax ? 'text-destructive' : 'text-muted-foreground',
                 )}
               >
-                {draft.body.length.toLocaleString()} of {bodyMax.toLocaleString()} characters
+                {t('{n, number} of {max, number} characters', {
+                  n: draft.body.length,
+                  max: bodyMax,
+                })}
               </p>
             )}
             <div className="flex items-center gap-2">
               <Button type="button" onClick={save} disabled={saving}>
-                Save
+                {t('Save')}
               </Button>
               <Button
                 type="button"
@@ -482,7 +491,7 @@ export function GuidelinesTab({ client, projectId, project, canWrite }) {
                 }}
                 disabled={saving}
               >
-                Cancel
+                {t('Cancel')}
               </Button>
             </div>
           </div>
@@ -502,13 +511,13 @@ export function GuidelinesTab({ client, projectId, project, canWrite }) {
                     variant="ghost"
                     size="icon"
                     onClick={togglePinned}
-                    title={opened.pinned ? 'Unpin' : 'Always send to the assistant'}
-                    aria-label={opened.pinned ? 'Unpin' : 'Pin'}
+                    title={opened.pinned ? t('Unpin') : t('Always send to the assistant')}
+                    aria-label={opened.pinned ? t('Unpin') : t('Pin')}
                   >
                     {opened.pinned ? <PinOff className="h-4 w-4" /> : <Pin className="h-4 w-4" />}
                   </Button>
                   <Button type="button" variant="outline" size="sm" onClick={startEdit}>
-                    Edit
+                    {t('Edit')}
                   </Button>
                   <Button
                     type="button"
@@ -516,8 +525,8 @@ export function GuidelinesTab({ client, projectId, project, canWrite }) {
                     size="icon"
                     className="text-muted-foreground hover:text-destructive"
                     onClick={remove}
-                    title="Delete"
-                    aria-label="Delete"
+                    title={t('Delete')}
+                    aria-label={t('Delete')}
                   >
                     <Trash2 className="h-4 w-4" />
                   </Button>
@@ -527,12 +536,12 @@ export function GuidelinesTab({ client, projectId, project, canWrite }) {
             {opened.body ? (
               <SafeMarkdown className="max-w-3xl">{opened.body}</SafeMarkdown>
             ) : (
-              <p className="text-sm text-muted-foreground">Nothing written yet.</p>
+              <p className="text-sm text-muted-foreground">{t('Nothing written yet.')}</p>
             )}
           </div>
         ) : entries.length === 0 ? null : (
           <div className="rounded-lg border bg-card p-4">
-            <p className="text-sm text-muted-foreground">Open a guideline to read it.</p>
+            <p className="text-sm text-muted-foreground">{t('Open a guideline to read it.')}</p>
           </div>
         )}
       </div>

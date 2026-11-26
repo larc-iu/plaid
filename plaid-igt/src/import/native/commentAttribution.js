@@ -12,6 +12,7 @@
 /** Mirrors `plaid.sql.comment/max-body-length`. */
 export const MAX_BODY_LENGTH = 10000;
 
+// i18n-ignore: written into the comment on the server, and matched by NOTE_RE
 const OPENING = '> Imported from an archive.';
 
 // A note this module wrote: the opening line, plus any further
@@ -66,9 +67,10 @@ export function attributedBody(comment) {
   const original = body;
   const author = formatAuthor(comment?.author);
   const date = formatDate(comment?.createdAt);
+  // Written into the comment on the server, so it stays English.
   const note = date
-    ? `${OPENING} Originally posted by ${author} on ${date}.`
-    : `${OPENING} Originally posted by ${author}.`;
+    ? `${OPENING} Originally posted by ${author} on ${date}.` // i18n-ignore: stored data
+    : `${OPENING} Originally posted by ${author}.`; // i18n-ignore: stored data
   const withNote = `${note}\n\n${original}`;
   if (!original) return { body: note, attributed: true };
   if (withNote.length > MAX_BODY_LENGTH) return { body: original, attributed: false };

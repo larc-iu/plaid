@@ -1,5 +1,5 @@
 import { Label } from '@ui/components/ui/label';
-import { countOf } from '@ui/lib/plural.js';
+import { t } from '@ui/lib/i18n.js';
 import { compareNames } from '@ui/domain/collation.js';
 
 // Step 3: what to export. Scope is a run-time choice, never part of the
@@ -56,10 +56,10 @@ export const ScopeStep = ({
   if (historicalOnly) {
     return (
       <div className="flex flex-col gap-2">
-        <Label>Scope</Label>
-        {radio('document', `This document: ${defaultDocument?.name}`)}
+        <Label>{t('Scope')}</Label>
+        {radio('document', t('This document: {name}', { name: String(defaultDocument?.name) }))}
         <p className="text-xs text-muted-foreground">
-          Exports this document as of the selected past state.
+          {t('Exports this document as of the selected past state.')}
         </p>
         {zipNote && <p className="text-xs text-muted-foreground">{zipNote}</p>}
       </div>
@@ -69,10 +69,16 @@ export const ScopeStep = ({
   return (
     <div className="flex flex-col gap-4">
       <div className="flex flex-col gap-2">
-        <Label>Scope</Label>
-        {defaultDocument && radio('document', `This document: ${defaultDocument.name}`)}
-        {radio('project', `Whole project (${countOf(documents?.length ?? 0, 'document')})`)}
-        {radio('documents', 'Selected documents')}
+        <Label>{t('Scope')}</Label>
+        {defaultDocument &&
+          radio('document', t('This document: {name}', { name: defaultDocument.name }))}
+        {radio(
+          'project',
+          t('Whole project ({n, plural, one {# document} other {# documents}})', {
+            n: documents?.length ?? 0,
+          }),
+        )}
+        {radio('documents', t('Selected documents'))}
       </div>
 
       {scope === 'documents' && (
@@ -91,7 +97,7 @@ export const ScopeStep = ({
             </label>
           ))}
           {!documents?.length && (
-            <p className="px-1 py-2 text-sm text-muted-foreground">No documents found.</p>
+            <p className="px-1 py-2 text-sm text-muted-foreground">{t('No documents found.')}</p>
           )}
         </div>
       )}
@@ -103,7 +109,7 @@ export const ScopeStep = ({
         hasVocabularies &&
         !!includeVocabularies && (
           <p className="border-t pt-3 text-xs text-muted-foreground">
-            The .zip includes this project&rsquo;s vocabularies as TSV files.
+            {t('The .zip includes this project’s vocabularies as TSV files.')}
           </p>
         )
       )}

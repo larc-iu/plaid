@@ -35,6 +35,7 @@
 
 import { stereotypeOf, isAlignableStereotype } from './readEaf.js';
 import { parseElanFlexTierName } from './tierNaming.js';
+import { msg, t } from '@ui/lib/i18n.js';
 
 /** Roles a schema node can be mapped onto in an IGT project. */
 export const ROLES = Object.freeze({
@@ -195,7 +196,7 @@ function differenceKind(a, b) {
   const strip = (x) => String(x).replace(/[\u200B-\u200D\u2060\uFEFF]/g, '');
   if (strip(a) !== a || strip(b) !== b) return 'invisible characters';
   // Equal once normalized, but not before: the same letters spelled two ways.
-  if (a.normalize('NFC') === b.normalize('NFC')) return 'Unicode spelling';
+  if (a.normalize('NFC') === b.normalize('NFC')) return 'Unicode spelling'; // i18n-ignore: a key, which the review screen words
   if (a.toLowerCase() === b.toLowerCase()) return 'capitalization';
   if (a.replace(/\s+/g, ' ').trim() === b.replace(/\s+/g, ' ').trim()) return 'spacing';
   return 'capitalization and spacing';
@@ -551,7 +552,9 @@ export function validateBatch(comparison, roles) {
   }
   if ([...namesByRow.values()].some((names) => names.size > 1) && !fromWords) {
     problems.add(
-      'The sentence tier has a different name in some files, so the sentences are written from the words. Choose a tier for Words.',
+      t(
+        'The sentence tier has a different name in some files, so the sentences are written from the words. Choose a tier for Words.',
+      ),
     );
   }
   return [...problems];
@@ -732,10 +735,10 @@ export function validateRoles(nodes, roles) {
   const problems = [];
   const of = (role) => nodes.filter((n) => roles[n.key] === role);
   if (of(ROLES.UTTERANCE).length === 0) {
-    problems.push('Choose which tier holds the sentences. Every import needs one.');
+    problems.push(t('Choose which tier holds the sentences. Every import needs one.'));
   }
   if (of(ROLES.MORPHEME).length && !of(ROLES.WORD).length) {
-    problems.push('A morpheme tier needs a word tier above it.');
+    problems.push(t('A morpheme tier needs a word tier above it.'));
   }
   // Each word/morpheme tier has to sit under something that was mapped, or its
   // annotations have no parent to attach to.
@@ -744,40 +747,64 @@ export function validateRoles(nodes, roles) {
     node.parentKey ? roles[byKey.get(node.parentKey)?.key] : undefined;
   for (const node of of(ROLES.WORD)) {
     if (roleOfParent(node) !== ROLES.UTTERANCE) {
-      problems.push(`"${nodeLabel(node)}" is words, so its parent tier must be sentences.`);
+      problems.push(
+        t('"{tier}" is words, so its parent tier must be sentences.', { tier: nodeLabel(node) }),
+      );
     }
   }
   for (const node of of(ROLES.MORPHEME)) {
     if (roleOfParent(node) !== ROLES.WORD) {
-      problems.push(`"${nodeLabel(node)}" is morphemes, so its parent tier must be words.`);
+      problems.push(
+        t('"{tier}" is morphemes, so its parent tier must be words.', { tier: nodeLabel(node) }),
+      );
     }
   }
   for (const node of of(ROLES.MORPH_TYPE)) {
     if (roleOfParent(node) !== ROLES.MORPHEME) {
       problems.push(
-        `"${nodeLabel(node)}" is morpheme types, so its parent tier must be morphemes.`,
+        t('"{tier}" is morpheme types, so its parent tier must be morphemes.', {
+          tier: nodeLabel(node),
+        }),
       );
     }
   }
   for (const node of of(ROLES.UTTERANCE)) {
     if (node.annotationCount > 0 && node.filledCount === 0) {
       problems.push(
-        `"${nodeLabel(node)}" holds no text. Choose the tier that holds the sentences.`,
+        t('"{tier}" holds no text. Choose the tier that holds the sentences.', {
+          tier: nodeLabel(node),
+        }),
       );
     }
   }
   // A field is read off the sentence, word or morpheme it hangs from, so one
   // under anything else would import nothing and say nothing.
   const needs = [
-    [ROLES.SENTENCE_FIELD, ROLES.UTTERANCE, 'a sentence field', 'sentences'],
-    [ROLES.WORD_FIELD, ROLES.WORD, 'a word field', 'words'],
-    [ROLES.ORTHOGRAPHY, ROLES.WORD, 'an orthography', 'words'],
-    [ROLES.MORPH_FIELD, ROLES.MORPHEME, 'a morpheme field', 'morphemes'],
+    [
+      ROLES.SENTENCE_FIELD,
+      ROLES.UTTERANCE,
+      msg('"{tier}" is a sentence field, so it must sit under the sentences.'),
+    ],
+    [
+      ROLES.WORD_FIELD,
+      ROLES.WORD,
+      msg('"{tier}" is a word field, so it must sit under the words.'),
+    ],
+    [
+      ROLES.ORTHOGRAPHY,
+      ROLES.WORD,
+      msg('"{tier}" is an orthography, so it must sit under the words.'),
+    ],
+    [
+      ROLES.MORPH_FIELD,
+      ROLES.MORPHEME,
+      msg('"{tier}" is a morpheme field, so it must sit under the morphemes.'),
+    ],
   ];
-  for (const [role, anchorRole, what, under] of needs) {
+  for (const [role, anchorRole, problem] of needs) {
     for (const node of of(role)) {
       if (roles[anchorOf(nodes, node)?.key] !== anchorRole) {
-        problems.push(`"${nodeLabel(node)}" is ${what}, so it must sit under the ${under}.`);
+        problems.push(t(problem, { tier: nodeLabel(node) }));
       }
     }
   }

@@ -1,3 +1,5 @@
+import { t } from '../../lib/i18n.js';
+
 // Whether the document's write lock is held by the run named `label`: the run
 // an opener starts, whichever page or hook started it (a run rejoined after a
 // reload holds it under the name it was started with). Its opener then shows
@@ -8,4 +10,6 @@ export const heldBy = (writeLock, label) => !!writeLock && writeLock.label === l
 // What a service dialog says while another run holds the document: the run
 // that holds it, and that only one runs at a time. Null when nothing holds it.
 export const runHeldNotice = (writeLock) =>
-  writeLock ? `${writeLock.label} is running. One run at a time on a document.` : null;
+  writeLock
+    ? t('{name} is running. One run at a time on a document.', { name: writeLock.label })
+    : null;

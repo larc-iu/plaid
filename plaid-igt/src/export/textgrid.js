@@ -55,7 +55,7 @@ import {
 } from '../domain/sentenceSegments.js';
 import { hasValidTimes } from '../domain/alignmentTimes.js';
 import { nameAllocator } from './elan.js';
-import { countOf } from '../../../plaid-ui/src/lib/plural.js';
+import { t } from '@ui/lib/i18n.js';
 
 /** Default names for the structural tiers. */
 const TIER_NAMES = Object.freeze({
@@ -200,12 +200,18 @@ export function buildTextGrid(igtDoc, options = {}, context = {}) {
   }
   if (untimed && onWarning) {
     onWarning(
-      `${countOf(untimed, 'sentence')} with no time-aligned segment inside ${untimed === 1 ? 'it was' : 'them were'} left out. A TextGrid holds only what has a time.`,
+      t(
+        '{n, plural, one {# sentence with no time-aligned segment inside it was left out.} other {# sentences with no time-aligned segment inside them were left out.}} A TextGrid holds only what has a time.',
+        { n: untimed },
+      ),
     );
   }
   if (overlapped && onWarning) {
     onWarning(
-      `${countOf(overlapped, 'sentence')} overlapping another on the same tier ${overlapped === 1 ? 'was' : 'were'} left out. Turn on "One tier set per speaker" to keep overlapping speech.`,
+      t(
+        '{n, plural, one {# sentence overlapping another on the same tier was left out.} other {# sentences overlapping another on the same tier were left out.}} Turn on "One tier set per speaker" to keep overlapping speech.',
+        { n: overlapped },
+      ),
     );
   }
 
@@ -314,7 +320,10 @@ export function buildTextGrid(igtDoc, options = {}, context = {}) {
 
   if (overlappedSegments && onWarning) {
     onWarning(
-      `${countOf(overlappedSegments, 'segment')} overlapping another inside one sentence ${overlappedSegments === 1 ? 'was' : 'were'} left out of the Segment tier.`,
+      t(
+        '{n, plural, one {# segment overlapping another inside one sentence was left out of the Segment tier.} other {# segments overlapping another inside one sentence were left out of the Segment tier.}}',
+        { n: overlappedSegments },
+      ),
     );
   }
 

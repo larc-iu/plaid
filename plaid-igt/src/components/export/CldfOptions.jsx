@@ -13,6 +13,7 @@ import {
 } from '@ui/components/ui/select';
 import { hasLanguageIdentity } from '@/domain/igtConfig';
 import { BASELINE, cldfLossSummary, DEFAULT_CLDF_OPTIONS } from '@/export/cldf';
+import { t, tx } from '@ui/lib/i18n.js';
 
 const NONE = '__none__';
 
@@ -30,7 +31,7 @@ const OptionRow = ({ label, description, children }) => (
   </div>
 );
 
-const FieldSelect = ({ value, onChange, options, placeholder = 'Don’t export' }) => (
+const FieldSelect = ({ value, onChange, options, placeholder = t('Don’t export') }) => (
   <Select value={value} onValueChange={onChange}>
     <SelectTrigger className="h-8 w-56 shrink-0">
       <SelectValue />
@@ -46,6 +47,21 @@ const FieldSelect = ({ value, onChange, options, placeholder = 'Don’t export' 
   </Select>
 );
 
+// A carried tier's name and its scope, the scope muted.
+const muted = (c) => <span className="text-xs text-muted-foreground">{c}</span>;
+const scopedName = (name, scope) => {
+  switch (scope) {
+    case 'sentence':
+      return tx('{name} <muted>(sentence)</muted>', { name, muted });
+    case 'word':
+      return tx('{name} <muted>(word)</muted>', { name, muted });
+    case 'morpheme':
+      return tx('{name} <muted>(morpheme)</muted>', { name, muted });
+    default:
+      return tx('{name} <muted>(orthography)</muted>', { name, muted });
+  }
+};
+
 const SummaryList = ({ icon, title, items, tone }) => {
   const Icon = icon;
   return (
@@ -55,14 +71,14 @@ const SummaryList = ({ icon, title, items, tone }) => {
       </p>
       {items.length ? (
         <ul className="flex flex-col gap-0.5 pl-[18px]">
-          {items.map((t) => (
-            <li key={t} className="truncate text-xs text-muted-foreground">
-              {t}
+          {items.map((item) => (
+            <li key={item} className="truncate text-xs text-muted-foreground">
+              {item}
             </li>
           ))}
         </ul>
       ) : (
-        <p className="pl-[18px] text-xs text-muted-foreground/60">None</p>
+        <p className="pl-[18px] text-xs text-muted-foreground/60">{t('None')}</p>
       )}
     </div>
   );
@@ -84,8 +100,14 @@ export const CldfOptions = ({ options, layers, languages, projectId, onChange })
   const setExtras = (patch) => onChange({ ...o, extras: { ...extras, ...patch } });
 
   const glossOptions = [
-    ...layers.morphFields.map((n) => ({ value: `morpheme:${n}`, label: `${n} (morpheme)` })),
-    ...layers.wordFields.map((n) => ({ value: `word:${n}`, label: `${n} (word)` })),
+    ...layers.morphFields.map((n) => ({
+      value: `morpheme:${n}`,
+      label: t('{name} (morpheme)', { name: n }),
+    })),
+    ...layers.wordFields.map((n) => ({
+      value: `word:${n}`,
+      label: t('{name} (word)', { name: n }),
+    })),
   ];
   const sentOptions = layers.sentFields.map((n) => ({ value: n, label: n }));
 
@@ -102,7 +124,7 @@ export const CldfOptions = ({ options, layers, languages, projectId, onChange })
           name: n,
           scope: 'orthography',
         })),
-      ].filter((t) => !bound.has(t.name) && o.primaryText !== t.name),
+      ].filter((tier) => !bound.has(tier.name) && o.primaryText !== tier.name),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [layers, o.glossField, o.translationField, o.commentField, o.primaryText],
   );
@@ -116,22 +138,32 @@ export const CldfOptions = ({ options, layers, languages, projectId, onChange })
       {!languagesSet && (
         <Notice tone="info" className="p-3">
           <div>
-            <p className="font-medium">This project has no language identity yet</p>
+            <p className="font-medium">{t('This project has no language identity yet')}</p>
             <p className="text-xs">
-              CLDF identifies data by language. Without a Glottocode this dataset cannot be linked
-              to any other.{' '}
-              <Link to={`/projects/${projectId}/general`} className="underline underline-offset-2">
-                Set the languages in Settings
-              </Link>
-              .
+              {tx(
+                'CLDF identifies data by language. Without a Glottocode this dataset cannot be linked to any other. <link>Set the languages in Settings</link>.',
+                {
+                  link: (c) => (
+                    <Link
+                      to={`/projects/${projectId}/general`}
+                      className="underline underline-offset-2"
+                    >
+                      {c}
+                    </Link>
+                  ),
+                },
+              )}
             </p>
           </div>
         </Notice>
       )}
 
       <div className="flex flex-col gap-3">
-        <Label>CLDF columns</Label>
-        <OptionRow label="Gloss" description="The gloss line aligned with Analyzed_Word.">
+        <Label>{t('CLDF columns')}</Label>
+        <OptionRow
+          label="Gloss" // i18n-ignore: a CLDF column name
+          description={t('The gloss line aligned with Analyzed_Word.')}
+        >
           <FieldSelect
             value={glossValue(o)}
             options={glossOptions}
@@ -142,7 +174,10 @@ export const CldfOptions = ({ options, layers, languages, projectId, onChange })
             }
           />
         </OptionRow>
-        <OptionRow label="Translated_Text" description="The free translation of the sentence.">
+        <OptionRow
+          label="Translated_Text" // i18n-ignore: a CLDF column name
+          description={t('The free translation of the sentence.')}
+        >
           <FieldSelect
             value={o.translationField ?? NONE}
             options={sentOptions}
@@ -150,8 +185,8 @@ export const CldfOptions = ({ options, layers, languages, projectId, onChange })
           />
         </OptionRow>
         <OptionRow
-          label="Comment"
-          description="The CLDF Comment column, filled from one of your sentence fields."
+          label="Comment" // i18n-ignore: a CLDF column name
+          description={t('The CLDF Comment column, filled from one of your sentence fields.')}
         >
           <FieldSelect
             value={o.commentField ?? NONE}
@@ -159,16 +194,19 @@ export const CldfOptions = ({ options, layers, languages, projectId, onChange })
             onChange={(v) => set({ commentField: v === NONE ? null : v })}
           />
         </OptionRow>
-        <OptionRow label="Primary_Text" description="The unsegmented sentence text.">
+        <OptionRow
+          label="Primary_Text" // i18n-ignore: a CLDF column name
+          description={t('The unsegmented sentence text.')}
+        >
           <Select value={o.primaryText} onValueChange={(v) => set({ primaryText: v })}>
             <SelectTrigger className="h-8 w-56 shrink-0">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value={BASELINE}>Baseline text</SelectItem>
+              <SelectItem value={BASELINE}>{t('Baseline text')}</SelectItem>
               {layers.orthographies.map((n) => (
                 <SelectItem key={n} value={n}>
-                  {n} (orthography)
+                  {t('{name} (orthography)', { name: n })}
                 </SelectItem>
               ))}
             </SelectContent>
@@ -178,26 +216,25 @@ export const CldfOptions = ({ options, layers, languages, projectId, onChange })
 
       {carryable.length > 0 && (
         <div className="flex flex-col gap-1.5 border-t pt-3">
-          <Label>Carry as custom columns</Label>
+          <Label>{t('Carry as custom columns')}</Label>
           <p className="mb-1 text-xs text-muted-foreground">
-            These become plain columns: readable by humans and by spreadsheets, ignored by CLDF
-            tools. Unchecked tiers are left out of the export.
+            {t(
+              'These become plain columns: readable by humans and by spreadsheets, ignored by CLDF tools. Unchecked tiers are left out of the export.',
+            )}
           </p>
-          {carryable.map((t) => (
+          {carryable.map((tier) => (
             <label
-              key={`${t.bucket}:${t.name}`}
+              key={`${tier.bucket}:${tier.name}`}
               className="flex cursor-pointer items-center justify-between gap-2 text-sm"
             >
-              <span className="truncate">
-                {t.name} <span className="text-xs text-muted-foreground">({t.scope})</span>
-              </span>
+              <span className="truncate">{scopedName(tier.name, tier.scope)}</span>
               <Switch
-                checked={extras[t.bucket].includes(t.name)}
+                checked={extras[tier.bucket].includes(tier.name)}
                 onCheckedChange={(on) =>
                   setExtras({
-                    [t.bucket]: on
-                      ? [...extras[t.bucket], t.name]
-                      : extras[t.bucket].filter((n) => n !== t.name),
+                    [tier.bucket]: on
+                      ? [...extras[tier.bucket], tier.name]
+                      : extras[tier.bucket].filter((n) => n !== tier.name),
                   })
                 }
               />
@@ -209,9 +246,9 @@ export const CldfOptions = ({ options, layers, languages, projectId, onChange })
       <div className="flex flex-col gap-2 border-t pt-3">
         <label className="flex cursor-pointer items-center justify-between gap-2 text-sm">
           <span>
-            <span>Lexicon as EntryTable and SenseTable</span>
+            <span>{t('Lexicon as EntryTable and SenseTable')}</span>
             <span className="block text-xs text-muted-foreground">
-              The project’s vocabularies become CLDF dictionary components.
+              {t('The project’s vocabularies become CLDF dictionary components.')}
             </span>
           </span>
           <Switch
@@ -221,18 +258,18 @@ export const CldfOptions = ({ options, layers, languages, projectId, onChange })
         </label>
         <label className="flex cursor-pointer items-center justify-between gap-2 text-sm">
           <span>
-            <span>Speaker column</span>
+            <span>{t('Speaker column')}</span>
             <span className="block text-xs text-muted-foreground">
-              From the time-aligned segments, where a sentence has one.
+              {t('From the time-aligned segments, where a sentence has one.')}
             </span>
           </span>
           <Switch checked={o.speakers !== false} onCheckedChange={(v) => set({ speakers: v })} />
         </label>
         <label className="flex cursor-pointer items-center justify-between gap-2 text-sm">
           <span>
-            <span>Include media files</span>
+            <span>{t('Include media files')}</span>
             <span className="block text-xs text-muted-foreground">
-              Audio and video go in the zip, listed in a MediaTable.
+              {t('Audio and video go in the zip, listed in a MediaTable.')}
             </span>
           </span>
           <Switch
@@ -243,23 +280,23 @@ export const CldfOptions = ({ options, layers, languages, projectId, onChange })
       </div>
 
       <div className="flex flex-col gap-3 rounded-md border bg-muted/30 p-3">
-        <p className="text-xs font-medium">What this preset exports</p>
+        <p className="text-xs font-medium">{t('What this preset exports')}</p>
         <div className="grid gap-3 sm:grid-cols-3">
           <SummaryList
             icon={ArrowRight}
-            title="CLDF terms"
+            title={t('CLDF terms')}
             items={summary.mapped}
             tone="text-foreground"
           />
           <SummaryList
             icon={Circle}
-            title="Custom columns"
+            title={t('Custom columns')}
             items={summary.custom}
             tone="text-foreground"
           />
           <SummaryList
             icon={Minus}
-            title="Dropped"
+            title={t('Dropped')}
             items={summary.dropped}
             tone="text-destructive"
           />
@@ -267,11 +304,11 @@ export const CldfOptions = ({ options, layers, languages, projectId, onChange })
         {/* Separate from the three lists above, which are about THIS preset's
           settings. These hold however it is set. */}
         <div className="border-t pt-2">
-          <p className="text-xs font-medium">CLDF cannot carry, whatever you choose</p>
+          <p className="text-xs font-medium">{t('CLDF cannot carry, whatever you choose')}</p>
           <ul className="mt-1 flex flex-col gap-0.5">
             {summary.inherent.map((item) => (
               <li key={item} className="text-xs text-muted-foreground">
-                {item}
+                {t(item)}
               </li>
             ))}
           </ul>

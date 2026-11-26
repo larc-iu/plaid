@@ -9,6 +9,7 @@
 
 import { createdIds } from '@larc-iu/plaid-client';
 import { statusOf } from '@ui/lib/errors.js';
+import { t } from '@ui/lib/i18n.js';
 import { sameConfig } from '@ui/domain/configCells.js';
 import { canManageVocabulary } from '@ui/domain/permissions.js';
 import { CHUNK, withMintedIds } from '../domain/bulk.js';
@@ -110,8 +111,22 @@ export async function writeVocabConfig(client, vocab, ns, key, value, write) {
   } catch (err) {
     if (statusOf(err) !== 403) throw err;
     const home = await homeNameOf(client, vocab);
+    const vocabulary = vocab?.name ?? vocab?.id;
     throw new Error(
-      `Only a maintainer of the project ${home ? `“${home}”` : 'it belongs to'} can import into the vocabulary “${vocab?.name ?? vocab?.id}”.`,
+      home
+        ? t(
+            'Only a maintainer of the project “{home}” can import into the vocabulary “{vocabulary}”.',
+            {
+              home,
+              vocabulary,
+            },
+          )
+        : t(
+            'Only a maintainer of the project it belongs to can import into the vocabulary “{vocabulary}”.',
+            {
+              vocabulary,
+            },
+          ),
       { cause: err },
     );
   }

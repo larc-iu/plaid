@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { authService } from '../services/auth.js';
 import { humanizeError, signInError, statusOf } from '../lib/errors.js';
 import { AuthContext } from './useAuth.js';
+import { t } from '../lib/i18n.js';
 
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
@@ -47,8 +48,8 @@ export const AuthProvider = ({ children }) => {
         status: error.status,
         error:
           statusOf(error) === 404
-            ? 'This invitation link is not valid.'
-            : humanizeError(error, 'Failed to redeem this invite.'),
+            ? t('This invitation link is not valid.')
+            : humanizeError(error, t('Failed to redeem this invite.')),
       };
     }
   };

@@ -55,7 +55,7 @@ import { cpLength, cpSlice } from '@larc-iu/plaid-client';
 import { keepTimeRule } from '../../domain/alignmentTimes.js';
 import { nameKey, sameName } from '@ui/lib/nameKey.js';
 import { isolate } from '@ui/lib/bidi.js';
-import { countOf } from '../../../../plaid-ui/src/lib/plural.js';
+import { t } from '@ui/lib/i18n.js';
 
 // A value that is only punctuation (or symbols), as FLEx's punctuation is.
 const PUNCTUATION = /^[\p{P}\p{S}]+$/u;
@@ -296,18 +296,27 @@ function documentMedia(eaf, mediaByFile, mediaTracks, warnings) {
   const mixed = mixesTracks(chosen);
   if (listed.length >= 2 && chosen.length < listed.length) {
     const notChosen = listed.filter((t) => !t.file).map((t) => t.name);
+    const values = { n: notChosen.length, total: listed.length, names: notChosen.join(', ') };
     warnings.push(
-      `${notChosen.length} of the ${listed.length} recordings the file names ${
-        notChosen.length === 1 ? 'was' : 'were'
-      } not chosen (${notChosen.join(', ')}).${
-        mixed
-          ? ' The others are mixed into its recording.'
-          : chosen.length === 1
-            ? ' Its recording is the one chosen.'
-            : chosen.length
-              ? ''
-              : ' The document is imported without media.'
-      }`,
+      mixed
+        ? t(
+            '{n} of the {total} recordings the file names {n, plural, one {was} other {were}} not chosen ({names}). The others are mixed into its recording.',
+            values,
+          )
+        : chosen.length === 1
+          ? t(
+              '{n} of the {total} recordings the file names {n, plural, one {was} other {were}} not chosen ({names}). Its recording is the one chosen.',
+              values,
+            )
+          : chosen.length
+            ? t(
+                '{n} of the {total} recordings the file names {n, plural, one {was} other {were}} not chosen ({names}).',
+                values,
+              )
+            : t(
+                '{n} of the {total} recordings the file names {n, plural, one {was} other {were}} not chosen ({names}). The document is imported without media.',
+                values,
+              ),
     );
   }
   // A TIME_ORIGIN is the stretch of a file before ELAN's timeline starts:
@@ -323,7 +332,10 @@ function documentMedia(eaf, mediaByFile, mediaTracks, warnings) {
     const unused = chosen.filter((t) => t !== own);
     if (own && unused.length) {
       warnings.push(
-        `Its recording is ${own.name}. Not used: ${unused.map((t) => t.name).join(', ')}.`,
+        t('Its recording is {name}. Not used: {unused}.', {
+          name: own.name,
+          unused: unused.map((u) => u.name).join(', '),
+        }),
       );
     }
     return {
@@ -564,7 +576,10 @@ function batchWarnings(files, mediaByFile) {
   ].sort();
   if (annotators.length) {
     warnings.push(
-      `The .eaf files name an annotator on some tiers (${annotators.join(', ')}). ELAN records that per tier, which has no equivalent here, so it is not imported.`,
+      t(
+        'The .eaf files name an annotator on some tiers ({names}). ELAN records that per tier, which has no equivalent here, so it is not imported.',
+        { names: annotators.join(', ') },
+      ),
     );
   }
 
@@ -573,10 +588,14 @@ function batchWarnings(files, mediaByFile) {
   const unsupplied = files.filter((f) => f.media.length && !mediaByFile?.get(f.fileName));
   if (unsupplied.length) {
     warnings.push(
-      (files.length === 1
-        ? 'This file names a recording that was not chosen. The document is imported without media'
-        : `${unsupplied.length} of ${files.length} files name a recording that was not chosen. Those documents are imported without media`) +
-        ', which can be attached on the Media tab afterwards.',
+      files.length === 1
+        ? t(
+            'This file names a recording that was not chosen. The document is imported without media, which can be attached on the Media tab afterwards.',
+          )
+        : t(
+            '{n} of {total} files name a recording that was not chosen. Those documents are imported without media, which can be attached on the Media tab afterwards.',
+            { n: unsupplied.length, total: files.length },
+          ),
     );
   }
   return warnings;
@@ -594,7 +613,7 @@ function buildGroup(files, nodes, roles, options = {}) {
   const { byRole } = resolveMapping(nodes, roles);
 
   const utteranceNodes = byRole.get(ROLES.UTTERANCE) || [];
-  if (!utteranceNodes.length) throw new Error('No tier is mapped to the sentences.');
+  if (!utteranceNodes.length) throw new Error(t('No tier is mapped to the sentences.'));
   const alignmentNodes = byRole.get(ROLES.ALIGNMENT) || [];
   const wordNodes = byRole.get(ROLES.WORD) || [];
   const morphNodes = byRole.get(ROLES.MORPHEME) || [];
@@ -737,7 +756,10 @@ function buildGroup(files, nodes, roles, options = {}) {
       const found = childrenOn(ann, tier, [node]);
       if (found.length > 1) {
         docWarnings.push(
-          `${nodeLabel(node)} has ${found.length} annotations under one parent. The first is kept.`,
+          t('{tier} has {n} annotations under one parent. The first is kept.', {
+            tier: nodeLabel(node),
+            n: found.length,
+          }),
         );
       }
       return found[0]?.value?.trim() ?? '';
@@ -816,12 +838,18 @@ function buildGroup(files, nodes, roles, options = {}) {
     }
     if (blankUtterances) {
       docWarnings.push(
-        `Skipped ${countOf(blankUtterances, 'empty annotation')} on the utterance tier.`,
+        t(
+          'Skipped {n, plural, one {# empty annotation} other {# empty annotations}} on the utterance tier.',
+          { n: blankUtterances },
+        ),
       );
     }
     if (unplacedWords) {
       docWarnings.push(
-        `Skipped ${countOf(unplacedWords, 'empty word')} that ${unplacedWords === 1 ? 'is' : 'are'} not punctuation.`,
+        t(
+          'Skipped {n, plural, one {# empty word that is} other {# empty words that are}} not punctuation.',
+          { n: unplacedWords },
+        ),
       );
     }
 
@@ -934,7 +962,11 @@ function buildGroup(files, nodes, roles, options = {}) {
         });
         if (placed < segments.length) {
           docWarnings.push(
-            `Utterance ${si + 1}: ${segments.length - placed} of ${segments.length} time segments do not appear in its text.`,
+            t('Utterance {n}: {missing} of {total} time segments do not appear in its text.', {
+              n: si + 1,
+              missing: segments.length - placed,
+              total: segments.length,
+            }),
           );
         }
         // A segment tier that shares no text with the utterance (an independent
@@ -979,7 +1011,7 @@ function buildGroup(files, nodes, roles, options = {}) {
             : alignWords(body, piece.beginU16, piece.endU16, forms);
         wordSpans = aligned.spans;
         for (const w of aligned.warnings) {
-          docWarnings.push(`Utterance ${si + 1}: ${w}`);
+          docWarnings.push(t('Utterance {n}: {warning}', { n: si + 1, warning: w }));
         }
         // A Plaid word token is a RANGE over the baseline, not a form of its
         // own, and the matcher case-folds. So when the word tier spells a word
@@ -1003,7 +1035,14 @@ function buildGroup(files, nodes, roles, options = {}) {
           });
           if (respelled.length) {
             docWarnings.push(
-              `Utterance ${si + 1}: the word tier spells ${countOf(respelled.length, 'word')} differently from the text, and the text wins (${respelled.slice(0, 4).join(', ')}${respelled.length > 4 ? ', …' : ''}).`,
+              t(
+                'Utterance {n}: the word tier spells {words, plural, one {# word} other {# words}} differently from the text, and the text wins ({examples}).',
+                {
+                  n: si + 1,
+                  words: respelled.length,
+                  examples: `${respelled.slice(0, 4).join(', ')}${respelled.length > 4 ? ', …' : ''}`,
+                },
+              ),
             );
           }
         }
@@ -1103,7 +1142,9 @@ function buildGroup(files, nodes, roles, options = {}) {
       );
       if (times.length && times.every((ms) => ms % 1000 === 0)) {
         docWarnings.push(
-          'The file names no recording and its times all fall on whole seconds, so they are placeholders and no time alignment is imported.',
+          t(
+            'The file names no recording and its times all fall on whole seconds, so they are placeholders and no time alignment is imported.',
+          ),
         );
         alignments.length = 0;
       }

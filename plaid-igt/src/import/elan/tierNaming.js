@@ -32,8 +32,8 @@ const ITEM_WORDS = {
   txt: 'Text',
   msa: 'Morphosyntax',
   pos: 'POS',
-  cf: 'Citation Form',
-  hn: 'Homograph Number',
+  cf: 'Citation Form', // i18n-ignore: a field name, stored in the project
+  hn: 'Homograph Number', // i18n-ignore: a field name, stored in the project
   punct: 'Punctuation',
 };
 
@@ -54,17 +54,17 @@ const LEVEL_ITEM_NAMES = {
   phrase: {
     txt: 'Text',
     gls: 'Translation',
-    lit: 'Literal Translation',
+    lit: 'Literal Translation', // i18n-ignore: a field name, stored in the project
     note: 'Note',
-    segnum: 'Segment Number',
+    segnum: 'Segment Number', // i18n-ignore: a field name, stored in the project
   },
   word: { gls: 'Gloss', pos: 'POS', txt: 'Text', punct: 'Punctuation' },
   morph: {
     gls: 'Gloss',
     msa: 'POS',
-    cf: 'Citation Form',
-    hn: 'Homograph Number',
-    variantTypes: 'Variant Types',
+    cf: 'Citation Form', // i18n-ignore: a field name, stored in the project
+    hn: 'Homograph Number', // i18n-ignore: a field name, stored in the project
+    variantTypes: 'Variant Types', // i18n-ignore: a field name, stored in the project
     txt: 'Text',
     type: 'Type',
   },

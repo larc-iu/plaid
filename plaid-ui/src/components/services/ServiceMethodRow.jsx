@@ -2,11 +2,12 @@ import { Label } from '../ui/label.jsx';
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '../ui/select.jsx';
 import { ServiceSummary } from './ServiceSummary.jsx';
 import { ServiceParamForm } from './ServiceParamForm.jsx';
+import { t } from '../../lib/i18n.js';
 
 // A spot's method and its options: the one block every run dialog uses, and
 // the reason a built-in and a registered service look the same on screen.
 // "Method" rather than "Service" or "Algorithm" because the list holds both.
-export function ServiceMethodRow({ spot, disabled = false, label = 'Method', emptyHint }) {
+export function ServiceMethodRow({ spot, disabled = false, label = t('Method'), emptyHint }) {
   const { options, selection, choose, service, builtin, params, fields } = spot;
   // What the chosen method does, in a line. A service's longer summary stays
   // behind the info popover.
@@ -55,7 +56,7 @@ export function ServiceMethodRow({ spot, disabled = false, label = 'Method', emp
               disabled={disabled}
               className="self-start text-xs text-muted-foreground underline underline-offset-2 hover:text-foreground"
             >
-              Reset options
+              {t('Reset options')}
             </button>
           )}
         </>

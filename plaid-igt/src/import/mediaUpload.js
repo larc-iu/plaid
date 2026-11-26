@@ -6,6 +6,7 @@
 
 import { humanizeError, statusOf } from '@ui/lib/errors.js';
 import { formatBytes } from '../utils/formatBytes.js';
+import { t } from '@ui/lib/i18n.js';
 
 export async function mediaUploadFailure(client, err) {
   if (statusOf(err) !== 413) return humanizeError(err);
@@ -16,6 +17,6 @@ export async function mediaUploadFailure(client, err) {
     // The limit is only for the wording.
   }
   return max
-    ? `The recording is over the ${formatBytes(max)} limit.`
-    : 'The recording is over the size limit.';
+    ? t('The recording is over the {size} limit.', { size: formatBytes(max) })
+    : t('The recording is over the size limit.');
 }

@@ -27,7 +27,7 @@
 import { SaxesParser } from 'saxes';
 import { readAffixMarkers } from '../../domain/affixMarkers.js';
 import { pickEn } from './fwdataParser.js';
-import { countOf } from '../../../../plaid-ui/src/lib/plural.js';
+import { t } from '@ui/lib/i18n.js';
 
 const nfc = (s) => String(s ?? '').normalize('NFC');
 
@@ -38,7 +38,7 @@ function parseTree(xml) {
   const root = { tag: '#root', attrs: {}, children: [], text: '' };
   const stack = [root];
   parser.on('error', (e) => {
-    throw new Error(`not readable XML (${e.message})`);
+    throw new Error(t('not readable XML ({reason})', { reason: e.message }));
   });
   parser.on('opentag', (node) => {
     const n = { tag: node.name, attrs: node.attributes, children: [], text: '' };
@@ -185,16 +185,16 @@ function readMorph(m, census) {
     } else if (type === 'msa') {
       if (!v) continue;
       // Each writing system's name for the one category, as on words.
-      if (Object.keys(pos).length) census.skip('Parts of speech in another writing system');
+      if (Object.keys(pos).length) census.skip(t('Parts of speech in another writing system'));
       if (pos[lang] == null) {
         pos[lang] = v;
         census.use('pos', lang);
       }
     } else if (type === 'cf' || type === 'hn') lexical = true;
-    else if (type === 'variantTypes') census.skip('Variant Types');
-    else census.skip(`“${type}” on morphemes`);
+    else if (type === 'variantTypes') census.skip(t('Variant Types'));
+    else census.skip(t('“{type}” on morphemes', { type }));
   }
-  if (lexical) census.skip('Lex. Entries');
+  if (lexical) census.skip(t('Lex. Entries'));
   const { form, morphType } = readAffixMarkers(m.attrs.type, raw);
   return {
     morph: {
@@ -254,12 +254,12 @@ function readWord(w, census, vernaculars = []) {
       // name for the same FLEx category, so each is kept under its own tag
       // and the import reads whichever the review screen was set to. The
       // ones it leaves are counted as unread.
-      if (Object.keys(pos).length) census.skip('Parts of speech in another writing system');
+      if (Object.keys(pos).length) census.skip(t('Parts of speech in another writing system'));
       if (pos[lang] == null) {
         pos[lang] = v;
         census.use('pos', lang);
       }
-    } else census.skip(`“${type}” on words`);
+    } else census.skip(t('“{type}” on words', { type }));
   }
   if (!first) return null;
   // The word reads in the text's own baseline where it offers it, and in the
@@ -375,16 +375,16 @@ function readPhrase(ph, census, vernaculars = []) {
       }
       note[lang] = v;
     } else if (type === 'segnum') segnum = v;
-    else census.skip(`“${type}” on sentences`);
+    else census.skip(t('“{type}” on sentences', { type }));
   }
   if (ph.attrs['begin-time-offset'] != null || ph.attrs['end-time-offset'] != null) {
-    census.skip('Time alignment');
+    census.skip(t('Time alignment'));
   }
-  if (ph.attrs.speaker) census.skip('Speakers');
+  if (ph.attrs.speaker) census.skip(t('Speakers'));
 
   const wordsEl = kid(ph, 'words');
   const milestones = kids(wordsEl, 'scrMilestone').length;
-  if (milestones) census.skip('Chapter and verse numbers', milestones);
+  if (milestones) census.skip(t('Chapter and verse numbers'), milestones);
   const pieces = [];
   const analyses = [];
   let empty = 0;
@@ -441,7 +441,9 @@ function readText(it, census, warnings, fileLabel, vernaculars = []) {
   for (const item of items) {
     const type = item.attrs.type;
     if (known.has(type) || SILENT_TEXT_ITEMS.has(type)) continue;
-    census.skip(type === 'notebook-record' ? 'Notebook records' : `“${type}” on texts`);
+    census.skip(
+      type === 'notebook-record' ? t('Notebook records') : t('“{type}” on texts', { type }),
+    );
   }
   // FLEx names a genre once per writing system, so reading every item made a
   // genre per language rather than per genre ("Narrative" and "Récit" as two).
@@ -452,7 +454,7 @@ function readText(it, census, warnings, fileLabel, vernaculars = []) {
     .filter((i) => (i.attrs.lang ?? null) === genreLang)
     .map((i) => valueOf(i).trim());
   const media = kids(kid(it, 'media-files'), 'media').length;
-  if (media) census.skip('Media files', media);
+  if (media) census.skip(t('Media files'), media);
 
   const paragraphs = [];
   let sentence = 0;
@@ -462,14 +464,24 @@ function readText(it, census, warnings, fileLabel, vernaculars = []) {
     for (const ph of kids(kid(p, 'phrases'), 'phrase')) {
       sentence += 1;
       const r = readPhrase(ph, census, vernaculars);
-      const where = `sentence ${r.segnum || sentence}`;
+      const where = r.segnum || sentence;
       if (r.empty) {
-        warnings.push(`${label}: ${countOf(r.empty, 'word')} with no text left out of ${where}`);
+        warnings.push(
+          t(
+            '{label}: {n, plural, one {# word} other {# words}} with no text left out of sentence {sentence}',
+            { label, n: r.empty, sentence: where },
+          ),
+        );
       }
       if (!r.text) {
         const { freeTranslation, literalTranslation, notes } = r.segment;
         if (freeTranslation || literalTranslation || notes.length) {
-          warnings.push(`${label}: ${where} has no text and was left out with its translation`);
+          warnings.push(
+            t('{label}: sentence {sentence} has no text and was left out with its translation', {
+              label,
+              sentence: where,
+            }),
+          );
         }
         continue;
       }
@@ -499,7 +511,7 @@ function readText(it, census, warnings, fileLabel, vernaculars = []) {
 export function parseFlextext(xml, fileName = '', census = makeCensus()) {
   const root = parseTree(xml);
   const doc = kid(root, 'document');
-  if (!doc) throw new Error('not a .flextext (no <document> element)');
+  if (!doc) throw new Error(t('not a .flextext (no {element} element)', { element: '<document>' }));
   const warnings = [];
   const languages = [];
   const texts = kids(doc, 'interlinear-text').map((it, i, all) => {
@@ -514,7 +526,7 @@ export function parseFlextext(xml, fileName = '', census = makeCensus()) {
         if (vernacular) vernaculars.push(l.attrs.lang);
       }
     }
-    const label = all.length > 1 ? `${fileName} (text ${i + 1})` : fileName;
+    const label = all.length > 1 ? t('{file} (text {n})', { file: fileName, n: i + 1 }) : fileName;
     return {
       guid: it.attrs.guid ?? null,
       ...readText(it, census, warnings, label, vernaculars),
@@ -556,7 +568,7 @@ export function parseFlextextFiles(files) {
     try {
       parsed = parseFlextext(file.xml, file.name, census);
     } catch (e) {
-      throw new Error(`${file.name}: ${e.message}`, { cause: e });
+      throw new Error(t('{file}: {reason}', { file: file.name, reason: e.message }), { cause: e });
     }
     warnings.push(...parsed.warnings);
     for (const l of parsed.languages) {
@@ -602,9 +614,11 @@ export function parseFlextextFiles(files) {
   // The file read is named, and whether the copies differ (H2-13-2).
   for (const { names, fallbackName, files, differ } of twice) {
     const name = names?.[vernacular[0]] ?? pickEn(names) ?? fallbackName;
+    const values = { name, first: files[0], second: files[1] };
     warnings.push(
-      `“${name}” is in both ${files[0]} and ${files[1]}${differ ? ', which differ' : ''}. ` +
-        `Read from ${files[0]}.`,
+      differ
+        ? t('“{name}” is in both {first} and {second}, which differ. Read from {first}.', values)
+        : t('“{name}” is in both {first} and {second}. Read from {first}.', values),
     );
   }
   // Analysis writing systems, the most used first: the first is the one a

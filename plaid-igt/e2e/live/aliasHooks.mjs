@@ -10,6 +10,11 @@ const PREFIXES = [
   ['@/', 'plaid-igt/src/'],
 ];
 
+const UI_SRC = new URL('plaid-ui/src/', REPO).href;
+const APP_ENTRY = new URL('plaid-igt/src/main.jsx', REPO).href;
+// Not a path, a URL or a node builtin.
+const BARE = /^(?![./]|node:|file:|data:)/;
+
 // Vite resolves an extensionless import and an index file; node does neither.
 // App code is written against Vite, so both turn up behind these aliases.
 const withExtension = (url) => {
@@ -35,6 +40,12 @@ export async function resolve(specifier, context, nextResolve) {
       const target = new URL(dir + specifier.slice(alias.length), REPO).href;
       return nextResolve(withExtension(target), context);
     }
+  }
+  // A package the shared code imports by name (i18next under lib/i18n.js) is
+  // installed in the app, not beside the shared code, as plaid-ui/vite.js
+  // arranges for a build. So it is looked up as though the app had asked.
+  if (BARE.test(specifier) && context.parentURL?.startsWith(UI_SRC)) {
+    return nextResolve(specifier, { ...context, parentURL: APP_ENTRY });
   }
   return nextResolve(specifier, context);
 }

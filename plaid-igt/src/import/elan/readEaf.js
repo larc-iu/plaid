@@ -22,6 +22,7 @@
 
 import { SaxesParser } from 'saxes';
 import { ELAN_FIELD_NAMES_PROPERTY, readElanFieldNames } from '../../domain/elanFieldNames.js';
+import { t } from '@ui/lib/i18n.js';
 
 export class EafError extends Error {
   constructor(message) {
@@ -104,7 +105,9 @@ export function readEaf(xmlText, fileName = 'file.eaf') {
   };
 
   parser.on('error', (err) => {
-    throw new EafError(`${fileName} is not well-formed XML: ${err.message}`);
+    throw new EafError(
+      t('{file} is not well-formed XML: {reason}', { file: fileName, reason: err.message }),
+    );
   });
 
   parser.on('opentag', (node) => {
@@ -215,10 +218,14 @@ export function readEaf(xmlText, fileName = 'file.eaf') {
     parser.write(xmlText).close();
   } catch (err) {
     if (err instanceof EafError) throw err;
-    throw new EafError(`${fileName} could not be parsed: ${err?.message ?? err}`);
+    throw new EafError(
+      t('{file} could not be parsed: {reason}', { file: fileName, reason: err?.message ?? err }),
+    );
   }
   if (!sawRoot) {
-    throw new EafError(`${fileName} is not an ELAN file (no ANNOTATION_DOCUMENT element).`);
+    throw new EafError(
+      t('{file} is not an ELAN file (no ANNOTATION_DOCUMENT element).', { file: fileName }),
+    );
   }
 
   // Our own exporter names the second tier of a field name for its scope
@@ -259,7 +266,7 @@ export function readEaf(xmlText, fileName = 'file.eaf') {
     fileName,
     // Our own exporter records the original document name; otherwise the
     // filename is the only name an .eaf carries.
-    documentName: properties.documentName || stem || 'Imported text',
+    documentName: properties.documentName || stem || 'Imported text', // i18n-ignore: a document name, stored
     properties,
     media,
     linguisticTypes,

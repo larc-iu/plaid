@@ -21,6 +21,7 @@ import {
 } from '../project.js';
 import { createEntriesOnce, mergeFieldSchema, placeSenses } from '../lexicon.js';
 import { sameName } from '@ui/lib/nameKey.js';
+import { msg, t } from '@ui/lib/i18n.js';
 
 // The entry keys the importer itself fills from CLDF's own columns, and the
 // role each holds. Any other column becomes a field without one.
@@ -197,13 +198,13 @@ export async function importLexicon({ client, vocabId, lexicon, onProgress, shou
 // The steps one document goes through, in order, so progress can report how
 // far into a document it is and not just which document.
 const DOCUMENT_STEPS = [
-  'Creating document',
-  'Creating text',
-  'Creating sentences',
-  'Creating words',
-  'Creating morphemes',
-  'Creating annotations',
-  'Uploading media',
+  msg('Creating document'),
+  msg('Creating text'),
+  msg('Creating sentences'),
+  msg('Creating words'),
+  msg('Creating morphemes'),
+  msg('Creating annotations'),
+  msg('Uploading media'),
 ];
 
 /** Import one document: text, sentence partition, words, morphemes, spans. */
@@ -269,6 +270,7 @@ async function importDocument({
  * operation in the audit log; each write keeps its own description underneath.
  */
 export async function runCldfImport(args) {
+  // i18n-ignore: an audit label, stored on the server
   return args.client.withOperation('Import CLDF dataset', () => runCldfImportImpl(args), {
     kind: 'import',
     ref: 'format:cldf',
@@ -297,7 +299,9 @@ async function runCldfImportImpl({ client, projectId, build, onProgress, shouldS
           : vocabs.find((v) => sameName(v.name, name));
       if (!vocab) {
         warnings.push(
-          `No project vocabulary named "${name}" was created, so its entries were skipped.`,
+          t('No project vocabulary named "{name}" was created, so its entries were skipped.', {
+            name,
+          }),
         );
         continue;
       }
@@ -320,7 +324,7 @@ async function runCldfImportImpl({ client, projectId, build, onProgress, shouldS
       doc: doc.name,
       index: i,
       total: build.documents.length,
-      step: 'Starting',
+      step: msg('Starting'),
     });
     await importDocument({
       client,

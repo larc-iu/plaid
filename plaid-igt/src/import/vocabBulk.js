@@ -30,6 +30,7 @@ import { FLEX_MORPH_TYPES } from '../domain/affixMarkers.js';
 import { entryTagsetFor, isValueAllowed, tagsetEnforces } from '../domain/tagsets.js';
 import { buildItemNumbers, buildSenseTree, morphTypeOf } from '../domain/vocabDictionary.js';
 import { parseDelimited } from '@ui/lib/delimited.js';
+import { t } from '@ui/lib/i18n.js';
 import { tsvCell } from '../export/vocabTsv.js';
 
 /** Mapping sentinels: a column becomes the item's form, or is left out. */
@@ -799,7 +800,7 @@ export const planVocabImport = ({
 
     if (!norm(entry.form)) {
       counts.blank += 1;
-      record(entry, { form: '', kind: 'blank', action: 'skip', detail: 'no form' });
+      record(entry, { form: '', kind: 'blank', action: 'skip', detail: t('no form') });
       continue;
     }
 
@@ -807,7 +808,7 @@ export const planVocabImport = ({
 
     if (!candidates.length) {
       counts.new += 1;
-      createFrom(entry, fields, 'new', 'new entry');
+      createFrom(entry, fields, 'new', t('new entry'));
       continue;
     }
 
@@ -823,7 +824,7 @@ export const planVocabImport = ({
         targetForm: same.form,
         candidates: candidates.length,
         matches: candidates.map((c) => snapshot(c, c === same)),
-        detail: 'already present',
+        detail: t('already present'),
       });
       continue;
     }
@@ -870,12 +871,16 @@ export const planVocabImport = ({
         record(entry, {
           ...base,
           action: 'skip',
-          detail: 'the entry chosen disagrees with this row',
+          detail: t('the entry chosen disagrees with this row'),
         });
         continue;
       }
       if (onePolicy !== ENRICH_FILL) {
-        record(entry, { ...base, action: 'skip', detail: `could add ${added}` });
+        record(entry, {
+          ...base,
+          action: 'skip',
+          detail: t('could add {fields}', { fields: added }),
+        });
         continue;
       }
       Object.assign(target.values, patch);
@@ -888,7 +893,10 @@ export const planVocabImport = ({
       } else {
         addUpdate(target.id, patch);
       }
-      wrote.push([record(entry, { ...base, action: 'update', detail: `adds ${added}` }), target]);
+      wrote.push([
+        record(entry, { ...base, action: 'update', detail: t('adds {fields}', { fields: added }) }),
+        target,
+      ]);
       continue;
     }
 
@@ -924,24 +932,31 @@ export const planVocabImport = ({
         record(entry, {
           ...base,
           action: 'skip',
-          detail: 'the entry chosen disagrees with this row',
+          detail: t('the entry chosen disagrees with this row'),
         });
         continue;
       }
       if (enrichPolicy !== ENRICH_FILL) {
-        record(entry, { ...base, action: 'skip', detail: `could add ${added}` });
+        record(entry, {
+          ...base,
+          action: 'skip',
+          detail: t('could add {fields}', { fields: added }),
+        });
         continue;
       }
       Object.assign(target.values, patch);
       if (target.id == null) Object.assign(target.pending.metadata, patch);
       else addUpdate(target.id, patch);
-      wrote.push([record(entry, { ...base, action: 'update', detail: `adds ${added}` }), target]);
+      wrote.push([
+        record(entry, { ...base, action: 'update', detail: t('adds {fields}', { fields: added }) }),
+        target,
+      ]);
       continue;
     }
 
     if (compatible.length > 1) {
       counts.ambiguous += 1;
-      const detail = `${compatible.length} entries share this form`;
+      const sharing = { n: compatible.length };
       const { policy, index } = answerFor('ambiguous', entry.line, candidates);
       // A reviewer looking at the entries can often tell which one the row
       // describes, so a targeted answer names it. Only a compatible candidate
@@ -961,7 +976,7 @@ export const planVocabImport = ({
           candidates: candidates.length,
           matches: candidates.map((c) => snapshot(c, c === chosen, compatible.includes(c))),
           changes,
-          detail: `adds ${changes.map((c) => c.field).join(', ')}`,
+          detail: t('adds {fields}', { fields: changes.map((c) => c.field).join(', ') }),
         });
         wrote.push([decision, chosen]);
         continue;
@@ -971,14 +986,20 @@ export const planVocabImport = ({
         matches: candidates.map((c) => snapshot(c, false, compatible.includes(c))),
       };
       if (policy === AMBIGUOUS_NEW) {
-        createFrom(entry, fields, 'ambiguous', `${detail}, so added separately`, extra);
+        createFrom(
+          entry,
+          fields,
+          'ambiguous',
+          t('{n} entries share this form, so added separately', sharing),
+          extra,
+        );
       } else {
         record(entry, {
           ...extra,
           kind: 'ambiguous',
           action: 'skip',
           changes: additions(entry, fields),
-          detail,
+          detail: t('{n} entries share this form', sharing),
         });
       }
       continue;
@@ -1016,12 +1037,18 @@ export const planVocabImport = ({
     };
 
     if (mode === CONFLICT_NEW) {
-      createFrom(entry, fields, 'conflict', `differs on ${clashed}, so added separately`, {
-        targetId: first.id,
-        targetForm: first.form,
-        candidates: candidates.length,
-        matches: candidates.map((c) => snapshot(c, false)),
-      });
+      createFrom(
+        entry,
+        fields,
+        'conflict',
+        t('differs on {fields}, so added separately', { fields: clashed }),
+        {
+          targetId: first.id,
+          targetForm: first.form,
+          candidates: candidates.length,
+          matches: candidates.map((c) => snapshot(c, false)),
+        },
+      );
       continue;
     }
     if (mode === CONFLICT_OVERWRITE && (candidates.length === 1 || chosenIndex != null)) {
@@ -1037,7 +1064,11 @@ export const planVocabImport = ({
         addUpdate(first.id, patch);
       }
       wrote.push([
-        record(entry, { ...base, action: 'update', detail: `replaces ${replaced}` }),
+        record(entry, {
+          ...base,
+          action: 'update',
+          detail: t('replaces {fields}', { fields: replaced }),
+        }),
         first,
       ]);
       continue;
@@ -1049,8 +1080,10 @@ export const planVocabImport = ({
       action: 'skip',
       detail:
         mode === CONFLICT_OVERWRITE
-          ? `${candidates.length} entries share this form, so there is nothing single to replace`
-          : `differs on ${clashed}`,
+          ? t('{n} entries share this form, so there is nothing single to replace', {
+              n: candidates.length,
+            })
+          : t('differs on {fields}', { fields: clashed }),
     });
   }
 
@@ -1061,14 +1094,15 @@ export const planVocabImport = ({
   // not judged, only what this import writes.
   if (refuses) {
     const tree = buildSenseTree(existingItems);
-    for (const [d, t] of wrote) {
-      const out = t.id == null ? t.pending.metadata : updates.get(t.id);
-      const morphType = t.values.morphType || (t.id != null ? morphTypeOf(tree, t.id) : null);
+    for (const [d, target] of wrote) {
+      const out = target.id == null ? target.pending.metadata : updates.get(target.id);
+      const morphType =
+        target.values.morphType || (target.id != null ? morphTypeOf(tree, target.id) : null);
       const bad = d.changes.filter(
         (c) =>
           c.field !== 'morphType' &&
           norm(out?.[c.field]) === norm(c.to) &&
-          refuses(c.field, c.to, { morphType, form: t.form }),
+          refuses(c.field, c.to, { morphType, form: target.form }),
       );
       if (!bad.length) continue;
       for (const c of bad) delete out[c.field];
@@ -1078,8 +1112,11 @@ export const planVocabImport = ({
       const left = d.changes.map((c) => c.field).join(', ');
       if (!left) {
         d.action = 'skip';
-        d.detail = `${bad.map((c) => c.field).join(', ')} not accepted`;
-      } else d.detail = `${d.detail.startsWith('replaces ') ? 'replaces' : 'adds'} ${left}`;
+        d.detail = t('{fields} not accepted', { fields: bad.map((c) => c.field).join(', ') });
+        // An update that replaces is a conflict overwritten, and one that adds
+        // is any other.
+      } else if (d.kind === 'conflict') d.detail = t('replaces {fields}', { fields: left });
+      else d.detail = t('adds {fields}', { fields: left });
     }
   }
 
@@ -1124,7 +1161,7 @@ export const serializeImportReport = (decisions) => {
     if (d.action === 'update') return d.kind === 'conflict' ? 'Replaced' : 'Expanded';
     return 'Skipped';
   };
-  const lines = ['Line\tForm\tOutcome\tWhy\tValues'];
+  const lines = ['Line\tForm\tOutcome\tWhy\tValues']; // i18n-ignore: column headers of a file
   for (const d of decisions) {
     lines.push(
       [d.line, d.form, outcome(d), d.detail, (d.changes || []).map(describeChange).join(' · ')]

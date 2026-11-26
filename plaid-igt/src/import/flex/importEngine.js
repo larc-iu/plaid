@@ -38,6 +38,7 @@ import {
 } from '../lexicon.js';
 import { FIELD_SCOPES, FIELD_TYPES } from '../../domain/vocabFields.js';
 import { pickEn } from './fwdataParser.js';
+import { msg, t } from '@ui/lib/i18n.js';
 
 // Everything a word carries comes out of ONE WfiAnalysis: its gloss, its
 // category, and the morph bundles the segmentation is built from. FLEx records
@@ -178,6 +179,7 @@ export function deriveImportConfig(ir, build, opts = {}) {
     perWs.push({ kind: 'morphPos', scope: 'Morpheme', ws: posWs, name: 'POS' });
   }
   addField('freeTranslation', 'Sentence', 'Translation', ir.wsUsage.freeTranslation);
+  // i18n-ignore: a field name, stored in the project
   addField('literalTranslation', 'Sentence', 'Literal Translation', ir.wsUsage.literalTranslation);
   addField('note', 'Sentence', 'Note', ir.wsUsage.note);
   // Every field carries its tag once the import makes fields in more than one
@@ -604,7 +606,7 @@ const NOTEBOOK_FIELDS = [
   'Sources',
   'Participants',
   'Locations',
-  'Anthropology Categories',
+  'Anthropology Categories', // i18n-ignore: a metadata field name, stored in the project
 ];
 
 /**
@@ -646,6 +648,7 @@ function documentMetadataOf(doc) {
     if (nb.sources.length) md.Sources = nb.sources.join(', ');
     if (nb.participants.length) md.Participants = participantsText(nb.participants);
     if (nb.locations.length) md.Locations = nb.locations.join(', ');
+    // i18n-ignore: a metadata field name, stored in the project
     if (nb.anthroCodes.length) md['Anthropology Categories'] = nb.anthroCodes.join(', ');
   }
   return md;
@@ -653,15 +656,15 @@ function documentMetadataOf(doc) {
 // The steps one document goes through, in order, so progress can report how
 // far into a document it is and not just which document.
 const DOCUMENT_STEPS = [
-  'Creating document',
-  'Creating text',
-  'Creating sentences',
-  'Creating words',
-  'Creating morphemes',
-  'Creating annotations',
-  'Linking lexicon',
-  'Creating time alignment',
-  'Uploading media',
+  msg('Creating document'),
+  msg('Creating text'),
+  msg('Creating sentences'),
+  msg('Creating words'),
+  msg('Creating morphemes'),
+  msg('Creating annotations'),
+  msg('Linking lexicon'),
+  msg('Creating time alignment'),
+  msg('Uploading media'),
 ];
 
 /** Import one document end to end. Assumes it does not exist yet. */
@@ -772,7 +775,7 @@ async function importDocument({
     // (never confirmed by the user) keep the unconfirmed-inferred shape, so
     // they render in the needs-review style and confirm-on-touch applies.
     // An import with no lexicon (a .flextext) has nothing to link.
-    if (senseToItem.size) progress('Linking lexicon');
+    if (senseToItem.size) progress(msg('Linking lexicon'));
     const links = doc.words.flatMap((w, wi) =>
       (w.morphemes || []).flatMap((m, mi) => {
         const itemId = m.senseGuid && senseToItem.get(m.senseGuid);
@@ -806,7 +809,10 @@ async function importDocument({
     });
     if (!aligned) {
       warnings?.push(
-        `"${doc.name}": ${doc.alignments.length} timed sentences were left untimed. This project is not set up for time alignment.`,
+        t(
+          '"{name}": {n} timed sentences were left untimed. This project is not set up for time alignment.',
+          { name: doc.name, n: doc.alignments.length },
+        ),
       );
     }
   }
@@ -837,7 +843,7 @@ async function importDocument({
 // `vocabId` imports the texts alone (a .flextext has no lexicon), and then
 // `lexicon` is not read.
 export async function runImport({
-  operation = 'Import FLEx project',
+  operation = 'Import FLEx project', // i18n-ignore: an audit label, stored on the server
   format = 'fwbackup',
   ...args
 }) {
@@ -898,7 +904,7 @@ async function runImportImpl({
       doc: doc.name,
       index: i,
       total: build.documents.length,
-      step: 'Starting',
+      step: msg('Starting'),
     });
     await importDocument({
       client,

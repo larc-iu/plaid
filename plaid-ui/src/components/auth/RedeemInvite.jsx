@@ -14,25 +14,28 @@ import { Label } from '../ui/label';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '../ui/card';
 import { Loading } from '../shared/Loading.jsx';
 import { TYPE } from '../../lib/typeScale.js';
+import { t, tx, msg } from '../../lib/i18n.js';
 
 // Why a code can be dead, in the words the holder needs. The server sends the
 // status because the holder already has the code: there is nothing left to
 // withhold, and "invalid" alone leaves them with no idea what to do next.
 const DEAD_STATUS_MESSAGE = {
-  used: 'This invite has already been used. Ask whoever sent it for a new link.',
-  expired: 'This invite has expired. Ask whoever sent it for a new link.',
-  revoked: 'This invite has been revoked. Ask whoever sent it for a new link.',
+  used: msg('This invite has already been used. Ask whoever sent it for a new link.'),
+  expired: msg('This invite has expired. Ask whoever sent it for a new link.'),
+  revoked: msg('This invite has been revoked. Ask whoever sent it for a new link.'),
   // Its creator lost the access it grants, so they are the wrong person to ask.
   inactive: (preview) =>
     preview.projectName
-      ? `This invite no longer works. Ask a maintainer of ${preview.projectName} for a new link.`
-      : 'This invite no longer works. Ask an administrator for a new link.',
+      ? t('This invite no longer works. Ask a maintainer of {project} for a new link.', {
+          project: preview.projectName,
+        })
+      : t('This invite no longer works. Ask an administrator for a new link.'),
 };
 
 const deadMessageFor = (preview) => {
   if (!preview || preview.status === 'active') return null;
   const message = DEAD_STATUS_MESSAGE[preview.status];
-  return typeof message === 'function' ? message(preview) : message;
+  return typeof message === 'function' ? message(preview) : message && t(message);
 };
 
 /**
@@ -68,7 +71,7 @@ export const RedeemInvite = ({ loginPath, homePath, projectPath }) => {
   // makes an administrator is for a new account only.
   const joinable = !isReset && !!preview?.projectName && !preview?.grantAdmin;
   const [joining, setJoining] = useState(false);
-  useDocumentTitle(isReset ? 'Set a new password' : 'Accept invitation');
+  useDocumentTitle(isReset ? t('Set a new password') : t('Accept invitation'));
 
   useEffect(() => {
     let cancelled = false;
@@ -80,8 +83,8 @@ export const RedeemInvite = ({ loginPath, homePath, projectPath }) => {
         if (!cancelled) {
           setLookupError(
             err.status === 404
-              ? 'That invite link is not valid. Check that you copied the whole link.'
-              : 'Failed to check this invite link. Try again in a moment.',
+              ? t('That invite link is not valid. Check that you copied the whole link.')
+              : t('Failed to check this invite link. Try again in a moment.'),
           );
         }
       } finally {
@@ -100,7 +103,7 @@ export const RedeemInvite = ({ loginPath, homePath, projectPath }) => {
     if (!isReset && !isEmail(email)) return setError(EMAIL_INVALID_MESSAGE);
     const tooShort = passwordTooShort(password, passwordMinimum);
     if (tooShort) return setError(tooShort);
-    if (password !== confirm) return setError('Passwords do not match');
+    if (password !== confirm) return setError(t('Passwords do not match'));
 
     setSubmitting(true);
     const result = await redeemInvite(code, {
@@ -113,8 +116,8 @@ export const RedeemInvite = ({ loginPath, homePath, projectPath }) => {
 
     if (result.success) {
       notifySuccess(
-        isReset ? 'Your password has been changed.' : 'Your account is ready.',
-        'Welcome',
+        isReset ? t('Your password has been changed.') : t('Your account is ready.'),
+        t('Welcome'),
       );
       navigate(result.projectId && projectPath ? projectPath(result.projectId) : homePath);
       return;
@@ -124,9 +127,11 @@ export const RedeemInvite = ({ loginPath, homePath, projectPath }) => {
     setError(
       result.status === 409
         ? joinable
-          ? `An account already exists for that email address. Sign in to join ${preview.projectName}.`
-          : 'An account already exists for that email address.'
-        : result.error || 'Failed to redeem this invite.',
+          ? t('An account already exists for that email address. Sign in to join {project}.', {
+              project: preview.projectName,
+            })
+          : t('An account already exists for that email address.')
+        : result.error || t('Failed to redeem this invite.'),
     );
   };
 
@@ -138,14 +143,20 @@ export const RedeemInvite = ({ loginPath, homePath, projectPath }) => {
     try {
       const joined = await client.invites.accept(code);
       if (joined.joined) {
-        notifySuccess(`Joined ${preview.projectName} as a ${joined.projectRole}.`, 'Welcome');
+        notifySuccess(
+          t(
+            'Joined {project} as {role, select, reader {a reader} writer {a writer} maintainer {a maintainer} other {a {role}}}.',
+            { project: preview.projectName, role: joined.projectRole },
+          ),
+          t('Welcome'),
+        );
       }
       // The invite page leaves the history, so Back does not land on it.
       navigate(projectPath ? projectPath(joined.projectId) : homePath, { replace: true });
     } catch (err) {
       const status = err?.responseData?.status;
       if (statusOf(err) === 410 && status) setPreview((pv) => ({ ...pv, status }));
-      else setError(humanizeError(err, 'Failed to join the project.'));
+      else setError(humanizeError(err, t('Failed to join the project.')));
       setJoining(false);
     }
   };
@@ -165,19 +176,22 @@ export const RedeemInvite = ({ loginPath, homePath, projectPath }) => {
   const deadMessage = deadMessageFor(preview);
 
   const subtitle = loading
-    ? 'Checking your invite…'
+    ? t('Checking your invite…')
     : isReset
-      ? `Choose a new password for ${preview.email}.`
+      ? t('Choose a new password for {email}.', { email: preview.email })
       : preview?.projectName
-        ? `You have been invited to join ${preview.projectName} as a ${preview.projectRole}.`
-        : 'Choose an email address and password.';
+        ? t(
+            'You have been invited to join {project} as {role, select, reader {a reader} writer {a writer} maintainer {a maintainer} other {a {role}}}.',
+            { project: preview.projectName, role: preview.projectRole },
+          )
+        : t('Choose an email address and password.');
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-muted/40 p-4">
       <Card className="w-full max-w-sm">
         <CardHeader className="items-center text-center">
           <CardTitle className={TYPE.page}>
-            {isReset ? 'Set a new password' : 'Accept your invitation'}
+            {isReset ? t('Set a new password') : t('Accept your invitation')}
           </CardTitle>
           <CardDescription>{subtitle}</CardDescription>
         </CardHeader>
@@ -194,9 +208,9 @@ export const RedeemInvite = ({ loginPath, homePath, projectPath }) => {
               </div>
               <Button asChild variant="outline" className="w-full">
                 {user ? (
-                  <Link to={homePath}>Open {appName()}</Link>
+                  <Link to={homePath}>{t('Open {app}', { app: appName() })}</Link>
                 ) : (
-                  <Link to={loginPath}>Go to sign in</Link>
+                  <Link to={loginPath}>{t('Go to sign in')}</Link>
                 )}
               </Button>
             </div>
@@ -211,10 +225,13 @@ export const RedeemInvite = ({ loginPath, homePath, projectPath }) => {
                 </div>
               )}
               <p className="text-sm text-muted-foreground">
-                Signed in as <strong>{user.displayName}</strong>.
+                {tx('Signed in as <strong>{name}</strong>.', {
+                  name: user.displayName,
+                  strong: (c) => <strong>{c}</strong>,
+                })}
               </p>
               <Button onClick={join} disabled={joining} className="w-full">
-                {joining ? 'Joining…' : `Join ${preview.projectName}`}
+                {joining ? t('Joining…') : t('Join {project}', { project: preview.projectName })}
               </Button>
             </div>
           ) : (
@@ -235,30 +252,35 @@ export const RedeemInvite = ({ loginPath, homePath, projectPath }) => {
                   here signed in. */}
               {user && (
                 <p className="rounded-md border bg-muted/50 px-3 py-2 text-xs text-muted-foreground">
-                  You are signed in as <strong>{user.displayName}</strong>.{' '}
                   {isReset
-                    ? 'Setting this password will sign you out of that account.'
-                    : 'Accepting this invitation creates a separate account and signs you out of that one.'}
+                    ? tx(
+                        'You are signed in as <strong>{name}</strong>. Setting this password will sign you out of that account.',
+                        { name: user.displayName, strong: (c) => <strong>{c}</strong> },
+                      )
+                    : tx(
+                        'You are signed in as <strong>{name}</strong>. Accepting this invitation creates a separate account and signs you out of that one.',
+                        { name: user.displayName, strong: (c) => <strong>{c}</strong> },
+                      )}
                 </p>
               )}
 
               {preview?.grantAdmin && (
                 <p className="rounded-md border bg-muted/50 px-3 py-2 text-xs text-muted-foreground">
-                  This invitation grants administrator privileges.
+                  {t('This invitation grants administrator privileges.')}
                 </p>
               )}
 
               {!isReset && (
                 <>
                   <div className="flex flex-col gap-1.5">
-                    <Label htmlFor="invite-email">Your email address</Label>
+                    <Label htmlFor="invite-email">{t('Your email address')}</Label>
                     <Input
                       id="invite-email"
                       type="text"
                       inputMode="email"
                       autoCapitalize="none"
                       spellCheck={false}
-                      placeholder="e.g. jsmith@example.com"
+                      placeholder={t('e.g. {address}', { address: 'jsmith@example.com' })}
                       value={email}
                       onChange={(e) => setEmail(e.target.value)}
                       disabled={submitting}
@@ -266,15 +288,15 @@ export const RedeemInvite = ({ loginPath, homePath, projectPath }) => {
                       autoFocus
                     />
                     <p className="text-xs text-muted-foreground">
-                      Your sign-in address. It cannot be changed later.
+                      {t('Your sign-in address. It cannot be changed later.')}
                     </p>
                   </div>
 
                   <div className="flex flex-col gap-1.5">
-                    <Label htmlFor="invite-display-name">Your name (optional)</Label>
+                    <Label htmlFor="invite-display-name">{t('Your name (optional)')}</Label>
                     <Input
                       id="invite-display-name"
-                      placeholder="How you appear to your collaborators"
+                      placeholder={t('How you appear to your collaborators')}
                       value={displayName}
                       onChange={(e) => setDisplayName(e.target.value)}
                       disabled={submitting}
@@ -286,7 +308,7 @@ export const RedeemInvite = ({ loginPath, homePath, projectPath }) => {
 
               <div className="flex flex-col gap-1.5">
                 <Label htmlFor="invite-password">
-                  {isReset ? 'New password' : 'Choose a password'}
+                  {isReset ? t('New password') : t('Choose a password')}
                 </Label>
                 <Input
                   id="invite-password"
@@ -299,13 +321,15 @@ export const RedeemInvite = ({ loginPath, homePath, projectPath }) => {
                 />
                 {passwordMinimum && (
                   <p className="text-xs text-muted-foreground">
-                    At least {passwordMinimum} characters.
+                    {t('At least {n, plural, one {# character} other {# characters}}.', {
+                      n: passwordMinimum,
+                    })}
                   </p>
                 )}
               </div>
 
               <div className="flex flex-col gap-1.5">
-                <Label htmlFor="invite-confirm">Confirm password</Label>
+                <Label htmlFor="invite-confirm">{t('Confirm password')}</Label>
                 <Input
                   id="invite-confirm"
                   type="password"
@@ -318,16 +342,16 @@ export const RedeemInvite = ({ loginPath, homePath, projectPath }) => {
 
               <Button type="submit" disabled={submitting} className="mt-2 w-full">
                 {submitting
-                  ? 'Setting up…'
+                  ? t('Setting up…')
                   : isReset
-                    ? 'Set password and sign in'
-                    : 'Create account'}
+                    ? t('Set password and sign in')
+                    : t('Create account')}
               </Button>
 
               {joinable && (
                 <Button asChild variant="outline" className="w-full">
                   <Link to={loginPath} state={{ from: `/invite/${code}` }}>
-                    Sign in to join {preview.projectName}
+                    {t('Sign in to join {project}', { project: preview.projectName })}
                   </Link>
                 </Button>
               )}

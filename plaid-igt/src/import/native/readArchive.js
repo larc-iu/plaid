@@ -4,6 +4,7 @@
 import { unzipSync } from 'fflate';
 import { composeText } from '@larc-iu/plaid-client';
 import { decodeText, NotUtf8FileError } from '@ui/lib/textFile.js';
+import { t } from '@ui/lib/i18n.js';
 
 export class ArchiveError extends Error {
   constructor(message) {
@@ -68,24 +69,25 @@ export function readNativeArchive(bytes) {
   try {
     entries = unzipSync(bytes);
   } catch {
-    throw new ArchiveError('Not a zip archive');
+    throw new ArchiveError(t('Not a zip archive'));
   }
   if (!entries['project.json']) {
-    throw new ArchiveError('Not a Plaid IGT archive. The project.json file is missing');
+    throw new ArchiveError(t('Not a Plaid IGT archive. The project.json file is missing'));
   }
   const json = (path) => {
-    if (!entries[path]) throw new ArchiveError(`Archive entry missing: ${path}`);
+    if (!entries[path]) throw new ArchiveError(t('Archive entry missing: {path}', { path }));
     let text;
     try {
       text = decodeText(entries[path]);
     } catch (e) {
-      if (e instanceof NotUtf8FileError) throw new ArchiveError(`${path} is not UTF-8.`);
+      if (e instanceof NotUtf8FileError)
+        throw new ArchiveError(t('{path} is not UTF-8.', { path }));
       throw e;
     }
     try {
       return JSON.parse(text);
     } catch (e) {
-      throw new ArchiveError(`${path} is not valid JSON: ${e.message}`);
+      throw new ArchiveError(t('{path} is not valid JSON: {reason}', { path, reason: e.message }));
     }
   };
 
@@ -95,14 +97,18 @@ export function readNativeArchive(bytes) {
   const manifest = composed(raw);
   if (manifest.format !== 'plaid-igt') {
     throw new ArchiveError(
-      `Unrecognized format ${JSON.stringify(manifest.format)}. Expected "plaid-igt"`,
+      t('Unrecognized format {format}. Expected "plaid-igt"', {
+        format: JSON.stringify(manifest.format),
+      }),
     );
   }
   // Per the spec's versioning policy, additive changes don't bump the version,
   // so only a different MAJOR (integer) version is unreadable.
   if (manifest.formatVersion !== 1) {
     throw new ArchiveError(
-      `Unsupported formatVersion ${manifest.formatVersion}. This build reads version 1`,
+      t('Unsupported formatVersion {version}. This build reads version 1', {
+        version: String(manifest.formatVersion),
+      }),
     );
   }
 
@@ -113,7 +119,9 @@ export function readNativeArchive(bytes) {
   for (const row of manifest.vocabularies || []) {
     if (vocabNames.has(row.name)) {
       throw new ArchiveError(
-        `Two vocabularies are named "${row.name}". Rename one in the project and export again.`,
+        t('Two vocabularies are named "{name}". Rename one in the project and export again.', {
+          name: row.name,
+        }),
       );
     }
     vocabNames.add(row.name);
@@ -139,11 +147,11 @@ export function readNativeArchive(bytes) {
   for (const doc of documents) {
     const id = doc.data?.id;
     if (id == null || id === '') {
-      throw new ArchiveError(`The document in ${doc.file} has no id.`);
+      throw new ArchiveError(t('The document in {file} has no id.', { file: doc.file }));
     }
     if (docIds.has(String(id))) {
       throw new ArchiveError(
-        `Two documents in the archive have the id ${JSON.stringify(String(id))}.`,
+        t('Two documents in the archive have the id {id}.', { id: JSON.stringify(String(id)) }),
       );
     }
     docIds.add(String(id));

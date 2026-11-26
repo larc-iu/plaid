@@ -46,7 +46,7 @@ import {
   orthographyKey,
 } from '../../domain/igtConfig.js';
 import { isLangTag, withLangSuffix } from '../../domain/fieldNames.js';
-import { countOf } from '../../../../plaid-ui/src/lib/plural.js';
+import { t } from '@ui/lib/i18n.js';
 
 /**
  * Grouping sentinel: one document per example row. Not every corpus is running
@@ -252,7 +252,7 @@ export function groupingChoices(dataset) {
   if (!examples) return [];
   const choices = [];
   if (examples.byTerm?.contributionReference) {
-    choices.push({ value: BY_CONTRIBUTION, label: 'By the dataset\u2019s own text ids' });
+    choices.push({ value: BY_CONTRIBUTION, label: t('By the dataset\u2019s own text ids') });
   }
   // Drop only the columns that provably cannot group: APiCS offers markup_text
   // and sort, which hold a near-unique value per row, so grouping by them is
@@ -270,10 +270,10 @@ export function groupingChoices(dataset) {
     const distinct = new Set(rows.map((r) => r[name] ?? '')).size;
     if (distinct <= 1) continue;
     if (rows.length >= 10 && distinct > rows.length / 2) continue;
-    choices.push({ value: name, label: `By ${name}` });
+    choices.push({ value: name, label: t('By {name}', { name }) });
   }
-  choices.push({ value: PER_EXAMPLE, label: 'One document per example' });
-  choices.push({ value: SINGLE_TEXT, label: 'One text for everything' });
+  choices.push({ value: PER_EXAMPLE, label: t('One document per example') });
+  choices.push({ value: SINGLE_TEXT, label: t('One text for everything') });
   return choices;
 }
 
@@ -358,7 +358,9 @@ function resolveMedia(dataset, index, { contributionId, mediaId }, warnings) {
   const inZip = cell(table, row, 'pathInZip');
   const name = cell(table, row, 'name') || 'media';
   if (url && /^[a-z][a-z0-9+.-]*:/i.test(url)) {
-    warnings.push(`Media for "${name}" is a remote URL (${url}) and was not downloaded`);
+    warnings.push(
+      t('Media for "{name}" is a remote URL ({url}) and was not downloaded', { name, url }),
+    );
     return null;
   }
   const path = inZip || url;
@@ -371,7 +373,7 @@ function resolveMedia(dataset, index, { contributionId, mediaId }, warnings) {
   const decoded = inZip ? path : decodedUrl(path);
   const found = entry(path) ? path : decoded && entry(decoded) ? decoded : null;
   if (!found) {
-    warnings.push(`Media file "${path}" is not in the archive`);
+    warnings.push(t('Media file "{path}" is not in the archive', { path }));
     return null;
   }
   return { bytes: entry(found), name: found.split('/').at(-1) };
@@ -420,9 +422,10 @@ export function buildCldfDocuments(dataset, options = {}) {
     }
     if (off) {
       warnings.push(
-        `"${c.column}" does not line up with the analyzed words on ${countOf(off, 'example')}. ` +
-          `Its values there are read by position ` +
-          'and may be shifted or missing.',
+        t(
+          '"{column}" does not line up with the analyzed words on {n, plural, one {# example} other {# examples}}. Its values there are read by position and may be shifted or missing.',
+          { column: c.column, n: off },
+        ),
       );
     }
   }
@@ -589,6 +592,8 @@ export function buildCldfDocuments(dataset, options = {}) {
 
   const documents = [];
   let synthesizedBodies = 0;
+  // Analyzed words with no text left to place them in.
+  let unalignedWords = 0;
 
   for (const [key, rows] of groups) {
     // Position orders a text's lines when the dataset states it; file order
@@ -612,7 +617,9 @@ export function buildCldfDocuments(dataset, options = {}) {
       const synthesized = primary === '' && analyzed.length > 0;
       const text = synthesized ? analyzed.map(surfaceOf).join(' ') : primary;
       if (text === '') {
-        docWarnings.push(`Example ${cell(examples, row, 'id') || '?'} has no text. Skipped.`);
+        docWarnings.push(
+          t('Example {id} has no text. Skipped.', { id: cell(examples, row, 'id') || '?' }),
+        );
         continue;
       }
       if (synthesized) synthesizedBodies += 1;
@@ -684,8 +691,10 @@ export function buildCldfDocuments(dataset, options = {}) {
         : null;
       const { spans, warnings: alignWarnings } =
         exact ?? alignWords(body, beginU16, beginU16 + text.length, analyzed);
+      unalignedWords += spans.filter((span) => span === null).length;
+      const exampleId = cell(examples, row, 'id') || si + 1;
       for (const w of alignWarnings) {
-        docWarnings.push(`Example ${cell(examples, row, 'id') || si + 1}: ${w}`);
+        docWarnings.push(t('Example {id}: {warning}', { id: exampleId, warning: w }));
       }
 
       analyzed.forEach((word, wi) => {
@@ -726,11 +735,15 @@ export function buildCldfDocuments(dataset, options = {}) {
           if (wholeGloss && !taken) wordFields[o.glossField] = wholeGloss;
           if (o.glossScope === 'Morpheme' && wholeGloss && pieces.length > 1) {
             docWarnings.push(
-              `Example ${cell(examples, row, 'id') || si + 1}: gloss "${wholeGloss}" does not ` +
-                `segment like "${word}", so it is ` +
-                (taken
-                  ? `not imported. The word keeps its own gloss "${wordFields[o.glossField]}"`
-                  : 'kept on the word'),
+              taken
+                ? t(
+                    'Example {id}: gloss "{gloss}" does not segment like "{word}", so it is not imported. The word keeps its own gloss "{own}"',
+                    { id: exampleId, gloss: wholeGloss, word, own: wordFields[o.glossField] },
+                  )
+                : t(
+                    'Example {id}: gloss "{gloss}" does not segment like "{word}", so it is kept on the word',
+                    { id: exampleId, gloss: wholeGloss, word },
+                  ),
             );
           }
         }
@@ -794,7 +807,7 @@ export function buildCldfDocuments(dataset, options = {}) {
       id: key || 'cldf',
       // A ContributionTable names the text; a grouping column's value is the
       // next best name, since it is what the dataset itself calls the text.
-      name: contribution?.name || (o.groupBy && key) || dataset.title || 'Imported text',
+      name: contribution?.name || (o.groupBy && key) || dataset.title || 'Imported text', // i18n-ignore: a document name, stored
       // Only meaningful in PER_EXAMPLE mode, where a document IS one example.
       exampleId: o.groupBy === PER_EXAMPLE ? key : null,
       metadata: contribution?.metadata || {},
@@ -829,17 +842,19 @@ export function buildCldfDocuments(dataset, options = {}) {
   ).length;
   if (perExampleMedia && o.groupBy !== PER_EXAMPLE) {
     warnings.push(
-      `${countOf(perExampleMedia, 'example')} ${perExampleMedia === 1 ? 'has' : 'have'} their own media ` +
-        'file, which only "one document per example" can keep: a Plaid document holds one media ' +
-        'file for the whole text.',
+      t(
+        '{n, plural, one {# example has} other {# examples have}} their own media file, which only "one document per example" can keep: a Plaid document holds one media file for the whole text.',
+        { n: perExampleMedia },
+      ),
     );
   }
 
   if (synthesizedBodies) {
     warnings.push(
-      `${countOf(synthesizedBodies, 'example')} had no Primary_Text, so ` +
-        'the baseline was rebuilt from the analyzed words. Original spacing and punctuation are ' +
-        'not recoverable.',
+      t(
+        '{n, plural, one {# example} other {# examples}} had no Primary_Text, so the baseline was rebuilt from the analyzed words. Original spacing and punctuation are not recoverable.',
+        { n: synthesizedBodies },
+      ),
     );
   }
 
@@ -956,8 +971,10 @@ export function buildCldfDocuments(dataset, options = {}) {
   }
   for (const [wanted, kept] of nameClashes) {
     warnings.push(
-      `Two fields both arrive as "${wanted}": one bound to a CLDF term and one carried as ` +
-        `"${kept}". The second keeps the column's own name so no values are overwritten.`,
+      t(
+        'Two fields both arrive as "{wanted}": one bound to a CLDF term and one carried as "{kept}". The second keeps the column\'s own name so no values are overwritten.',
+        { wanted, kept },
+      ),
     );
   }
   const orthographies = custom.filter((c) => c.scope === 'Orthography').map((c) => c.name);
@@ -971,6 +988,7 @@ export function buildCldfDocuments(dataset, options = {}) {
   // Reading that back in as the project's language name turns a blank a curator
   // has not filled in yet into placeholder text they now have to notice and
   // clear. A round trip should leave a blank blank.
+  // i18n-ignore: names our own export writes, matched against the file
   const PLACEHOLDER_NAMES = new Set(['Unidentified object language', 'Meta language']);
   const pick = (ids) => {
     const lang = ids.size === 1 ? languageById.get([...ids][0]) : null;
@@ -983,8 +1001,10 @@ export function buildCldfDocuments(dataset, options = {}) {
   };
   if (objectLanguageIds.size > 1) {
     warnings.push(
-      `This dataset covers ${objectLanguageIds.size} object languages. A Plaid project documents ` +
-        'one, so no language identity was set. Set it under Settings → General → Languages.',
+      t(
+        'This dataset covers {n} object languages. A Plaid project documents one, so no language identity was set. Set it under Settings → General → Languages.',
+        { n: objectLanguageIds.size },
+      ),
     );
   }
 
@@ -996,10 +1016,7 @@ export function buildCldfDocuments(dataset, options = {}) {
       (n, d) => n + d.words.reduce((m, w) => m + w.morphemes.length, 0),
       0,
     ),
-    unalignedWords: documents.reduce(
-      (n, d) => n + d.warnings.filter((w) => w.includes('no text left to align')).length,
-      0,
-    ),
+    unalignedWords,
     lexiconEntries: lexicon.length,
     warnings: warnings.length + documents.reduce((n, d) => n + d.warnings.length, 0),
   };

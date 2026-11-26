@@ -22,6 +22,7 @@ import { cn } from '../../lib/utils.js';
 import { GUIDELINE_EXTENSIONS, serializeMarkdown } from './guidelineMarkdown.js';
 import './guidelines.css';
 import { isEnter } from '../../lib/chords.js';
+import { t } from '../../lib/i18n.js';
 
 // The body editor. Rich text by default, with the Markdown underneath one
 // click away.
@@ -84,8 +85,8 @@ const LinkButton = ({ editor }) => {
             type="button"
             variant="ghost"
             size="icon"
-            aria-label="Link"
-            title="Link"
+            aria-label={t('Link')}
+            title={t('Link')}
             aria-pressed={linked}
             onMouseDown={(e) => e.preventDefault()}
             className={cn('h-8 w-8', linked && 'bg-accent text-accent-foreground')}
@@ -99,8 +100,8 @@ const LinkButton = ({ editor }) => {
               autoFocus
               value={href}
               spellCheck={false}
-              placeholder="https://"
-              aria-label="Address"
+              placeholder="https://" // i18n-ignore: a URL scheme
+              aria-label={t('Address')}
               onChange={(e) => setHref(e.target.value)}
               onKeyDown={(e) => {
                 if (isEnter(e)) {
@@ -110,7 +111,7 @@ const LinkButton = ({ editor }) => {
               }}
             />
             <Button type="button" size="sm" onClick={apply}>
-              Apply
+              {t('Apply')}
             </Button>
           </div>
         </PopoverContent>
@@ -118,7 +119,7 @@ const LinkButton = ({ editor }) => {
       {linked && (
         <ToolButton
           icon={Link2Off}
-          label="Remove link"
+          label={t('Remove link')}
           onClick={() => editor.chain().focus().extendMarkRange('link').unsetLink().run()}
         />
       )}
@@ -173,9 +174,10 @@ export function GuidelineEditor({ value, onChange, disabled }) {
     return (
       <div className="flex flex-col gap-2">
         <div className="flex items-center justify-between">
+          {/* i18n-ignore: a format name */}
           <span className="text-xs text-muted-foreground">Markdown</span>
           <Button type="button" variant="outline" size="sm" onClick={leaveSource}>
-            Rich text
+            {t('Rich text')}
           </Button>
         </div>
         <Textarea
@@ -184,7 +186,7 @@ export function GuidelineEditor({ value, onChange, disabled }) {
           spellCheck={false}
           onChange={(e) => onChange(e.target.value)}
           className="min-h-[24rem] font-mono text-xs"
-          aria-label="Markdown"
+          aria-label="Markdown" // i18n-ignore: a format name
         />
       </div>
     );
@@ -197,63 +199,63 @@ export function GuidelineEditor({ value, onChange, disabled }) {
       <div className="flex flex-wrap items-center gap-0.5 rounded-md border bg-muted/40 p-1">
         <ToolButton
           icon={Bold}
-          label="Bold"
+          label={t('Bold')}
           active={editor?.isActive('bold')}
           onClick={() => chain().toggleBold().run()}
         />
         <ToolButton
           icon={Italic}
-          label="Italic"
+          label={t('Italic')}
           active={editor?.isActive('italic')}
           onClick={() => chain().toggleItalic().run()}
         />
         <ToolButton
           icon={Strikethrough}
-          label="Strikethrough"
+          label={t('Strikethrough')}
           active={editor?.isActive('strike')}
           onClick={() => chain().toggleStrike().run()}
         />
         <ToolButton
           icon={Code}
-          label="Code"
+          label={t('Code')}
           active={editor?.isActive('code')}
           onClick={() => chain().toggleCode().run()}
         />
         <span className="mx-1 h-5 w-px bg-border" />
         <ToolButton
           icon={Heading2}
-          label="Heading"
+          label={t('Heading')}
           active={editor?.isActive('heading', { level: 2 })}
           onClick={() => chain().toggleHeading({ level: 2 }).run()}
         />
         <ToolButton
           icon={Heading3}
-          label="Subheading"
+          label={t('Subheading')}
           active={editor?.isActive('heading', { level: 3 })}
           onClick={() => chain().toggleHeading({ level: 3 }).run()}
         />
         <span className="mx-1 h-5 w-px bg-border" />
         <ToolButton
           icon={List}
-          label="Bulleted list"
+          label={t('Bulleted list')}
           active={editor?.isActive('bulletList')}
           onClick={() => chain().toggleBulletList().run()}
         />
         <ToolButton
           icon={ListOrdered}
-          label="Numbered list"
+          label={t('Numbered list')}
           active={editor?.isActive('orderedList')}
           onClick={() => chain().toggleOrderedList().run()}
         />
         <ToolButton
           icon={Quote}
-          label="Quote"
+          label={t('Quote')}
           active={editor?.isActive('blockquote')}
           onClick={() => chain().toggleBlockquote().run()}
         />
         <ToolButton
           icon={TableIcon}
-          label="Table"
+          label={t('Table')}
           active={editor?.isActive('table')}
           onClick={() => chain().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run()}
         />
@@ -266,6 +268,7 @@ export function GuidelineEditor({ value, onChange, disabled }) {
           className="ml-auto"
           onClick={() => setSource(true)}
         >
+          {/* i18n-ignore: a format name */}
           Markdown
         </Button>
       </div>

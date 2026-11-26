@@ -13,6 +13,7 @@
 // units relative to their paragraph; buildDocuments converts to code points.
 
 import { SaxesParser } from 'saxes';
+import { t } from '@ui/lib/i18n.js';
 
 /** rt classes retained during the streaming pass. */
 const KEEP_CLASSES = new Set([
@@ -187,7 +188,7 @@ function streamCollect(xml) {
   let stack = [];
 
   parser.on('error', (e) => {
-    throw new Error(`fwdata XML parse error: ${e.message}`);
+    throw new Error(t('fwdata XML parse error: {reason}', { reason: e.message }));
   });
   parser.on('opentag', (node) => {
     depth += 1;
@@ -255,7 +256,8 @@ export function parseFwdata(xml) {
   const cls = (name) => byClass.get(name) ?? [];
   const get = (guid, why) => {
     const n = guid == null ? null : byGuid.get(guid);
-    if (guid != null && !n && why) warnings.push(`missing ${why} object ${guid}`);
+    if (guid != null && !n && why)
+      warnings.push(t('missing {kind} object {guid}', { kind: why, guid }));
     return n ?? null;
   };
 
@@ -481,7 +483,7 @@ export function parseFwdata(xml) {
     } else if (kind === 'WfiWordform') {
       wordform = n;
     } else {
-      warnings.push(`unexpected analysis class ${kind} (${guid})`);
+      warnings.push(t('unexpected analysis class {kind} ({guid})', { kind, guid }));
       return null;
     }
     if (!wordform) return null;

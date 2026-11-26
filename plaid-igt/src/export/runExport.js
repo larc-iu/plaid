@@ -63,11 +63,12 @@ import { sanitizeFilename } from '@ui/lib/download.js';
 import { dedupeFilenames, assembleZip } from './files.js';
 import { exportFormat, formatExt } from './presets.js';
 import { countOf } from '@ui/lib/plural.js';
+import { t } from '@ui/lib/i18n.js';
 import { humanizeError, isUnreachable } from '@ui/lib/errors.js';
 
 export class ExportCancelled extends Error {
   constructor() {
-    super('Export cancelled');
+    super(t('Export cancelled'));
     this.name = 'ExportCancelled';
   }
 }
@@ -148,19 +149,28 @@ const DOCUMENT_WRITERS = {
  * entries must exist first for FLEx to link the two together. Nothing in
  * either file says so.
  */
+// The same note, in the README (which stays English) and among the warnings.
 const untypedLine = (n) =>
+  // i18n-ignore: README text in the .zip, which stays English
   `${countOf(n, 'morpheme')} in words of two or more morphemes ${n === 1 ? 'has' : 'have'} no type. FLEx reads ${n === 1 ? 'it as a stem unless its entry carries' : 'them as stems unless their entries carry'} a morph type.`;
+
+const untypedWarning = (n) =>
+  t(
+    '{n, plural, one {# morpheme in words of two or more morphemes has no type. FLEx reads it as a stem unless its entry carries a morph type.} other {# morphemes in words of two or more morphemes have no type. FLEx reads them as stems unless their entries carry a morph type.}}',
+    { n },
+  );
 
 const flexReadme = ({ stem, lexicon, docCount, untypedNote = null }) =>
   [
     'Exported from Plaid for FieldWorks Language Explorer (FLEx).',
     '',
     'Contents:',
+    // i18n-ignore: README text in the .zip, which stays English
     `  ${stem}.lift: the lexicon (${countOf(lexicon.entryCount, 'entry', 'entries')}, ${countOf(lexicon.senseCount, 'sense')})`,
     ...(lexicon.ranges
       ? [`  ${stem}.lift-ranges: the grammatical categories the lexicon uses`]
       : []),
-    `  ${stem}.flextext: ${countOf(docCount, 'interlinear text')}`,
+    `  ${stem}.flextext: ${countOf(docCount, 'interlinear text')}`, // i18n-ignore: README text in the .zip
     '',
     'Import them in this order. Each import only appears in the File > Import',
     'menu while FLEx is showing the area named here.',
@@ -349,7 +359,7 @@ export async function runExport({
       }
     }
     const name = docNameById.get(id);
-    return name ? `"${name}"` : null;
+    return name ?? null;
   };
   checkStop();
 
@@ -396,9 +406,9 @@ export async function runExport({
     if (loaded.failedCount) {
       const names = loaded.failed.map((id) => {
         const name = (project.vocabs || []).find((v) => v.id === id)?.name;
-        return name ? `"${name}"` : 'A vocabulary';
+        return name ? t('"{name}"', { name }) : t('A vocabulary');
       });
-      throw new Error(`${names.join(', ')} could not be read.`);
+      throw new Error(t('{names} could not be read.', { names: names.join(', ') }));
     }
   }
   const vocabsById = Object.fromEntries(vocabs.map((v) => [v.id, v]));
@@ -411,7 +421,14 @@ export async function runExport({
     for (const v of vocabs) {
       if (names.has(v.name)) {
         throw new Error(
-          `Two vocabularies are named "${v.name}". Rename one to export as ${format.archive ? 'a Plaid IGT archive' : 'CLDF'}.`,
+          format.archive
+            ? t(
+                'Two vocabularies are named "{name}". Rename one to export as a Plaid IGT archive.',
+                { name: v.name },
+              )
+            : t('Two vocabularies are named "{name}". Rename one to export as CLDF.', {
+                name: v.name,
+              }),
         );
       }
       names.add(v.name);
@@ -428,7 +445,12 @@ export async function runExport({
     try {
       guidelines = await reading(() => client.guidelines.list(project.id, { includeBodies: true }));
     } catch (err) {
-      throw new Error(`The guidelines could not be read: ${humanizeError(err)}`, { cause: err });
+      throw new Error(
+        t('The guidelines could not be read: {error}', { error: humanizeError(err) }),
+        {
+          cause: err,
+        },
+      );
     }
   }
   checkStop();
@@ -522,9 +544,13 @@ export async function runExport({
       });
     } catch (err) {
       const label = await docLabel(docIds[i]);
-      throw new Error(`${label ?? 'A document'} could not be read: ${humanizeError(err)}`, {
-        cause: err,
-      });
+      const error = humanizeError(err);
+      throw new Error(
+        label
+          ? t('"{name}" could not be read: {error}', { name: label, error })
+          : t('A document could not be read: {error}', { error }),
+        { cause: err },
+      );
     }
     const name = igtDoc.document?.name || docIds[i];
     onProgress({ done: i, total: progressTotal, name });
@@ -566,21 +592,30 @@ export async function runExport({
           mediaSeconds = await readHeaderDuration(new Blob([bytes])).catch(() => null);
         }
       } catch (err) {
-        throw new Error(`The recording of "${name}" could not be read: ${humanizeError(err)}`, {
-          cause: err,
-        });
+        throw new Error(
+          t('The recording of "{name}" could not be read: {error}', {
+            name,
+            error: humanizeError(err),
+          }),
+          { cause: err },
+        );
       }
     }
 
     let docComments = [];
     if (read.comments?.error) {
       const err = read.comments.error;
-      throw new Error(`The comments on "${name}" could not be read: ${humanizeError(err)}`);
+      throw new Error(
+        t('The comments on "{name}" could not be read: {error}', {
+          name,
+          error: humanizeError(err),
+        }),
+      );
     } else if (read.comments) {
       docComments = await shapeComments(client, read.comments.list, authorNames);
     }
 
-    const onWarning = (msg) => warnings.push(`"${name}": ${msg}`);
+    const onWarning = (warning) => warnings.push(t('"{name}": {warning}', { name, warning }));
     if (format.id === 'flextext') untypedMorphs += untypedInLongerWords(igtDoc);
     try {
       docFiles.push({
@@ -601,7 +636,8 @@ export async function runExport({
             mediaType,
             mediaSeconds,
           },
-          onControlDropped: () => warnings.push(`"${name}": invisible control characters left out`),
+          onControlDropped: () =>
+            warnings.push(t('"{name}": invisible control characters left out', { name })),
         }),
         // Only CLDF reads the documents again, all at once. Every other
         // format is done with each one here, and 400 of them held to the
@@ -614,7 +650,10 @@ export async function runExport({
       });
       if (mediaEntry) mediaEntries.push(mediaEntry);
     } catch (err) {
-      throw new Error(`"${name}" could not be written: ${err?.message ?? err}`, { cause: err });
+      throw new Error(
+        t('"{name}" could not be written: {error}', { name, error: String(err?.message ?? err) }),
+        { cause: err },
+      );
     }
   }
   // The example documents the scope did not cover, read whole: one can be in
@@ -633,8 +672,11 @@ export async function runExport({
       harvestExampleSentences(igtDoc, docId, exampleTokensByDoc.get(docId), exampleTexts);
     } catch (err) {
       const label = await docLabel(docId);
+      const error = humanizeError(err);
       warnings.push(
-        `${label ? `Example document ${label}` : 'An example document'} failed to load: ${humanizeError(err)}`,
+        label
+          ? t('Example document "{name}" failed to load: {error}', { name: label, error })
+          : t('An example document failed to load: {error}', { error }),
       );
     }
   }
@@ -647,7 +689,7 @@ export async function runExport({
   // The native archive of a project with no documents still holds the
   // project: its vocabularies, settings and guidelines. Every other format
   // is its documents.
-  if (!docFiles.length && !format.archive) throw new Error('Nothing to export');
+  if (!docFiles.length && !format.archive) throw new Error(t('Nothing to export'));
 
   // What the export is named after: the document when the run covers exactly
   // one, the project otherwise. Which radio the scope came from does not
@@ -664,7 +706,7 @@ export async function runExport({
   if (format.id === 'flextext') {
     const flextext = flextextEnvelope(docFiles.map((f) => f.data));
     const untypedNote = untypedMorphs ? untypedLine(untypedMorphs) : null;
-    if (untypedNote) warnings.push(untypedNote);
+    if (untypedNote) warnings.push(untypedWarning(untypedMorphs));
     const lexicon = wantLexicon
       ? serializeXmlCounted(
           () =>
@@ -674,7 +716,7 @@ export async function runExport({
               rangesHref: `${stem}.lift-ranges`,
               exampleTexts,
             }),
-          () => warnings.push('Invisible control characters were left out of the .lift file.'),
+          () => warnings.push(t('Invisible control characters were left out of the .lift file.')),
         )
       : null;
     // A project with no lexicon to speak of exports the texts alone rather
@@ -796,7 +838,10 @@ export async function runExport({
           vocabComments = await reading(() => loadVocabComments(client, vocab.id, authorNames));
         } catch (err) {
           throw new Error(
-            `The comments on "${vocabName}" could not be read: ${humanizeError(err)}`,
+            t('The comments on "{name}" could not be read: {error}', {
+              name: vocabName,
+              error: humanizeError(err),
+            }),
             { cause: err },
           );
         }
@@ -806,7 +851,8 @@ export async function runExport({
         data: toJson(
           serializeVocabularyNative(vocab, {
             comments: vocabComments,
-            onWarning: (msg) => warnings.push(`"${vocabName}": ${msg}`),
+            onWarning: (warning) =>
+              warnings.push(t('"{name}": {warning}', { name: vocabName, warning })),
           }),
         ),
       });

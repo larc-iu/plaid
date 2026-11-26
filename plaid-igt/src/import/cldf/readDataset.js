@@ -16,6 +16,7 @@
 import { unzipSync } from 'fflate';
 import { decodeText, NotUtf8FileError } from '@ui/lib/textFile.js';
 import { parseDelimited } from '@ui/lib/delimited.js';
+import { t } from '@ui/lib/i18n.js';
 
 const TERMS = 'http://cldf.clld.org/v1.0/terms.rdf#';
 
@@ -222,7 +223,7 @@ export function readCldfDataset(bytes) {
   try {
     entries = unzipSync(bytes);
   } catch {
-    throw new CldfError('Not a zip archive');
+    throw new CldfError(t('Not a zip archive'));
   }
 
   const warnings = [];
@@ -236,12 +237,17 @@ export function readCldfDataset(bytes) {
       const conformsTo = termOf(table['dc:conformsTo']);
       const path = `${baseDir}${table.url}`;
       if (!entries[path]) {
-        warnings.push(`Table file missing from the archive: ${table.url}`);
+        warnings.push(t('Table file missing from the archive: {file}', { file: table.url }));
         continue;
       }
       if (!conformsTo) continue; // A table bound to no component carries nothing we can read.
       if (components[conformsTo]) {
-        warnings.push(`More than one ${conformsTo}; using ${components[conformsTo].url}`);
+        warnings.push(
+          t('More than one {table}; using {file}', {
+            table: conformsTo,
+            file: components[conformsTo].url,
+          }),
+        );
         continue;
       }
       components[conformsTo] = buildComponent({
@@ -254,7 +260,9 @@ export function readCldfDataset(bytes) {
     }
     if (!Object.keys(components).length) {
       throw new CldfError(
-        `The dataset descriptor (${basename(found.path)}) declares no readable tables.`,
+        t('The dataset descriptor ({file}) declares no readable tables.', {
+          file: basename(found.path),
+        }),
       );
     }
     return {
@@ -286,13 +294,15 @@ export function readCldfDataset(bytes) {
   }
   if (!components.ExampleTable && !components.EntryTable) {
     throw new CldfError(
-      'No CLDF dataset found in this archive. Expected a cldf-metadata.json descriptor, ' +
-        'or an examples.csv / entries.csv using the standard CLDF column names.',
+      t(
+        'No CLDF dataset found in this archive. Expected a cldf-metadata.json descriptor, or an examples.csv / entries.csv using the standard CLDF column names.',
+      ),
     );
   }
   warnings.push(
-    'This archive has no cldf-metadata.json, so it was read as a metadata-free dataset using ' +
-      'the standard CLDF column names. Custom columns cannot be recognized this way.',
+    t(
+      'This archive has no cldf-metadata.json, so it was read as a metadata-free dataset using the standard CLDF column names. Custom columns cannot be recognized this way.',
+    ),
   );
   return { module: 'Generic', title: '', baseDir: '', components, entries, warnings };
 }

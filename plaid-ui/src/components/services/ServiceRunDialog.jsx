@@ -10,6 +10,7 @@ import {
 import { Button } from '../ui/button.jsx';
 import { Progress } from '../ui/progress.jsx';
 import { formatElapsed } from '../../hooks/useRunProgress.js';
+import { t } from '../../lib/i18n.js';
 
 // The one shape every service run wears (tokenize, transcribe, detect speech,
 // auto-analyze). Body slots, in order:
@@ -52,7 +53,7 @@ export function ServiceRunDialog({
       <DialogContent
         className={`${className} grid-rows-[auto_minmax(0,1fr)_auto] overflow-y-hidden`}
         // The footer has a Close of its own, so the corner one says what it closes.
-        closeLabel={typeof title === 'string' ? `Close ${title}` : 'Close dialog'}
+        closeLabel={typeof title === 'string' ? t('Close {title}', { title }) : t('Close dialog')}
       >
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
@@ -84,11 +85,11 @@ export function ServiceRunDialog({
           </div>
           <div className="flex gap-2">
             <Button variant="outline" onClick={() => onOpenChange(false)}>
-              Close
+              {t('Close')}
             </Button>
             {running && onCancel ? (
               <Button variant="outline" onClick={onCancel}>
-                Stop
+                {t('Stop')}
               </Button>
             ) : (
               <Button onClick={onRun} disabled={running || runDisabled}>
@@ -107,6 +108,7 @@ export function ServiceRunDialog({
 // several steps also lists them, so a long quiet step still shows its place.
 function RunStatus({ progress }) {
   const { percent, message, elapsedMs, steps, stepIndex, stepCount } = progress;
+  const step = { i: stepIndex + 1, n: stepCount };
   return (
     <div className="flex flex-col gap-2 border-t pt-4">
       {stepCount > 1 && (
@@ -135,7 +137,7 @@ function RunStatus({ progress }) {
       <div className="flex items-center gap-3">
         <Progress
           value={Number.isFinite(percent) ? percent : undefined}
-          label={stepCount > 1 ? `Step ${stepIndex + 1} of ${stepCount}` : 'Progress'}
+          label={stepCount > 1 ? t('Step {i} of {n}', step) : t('Progress')}
           className="flex-1"
         />
         <span className="w-10 shrink-0 text-right text-xs tabular-nums text-muted-foreground">
@@ -143,7 +145,7 @@ function RunStatus({ progress }) {
         </span>
       </div>
       <span className="text-sm text-muted-foreground" role="status">
-        {stepCount > 1 ? `Step ${stepIndex + 1} of ${stepCount}. ${message}` : message}
+        {stepCount > 1 ? t('Step {i} of {n}. {message}', { ...step, message }) : message}
       </span>
     </div>
   );

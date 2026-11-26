@@ -28,6 +28,7 @@ import {
   settlePrior,
 } from '../stamps.js';
 import { recordProjectLanguages } from '../projectLanguages.js';
+import { msg, t } from '@ui/lib/i18n.js';
 import {
   createDocumentShell,
   finishDocument,
@@ -121,7 +122,10 @@ export async function importDocument({
     });
     if (!aligned) {
       warnings?.push(
-        `"${doc.name}": ${doc.alignments.length} aligned segments were skipped. This project is not set up for time alignment.`,
+        t(
+          '"{name}": {n} aligned segments were skipped. This project is not set up for time alignment.',
+          { name: doc.name, n: doc.alignments.length },
+        ),
       );
     }
 
@@ -180,8 +184,9 @@ async function addRecordingToExisting({
     await uploadRecording(client, existing.id, doc.name, { ...recording, onProgress });
     results.recordingsAdded += 1;
   } catch (err) {
+    const reason = await mediaUploadFailure(client, err);
     warn(
-      `"${doc.name}": the recording could not be added to it: ${await mediaUploadFailure(client, err)}`,
+      t('"{name}": the recording could not be added to it: {reason}', { name: doc.name, reason }),
     );
   }
 }
@@ -215,6 +220,7 @@ export const doneForRetry = (finished, mapping) =>
  * operation in the audit log; each write keeps its own description underneath.
  */
 export async function runElanImport(args) {
+  // i18n-ignore: an audit label, stored on the server
   return args.client.withOperation('Import ELAN corpus', () => runElanImportImpl(args), {
     kind: 'import',
     ref: 'format:elan',
@@ -297,7 +303,7 @@ async function runElanImportImpl({
       // Every report from inside a document says which one it is. Only the
       // first used to, so the screens read the rest as the first document.
       const docProgress = (p) => onProgress?.({ ...p, index: i, total: build.documents.length });
-      docProgress({ phase: 'document', doc: doc.name, step: 'Starting' });
+      docProgress({ phase: 'document', doc: doc.name, step: msg('Starting') });
       const warn = (text) => note(text, doc.name);
       const existing = prior.find(doc.id);
       const leftover = !!existing && redo.includes(existing.id);

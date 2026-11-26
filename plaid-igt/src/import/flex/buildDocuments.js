@@ -14,7 +14,7 @@
 import { pickEn } from './fwdataParser.js';
 import { compareNames } from '../../../../plaid-ui/src/domain/collation.js';
 import { DEFAULT_IGNORED_TOKENS, isTokenIgnored } from '../../domain/igtConfig.js';
-import { countOf } from '../../../../plaid-ui/src/lib/plural.js';
+import { t } from '@ui/lib/i18n.js';
 import { keepTimeRule } from '../../domain/alignmentTimes.js';
 import { matchesAt, makeCpIndexer, composeOnEdges, cutsAWord } from '../align.js';
 
@@ -36,7 +36,7 @@ function alignSegment(body, begin, end, analyses, baselineWs, spell = (s) => s) 
       a.kind === 'punct' ? a.form : (a.surface ?? a.forms?.[baselineWs] ?? pickEn(a.forms)),
     );
     if (!form) {
-      warnings.push(`word with no form at offset ${cursor}`);
+      warnings.push(t('word with no form at offset {offset}', { offset: cursor }));
       if (a.kind === 'word') dropped.push(a);
       continue;
     }
@@ -51,13 +51,19 @@ function alignSegment(body, begin, end, analyses, baselineWs, spell = (s) => s) 
         if (matchEnd !== false) break;
       }
       if (matchEnd === false) {
-        warnings.push(`could not align ${a.kind} "${form}" after offset ${cursor}`);
+        warnings.push(
+          t('could not align {kind} "{form}" after offset {offset}', {
+            kind: a.kind,
+            form,
+            offset: cursor,
+          }),
+        );
         if (a.kind === 'word') dropped.push(a);
         continue;
       }
       const skipped = body.slice(cursor, at);
       if (/\S/.test(skipped)) {
-        warnings.push(`skipped "${skipped.trim()}" before "${form}"`);
+        warnings.push(t('skipped "{skipped}" before "{form}"', { skipped: skipped.trim(), form }));
       }
     }
     // Punctuation analyses are matched for the cursor's sake only, never
@@ -226,7 +232,10 @@ export function buildDocuments(ir, opts = {}) {
     }
     if (leftAsText) {
       warnings.push(
-        `${countOf(leftAsText, 'analyzed word')} of punctuation only ${leftAsText === 1 ? 'stays' : 'stay'} plain text, without ${leftAsText === 1 ? 'its' : 'their'} analysis.`,
+        t(
+          '{n, plural, one {# analyzed word of punctuation only stays plain text, without its analysis.} other {# analyzed words of punctuation only stay plain text, without their analysis.}}',
+          { n: leftAsText },
+        ),
       );
     }
 

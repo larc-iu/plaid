@@ -13,6 +13,7 @@ import { defaultElanOptions } from './elan.js';
 import { defaultLatexOptions } from './latexBook.js';
 import { defaultTextGridOptions } from './textgrid.js';
 import { isLangTag, parseFieldName } from '../domain/fieldNames.js';
+import { msg } from '@ui/lib/i18n.js';
 
 // Each export format and what the export does with it. Policy lives here, so
 // a new format is one entry and runExport, newPreset, the preset editor and
@@ -30,6 +31,8 @@ import { isLangTag, parseFieldName } from '../domain/fieldNames.js';
 // - dataset: the documents are assembled once, at the end, from all of them.
 // - bareType: the content type of a lone document's bare file.
 // - zipNote: what the runner says about the zip.
+// - label and zipNote are messages, translated where they are shown.
+// - defaultName is stored as the preset's name, so it stays English.
 // - options(layers, languages): a new preset's options.
 const plainTextOptions = (layers) => ({
   orthographies: [...layers.orthographies],
@@ -56,9 +59,9 @@ export const EXPORT_FORMATS = [
   {
     ...FORMAT_DEFAULTS,
     id: 'plaintext',
-    label: 'Plain text',
+    label: msg('Plain text'),
     ext: 'txt',
-    defaultName: 'Plain text',
+    defaultName: 'Plain text', // i18n-ignore: a stored preset name
     vocabularyTsvs: true,
     options: plainTextOptions,
   },
@@ -68,9 +71,9 @@ export const EXPORT_FORMATS = [
     label: 'FLEx (.flextext + .lift)',
     ext: 'flextext',
     defaultName: 'FLEx',
-    zipNote:
-      'This format produces one .flextext for the whole run. With the lexicon included (set in the ' +
-      'preset) it becomes a .zip pairing that file with the lexicon as LIFT.',
+    zipNote: msg(
+      'This format produces one .flextext for the whole run. With the lexicon included (set in the preset) it becomes a .zip pairing that file with the lexicon as LIFT.',
+    ),
     options: (layers, languages) => ({
       langs: {
         // The writing-system tag is the fact itself; the ISO code and the
@@ -97,15 +100,15 @@ export const EXPORT_FORMATS = [
   {
     ...FORMAT_DEFAULTS,
     id: 'cldf',
-    label: 'CLDF TextCorpus (.zip dataset)',
+    label: msg('CLDF TextCorpus (.zip dataset)'),
     ext: 'csv',
     defaultName: 'CLDF',
     alwaysZip: true,
     media: true,
     dataset: true,
-    zipNote:
-      'This format always produces a .zip dataset (one CSV per CLDF component table) whatever the ' +
-      'scope. Whether the lexicon is included is set in the preset.',
+    zipNote: msg(
+      'This format always produces a .zip dataset (one CSV per CLDF component table) whatever the scope. Whether the lexicon is included is set in the preset.',
+    ),
     // The dataset always carries the vocabularies it needs for EntryTable, so
     // the TSV flag does not apply. Languages come from project config at run
     // time rather than being frozen into the preset.
@@ -114,7 +117,7 @@ export const EXPORT_FORMATS = [
   {
     ...FORMAT_DEFAULTS,
     id: 'elan',
-    label: 'ELAN annotation file (.eaf)',
+    label: msg('ELAN annotation file (.eaf)'),
     ext: 'eaf',
     defaultName: 'ELAN',
     media: true,
@@ -127,7 +130,7 @@ export const EXPORT_FORMATS = [
   {
     ...FORMAT_DEFAULTS,
     id: 'textgrid',
-    label: 'Praat TextGrid (.TextGrid)',
+    label: 'Praat TextGrid (.TextGrid)', // i18n-ignore: a format name
     ext: 'TextGrid',
     defaultName: 'Praat',
     media: true,
@@ -139,28 +142,28 @@ export const EXPORT_FORMATS = [
   {
     ...FORMAT_DEFAULTS,
     id: 'latex',
-    label: 'LaTeX book (.zip)',
+    label: msg('LaTeX book (.zip)'),
     ext: 'tex',
     defaultName: 'LaTeX',
     alwaysZip: true,
-    zipNote:
-      'This format always produces a .zip of LaTeX source, one chapter per document, whatever the ' +
-      'scope.',
+    zipNote: msg(
+      'This format always produces a .zip of LaTeX source, one chapter per document, whatever the scope.',
+    ),
     // A book of every document in the run, so the TSV flag does not apply.
     options: (layers) => defaultLatexOptions(layers),
   },
   {
     ...FORMAT_DEFAULTS,
     id: 'plaid-igt-json',
-    label: 'Plaid IGT JSON (lossless .zip archive)',
+    label: msg('Plaid IGT JSON (lossless .zip archive)'),
     ext: 'json',
-    defaultName: 'Plaid IGT JSON',
+    defaultName: 'Plaid IGT JSON', // i18n-ignore: a stored preset name
     alwaysZip: true,
     media: true,
     archive: true,
-    zipNote:
-      'This format always produces a .zip archive including all vocabularies and the project ' +
-      'configuration, whatever the scope.',
+    zipNote: msg(
+      'This format always produces a .zip archive including all vocabularies and the project configuration, whatever the scope.',
+    ),
     // Lossless archive: vocabularies are always included (runExport forces
     // this regardless of the flag); the only option is media embedding.
     options: () => ({ includeMedia: true }),
@@ -294,6 +297,7 @@ export function proposeMetadataMap(names) {
  * is the project's configured {object, meta} identity (see readLanguages); it
  * seeds the .flextext writing-system tags so the same fact is not typed twice.
  */
+// i18n-ignore: a stored preset name
 export function newPreset(format, layers, name = 'New preset', languages = null) {
   return {
     id: uuidv4(),

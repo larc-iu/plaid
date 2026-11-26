@@ -12,9 +12,12 @@ import { ScopeStep } from './ScopeStep.jsx';
 import { FlexImportSteps } from './FlexImportSteps.jsx';
 import { TYPE } from '@ui/lib/typeScale.js';
 import { cn } from '@ui/lib/utils';
-import { countOf } from '@ui/lib/plural.js';
+import { t } from '@ui/lib/i18n.js';
 
-const formatLabel = (id) => EXPORT_FORMATS.find((f) => f.id === id)?.label ?? id;
+const formatLabel = (id) => {
+  const label = EXPORT_FORMATS.find((f) => f.id === id)?.label;
+  return label ? t(label) : id;
+};
 
 // Run an export with one of the project's saved presets. Presets themselves
 // (format, layers, options) are configured by ExportPresetsSettings, which sits
@@ -113,22 +116,28 @@ export const ExportRunner = ({
         const n = result.warnings.length;
         setOutcome({
           tone: 'warning',
-          title: `Downloaded ${result.filename} with ${countOf(n, 'warning')}`,
+          title: t('Downloaded {filename} with {n, plural, one {# warning} other {# warnings}}', {
+            filename: result.filename,
+            n,
+          }),
           lines: result.warnings,
         });
       } else {
-        notifySuccess(`Downloaded ${result.filename}`, 'Export complete');
+        notifySuccess(
+          t('Downloaded {filename}', { filename: result.filename }),
+          t('Export complete'),
+        );
       }
       if (onDone) onDone();
     } catch (err) {
       if (err instanceof ExportCancelled) {
-        notifyWarning('Nothing was downloaded.', 'Export cancelled');
+        notifyWarning(t('Nothing was downloaded.'), t('Export cancelled'));
       } else {
         console.error('Export failed:', err);
         setOutcome({
           tone: 'error',
-          title: 'Failed to export',
-          lines: [humanizeError(err), 'Nothing was downloaded.'],
+          title: t('Failed to export'),
+          lines: [humanizeError(err), t('Nothing was downloaded.')],
         });
       }
     } finally {
@@ -137,6 +146,7 @@ export const ExportRunner = ({
     }
   };
 
+  const zipNote = preset ? exportFormat(preset.format).zipNote : null;
   const canRun = !!preset && (scope !== 'documents' || selectedDocIds.size > 0);
   // On the project's own Export tab the presets are managed right below this,
   // so neither the link nor the explanation belongs there.
@@ -145,11 +155,11 @@ export const ExportRunner = ({
       to={`/projects/${project?.id}/export`}
       className="inline-flex items-center gap-1 text-sm text-primary hover:underline"
     >
-      <Settings className="h-3.5 w-3.5" /> Manage export presets
+      <Settings className="h-3.5 w-3.5" /> {t('Manage export presets')}
     </Link>
   ) : (
     <span className="text-xs text-muted-foreground">
-      Presets are managed by project maintainers on the project's Export tab.
+      {t("Presets are managed by project maintainers on the project's Export tab.")}
     </span>
   );
 
@@ -158,7 +168,7 @@ export const ExportRunner = ({
       <div className="flex items-center justify-between gap-4">
         <h2 className={cn('flex items-center gap-2', TYPE.card)}>
           <Download className="h-4 w-4" />
-          <span>{presetId ? 'Run this export' : `Export${defaultScope ? ':' : ''}`}</span>
+          <span>{presetId ? t('Run this export') : defaultScope ? t('Export:') : t('Export')}</span>
           {defaultScope && (
             <span className="text-sm font-normal text-muted-foreground">{defaultScope.name}</span>
           )}
@@ -178,23 +188,32 @@ export const ExportRunner = ({
           </div>
           <span className="text-sm text-muted-foreground">
             {progress?.writing
-              ? 'Writing the file…'
+              ? t('Writing the file…')
               : progress?.total
-                ? `Document ${Math.min(progress.done + 1, progress.total)} of ${progress.total}${progress.name ? `: ${progress.name}` : ''}`
-                : 'Preparing…'}
+                ? progress.name
+                  ? t('Document {i} of {n}: {name}', {
+                      i: Math.min(progress.done + 1, progress.total),
+                      n: progress.total,
+                      name: progress.name,
+                    })
+                  : t('Document {i} of {n}', {
+                      i: Math.min(progress.done + 1, progress.total),
+                      n: progress.total,
+                    })
+                : t('Preparing…')}
           </span>
         </div>
       ) : presets.length === 0 ? (
         <p className="text-sm text-muted-foreground">
-          This project has no export presets yet. A preset fixes the format (plain text, FLEx, CLDF,
-          ELAN, Praat, a LaTeX book, or a lossless Plaid IGT archive) and which fields to include. A
-          maintainer creates one under Manage export presets.
+          {t(
+            'This project has no export presets yet. A preset fixes the format (plain text, FLEx, CLDF, ELAN, Praat, a LaTeX book, or a lossless Plaid IGT archive) and which fields to include. A maintainer creates one under Manage export presets.',
+          )}
         </p>
       ) : (
         <>
           {!presetId && (
             <div className="flex flex-col gap-2">
-              <Label>Preset</Label>
+              <Label>{t('Preset')}</Label>
               <div className="flex max-h-64 flex-col gap-1 overflow-y-auto">
                 {presets.map((p) => (
                   <label
@@ -229,7 +248,7 @@ export const ExportRunner = ({
                 onSelectedDocIdsChange={setSelectedDocIds}
                 includeVocabularies={preset.includeVocabularies}
                 hasVocabularies={(project?.vocabs?.length ?? 0) > 0}
-                zipNote={exportFormat(preset.format).zipNote}
+                zipNote={zipNote && t(zipNote)}
               />
             </div>
           )}
@@ -242,7 +261,7 @@ export const ExportRunner = ({
             <p className="flex-1 font-medium">{outcome.title}</p>
             <button
               type="button"
-              aria-label="Dismiss"
+              aria-label={t('Dismiss')}
               className="rounded-md p-0.5 hover:bg-background/60"
               onClick={() => setOutcome(null)}
             >
@@ -269,18 +288,18 @@ export const ExportRunner = ({
               stopRef.current = true;
             }}
           >
-            Cancel
+            {t('Cancel')}
           </Button>
         ) : (
           <>
             {onClose && (
               <Button variant="outline" onClick={onClose}>
-                Close
+                {t('Close')}
               </Button>
             )}
             {presets.length > 0 && (
               <Button onClick={run} disabled={!canRun}>
-                <Download className="h-4 w-4" /> Export
+                <Download className="h-4 w-4" /> {t('Export')}
               </Button>
             )}
           </>

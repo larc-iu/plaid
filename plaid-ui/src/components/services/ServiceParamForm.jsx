@@ -4,6 +4,7 @@ import { Switch } from '../ui/switch.jsx';
 import { Textarea } from '../ui/textarea.jsx';
 import { Slider } from '../ui/slider.jsx';
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '../ui/select.jsx';
+import { t } from '../../lib/i18n.js';
 
 // Renders a service's declared parameter schema as a form. Each field reports
 // edits via onChange(key, value); the parent holds the values + validation
@@ -89,7 +90,7 @@ function fieldControl(id, names, value, onChange, disabled) {
   return (
     <Select value={value ?? ''} onValueChange={onChange} disabled={disabled || !names.length}>
       <SelectTrigger id={id} style={{ width: 200 }}>
-        <SelectValue placeholder={names.length ? 'Choose a field' : 'No fields'} />
+        <SelectValue placeholder={names.length ? t('Choose a field') : t('No fields')} />
       </SelectTrigger>
       <SelectContent>
         {names.map((name) => (

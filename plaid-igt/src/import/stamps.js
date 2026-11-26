@@ -18,6 +18,7 @@
 // the mark and every name composed, and a file name from macOS is not.
 
 import { nameKey } from '@ui/lib/nameKey.js';
+import { t } from '@ui/lib/i18n.js';
 
 /** `<document id>:<source id>`, written at creation. */
 const SOURCE_KEY = 'importSource';
@@ -35,7 +36,7 @@ export const withoutStamps = (metadata) =>
 
 export class ImportCancelled extends Error {
   constructor() {
-    super('Import cancelled');
+    super(t('Import cancelled'));
     this.name = 'ImportCancelled';
   }
 }

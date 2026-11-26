@@ -65,7 +65,7 @@ import {
 import { hasValidTimes } from '../domain/alignmentTimes.js';
 import { mediaTypeForName } from '../domain/media/mediaTypes.js';
 import { ELAN_FIELD_NAMES_PROPERTY, writeElanFieldNames } from '../domain/elanFieldNames.js';
-import { countOf } from '../../../plaid-ui/src/lib/plural.js';
+import { t } from '@ui/lib/i18n.js';
 import { userMetadata } from '@ui/domain/textDirection.js';
 
 const EAF_VERSION = '2.8';
@@ -358,16 +358,20 @@ export function buildEafDocument(igtDoc, options = {}, context = {}) {
   const model = buildModel(igtDoc, options, nextAnn);
   if (model.overlapped && onWarning) {
     onWarning(
-      `${countOf(model.overlapped, 'sentence')} overlap in time with ` +
-        'another on the same tier, so they were written without times. Turn on "One tier set per ' +
-        'speaker" to keep the alignment of overlapping speech.',
+      t(
+        '{n, plural, one {# sentence overlap in time with another on the same tier, so they were written without times. Turn on "One tier set per speaker" to keep the alignment of overlapping speech.} other {# sentences overlap in time with another on the same tier, so they were written without times. Turn on "One tier set per speaker" to keep the alignment of overlapping speech.}}',
+        { n: model.overlapped },
+      ),
     );
   }
 
   if (model.straddling && onWarning) {
     const n = model.straddling;
     onWarning(
-      `${countOf(n, 'segment')} ${n === 1 ? 'crosses' : 'cross'} a sentence break and ${n === 1 ? 'was' : 'were'} left out.`,
+      t(
+        '{n, plural, one {# segment crosses a sentence break and was left out.} other {# segments cross a sentence break and were left out.}}',
+        { n },
+      ),
     );
   }
 
@@ -610,7 +614,18 @@ export function buildEafDocument(igtDoc, options = {}, context = {}) {
 export function elanLossSummary(layers, options) {
   const tiers = [];
   const dropped = [];
-  const label = (name, kind) => `${name} (${kind})`;
+  const label = (name, kind) => {
+    switch (kind) {
+      case 'orthography':
+        return t('{name} (orthography)', { name });
+      case 'word field':
+        return t('{name} (word field)', { name });
+      case 'morpheme field':
+        return t('{name} (morpheme field)', { name });
+      default:
+        return t('{name} (sentence field)', { name });
+    }
+  };
   const bucket = (available, selected, kind, force) => {
     for (const name of available || []) {
       if (!force && (selected || []).includes(name)) tiers.push(label(name, kind));

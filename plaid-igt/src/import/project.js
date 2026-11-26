@@ -19,6 +19,7 @@
 // glosses, lexicons, media) stays in each importer.
 
 import { createdIds, uuidv7, metadataOps } from '@larc-iu/plaid-client';
+import { msg, t } from '@ui/lib/i18n.js';
 import { bulkInChunks, withMintedIds } from '../domain/bulk.js';
 import { convertedNote, prepareRecording } from '../domain/media/playableRecording.js';
 import { mediaUploadFailure } from './mediaUpload.js';
@@ -105,10 +106,6 @@ export function setupDataFor({
   };
 }
 
-// What a project is missing when setup did not finish, said the same way by
-// every importer. The sentence names the state rather than the next step.
-const INCOMPLETE = 'Project setup incomplete';
-
 /**
  * The ids an import engine writes to, off a project setup has run against.
  * `fields` is the flat list of `{name, scope}` the import needs; every one of
@@ -120,7 +117,7 @@ const INCOMPLETE = 'Project setup incomplete';
  */
 export function resolveIgtTargets(project, fields = [], { substrateOnly = false } = {}) {
   const textLayer = findBaselineTextLayer(project.textLayers || []);
-  if (!textLayer) throw new Error(`No baseline text layer. ${INCOMPLETE}`);
+  if (!textLayer) throw new Error(t('No baseline text layer. Project setup incomplete'));
   const tokenLayers = textLayer.tokenLayers || [];
   const sentenceLayer = findSentenceTokenLayer(tokenLayers);
   const wordLayer = findWordTokenLayer(tokenLayers);
@@ -128,7 +125,7 @@ export function resolveIgtTargets(project, fields = [], { substrateOnly = false 
   // A project igt never set up (a native archive's, `substrateOnly`) has only
   // the shared layers it had, and nothing is written to one it lacks.
   if (!substrateOnly && (!sentenceLayer || !wordLayer || !morphemeLayer)) {
-    throw new Error(`Substrate token layers missing. ${INCOMPLETE}`);
+    throw new Error(t('Substrate token layers missing. Project setup incomplete'));
   }
   const spanLayerByScopeName = new Map();
   for (const tl of tokenLayers) {
@@ -138,7 +135,12 @@ export function resolveIgtTargets(project, fields = [], { substrateOnly = false 
   }
   for (const f of fields) {
     if (!spanLayerByScopeName.has(`${f.scope}:${f.name}`)) {
-      throw new Error(`Annotation field "${f.name}" (${f.scope}) missing. ${INCOMPLETE}`);
+      throw new Error(
+        t('Annotation field "{name}" ({scope}) missing. Project setup incomplete', {
+          name: f.name,
+          scope: f.scope,
+        }),
+      );
     }
   }
   return {
@@ -189,7 +191,7 @@ export async function createDocumentShell({
   progress = () => {},
   check = () => {},
 }) {
-  progress('Creating document');
+  progress(msg('Creating document'));
   const id = uuidv7();
   // Names are unique in a project: a name another document holds becomes the
   // first free "Name (2)", which the server picks.
@@ -205,7 +207,7 @@ export async function createDocumentShell({
   if (!body?.length && !keepEmptyText) return { documentId, textId: null, sentenceIds: [] };
 
   check();
-  progress('Creating text');
+  progress(msg('Creating text'));
   const text = await client.texts.create(
     targets.textLayerId,
     documentId,
@@ -218,7 +220,7 @@ export async function createDocumentShell({
   onText?.(textId);
 
   check();
-  progress('Creating sentences');
+  progress(msg('Creating sentences'));
   // The sentence layer PARTITIONS the text, and the server checks that the
   // tokens tile the whole extent on every bulk call. So this one cannot be
   // chunked: a first chunk ending mid-text is rejected with "Partition must
@@ -274,7 +276,7 @@ export async function writeDocumentLayers({
     bulkInChunks(withMintedIds(specs), check, (part) => client.tokens.bulkCreate(part));
 
   check();
-  progress('Creating words');
+  progress(msg('Creating words'));
   const wordIds = await createTokens(
     words.map((w) =>
       withMetadata(
@@ -285,7 +287,7 @@ export async function writeDocumentLayers({
   );
 
   check();
-  progress('Creating morphemes');
+  progress(msg('Creating morphemes'));
   const morphemes = words.flatMap((w, wi) =>
     (w.morphemes || []).map((m, mi) => ({ word: w, wi, mi, morpheme: m })),
   );
@@ -309,7 +311,7 @@ export async function writeDocumentLayers({
   });
 
   check();
-  progress('Creating annotations');
+  progress(msg('Creating annotations'));
   // The bulk endpoint requires every span in one call to share a layer.
   const byLayer = new Map();
   const add = (tokenId, spans) => {
@@ -397,7 +399,7 @@ export async function writeAlignments({
   if (!alignments?.length) return true;
   if (!targets.alignmentLayerId) return false;
   check();
-  progress('Creating time alignment');
+  progress(msg('Creating time alignment'));
   await bulkInChunks(
     withMintedIds(
       alignments.map((a) => ({
@@ -457,17 +459,25 @@ export async function finishDocument({
       if (ready.convertedFrom) {
         warnings?.push(convertedNote([{ name: ready.file.name, from: ready.convertedFrom }]));
       }
-      if (ready.refused) warnings?.push(`"${name}": ${ready.refused} Not uploaded.`);
+      if (ready.refused) {
+        warnings?.push(t('"{name}": {reason} Not uploaded.', { name, reason: ready.refused }));
+      }
       recording.file = ready.refused ? null : ready.file;
     }
     if (!recording.file) return false;
-    progress('Uploading media');
+    progress(msg('Uploading media'));
     await uploadRecording(client, documentId, name, { ...recording, onProgress });
     return true;
   } catch (err) {
+    const reason = await mediaUploadFailure(client, err);
     warnings?.push(
-      `"${name}": media upload failed. ${await mediaUploadFailure(client, err)} ` +
-        "Upload the recording on the document's Media tab.",
+      t(
+        '"{name}": media upload failed. {reason} Upload the recording on the document\'s Media tab.',
+        {
+          name,
+          reason,
+        },
+      ),
     );
     return false;
   }
@@ -479,7 +489,7 @@ export async function finishDocument({
  * each of its channels. `progress(step)` is told what is happening.
  */
 export async function mixedRecording(tracks, { mix, quality = 'full', progress = () => {} }) {
-  progress('Mixing recordings');
+  progress(msg('Mixing recordings'));
   const file = await mix(
     tracks.map((t) => ({ file: t.file, offset: t.offset || 0 })),
     { quality, onProgress: progress },
@@ -493,9 +503,10 @@ export async function mixedRecording(tracks, { mix, quality = 'full', progress =
  * upload, so a failed upload leaves none behind.
  */
 export async function uploadRecording(client, documentId, name, { file, speakers, onProgress }) {
-  await client.documents.uploadMedia(documentId, file, `Import media for ${name}`, {
+  const audit = `Import media for ${name}`; // i18n-ignore: an audit message, stored on the server
+  await client.documents.uploadMedia(documentId, file, audit, {
     onProgress: (bytes) =>
-      onProgress?.({ phase: 'document', doc: name, step: 'Uploading media', bytes }),
+      onProgress?.({ phase: 'document', doc: name, step: msg('Uploading media'), bytes }),
   });
   if (speakers) {
     await client.documents.patchMetadata(
@@ -531,7 +542,11 @@ export async function createFields(client, project, fields, onProgress = null) {
   const planned = proposed.map((field) => {
     const parentLayerId = parentFor[field.scope];
     if (!parentLayerId) {
-      throw new Error(`This project has no ${field.scope.toLowerCase()} layer to add a field to.`);
+      throw new Error(
+        t('This project has no {scope} layer to add a field to.', {
+          scope: field.scope.toLowerCase(),
+        }),
+      );
     }
     return { field, parentLayerId };
   });
@@ -542,8 +557,8 @@ export async function createFields(client, project, fields, onProgress = null) {
   // field without its rules.
   onProgress?.(
     fields.length === 1
-      ? `Adding field ${fields[0].name} (${fields[0].scope})`
-      : `Adding ${fields.length} fields`,
+      ? t('Adding field {name} ({scope})', { name: fields[0].name, scope: fields[0].scope })
+      : t('Adding {n} fields', { n: fields.length }),
   );
   const created = [];
   await client.batched((b) => {
@@ -573,7 +588,7 @@ export async function addOrthographies(client, project, names) {
   if (!missing.length) return [];
   const textLayer = findBaselineTextLayer(project?.textLayers || []);
   const wordLayer = findWordTokenLayer(textLayer?.tokenLayers || []);
-  if (!wordLayer) throw new Error('This project has no word layer to add an orthography to.');
+  if (!wordLayer) throw new Error(t('This project has no word layer to add an orthography to.'));
   const current = readOrthographies(wordLayer.config) || [];
   await client.tokenLayers.setConfig(wordLayer.id, IGT_NAMESPACE, 'orthographies', [
     ...current,

@@ -7,7 +7,7 @@
 // the surface it came from (the text says "За", the analysis stores "за").
 
 import { composeText } from '@larc-iu/plaid-client';
-import { countOf } from '@ui/lib/plural.js';
+import { t } from '@ui/lib/i18n.js';
 import { isPictograph, isPunctOrSymbol } from '../../../plaid-ui/src/domain/punctuationClasses.js';
 import { escapeJsRegex } from '../../../plaid-ui/src/lib/jsRegex.js';
 
@@ -231,7 +231,7 @@ export function alignWords(body, begin, end, forms) {
       }
     }
     if (hit < 0 && ri >= runs.length) {
-      warnings.push(`no text left to align "${form}" to`);
+      warnings.push(t('no text left to align "{form}" to', { form }));
       spans.push(null);
       return;
     }
@@ -273,7 +273,10 @@ export function alignWords(body, begin, end, forms) {
   );
   if (forms.length && runs.length !== forms.length && (guessed || leftOver.length)) {
     warnings.push(
-      `${countOf(forms.length, 'analyzed word')} for ${countOf(runs.length, 'word of text', 'words of text')}, aligned by position`,
+      t(
+        '{forms, plural, one {# analyzed word} other {# analyzed words}} for {runs, plural, one {# word of text} other {# words of text}}, aligned by position',
+        { forms: forms.length, runs: runs.length },
+      ),
     );
   }
   return { spans, warnings };

@@ -5,6 +5,12 @@
 // used to emit the document index only on the "Starting" event and omit it
 // from every step after, so the counter snapped back to 1/N on the next step
 // and the bar with it.
+//
+// A step is a message marked with msg() where the engine names it, kept in
+// English so it can be found in the engine's step list, and translated here
+// where it is shown.
+
+import { t } from '@ui/lib/i18n.js';
 
 /**
  * An `onProgress` emitter bound to one document.
@@ -39,6 +45,10 @@ export function documentFraction(progress, fallbackTotal) {
 export function documentLabel(progress, fallbackTotal) {
   const total = progress?.total ?? fallbackTotal ?? 0;
   const n = (progress?.index ?? 0) + 1;
-  const step = progress?.step ? `: ${progress.step}` : '';
-  return `${progress?.doc ?? ''}${step}${total ? ` (${n}/${total})` : ''}`;
+  const doc = progress?.doc ?? '';
+  const step = progress?.step ? t(progress.step) : '';
+  if (step && total) return t('{doc}: {step} ({n}/{total})', { doc, step, n, total });
+  if (step) return t('{doc}: {step}', { doc, step });
+  if (total) return t('{doc} ({n}/{total})', { doc, n, total });
+  return doc;
 }

@@ -3,6 +3,7 @@ import { Button } from '../ui/button.jsx';
 import { Popover, PopoverTrigger, PopoverContent } from '../ui/popover.jsx';
 import { SafeMarkdown } from '../shared/markdown.jsx';
 import { getServiceSummary } from '@larc-iu/plaid-client';
+import { t } from '../../lib/i18n.js';
 
 // Info popover showing a service's self-provided summary (markdown via
 // extras.summary, else the short description). The summary is written by
@@ -20,7 +21,11 @@ export function ServiceSummary({ service }) {
           variant="ghost"
           size="icon"
           className="h-6 w-6 text-muted-foreground"
-          aria-label={`About ${service.serviceName || 'service'}`}
+          aria-label={
+            service.serviceName
+              ? t('About {name}', { name: service.serviceName })
+              : t('About service')
+          }
         >
           <Info className="h-4 w-4" />
         </Button>

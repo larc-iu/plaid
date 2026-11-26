@@ -71,7 +71,7 @@ import { convertedNote, prepareRecording } from '../../domain/media/playableReco
 import { declareIgtRules, igtFields } from '../../domain/igtConstraints.js';
 import { getIgtLayerInfo } from '../../domain/layerInfo.js';
 import { notInForceText } from '../../components/projects/settings/refusedValues.js';
-import { countOf } from '../../../../plaid-ui/src/lib/plural.js';
+import { msg, t } from '@ui/lib/i18n.js';
 
 // The manifest's fields as the flat {name, scope} list the shared pipeline
 // takes: the archive groups them by scope, everything else names the scope on
@@ -265,7 +265,10 @@ export async function importVocabulary({
   const takenSlug = await slugTakenElsewhere(client, vocabId, vocabData.config);
   if (takenSlug) {
     warnings.push(
-      `"${vocabData.name}": dictionary address /${takenSlug} is already in use. Imported with no address.`,
+      t('"{name}": dictionary address /{address} is already in use. Imported with no address.', {
+        name: vocabData.name,
+        address: takenSlug,
+      }),
     );
   }
   for (const [ns, keys] of Object.entries(vocabData.config || {})) {
@@ -339,7 +342,10 @@ async function postArchivedComments({ client, name, comments, anchorFor, warning
     const entityId = anchorFor(c.anchor);
     if (!entityId) {
       warnings.push(
-        `"${name}": a comment was skipped (its ${anchorNoun(c.anchor?.type)} did not survive the import)`,
+        t('"{name}": a comment was skipped (its {anchor} did not survive the import)', {
+          name,
+          anchor: anchorNoun(c.anchor?.type),
+        }),
       );
       continue;
     }
@@ -354,7 +360,10 @@ async function postArchivedComments({ client, name, comments, anchorFor, warning
   }
   if (unattributed > 0) {
     warnings.push(
-      `"${name}": ${unattributed} comment(s) were too long to carry their original attribution, so they were imported unchanged.`,
+      t(
+        '"{name}": {n} comment(s) were too long to carry their original attribution, so they were imported unchanged.',
+        { name, n: unattributed },
+      ),
     );
   }
   for (let i = 0; i < posts.length; i += CHUNK) {
@@ -409,17 +418,17 @@ const fitsCap = (metadata) => keyCount(metadata) <= MAX_METADATA_KEYS;
 // The steps one document goes through, in order, so progress can report how
 // far into a document it is and not just which document.
 const DOCUMENT_STEPS = [
-  'Creating document',
-  'Creating text',
-  'Creating sentences',
-  'Creating words',
-  'Creating morphemes',
-  'Creating segments',
-  'Creating annotations',
-  "Creating other apps' annotation",
-  'Linking lexicon',
-  'Restoring comments',
-  'Uploading media',
+  msg('Creating document'),
+  msg('Creating text'),
+  msg('Creating sentences'),
+  msg('Creating words'),
+  msg('Creating morphemes'),
+  msg('Creating segments'),
+  msg('Creating annotations'),
+  msg("Creating other apps' annotation"),
+  msg('Linking lexicon'),
+  msg('Restoring comments'),
+  msg('Uploading media'),
 ];
 
 /** Import one document end to end. Assumes it does not exist yet. */
@@ -539,7 +548,7 @@ async function importNativeDocument({
   const textId = shell.textId; // for comments anchored to the text itself
   if (textId) {
     check();
-    progress('Creating words');
+    progress(msg('Creating words'));
     const wordNodes = [
       ...words.map((w) => ({ spec: wordMetadata(w), node: w })),
       ...orphansBy('word').map((t) => ({ spec: { ...(t.metadata || {}) }, node: t })),
@@ -557,7 +566,7 @@ async function importNativeDocument({
     );
 
     check();
-    progress('Creating morphemes');
+    progress(msg('Creating morphemes'));
     const morphemeNodes = [
       ...words
         .flatMap((w) => w.morphemes || [])
@@ -581,7 +590,7 @@ async function importNativeDocument({
     if (alignment.length) {
       check();
       if (targets.alignmentLayerId) {
-        progress('Creating segments');
+        progress(msg('Creating segments'));
         await bulkTokens(
           alignment.map((a) => ({
             tokenLayerId: targets.alignmentLayerId,
@@ -600,7 +609,10 @@ async function importNativeDocument({
         );
       } else {
         warnings.push(
-          `"${docData.name}": ${countOf(alignment.length, 'time-aligned segment')} skipped. This project is not set up for time alignment.`,
+          t(
+            '"{name}": {n, plural, one {# time-aligned segment} other {# time-aligned segments}} skipped. This project is not set up for time alignment.',
+            { name: docData.name, n: alignment.length },
+          ),
         );
       }
     }
@@ -612,7 +624,7 @@ async function importNativeDocument({
     // (per the spec): it carries the span's full token list — e.g. a span
     // reaching an orphan token — so the tree entries for that id are skipped.
     check();
-    progress('Creating annotations');
+    progress(msg('Creating annotations'));
     const authoritativeExtraIds = new Set(
       (docData.extraSpans || []).map((s) => s.id).filter((id) => id != null),
     );
@@ -680,7 +692,10 @@ async function importNativeDocument({
       const tokenIds = tokens.map((t) => tokenIdMap.get(t)).filter(Boolean);
       if (tokenIds.length !== tokens.length) {
         warnings.push(
-          `"${docData.name}": a "${name}" value was skipped (what it annotates is not in the archive)`,
+          t('"{name}": a "{field}" value was skipped (what it annotates is not in the archive)', {
+            name: docData.name,
+            field: name,
+          }),
         );
         return;
       }
@@ -689,7 +704,9 @@ async function importNativeDocument({
         const key = `${scope}:${name}`;
         if (!targets.skippedSpanLayers.has(key)) {
           targets.skippedSpanLayers.add(key);
-          warnings.push(`Field "${name}" skipped (the archive does not describe it)`);
+          warnings.push(
+            t('Field "{field}" skipped (the archive does not describe it)', { field: name }),
+          );
         }
         return;
       }
@@ -760,7 +777,7 @@ async function importNativeDocument({
     // lexicon links, since a link may be on one of those tokens.
     if (docData.otherLayers) {
       check();
-      progress("Creating other apps' annotation");
+      progress(msg("Creating other apps' annotation"));
       await importOtherLayerData({
         client,
         docData,
@@ -777,7 +794,7 @@ async function importNativeDocument({
 
     // Vocab links: inline refs from the tree + the extras section. Link
     // metadata (provenance) rides verbatim.
-    progress('Linking lexicon');
+    progress(msg('Linking lexicon'));
     const linkSpecs = [];
     const addLink = (ref, oldTokenIds) => {
       if (!ref) return;
@@ -786,7 +803,13 @@ async function importNativeDocument({
       const tokenIds = oldTokenIds.map((t) => tokenIdMap.get(t)).filter(Boolean);
       if (!itemId || tokenIds.length !== oldTokenIds.length) {
         warnings.push(
-          `"${docData.name}": a lexicon link was skipped (${!itemId ? 'its entry is' : 'its words are'} not in the archive)`,
+          !itemId
+            ? t('"{name}": a lexicon link was skipped (its entry is not in the archive)', {
+                name: docData.name,
+              })
+            : t('"{name}": a lexicon link was skipped (its words are not in the archive)', {
+                name: docData.name,
+              }),
         );
         return;
       }
@@ -826,7 +849,11 @@ async function importNativeDocument({
   } else if (hasOtherTokens(docData)) {
     // Tokens need a text to sit on, and a document with an empty baseline gets
     // none.
-    warnings.push(`"${docData.name}": tokens from another app skipped (the document has no text)`);
+    warnings.push(
+      t('"{name}": tokens from another app skipped (the document has no text)', {
+        name: docData.name,
+      }),
+    );
   }
 
   // What names something this document made after it, now that all of it
@@ -837,7 +864,7 @@ async function importNativeDocument({
   const comments = docData.comments || [];
   if (comments.length > 0) {
     check();
-    progress('Restoring comments');
+    progress(msg('Restoring comments'));
     await postArchivedComments({
       client,
       name: docData.name,
@@ -866,12 +893,15 @@ async function importNativeDocument({
   // Media, from the archive bytes.
   if (mediaBytes) {
     check();
-    progress('Uploading media');
+    progress(msg('Uploading media'));
     try {
       // An ADPCM WAV goes up as PCM, and one no browser plays not at all.
       const ready = await prepareRecording(new File([mediaBytes], mediaName || 'media'));
-      if (ready.refused) warnings.push(`"${docData.name}": ${ready.refused} Not uploaded.`);
-      else {
+      if (ready.refused) {
+        warnings.push(
+          t('"{name}": {reason} Not uploaded.', { name: docData.name, reason: ready.refused }),
+        );
+      } else {
         if (ready.convertedFrom) {
           warnings.push(convertedNote([{ name: ready.file.name, from: ready.convertedFrom }]));
         }
@@ -879,8 +909,13 @@ async function importNativeDocument({
       }
     } catch (err) {
       warnings.push(
-        `"${docData.name}": media upload failed. ${humanizeError(err)} ` +
-          "Upload the recording on the document's Media tab.",
+        t(
+          '"{name}": media upload failed. {reason} Upload the recording on the document\'s Media tab.',
+          {
+            name: docData.name,
+            reason: humanizeError(err),
+          },
+        ),
       );
     }
   }
@@ -899,6 +934,7 @@ async function importNativeDocument({
 // The whole import is ONE logical operation in the audit log (vocabulary +
 // every document); each write keeps its own description underneath.
 export async function runNativeImport(args) {
+  // i18n-ignore: an audit label, stored on the server
   return args.client.withOperation('Import Plaid IGT archive', () => runNativeImportImpl(args), {
     kind: 'import',
     ref: 'format:native',
@@ -973,7 +1009,12 @@ async function runNativeImportImpl({ client, projectId, archive, onProgress, sho
         id: uuidv7(),
       });
     } catch (err) {
-      warnings.push(`Guideline "${g.title}" could not be created: ${humanizeError(err)}`);
+      warnings.push(
+        t('Guideline "{title}" could not be created: {reason}', {
+          title: g.title,
+          reason: humanizeError(err),
+        }),
+      );
     }
   }
 
@@ -1061,7 +1102,11 @@ async function runNativeImportImpl({ client, projectId, archive, onProgress, sho
     if (shouldStop?.()) throw new ImportCancelled();
     const target = projectVocabs.find((v) => sameName(v.name, vocab.name));
     if (!target) {
-      warnings.push(`Vocabulary "${vocab.name}" is not in the project. Its entries were skipped.`);
+      warnings.push(
+        t('Vocabulary "{name}" is not in the project. Its entries were skipped.', {
+          name: vocab.name,
+        }),
+      );
       continue;
     }
     const map = await importVocabulary({
@@ -1089,7 +1134,7 @@ async function runNativeImportImpl({ client, projectId, archive, onProgress, sho
       doc: doc.name,
       index: i,
       total: archive.documents.length,
-      step: 'Starting',
+      step: msg('Starting'),
     });
     await importNativeDocument({
       client,
@@ -1172,7 +1217,7 @@ async function declareRulesAtEnd({ client, projectId, warnings = [] }) {
     const { notInForce } = await declareIgtRules(client, projectId, { repair: false });
     warnings.push(...notInForce.map((f) => notInForceText([f])));
   } catch (err) {
-    warnings.push(`The annotation rules were not set: ${humanizeError(err)}`);
+    warnings.push(t('The annotation rules were not set: {reason}', { reason: humanizeError(err) }));
   }
 }
 
@@ -1261,7 +1306,7 @@ export function planVocabRelink(vocabData, itemIdMap, docMaps, docIdMap = null) 
       else {
         delete next.parent;
         delete next.senseOrder;
-        dropped.push(`${it.form}: parent`);
+        dropped.push(t('{form}: parent', { form: it.form }));
       }
       changed = true;
     }
@@ -1285,7 +1330,7 @@ export function planVocabRelink(vocabData, itemIdMap, docMaps, docIdMap = null) 
         const doc = docMaps?.get(ex.document);
         const token = doc?.tokenIdMap.get(ex.token);
         if (doc && token) kept.push({ ...ex, document: doc.docId, token });
-        else dropped.push(`${it.form}: example`);
+        else dropped.push(t('{form}: example', { form: it.form }));
       }
       if (kept.length) next.examples = kept;
       else delete next.examples;
@@ -1329,7 +1374,14 @@ async function relinkVocabStructure({
   }
   if (dropped.length) {
     warnings.push(
-      `"${vocabData.name}": ${countOf(dropped.length, 'reference')} pointed at something not in the archive and ${dropped.length === 1 ? 'was' : 'were'} dropped (${dropped.slice(0, 5).join('; ')}${dropped.length > 5 ? '; …' : ''})`,
+      t(
+        '"{name}": {n, plural, one {# reference pointed at something not in the archive and was dropped} other {# references pointed at something not in the archive and were dropped}} ({examples})',
+        {
+          name: vocabData.name,
+          n: dropped.length,
+          examples: `${dropped.slice(0, 5).join('; ')}${dropped.length > 5 ? '; …' : ''}`,
+        },
+      ),
     );
   }
 }

@@ -5,6 +5,7 @@ import { Progress } from '../ui/progress.jsx';
 import { Notice } from '../shared/Notice.jsx';
 import { cn } from '../../lib/utils.js';
 import { formatElapsed, overallPercent } from '../../hooks/useRunProgress.js';
+import { t } from '../../lib/i18n.js';
 
 // The one place a run's progress shows, over the document, on every tab: the
 // run's name, its steps when it has several, the bar, what the worker last
@@ -46,9 +47,10 @@ export function RunBanner({
 
   const stepCount = steps.length;
   const several = stepCount > 1;
-  const place = several ? `Step ${stepIndex + 1} of ${stepCount}` : null;
+  const step = { i: stepIndex + 1, n: stepCount };
+  const place = several ? t('Step {i} of {n}', step) : null;
   // Never blank: what the worker said, else the step's name, else that it works.
-  const said = message || (several ? steps[stepIndex] : '') || 'Working…';
+  const said = message || (several ? steps[stepIndex] : '') || t('Working…');
   const overall = overallPercent(stepCount, stepIndex, percent);
 
   return (
@@ -60,7 +62,7 @@ export function RunBanner({
     >
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
         <p className="font-medium">{label}</p>
-        {paused && <p className="text-xs text-muted-foreground">Editing paused.</p>}
+        {paused && <p className="text-xs text-muted-foreground">{t('Editing paused.')}</p>}
         <span className="ml-auto text-xs tabular-nums text-muted-foreground">
           {formatElapsed(elapsedMs)}
         </span>
@@ -68,12 +70,12 @@ export function RunBanner({
             own hook, so no tab's dialog has a handle on it. */}
         {cancel && (
           <Button variant="outline" size="sm" className="h-7" onClick={cancel}>
-            Stop
+            {t('Stop')}
           </Button>
         )}
       </div>
       {several && (
-        <ol className="mt-2 flex flex-wrap gap-x-4 gap-y-1" aria-label="Steps">
+        <ol className="mt-2 flex flex-wrap gap-x-4 gap-y-1" aria-label={t('Steps')}>
           {steps.map((name, i) => (
             <li
               key={`${i}:${name}`}
@@ -102,11 +104,11 @@ export function RunBanner({
       )}
       <Progress
         value={Number.isFinite(overall) ? overall : undefined}
-        label={place ?? 'Progress'}
+        label={place ?? t('Progress')}
         className="mt-2"
       />
       <p className="mt-1.5 text-xs" role="status">
-        {place ? `${place}. ${said}` : said}
+        {place ? t('Step {i} of {n}. {message}', { ...step, message: said }) : said}
       </p>
     </Notice>
   );

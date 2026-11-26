@@ -54,7 +54,7 @@ import {
 } from '../domain/vocabFields.js';
 import { FLEX_MORPH_TYPES } from '../domain/affixMarkers.js';
 import { parseFieldName } from '../domain/fieldNames.js';
-import { countOf, plural } from '../../../plaid-ui/src/lib/plural.js';
+import { t } from '@ui/lib/i18n.js';
 
 export const LIFT_VERSION = '0.13';
 
@@ -682,18 +682,20 @@ export function buildLiftLexicon({
   }
   if (formless > 0) {
     warnings.push(
-      `${formless} lexicon ${plural(formless, 'entry')} ${formless === 1 ? 'has' : 'have'} no form and ${
-        formless === 1 ? 'was' : 'were'
-      } left out of the .lift file.`,
+      t(
+        '{n, plural, one {# lexicon entry has no form and was left out of the .lift file.} other {# lexicon entries have no form and were left out of the .lift file.}}',
+        { n: formless },
+      ),
     );
   }
 
   if (ctx.unresolved.count > 0) {
     const n = ctx.unresolved.count;
     warnings.push(
-      `${countOf(n, 'example')} could not be read from the document ${
-        n === 1 ? 'it points' : 'they point'
-      } into and ${n === 1 ? 'was' : 'were'} left out of the .lift file.`,
+      t(
+        '{n, plural, one {# example could not be read from the document it points into and was left out of the .lift file.} other {# examples could not be read from the document they point into and were left out of the .lift file.}}',
+        { n },
+      ),
     );
   }
 

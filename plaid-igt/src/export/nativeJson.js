@@ -42,7 +42,7 @@ import {
   orthographyKey,
 } from '../domain/igtConfig.js';
 import { ROLES } from '@larc-iu/plaid-client';
-import { countOf } from '../../../plaid-ui/src/lib/plural.js';
+import { t } from '@ui/lib/i18n.js';
 import { readTagsetName } from '../domain/tagsets.js';
 import {
   UNCARRIED_PLAID_KEYS,
@@ -407,7 +407,14 @@ export function serializeVocabularyNative(vocab, { comments = [], onWarning = nu
   const itemIds = new Set(items.map((it) => it.id));
   const nodes = commentNodes(comments, (type, id) => type === 'vocab-item' && itemIds.has(id));
   const dropped = (comments || []).length - nodes.length;
-  if (dropped > 0) onWarning?.(`${countOf(dropped, 'comment')} on deleted entries not exported`);
+  if (dropped > 0) {
+    onWarning?.(
+      t(
+        '{n, plural, one {# comment on deleted entries not exported} other {# comments on deleted entries not exported}}',
+        { n: dropped },
+      ),
+    );
+  }
   return {
     id: vocab?.id ?? null,
     name: vocab?.name ?? null,
@@ -863,7 +870,10 @@ export function serializeDocumentNative(
   const dropped = (comments || []).length - nodes.length;
   if (dropped > 0) {
     onWarning?.(
-      `${countOf(dropped, 'comment')} not exported (what they are about is deleted, or belongs to another app)`,
+      t(
+        '{n, plural, one {# comment not exported (what they are about is deleted, or belongs to another app)} other {# comments not exported (what they are about is deleted, or belongs to another app)}}',
+        { n: dropped },
+      ),
     );
   }
 

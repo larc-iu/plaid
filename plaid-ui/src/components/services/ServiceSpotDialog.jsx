@@ -3,6 +3,7 @@ import { ServiceRunDialog } from './ServiceRunDialog.jsx';
 import { ServiceMethodRow } from './ServiceMethodRow.jsx';
 import { ServiceRunButton } from './ServiceRunButton.jsx';
 import { heldBy, runHeldNotice } from './runHeld.js';
+import { t } from '../../lib/i18n.js';
 
 // A run of one service spot: the button and the dialog behind it, with one
 // method row. The dialog closes when the run is started, and the run belongs
@@ -40,8 +41,8 @@ export function ServiceSpotDialog({
   const emptyHint = !noun
     ? undefined
     : isDiscovering
-      ? `Looking for a ${noun} service.`
-      : `No ${noun} service is online for this project.`;
+      ? t('Looking for a {noun} service.', { noun })
+      : t('No {noun} service is online for this project.', { noun });
 
   return (
     <>

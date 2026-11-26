@@ -4,6 +4,7 @@
 
 import { unzipSync } from 'fflate';
 import { decodeText } from '@ui/lib/textFile.js';
+import { t } from '@ui/lib/i18n.js';
 
 /**
  * Extract the .fwdata XML from a .fwbackup zip.
@@ -23,7 +24,7 @@ export function readFwbackup(bytes) {
     },
   });
   if (!fwdataName) {
-    throw new Error('Not a FieldWorks backup: no .fwdata file found in the archive');
+    throw new Error(t('Not a FieldWorks backup: no .fwdata file found in the archive'));
   }
   return {
     name: fwdataName.replace(/\.fwdata$/i, ''),

@@ -32,6 +32,7 @@
 
 import { EafError, baseTierName } from './readEaf.js';
 import { decodeText } from '@ui/lib/textFile.js';
+import { msg, t } from '@ui/lib/i18n.js';
 
 const TYPE_TOP = 'TextGrid';
 const TYPE_SAME = 'TextGrid (same times)';
@@ -56,7 +57,8 @@ function values(text, fileName) {
       let s = '';
       i += 1;
       for (;;) {
-        if (i >= n) throw new EafError(`${fileName} has a string with no closing quote.`);
+        if (i >= n)
+          throw new EafError(t('{file} has a string with no closing quote.', { file: fileName }));
         if (text[i] === '"') {
           if (text[i + 1] === '"') {
             s += '"';
@@ -94,7 +96,9 @@ function values(text, fileName) {
 }
 
 const binaryError = (fileName) =>
-  new EafError(`${fileName} is a binary TextGrid. Save it from Praat as a text file.`);
+  new EafError(
+    t('{file} is a binary TextGrid. Save it from Praat as a text file.', { file: fileName }),
+  );
 
 /**
  * A picked TextGrid file read and parsed. Praat's binary format starts with
@@ -117,26 +121,42 @@ export function readTextGrid(text, fileName = 'file.TextGrid') {
   if (/^\uFEFF?ooBinaryFile/.test(text)) throw binaryError(fileName);
   const vals = values(text, fileName);
   let at = 0;
-  const next = (kind, what) => {
+  // `missing` is the whole sentence that says what is missing.
+  const next = (kind, missing) => {
     const v = vals[at];
-    if (!v || !(kind in v)) {
-      throw new EafError(`${fileName} is not a TextGrid Plaid can read: ${what} is missing.`);
-    }
+    if (!v || !(kind in v)) throw new EafError(t(missing, { file: fileName }));
     at += 1;
     return v[kind];
   };
-  if (next('s', 'the file type') !== 'ooTextFile' || next('s', 'the object class') !== 'TextGrid') {
-    throw new EafError(`${fileName} is not a Praat TextGrid.`);
+  if (
+    next('s', msg('{file} is not a TextGrid Plaid can read: the file type is missing.')) !==
+      'ooTextFile' ||
+    next('s', msg('{file} is not a TextGrid Plaid can read: the object class is missing.')) !==
+      'TextGrid'
+  ) {
+    throw new EafError(t('{file} is not a Praat TextGrid.', { file: fileName }));
   }
-  next('n', 'the start time');
-  next('n', 'the end time');
+  next('n', msg('{file} is not a TextGrid Plaid can read: the start time is missing.'));
+  next('n', msg('{file} is not a TextGrid Plaid can read: the end time is missing.'));
   const tiers = [];
   const names = new Set();
-  if (next('f', 'whether it has tiers') === 'exists') {
-    const size = next('n', 'the number of tiers');
+  if (
+    next('f', msg('{file} is not a TextGrid Plaid can read: whether it has tiers is missing.')) ===
+    'exists'
+  ) {
+    const size = next(
+      'n',
+      msg('{file} is not a TextGrid Plaid can read: the number of tiers is missing.'),
+    );
     for (let t = 0; t < size; t += 1) {
-      const kind = next('s', 'a tier class');
-      const name = next('s', 'a tier name');
+      const kind = next(
+        's',
+        msg('{file} is not a TextGrid Plaid can read: a tier class is missing.'),
+      );
+      const name = next(
+        's',
+        msg('{file} is not a TextGrid Plaid can read: a tier name is missing.'),
+      );
       const at2 = name.lastIndexOf('@');
       const participant = at2 > 0 ? name.slice(at2 + 1).trim() : '';
       // Praat allows two tiers of one name and a tier with none. A tier is
@@ -146,18 +166,34 @@ export function readTextGrid(text, fileName = 'file.TextGrid') {
       let id = full(base);
       for (let k = 2; names.has(id); k += 1) id = full(`${base} (${k})`);
       names.add(id);
-      next('n', 'a tier start');
-      next('n', 'a tier end');
-      const count = next('n', 'a tier size');
+      next('n', msg('{file} is not a TextGrid Plaid can read: a tier start is missing.'));
+      next('n', msg('{file} is not a TextGrid Plaid can read: a tier end is missing.'));
+      const count = next(
+        'n',
+        msg('{file} is not a TextGrid Plaid can read: a tier size is missing.'),
+      );
       const intervals = [];
       for (let k = 0; k < count; k += 1) {
         if (kind === 'IntervalTier') {
-          const begin = next('n', 'an interval start');
-          const end = next('n', 'an interval end');
-          intervals.push({ begin, end, value: next('s', 'an interval text') });
+          const begin = next(
+            'n',
+            msg('{file} is not a TextGrid Plaid can read: an interval start is missing.'),
+          );
+          const end = next(
+            'n',
+            msg('{file} is not a TextGrid Plaid can read: an interval end is missing.'),
+          );
+          intervals.push({
+            begin,
+            end,
+            value: next(
+              's',
+              msg('{file} is not a TextGrid Plaid can read: an interval text is missing.'),
+            ),
+          });
         } else {
-          next('n', 'a point time');
-          next('s', 'a point text');
+          next('n', msg('{file} is not a TextGrid Plaid can read: a point time is missing.'));
+          next('s', msg('{file} is not a TextGrid Plaid can read: a point text is missing.'));
         }
       }
       tiers.push({
@@ -256,7 +292,7 @@ export function readTextGrid(text, fileName = 'file.TextGrid') {
       String(fileName)
         .split(/[\\/]/)
         .pop()
-        .replace(/\.textgrid$/i, '') || 'Imported text',
+        .replace(/\.textgrid$/i, '') || 'Imported text', // i18n-ignore: a document name, stored
     properties: {},
     media: [],
     linguisticTypes: { ...LINGUISTIC_TYPES },

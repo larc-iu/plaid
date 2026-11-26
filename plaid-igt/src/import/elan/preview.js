@@ -9,6 +9,7 @@
 
 import { joinMorphemes } from '@/domain/affixMarkers';
 import { isOrthographyKey, orthographyName } from '@/domain/igtConfig';
+import { t } from '@ui/lib/i18n.js';
 
 const textOf = (chars, span) => chars.slice(span.begin, span.end).join('');
 
@@ -62,7 +63,7 @@ export function previewSentence(doc, index = 0) {
   if (anyMorphemes) {
     rows.push({
       kind: 'morphemes',
-      label: 'Morphemes',
+      label: t('Morphemes'),
       cells: words.map((w, i) =>
         unanalyzed[i]
           ? textOf(chars, w)
@@ -101,15 +102,22 @@ export function previewSentence(doc, index = 0) {
 /** The batch in numbers, for the line beside the Import button. */
 export const elanCounts = (build) => {
   if (!build) return '';
-  const n = (count, one, many = `${one}s`) => `${count} ${count === 1 ? one : many}`;
   const { stats } = build;
+  // Each count is its own phrase, and `{n}` inside the plural writes the
+  // number as it is, with no grouping.
   return [
-    n(build.documents.length, 'document'),
-    n(stats.sentences, 'sentence'),
-    n(stats.words, 'word'),
-    stats.morphemes ? n(stats.morphemes, 'morpheme') : null,
-    stats.alignments ? n(stats.alignments, 'time-aligned segment') : null,
-    stats.speakers.length ? `speakers: ${stats.speakers.join(', ')}` : null,
+    t('{n, plural, one {{n} document} other {{n} documents}}', { n: build.documents.length }),
+    t('{n, plural, one {{n} sentence} other {{n} sentences}}', { n: stats.sentences }),
+    t('{n, plural, one {{n} word} other {{n} words}}', { n: stats.words }),
+    stats.morphemes
+      ? t('{n, plural, one {{n} morpheme} other {{n} morphemes}}', { n: stats.morphemes })
+      : null,
+    stats.alignments
+      ? t('{n, plural, one {{n} time-aligned segment} other {{n} time-aligned segments}}', {
+          n: stats.alignments,
+        })
+      : null,
+    stats.speakers.length ? t('speakers: {names}', { names: stats.speakers.join(', ') }) : null,
   ]
     .filter(Boolean)
     .join(' · ');

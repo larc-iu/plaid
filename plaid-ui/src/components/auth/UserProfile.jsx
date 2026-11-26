@@ -17,6 +17,7 @@ import { Loading } from '../shared/Loading.jsx';
 import { Notice } from '../shared/Notice.jsx';
 import { useConfirm } from '../shared/ConfirmProvider';
 import { usePasswordMinimum, passwordTooShort } from '../../hooks/usePasswordMinimum.js';
+import { t, tx } from '../../lib/i18n.js';
 
 const EMPTY = (displayName = '') => ({
   displayName,
@@ -33,7 +34,7 @@ const EMPTY = (displayName = '') => ({
  * of the app's own (its keyboard shortcuts), drawn after the shared ones.
  */
 export const UserProfile = ({ className, children }) => {
-  useDocumentTitle('Profile');
+  useDocumentTitle(t('Profile'));
   const navigate = useNavigate();
   const location = useLocation();
   const confirm = useConfirm();
@@ -59,10 +60,10 @@ export const UserProfile = ({ className, children }) => {
       // the user chose it.
       const updated = await client.users.setAvatar(user.id, file);
       updateUser({ avatarHash: updated.avatarHash });
-      notifySuccess('Profile picture updated');
+      notifySuccess(t('Profile picture updated'));
     } catch (err) {
       console.error('Error uploading profile picture:', err);
-      notifyError(humanizeError(err), 'Failed to upload the picture');
+      notifyError(humanizeError(err), t('Failed to upload the picture'));
     } finally {
       setAvatarBusy(false);
     }
@@ -73,10 +74,10 @@ export const UserProfile = ({ className, children }) => {
     try {
       await client.users.deleteAvatar(user.id);
       updateUser({ avatarHash: null });
-      notifySuccess('Profile picture removed');
+      notifySuccess(t('Profile picture removed'));
     } catch (err) {
       console.error('Error removing profile picture:', err);
-      notifyError(humanizeError(err), 'Failed to remove the picture');
+      notifyError(humanizeError(err), t('Failed to remove the picture'));
     } finally {
       setAvatarBusy(false);
     }
@@ -93,7 +94,7 @@ export const UserProfile = ({ className, children }) => {
 
   // A revoked token's row stays on the server forever, so the audit log can
   // always resolve its name. Only the live ones belong on this screen.
-  const activeTokens = tokens.filter((t) => !t.revokedAt);
+  const activeTokens = tokens.filter((tk) => !tk.revokedAt);
 
   const loadTokens = async () => {
     if (!user?.id || !client) return;
@@ -103,7 +104,7 @@ export const UserProfile = ({ className, children }) => {
       setTokens(result || []);
     } catch (err) {
       console.error('Error loading API tokens:', err);
-      notifyError(humanizeError(err), 'Failed to load the tokens');
+      notifyError(humanizeError(err), t('Failed to load the tokens'));
     } finally {
       setTokensLoading(false);
     }
@@ -119,7 +120,7 @@ export const UserProfile = ({ className, children }) => {
     e.preventDefault();
     const name = newTokenName.trim();
     if (!name) {
-      notifyError('Name the token', 'Failed to create the token');
+      notifyError(t('Name the token'), t('Failed to create the token'));
       return;
     }
     try {
@@ -131,7 +132,7 @@ export const UserProfile = ({ className, children }) => {
       await loadTokens();
     } catch (err) {
       console.error('Error creating API token:', err);
-      notifyError(humanizeError(err), 'Failed to create the token');
+      notifyError(humanizeError(err), t('Failed to create the token'));
     } finally {
       setCreatingToken(false);
     }
@@ -146,20 +147,22 @@ export const UserProfile = ({ className, children }) => {
 
   const handleRevokeToken = async (token) => {
     const ok = await confirm({
-      title: `Revoke “${token.name}”?`,
-      description: 'Any service using this token loses access immediately. This cannot be undone.',
-      confirmLabel: 'Revoke',
+      title: t('Revoke “{name}”?', { name: token.name }),
+      description: t(
+        'Any service using this token loses access immediately. This cannot be undone.',
+      ),
+      confirmLabel: t('Revoke'),
       destructive: true,
     });
     if (!ok) return;
     try {
       await client.apiTokens.revoke(user.id, token.id);
       if (mintedToken && mintedToken.id === token.id) setMintedToken(null);
-      notifySuccess('API token revoked');
+      notifySuccess(t('API token revoked'));
       await loadTokens();
     } catch (err) {
       console.error('Error revoking API token:', err);
-      notifyError(humanizeError(err), 'Failed to revoke the token');
+      notifyError(humanizeError(err), t('Failed to revoke the token'));
     }
   };
 
@@ -169,13 +172,13 @@ export const UserProfile = ({ className, children }) => {
 
   const validate = () => {
     const er = {};
-    if (!fields.displayName.trim()) er.displayName = 'Enter a display name';
+    if (!fields.displayName.trim()) er.displayName = t('Enter a display name');
     const tooShort = fields.newPassword && passwordTooShort(fields.newPassword, passwordMinimum);
     if (tooShort) er.newPassword = tooShort;
     if (fields.newPassword && fields.confirmPassword !== fields.newPassword)
-      er.confirmPassword = 'Passwords do not match';
+      er.confirmPassword = t('Passwords do not match');
     if (fields.newPassword && !fields.currentPassword)
-      er.currentPassword = 'Current password is required to change password';
+      er.currentPassword = t('Current password is required to change password');
     setErrors(er);
     return Object.keys(er).length === 0;
   };
@@ -193,7 +196,7 @@ export const UserProfile = ({ className, children }) => {
       if (fields.newPassword) updateData.password = fields.newPassword;
 
       if (Object.keys(updateData).length === 0) {
-        notifyWarning('No changes to save');
+        notifyWarning(t('No changes to save'));
         setLoading(false);
         return;
       }
@@ -213,7 +216,7 @@ export const UserProfile = ({ className, children }) => {
       }
       const updatedUserData = await client.users.get(user.id);
 
-      notifySuccess('Profile updated');
+      notifySuccess(t('Profile updated'));
       setIsEditing(false);
       setFields(EMPTY(updatedUserData.displayName));
       localStorage.setItem('displayName', updatedUserData.displayName);
@@ -226,7 +229,7 @@ export const UserProfile = ({ className, children }) => {
       // A refused current password belongs on its field.
       const refused = fields.newPassword && refusalSaid(err);
       if (refused) setErrors({ currentPassword: refused });
-      else notifyError(humanizeError(err), 'Failed to save the profile');
+      else notifyError(humanizeError(err), t('Failed to save the profile'));
     } finally {
       setLoading(false);
     }
@@ -253,13 +256,13 @@ export const UserProfile = ({ className, children }) => {
     <div className={cn('mx-auto flex max-w-2xl flex-col gap-6', className)}>
       <div>
         <Button variant="ghost" size="sm" onClick={goBack}>
-          <ArrowLeft className="h-4 w-4" /> Back
+          <ArrowLeft className="h-4 w-4" /> {t('Back')}
         </Button>
       </div>
 
       <Card>
         <CardHeader>
-          <CardTitle>User profile</CardTitle>
+          <CardTitle>{t('User profile')}</CardTitle>
         </CardHeader>
         <CardContent>
           <div className="mb-6 flex items-center gap-4">
@@ -287,7 +290,7 @@ export const UserProfile = ({ className, children }) => {
                   onClick={() => fileInputRef.current?.click()}
                 >
                   <ImagePlus className="h-4 w-4" />
-                  {user?.avatarHash ? 'Change picture' : 'Upload picture'}
+                  {user?.avatarHash ? t('Change picture') : t('Upload picture')}
                 </Button>
                 {user?.avatarHash && (
                   <Button
@@ -296,12 +299,12 @@ export const UserProfile = ({ className, children }) => {
                     disabled={avatarBusy}
                     onClick={handleAvatarRemove}
                   >
-                    Remove
+                    {t('Remove')}
                   </Button>
                 )}
               </div>
               <p className="text-xs text-muted-foreground">
-                PNG, JPEG, WebP or GIF. Cropped to a square and resized.
+                {t('PNG, JPEG, WebP or GIF. Cropped to a square and resized.')}
               </p>
             </div>
           </div>
@@ -309,45 +312,45 @@ export const UserProfile = ({ className, children }) => {
           {!isEditing ? (
             <div className="flex flex-col gap-4">
               <div>
-                <p className="text-sm font-medium text-muted-foreground">Display name</p>
+                <p className="text-sm font-medium text-muted-foreground">{t('Display name')}</p>
                 <p className="text-lg">{user?.displayName}</p>
               </div>
               <div>
-                <p className="text-sm font-medium text-muted-foreground">Email address</p>
+                <p className="text-sm font-medium text-muted-foreground">{t('Email address')}</p>
                 <p className="text-lg">{user?.id}</p>
               </div>
               <Button className="self-start" onClick={() => setIsEditing(true)}>
-                Edit profile
+                {t('Edit profile')}
               </Button>
             </div>
           ) : (
             <form onSubmit={handleSubmit} className="flex flex-col gap-4">
               <div className="flex flex-col gap-1.5">
-                <Label htmlFor="displayName">Display name</Label>
+                <Label htmlFor="displayName">{t('Display name')}</Label>
                 <Input
                   id="displayName"
                   value={fields.displayName}
                   onChange={set('displayName')}
-                  placeholder="How you appear to your collaborators"
+                  placeholder={t('How you appear to your collaborators')}
                 />
                 {fieldError('displayName')}
               </div>
 
               <div className="flex flex-col gap-1.5">
-                <Label htmlFor="email">Email address</Label>
+                <Label htmlFor="email">{t('Email address')}</Label>
                 <Input id="email" value={user?.id ?? ''} disabled readOnly />
                 <p className="text-xs text-muted-foreground">
-                  What you sign in with. Ask an administrator to change it.
+                  {t('What you sign in with. Ask an administrator to change it.')}
                 </p>
               </div>
 
               <div className="flex items-center gap-3 text-xs text-muted-foreground">
-                <div className="h-px flex-1 bg-border" /> Change password (optional){' '}
+                <div className="h-px flex-1 bg-border" /> {t('Change password (optional)')}{' '}
                 <div className="h-px flex-1 bg-border" />
               </div>
 
               <div className="flex flex-col gap-1.5">
-                <Label htmlFor="currentPassword">Current password</Label>
+                <Label htmlFor="currentPassword">{t('Current password')}</Label>
                 <Input
                   id="currentPassword"
                   type="password"
@@ -358,7 +361,7 @@ export const UserProfile = ({ className, children }) => {
                 {fieldError('currentPassword')}
               </div>
               <div className="flex flex-col gap-1.5">
-                <Label htmlFor="newPassword">New password</Label>
+                <Label htmlFor="newPassword">{t('New password')}</Label>
                 <Input
                   id="newPassword"
                   type="password"
@@ -369,7 +372,7 @@ export const UserProfile = ({ className, children }) => {
                 {fieldError('newPassword')}
               </div>
               <div className="flex flex-col gap-1.5">
-                <Label htmlFor="confirmPassword">Confirm new password</Label>
+                <Label htmlFor="confirmPassword">{t('Confirm new password')}</Label>
                 <Input
                   id="confirmPassword"
                   type="password"
@@ -382,10 +385,10 @@ export const UserProfile = ({ className, children }) => {
 
               <div className="mt-2 flex justify-end gap-2">
                 <Button type="button" variant="outline" onClick={handleCancel} disabled={loading}>
-                  Cancel
+                  {t('Cancel')}
                 </Button>
                 <Button type="submit" disabled={loading}>
-                  {loading ? 'Saving…' : 'Save changes'}
+                  {loading ? t('Saving…') : t('Save changes')}
                 </Button>
               </div>
             </form>
@@ -398,30 +401,33 @@ export const UserProfile = ({ className, children }) => {
           unlike the session token. They carry the same permissions as you. */}
       <Card>
         <CardHeader>
-          <CardTitle>API tokens</CardTitle>
+          <CardTitle>{t('API tokens')}</CardTitle>
         </CardHeader>
         <CardContent className="flex flex-col gap-4">
           <p className="text-sm text-muted-foreground">
-            A named credential for scripts and services (parsers, the Python{' '}
-            <code>PlaidClient</code>). It carries your permissions and does not expire. Actions
-            taken with one are labelled by its name in the audit history.
+            {tx(
+              'A named credential for scripts and services (parsers, the Python <code>PlaidClient</code>). It carries your permissions and does not expire. Actions taken with one are labelled by its name in the audit history.',
+              { code: (c) => <code>{c}</code> },
+            )}
           </p>
 
           {/* One-time reveal of a freshly minted token */}
           {mintedToken && (
             <Notice tone="warning" className="p-3">
-              <p className="text-sm font-medium">Token &ldquo;{mintedToken.name}&rdquo; created</p>
-              <p className="mb-2 mt-0.5 text-xs">Copy it now. It is not shown again.</p>
+              <p className="text-sm font-medium">
+                {t('Token “{name}” created', { name: mintedToken.name })}
+              </p>
+              <p className="mb-2 mt-0.5 text-xs">{t('Copy it now. It is not shown again.')}</p>
               <div className="flex items-center gap-2">
                 <code className="min-w-0 flex-1 break-all rounded bg-background px-2 py-1 text-xs">
                   {mintedToken.token}
                 </code>
                 <Button size="sm" variant="outline" onClick={handleCopyMinted}>
                   {copied ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
-                  {copied ? 'Copied' : 'Copy'}
+                  {copied ? t('Copied') : t('Copy')}
                 </Button>
                 <Button size="sm" variant="ghost" onClick={() => setMintedToken(null)}>
-                  Done
+                  {t('Done')}
                 </Button>
               </div>
             </Notice>
@@ -430,49 +436,51 @@ export const UserProfile = ({ className, children }) => {
           {/* Create form */}
           <form onSubmit={handleCreateToken} className="flex items-end gap-2">
             <div className="flex flex-1 flex-col gap-1.5">
-              <Label htmlFor="token-name">New token name</Label>
+              <Label htmlFor="token-name">{t('New token name')}</Label>
               <Input
                 id="token-name"
                 value={newTokenName}
                 onChange={(e) => setNewTokenName(e.target.value)}
                 // service-ok: an example of a name a person types
-                placeholder="e.g. Stanza parser"
+                placeholder={t('e.g. Stanza parser')}
               />
             </div>
             <Button type="submit" disabled={creatingToken}>
-              {creatingToken ? 'Creating…' : 'Create token'}
+              {creatingToken ? t('Creating…') : t('Create token')}
             </Button>
           </form>
 
           {/* Token list */}
           <div>
             {tokensLoading ? (
-              <Loading label="Loading tokens…" className="p-0" />
+              <Loading label={t('Loading tokens…')} className="p-0" />
             ) : activeTokens.length === 0 ? (
-              <p className="text-sm text-muted-foreground">No active tokens.</p>
+              <p className="text-sm text-muted-foreground">{t('No active tokens.')}</p>
             ) : (
               <div className="flex flex-col">
-                {activeTokens.map((t) => (
+                {activeTokens.map((tk) => (
                   <div
-                    key={t.id}
+                    key={tk.id}
                     className="flex items-center justify-between gap-2 border-t py-2 first:border-t-0"
                   >
                     <div className="min-w-0">
-                      <p className="truncate text-sm font-medium">{t.name}</p>
+                      <p className="truncate text-sm font-medium">{tk.name}</p>
                       <p
                         className="text-xs text-muted-foreground"
-                        title={fullTimestamp(t.createdAt)}
+                        title={fullTimestamp(tk.createdAt)}
                       >
-                        Created {timeAgo(t.createdAt) || 'unknown'}
+                        {timeAgo(tk.createdAt)
+                          ? t('Created {when}', { when: timeAgo(tk.createdAt) })
+                          : t('Created unknown')}
                       </p>
                     </div>
                     <Button
                       variant="outline"
                       size="sm"
                       className="text-destructive hover:text-destructive"
-                      onClick={() => handleRevokeToken(t)}
+                      onClick={() => handleRevokeToken(tk)}
                     >
-                      Revoke
+                      {t('Revoke')}
                     </Button>
                   </div>
                 ))}

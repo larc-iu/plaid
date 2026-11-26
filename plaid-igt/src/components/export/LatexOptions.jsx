@@ -9,18 +9,19 @@ import {
   ROW_KINDS,
   VOCAB_SCOPES,
 } from '@/export/latexBook';
+import { msg, t } from '@ui/lib/i18n.js';
 
 const SCOPE_LABEL = {
-  [ROW_KINDS.ORTHOGRAPHY]: 'Orthography',
-  [ROW_KINDS.WORD_FIELD]: 'Word field',
-  [ROW_KINDS.MORPHEME_FIELD]: 'Morpheme field',
+  [ROW_KINDS.ORTHOGRAPHY]: msg('Orthography'),
+  [ROW_KINDS.WORD_FIELD]: msg('Word field'),
+  [ROW_KINDS.MORPHEME_FIELD]: msg('Morpheme field'),
 };
 
 const rowName = (row) =>
   row.kind === ROW_KINDS.WORDS
-    ? 'Words'
+    ? t('Words')
     : row.kind === ROW_KINDS.MORPHEMES
-      ? 'Morphemes'
+      ? t('Morphemes')
       : row.name;
 
 const move = (list, i, by) => {
@@ -60,8 +61,8 @@ const OrderedList = ({ title, items, nameOf, scopeOf = () => null, onChange }) =
               className="h-7 w-7"
               onClick={() => onChange(move(items, i, -1))}
               disabled={i === 0}
-              title="Move up"
-              aria-label={`Move ${name} up`}
+              title={t('Move up')}
+              aria-label={t('Move {name} up', { name })}
             >
               <ChevronUp className="h-3.5 w-3.5" />
             </Button>
@@ -71,8 +72,8 @@ const OrderedList = ({ title, items, nameOf, scopeOf = () => null, onChange }) =
               className="h-7 w-7"
               onClick={() => onChange(move(items, i, 1))}
               disabled={i === items.length - 1}
-              title="Move down"
-              aria-label={`Move ${name} down`}
+              title={t('Move down')}
+              aria-label={t('Move {name} down', { name })}
             >
               <ChevronDown className="h-3.5 w-3.5" />
             </Button>
@@ -92,17 +93,17 @@ const VocabularyOptions = ({ choice, onChange }) => {
   return (
     <div className="flex flex-col gap-2 border-t pt-3">
       <Toggle
-        label="Vocabulary chapter"
+        label={t('Vocabulary chapter')}
         checked={choice.include}
         onChange={(v) => set({ include: v })}
       />
       {choice.include && (
         <div className="flex flex-col gap-3 pl-3">
           <fieldset className="flex flex-col gap-1 text-sm">
-            <legend className="mb-1 text-sm font-medium">Entries</legend>
+            <legend className="mb-1 text-sm font-medium">{t('Entries')}</legend>
             {[
-              [VOCAB_SCOPES.USED, 'Used in the texts'],
-              [VOCAB_SCOPES.ALL, 'All'],
+              [VOCAB_SCOPES.USED, t('Used in the texts')],
+              [VOCAB_SCOPES.ALL, t('All')],
             ].map(([value, label]) => (
               <label key={value} className="flex cursor-pointer items-center gap-2">
                 <input
@@ -172,28 +173,30 @@ export const LatexOptions = ({ options, layers, vocabularies = [], onChange }) =
   return (
     <div className="flex flex-col gap-4">
       <OrderedList
-        title="Example lines"
+        title={t('Example lines')}
         items={rows}
         nameOf={rowName}
-        scopeOf={(row) => SCOPE_LABEL[row.kind] ?? null}
+        scopeOf={(row) => (SCOPE_LABEL[row.kind] ? t(SCOPE_LABEL[row.kind]) : null)}
         onChange={(next) => set({ rows: next })}
       />
       {sentenceFields.length > 0 && (
         <div className="flex flex-col gap-1.5">
           <OrderedList
-            title="Sentence fields"
+            title={t('Sentence fields')}
             items={sentenceFields}
             nameOf={(f) => f.name}
             onChange={(next) => set({ sentenceFields: next })}
           />
           <p className="text-xs text-muted-foreground">
-            The free translation is the first field with the Translation role that holds a value.
+            {t(
+              'The free translation is the first field with the Translation role that holds a value.',
+            )}
           </p>
         </div>
       )}
       <div className="flex flex-col gap-2 border-t pt-3">
         <Toggle
-          label="Document metadata"
+          label={t('Document metadata')}
           checked={options.includeHeader !== false}
           onChange={(v) => set({ includeHeader: v })}
         />

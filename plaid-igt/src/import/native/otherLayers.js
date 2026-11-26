@@ -16,7 +16,7 @@ import { bulkInChunks, withMintedIds } from '../../domain/bulk.js';
 import { ensureLayerConstraints } from '../../../../plaid-ui/src/lib/layerConstraints.js';
 import { humanizeError } from '../../../../plaid-ui/src/lib/errors.js';
 import { sameConfig } from '../../../../plaid-ui/src/domain/configCells.js';
-import { countOf } from '../../../../plaid-ui/src/lib/plural.js';
+import { t } from '@ui/lib/i18n.js';
 import { escapeJsRegex } from '../../../../plaid-ui/src/lib/jsRegex.js';
 import { IGT_NAMESPACE, findBaselineTextLayer, readScope } from '../../domain/igtConfig.js';
 import { UNCARRIED_PLAID_KEYS, ownTokenLayers, parentsFirst } from '../../domain/otherLayers.js';
@@ -31,17 +31,14 @@ const OWN_LAYER_KEYS = [
   ['timeAlignment', ROLES.TIME_ALIGNMENT],
 ];
 
-// A warning names what the linguist knows, never the layer underneath.
-const ROLE_NOUN = {
-  [ROLES.BASELINE]: 'the text',
-  [ROLES.SENTENCE]: 'sentences',
-  [ROLES.WORD]: 'words',
-  [ROLES.SYNTACTIC_WORD]: 'syntactic words',
-  [ROLES.MORPHEME]: 'morphemes',
-  [ROLES.TIME_ALIGNMENT]: 'time alignment',
-};
-const roleNoun = (role) => ROLE_NOUN[role] ?? role;
-const NOT_DESCRIBED = 'the archive does not describe where they go';
+// A warning names what the linguist knows, never the layer underneath: the
+// messages choose the words by `role`, a role with its hyphens taken out (a
+// message's choices are identifiers), and fall back on `layer`, the role as
+// recorded.
+const roleValues = (role) => ({
+  role: String(role ?? '').replace(/-(\w)/g, (_, c) => c.toUpperCase()),
+  layer: role,
+});
 
 /** What `restoreOtherLayers` found or made: archive ids mapped onto the project's. */
 export const noOtherLayers = () => ({
@@ -164,7 +161,10 @@ export async function restoreOtherLayers({
     const layer = isText ? textLayer : ownByRole.get(role);
     if (!layer) {
       warnings.push(
-        `Another app's settings for ${roleNoun(role)} skipped (the project is not set up for ${roleNoun(role)})`,
+        t(
+          "Another app's settings for {role, select, baseline {the text} sentence {sentences} word {words} syntacticWord {syntactic words} morpheme {morphemes} timeAlignment {time alignment} other {{layer}}} skipped (the project is not set up for {role, select, baseline {the text} sentence {sentences} word {words} syntacticWord {syntactic words} morpheme {morphemes} timeAlignment {time alignment} other {{layer}}})",
+          roleValues(role),
+        ),
       );
       continue;
     }
@@ -197,10 +197,17 @@ export async function restoreOtherLayers({
       };
     }
     if (!layer) {
-      const missing = host
-        ? `no ${row.scope} field of that name`
-        : `the project is not set up for ${roleNoun(row.tokenLayer)}`;
-      warnings.push(`Another app's annotations "${row.name}" skipped (${missing})`);
+      warnings.push(
+        host
+          ? t('Another app\'s annotations "{name}" skipped (no {scope} field of that name)', {
+              name: row.name,
+              scope: row.scope,
+            })
+          : t(
+              'Another app\'s annotations "{name}" skipped (the project is not set up for {role, select, baseline {the text} sentence {sentences} word {words} syntacticWord {syntactic words} morpheme {morphemes} timeAlignment {time alignment} other {{layer}}})',
+              { name: row.name, ...roleValues(row.tokenLayer) },
+            ),
+      );
       continue;
     }
     out.spanLayers.set(row.id, layer.id);
@@ -223,7 +230,12 @@ export async function restoreOtherLayers({
     if (row.parent?.role) parentId = ownByRole.get(row.parent.role)?.id ?? null;
     else if (row.parent?.id) parentId = out.tokenLayers.get(row.parent.id)?.id ?? null;
     if (row.parent && !parentId) {
-      warnings.push(`Another app's annotations "${row.name}" skipped (${NOT_DESCRIBED})`);
+      warnings.push(
+        t(
+          'Another app\'s annotations "{name}" skipped (the archive does not describe where they go)',
+          { name: row.name },
+        ),
+      );
       continue;
     }
     const overlapMode = row.overlapMode ?? 'any';
@@ -373,11 +385,19 @@ export async function declareOtherLayerRules({ client, restored, warnings = [] }
       const { pending } = await ensureLayerConstraints(client, wanted, { canManage: true });
       for (const p of pending) {
         warnings.push(
-          `Another app's rules for "${r.name}" are not in force (${countOf(p.violationCount, 'annotation breaks', 'annotations break')} them)`,
+          t(
+            'Another app\'s rules for "{name}" are not in force ({n, plural, one {# annotation breaks} other {# annotations break}} them)',
+            { name: r.name, n: p.violationCount },
+          ),
         );
       }
     } catch (err) {
-      warnings.push(`Another app's rules for "${r.name}" were not set: ${humanizeError(err)}`);
+      warnings.push(
+        t('Another app\'s rules for "{name}" were not set: {reason}', {
+          name: r.name,
+          reason: humanizeError(err),
+        }),
+      );
     }
   }
 }
@@ -425,7 +445,10 @@ export async function importOtherLayerData({
     const layer = restored.tokenLayers.get(oldLayerId);
     if (!layer) {
       warnings.push(
-        `"${name}": ${countOf(rows.length, 'token')} from another app skipped (${NOT_DESCRIBED})`,
+        t(
+          '"{name}": {n, plural, one {# token} other {# tokens}} from another app skipped (the archive does not describe where they go)',
+          { name, n: rows.length },
+        ),
       );
       continue;
     }
@@ -458,7 +481,10 @@ export async function importOtherLayerData({
     const spanLayerId = restored.spanLayers.get(oldLayerId);
     if (!spanLayerId) {
       warnings.push(
-        `"${name}": ${countOf(rows.length, 'annotation')} from another app skipped (${NOT_DESCRIBED})`,
+        t(
+          '"{name}": {n, plural, one {# annotation} other {# annotations}} from another app skipped (the archive does not describe where they go)',
+          { name, n: rows.length },
+        ),
       );
       continue;
     }
@@ -474,7 +500,10 @@ export async function importOtherLayerData({
     }
     if (kept.length < rows.length) {
       warnings.push(
-        `"${name}": ${countOf(rows.length - kept.length, 'annotation')} from another app skipped (unresolvable tokens)`,
+        t(
+          '"{name}": {n, plural, one {# annotation} other {# annotations}} from another app skipped (unresolvable tokens)',
+          { name, n: rows.length - kept.length },
+        ),
       );
     }
     const ids = await refs.create('span', specs, (sent) =>
@@ -492,7 +521,10 @@ export async function importOtherLayerData({
     const relationLayerId = restored.relationLayers.get(oldLayerId);
     if (!relationLayerId) {
       warnings.push(
-        `"${name}": ${countOf(rows.length, 'relation')} from another app skipped (${NOT_DESCRIBED})`,
+        t(
+          '"{name}": {n, plural, one {# relation} other {# relations}} from another app skipped (the archive does not describe where they go)',
+          { name, n: rows.length },
+        ),
       );
       continue;
     }
@@ -509,7 +541,10 @@ export async function importOtherLayerData({
     }
     if (kept.length < rows.length) {
       warnings.push(
-        `"${name}": ${countOf(rows.length - kept.length, 'relation')} skipped (unresolvable annotations)`,
+        t(
+          '"{name}": {n, plural, one {# relation} other {# relations}} skipped (unresolvable annotations)',
+          { name, n: rows.length - kept.length },
+        ),
       );
     }
     const ids = await refs.create('relation', specs, (sent) =>

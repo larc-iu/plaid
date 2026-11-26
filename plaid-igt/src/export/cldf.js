@@ -46,7 +46,7 @@ import {
   fieldsWithRole,
 } from '../domain/vocabFields.js';
 import { phraseSpeakerFor } from '../domain/sentenceSegments.js';
-import { countOf, plural } from '../../../plaid-ui/src/lib/plural.js';
+import { msg, t } from '@ui/lib/i18n.js';
 
 const TERMS = 'http://cldf.clld.org/v1.0/terms.rdf#';
 const term = (name) => `${TERMS}${name}`;
@@ -315,7 +315,18 @@ export function cldfLossSummary(layers, options) {
   const mapped = [];
   const custom = [];
   const dropped = [];
-  const label = (name, kind) => `${name} (${kind})`;
+  const label = (name, kind) => {
+    switch (kind) {
+      case 'sentence':
+        return t('{name} (sentence)', { name });
+      case 'word':
+        return t('{name} (word)', { name });
+      case 'morpheme':
+        return t('{name} (morpheme)', { name });
+      default:
+        return t('{name} (orthography)', { name });
+    }
+  };
 
   if (o.glossField) mapped.push(`${o.glossField} → Gloss`);
   if (o.translationField) mapped.push(`${o.translationField} → Translated_Text`);
@@ -351,12 +362,15 @@ export function cldfLossSummary(layers, options) {
 // of this, so no option can turn it back on. It is listed because the panel
 // beside it lists per-field losses and reads, otherwise, as the whole story: a
 // round trip through CLDF came back with 1,062 vocabulary links and 1,062
-// provenance marks gone and nothing on screen had said they would be.
+// provenance marks gone and nothing on screen had said they would be. The
+// place that shows them translates them.
 const INHERENT_LOSSES = [
-  'Vocabulary links from words and morphemes to their entries',
-  'Provenance marks: machine-made and confirmed values arrive looking hand-made',
-  'Morpheme types, except the clitics the joints in the aligned cell still carry',
-  'Analyses with no values that only repeat the word, or split it at its own - or =: they come back unanalyzed',
+  msg('Vocabulary links from words and morphemes to their entries'),
+  msg('Provenance marks: machine-made and confirmed values arrive looking hand-made'),
+  msg('Morpheme types, except the clitics the joints in the aligned cell still carry'),
+  msg(
+    'Analyses with no values that only repeat the word, or split it at its own - or =: they come back unanalyzed',
+  ),
 ];
 
 // ---- the dataset ------------------------------------------------------------
@@ -412,15 +426,17 @@ export function buildCldfDataset({
   if (hasMeta && metaId !== objId) pushLanguage(metaId, languages?.meta, 'Meta language');
   if (!languages?.object?.glottocode && !languages?.object?.iso639P3) {
     warnings.push(
-      'The object language has no Glottocode or ISO 639-3 code, so this dataset cannot be ' +
-        'linked to other CLDF datasets. Set it under Settings → General → Languages.',
+      t(
+        'The object language has no Glottocode or ISO 639-3 code, so this dataset cannot be linked to other CLDF datasets. Set it under Settings → General → Languages.',
+      ),
     );
   }
   // A translation with no stated meta language is a dangling claim, so say so.
   if (o.translationField && !hasMeta) {
     warnings.push(
-      'The meta language has no name, Glottocode or ISO 639-3 code, so translations carry no ' +
-        'Meta_Language_ID. Set it under Settings → General → Languages.',
+      t(
+        'The meta language has no name, Glottocode or ISO 639-3 code, so translations carry no Meta_Language_ID. Set it under Settings → General → Languages.',
+      ),
     );
   }
 
@@ -580,12 +596,18 @@ export function buildCldfDataset({
 
   if (fellBack) {
     warnings.push(
-      `${countOf(fellBack, 'sentence')} ${fellBack === 1 ? 'has' : 'have'} no text in the ${o.primaryText} orthography, and ${fellBack === 1 ? 'its' : 'their'} Primary_Text is the baseline text.`,
+      t(
+        '{n, plural, one {# sentence has no text in the {orthography} orthography, and its Primary_Text is the baseline text.} other {# sentences have no text in the {orthography} orthography, and their Primary_Text is the baseline text.}}',
+        { n: fellBack, orthography: o.primaryText },
+      ),
     );
   }
   if (leftOut) {
     warnings.push(
-      `${countOf(leftOut, 'sentence')} ${leftOut === 1 ? 'has' : 'have'} no text in the Primary_Text line and ${leftOut === 1 ? 'was' : 'were'} left out.`,
+      t(
+        '{n, plural, one {# sentence has no text in the Primary_Text line and was left out.} other {# sentences have no text in the Primary_Text line and were left out.}}',
+        { n: leftOut },
+      ),
     );
   }
 
@@ -712,11 +734,10 @@ export function buildCldfDataset({
     }
     if (entriesWithoutSense > 0) {
       warnings.push(
-        `${entriesWithoutSense} lexicon ${plural(entriesWithoutSense, 'entry')} ${
-          entriesWithoutSense === 1 ? 'has' : 'have'
-        } no gloss or definition, so ${
-          entriesWithoutSense === 1 ? 'it has' : 'they have'
-        } no sense row.`,
+        t(
+          '{n, plural, one {# lexicon entry has no gloss or definition, so it has no sense row.} other {# lexicon entries have no gloss or definition, so they have no sense row.}}',
+          { n: entriesWithoutSense },
+        ),
       );
     }
   }

@@ -10,11 +10,12 @@ import { Label } from '../ui/label';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '../ui/card';
 import { PlaidMark } from '../assistant/PlaidMarks.jsx';
 import { TYPE } from '../../lib/typeScale.js';
+import { t, msg } from '../../lib/i18n.js';
 
 // What the page says for each reason `authService.logout` was given.
 const LOGOUT_NOTICES = {
-  expired: 'Your session has expired. Sign in again.',
-  'password-changed': 'Password changed. Sign in with the new password.',
+  expired: msg('Your session has expired. Sign in again.'),
+  'password-changed': msg('Password changed. Sign in with the new password.'),
 };
 
 /**
@@ -24,7 +25,7 @@ const LOGOUT_NOTICES = {
  * Preflight is global, so this wrapper is simply the screen's own root.
  */
 export const LoginForm = ({ tagline, homePath }) => {
-  useDocumentTitle('Sign in');
+  useDocumentTitle(t('Sign in'));
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
@@ -34,7 +35,8 @@ export const LoginForm = ({ tagline, homePath }) => {
   // this route and then hard-reloads, so the form mounts twice.
   const [notice] = useState(() => {
     try {
-      return LOGOUT_NOTICES[sessionStorage.getItem('plaid:logout-reason')] ?? '';
+      const notice = LOGOUT_NOTICES[sessionStorage.getItem('plaid:logout-reason')];
+      return notice ? t(notice) : '';
     } catch {
       return '';
     }
@@ -68,10 +70,10 @@ export const LoginForm = ({ tagline, homePath }) => {
           { replace: true, state: { signedIn: true } },
         );
       } else {
-        setError(result.error || 'Email or password is incorrect.');
+        setError(result.error || t('Email or password is incorrect.'));
       }
     } catch {
-      setError('Something went wrong. Try again.');
+      setError(t('Something went wrong. Try again.'));
     } finally {
       setLoading(false);
     }
@@ -82,7 +84,7 @@ export const LoginForm = ({ tagline, homePath }) => {
       <Card className="w-full max-w-sm">
         <CardHeader className="items-center text-center">
           <PlaidMark className="mb-1 h-10 w-10" />
-          <CardTitle className={TYPE.page}>Sign in to {appName()}</CardTitle>
+          <CardTitle className={TYPE.page}>{t('Sign in to {app}', { app: appName() })}</CardTitle>
           <CardDescription>{tagline}</CardDescription>
         </CardHeader>
         <CardContent>
@@ -104,14 +106,14 @@ export const LoginForm = ({ tagline, homePath }) => {
               </div>
             )}
             <div className="flex flex-col gap-1.5">
-              <Label htmlFor="email">Email address</Label>
+              <Label htmlFor="email">{t('Email address')}</Label>
               <Input
                 id="email"
                 type="text"
                 inputMode="email"
                 autoCapitalize="none"
                 spellCheck={false}
-                placeholder="you@example.com"
+                placeholder="you@example.com" // i18n-ignore: a sample address
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 required
@@ -121,7 +123,7 @@ export const LoginForm = ({ tagline, homePath }) => {
               />
             </div>
             <div className="flex flex-col gap-1.5">
-              <Label htmlFor="password">Password</Label>
+              <Label htmlFor="password">{t('Password')}</Label>
               <Input
                 id="password"
                 type="password"
@@ -133,7 +135,7 @@ export const LoginForm = ({ tagline, homePath }) => {
               />
             </div>
             <Button type="submit" disabled={loading} className="mt-2 w-full">
-              {loading ? 'Signing in…' : 'Sign in'}
+              {loading ? t('Signing in…') : t('Sign in')}
             </Button>
           </form>
         </CardContent>

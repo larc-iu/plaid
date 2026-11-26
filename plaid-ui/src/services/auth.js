@@ -5,6 +5,7 @@ import { hasUnsavedDraft } from '../hooks/useUnsavedDraft.js';
 import { anyDocumentSaving } from '../hooks/useSavingGuard.js';
 import { signedInAgain } from '../lib/signInAgain.js';
 import { markSigningOut, rememberReturnTo } from '../lib/returnTo.js';
+import { t } from '../lib/i18n.js';
 
 // The session every app in this repo holds: one backend, one JWT, one set of
 // localStorage keys. The keys are deliberately NOT prefixed with `appPrefix`,
@@ -143,10 +144,10 @@ const onAuthError = (error) => {
     authService.logout('expired');
     return;
   }
-  const toastId = notifyWithAction('Your sign-in is no longer valid.', 'Signed out', {
+  const toastId = notifyWithAction(t('Your sign-in is no longer valid.'), t('Signed out'), {
     kind: 'error',
     duration: Infinity,
-    label: 'Sign in',
+    label: t('Sign in'),
     onClick: (event) => {
       // The notice stays until the new tab has signed in.
       event?.preventDefault?.();
@@ -168,7 +169,7 @@ const adoptToken = (token) => {
   toast.dismiss(signInLost.toastId);
   signInLost = null;
   signedInAgain();
-  notifySuccess('Signed in');
+  notifySuccess(t('Signed in'));
 };
 if (typeof window !== 'undefined') {
   window.addEventListener('storage', (e) => {
