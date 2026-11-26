@@ -1,5 +1,6 @@
 import { useEffect } from 'react';
 import { AppShell } from '@ui/components/shared/AppShell.jsx';
+import { msg } from '@ui/lib/i18n.js';
 import { IGT_ASSISTANT } from '../projects/assistant/adapter.js';
 import { keys } from '@/lib/keymap.js';
 
@@ -39,8 +40,12 @@ const ShellBridges = () => {
 
 // This app's destinations on the left of the band.
 const NAV = [
-  { to: '/projects', label: 'Projects', match: (path) => path.startsWith('/projects') },
-  { to: '/vocabularies', label: 'Vocabularies', match: (path) => path.startsWith('/vocabularies') },
+  { to: '/projects', label: msg('Projects'), match: (path) => path.startsWith('/projects') },
+  {
+    to: '/vocabularies',
+    label: msg('Vocabularies'),
+    match: (path) => path.startsWith('/vocabularies'),
+  },
 ];
 
 // The assistant here is a TAB on the project screen (`?tab=assistant`), not a

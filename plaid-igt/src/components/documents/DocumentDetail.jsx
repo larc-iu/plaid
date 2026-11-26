@@ -52,7 +52,7 @@ const TABS = [
   { value: 'tokenize', label: msg('Tokenize') },
   { value: 'analyze', label: msg('Analyze') },
   { value: 'comments', label: msg('Comments') },
-  { value: 'export', label: msg('Export') },
+  { value: 'export', label: msg('Export'), sense: 'noun' },
   { value: 'details', label: msg('Details') },
 ];
 

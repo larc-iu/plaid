@@ -45,6 +45,7 @@ export const STATUS_TAGSET = 'Status';
  * job's draft). Labelled by its description in the tagset, "Machine draft".
  */
 export const MACHINE_STATUS = 'machine';
+// i18n-ignore: stored in the project
 const MACHINE_VALUE = { value: MACHINE_STATUS, description: 'Machine draft' };
 
 export const STATUS_VALUES = [MACHINE_STATUS, 'draft', 'reviewed', 'published'];

@@ -39,7 +39,7 @@ import { LongDocumentNotice } from './LongDocumentNotice.jsx';
 import { isLongDocument } from '../../domain/longDocument.js';
 import { DOC_GUTTER } from '../../lib/pageWidth.js';
 import { cn } from '../../lib/utils.js';
-import { t } from '../../lib/i18n.js';
+import { t, tc } from '../../lib/i18n.js';
 
 // The screen of an open document in every app. It owns the project and
 // document load and renders the breadcrumbs and the tab strip, so a tab switch
@@ -611,7 +611,9 @@ const DocumentEditor = ({ app, documentClient }) => {
         failed={!loading && !doc}
         tabs={app.tabs.list.map((entry) => ({
           ...entry,
-          label: t(entry.label),
+          // A tab may name the sense of its label ("Export" the noun), for a
+          // language that says the word two ways.
+          label: entry.sense ? tc(entry.sense, entry.label) : t(entry.label),
           // What an entry changed is no tab's: a tab leaves it for the
           // document as of the entry, on that tab.
           to: showChanges ? withDocumentView(tabHref(entry.value)) : tabHref(entry.value),

@@ -12,6 +12,7 @@
 //             label, placeholder, ...), or to any attribute when it reads
 //             like a phrase
 //   jsxString a string inside a JSX expression: {saving ? 'Saving' : 'Save'}
+//   label     a string under a key people read in an object: { label: 'Projects' }
 //   litText   text or a read attribute in a lit-html template
 //   countOf   countOf() or plural() from lib/plural.js, which
 //             build English only
@@ -239,6 +240,23 @@ function scanSource(code, fileName = 'file.jsx') {
           }
         }
         break;
+      // { label: 'Projects' }: a table of labels, read by a component.
+      case 'Property': {
+        const name =
+          node.key?.type === 'Identifier'
+            ? node.key.name
+            : typeof node.key?.value === 'string'
+              ? node.key.value
+              : '';
+        if (!node.computed && READ_ATTRS.has(name)) {
+          for (const s of stringsOf(node.value)) {
+            claimed.add(s.node);
+            if (hasWord(s.text) && readsLikePhrase(s.text))
+              flag('label', s.node, `${name}: ${s.text}`);
+          }
+        }
+        break;
+      }
       case 'Literal':
         if (typeof node.value === 'string' && !claimed.has(node) && readsLikeSentence(node.value)) {
           flag('sentence', node, node.value);

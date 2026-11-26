@@ -148,7 +148,7 @@ const Shell = ({ adapter, keymap, nav = [], guideHref, adminTo, isAssistantRoute
                 <nav className="hidden min-w-0 items-center gap-1 overflow-x-auto [scrollbar-width:none] sm:flex">
                   {nav.map(({ to, label, match }) => (
                     <Link key={to} to={to} className={headerItem(!!match?.(path))}>
-                      {label}
+                      {t(label)}
                     </Link>
                   ))}
                   {/* The user guide is published with the docs site, not
@@ -201,7 +201,7 @@ const Shell = ({ adapter, keymap, nav = [], guideHref, adminTo, isAssistantRoute
                       <DropdownMenuContent align="end">
                         {nav.map(({ to, label }) => (
                           <DropdownMenuItem key={to} asChild>
-                            <Link to={to}>{label}</Link>
+                            <Link to={to}>{t(label)}</Link>
                           </DropdownMenuItem>
                         ))}
                         {guideHref && (

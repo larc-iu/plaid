@@ -34,7 +34,7 @@
 // CHANGING LANGUAGE RELOADS THE PAGE. Nothing has to subscribe to the
 // language, so t() is a plain function with no hook behind it.
 
-import { Children } from 'react';
+import { Fragment, createElement } from 'react';
 import i18next from 'i18next';
 import ICU from 'i18next-icu';
 import { IntlMessageFormat } from 'intl-messageformat';
@@ -97,7 +97,11 @@ export const tx = (message, values) => {
     formats.set(cacheKey, format);
   }
   const parts = format.format(values);
-  return Array.isArray(parts) ? Children.toArray(parts) : parts;
+  if (!Array.isArray(parts)) return parts;
+  // Each part in a keyed fragment of its own. Children.toArray would key
+  // them too, but React still reports the tag function's element as an
+  // unkeyed child of a list.
+  return parts.map((part, i) => createElement(Fragment, { key: i }, part));
 };
 
 /** The language in use, as a BCP 47 code, for Intl formatters. */

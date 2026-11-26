@@ -106,18 +106,22 @@ export const vocabularyPlacer = ({ vocabularyId, vocabularyName, entryName, docu
       const vocab = row.vocabLayer ?? vocabularyId;
       return {
         key: row.id,
-        label: entryName(row.id) || 'Entry',
+        label: entryName(row.id) || t('Entry'),
         to: `/vocabularies/${vocab}?item=${encodeURIComponent(row.id)}`,
       };
     }
     if (row.kind === 'vocab-layer') {
-      return { key: row.id, label: vocabularyName || 'Vocabulary', to: `/vocabularies/${row.id}` };
+      return {
+        key: row.id,
+        label: vocabularyName || t('Vocabulary'),
+        to: `/vocabularies/${row.id}`,
+      };
     }
     if (row.document) {
       const d = documentOf(row.document);
       return {
         key: row.document,
-        label: d?.name || 'Document',
+        label: d?.name || t('Document'),
         to: d ? APP_ROUTES.document(d.project, row.document) : null,
       };
     }
@@ -151,7 +155,7 @@ export const jobPlacer = ({ projectId, documents = [], vocabs = [] }) => {
       const v = vocabRank.get(vocab);
       return {
         key: vocab,
-        label: v?.name || 'Lexicon',
+        label: v?.name || t('Lexicon'),
         to: `/vocabularies/${vocab}`,
         rank: v?.rank ?? documents.length + vocabs.length,
       };

@@ -94,7 +94,7 @@ export const assistant = {
       // The addressing the assistant's tools use, and the numbers a read
       // prints: sentences count from 1.
       ref: `s${index + 1}`,
-      label: 'Sentence',
+      label: t('Sentence'),
     });
   },
 

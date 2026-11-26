@@ -774,9 +774,11 @@ export function buildCldfDataset({
     columns: [
       col('ID', { required: true, propertyUrl: 'id' }),
       col('Name', { propertyUrl: 'name' }),
+      // i18n-ignore: written into the dataset
       col('Plaid_ID', { description: 'The document id in the originating Plaid project.' }),
       ...[...termedMetadata].map((key) => col(key, { propertyUrl: CONTRIBUTION_TERMS[key] })),
       ...[...metadataNames.values()].map((name) =>
+        // i18n-ignore: written into the dataset
         col(name, { description: 'Document metadata from the originating Plaid project.' }),
       ),
     ],
@@ -807,29 +809,36 @@ export function buildCldfDataset({
       col('Comment', { propertyUrl: 'comment' }),
       col('Contribution_ID', { propertyUrl: 'contributionReference' }),
       col('Position', { propertyUrl: 'position', datatype: 'integer' }),
+      // i18n-ignore: written into the dataset
       col('Plaid_ID', { description: 'The sentence token id in the originating Plaid project.' }),
       col('Surface_Word', {
+        // i18n-ignore: written into the dataset
         description: 'Each word as it stands in Primary_Text, aligned with Analyzed_Word.',
         separator: '\t',
       }),
+      // i18n-ignore: written into the dataset
       col('Speaker', { description: 'Speaker of this sentence, from the time-alignment layer.' }),
       ...o.extras.sentence.map((n) =>
+        // i18n-ignore: written into the dataset
         col(`Sentence_${n}`, { description: `Sentence-scoped "${n}" annotation.` }),
       ),
       ...o.extras.word.map((n) =>
         col(`Word_${n}`, {
+          // i18n-ignore: written into the dataset
           description: `Word-scoped "${n}" annotation, aligned with Analyzed_Word.`,
           separator: '\t',
         }),
       ),
       ...o.extras.morpheme.map((n) =>
         col(`Morpheme_${n}`, {
+          // i18n-ignore: written into the dataset
           description: `Morpheme-scoped "${n}" annotation, aligned with Analyzed_Word.`,
           separator: '\t',
         }),
       ),
       ...o.extras.orthographies.map((n) =>
         col(`Orthography_${n}`, {
+          // i18n-ignore: written into the dataset
           description: `The "${n}" orthography, aligned with Analyzed_Word.`,
           separator: '\t',
         }),
@@ -848,12 +857,16 @@ export function buildCldfDataset({
       col('Headword', { required: true, propertyUrl: 'headword' }),
       col('Part_Of_Speech', { propertyUrl: 'partOfSpeech' }),
       col('Homograph', {
+        // i18n-ignore: written into the dataset
         description: 'Which of the entries spelled alike this one is, counting from 1.',
       }),
+      // i18n-ignore: written into the dataset
       col('Vocabulary', { description: 'The Plaid vocabulary layer this entry came from.' }),
+      // i18n-ignore: written into the dataset
       col('Plaid_ID', { description: 'The vocabulary item id in the originating Plaid project.' }),
       ...[...extraVocabColumns.values()].map((field) =>
         col(`Entry_${field}`, {
+          // i18n-ignore: written into the dataset
           description: `Lexicon field "${field}" from the originating Plaid project.`,
         }),
       ),
@@ -869,10 +882,12 @@ export function buildCldfDataset({
       col('ID', { required: true, propertyUrl: 'id' }),
       col('Entry_ID', { required: true, propertyUrl: 'entryReference' }),
       col('Description', { required: true, propertyUrl: 'description' }),
+      // i18n-ignore: written into the dataset
       col('Definition', { description: 'A longer definition, when the sense also has a gloss.' }),
       col('Part_Of_Speech', { propertyUrl: 'partOfSpeech' }),
       col('Example_IDs', { propertyUrl: 'exampleReference', separator: ' ' }),
       ...[...extraSenseColumns.entries()].map(([name, field]) =>
+        // i18n-ignore: written into the dataset
         col(name, { description: `Lexicon field "${field}" from the originating Plaid project.` }),
       ),
     ],

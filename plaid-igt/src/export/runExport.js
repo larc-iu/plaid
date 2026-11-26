@@ -774,7 +774,7 @@ export async function runExport({
           title:
             scope.type !== 'project' && docFiles.length === 1
               ? docFiles[0].docName
-              : project.name || 'Texts',
+              : project.name || 'Texts', // i18n-ignore: the title inside the exported book
           texts: docFiles.map((f) => ({ name: f.docName, tex: f.data })),
           projectConfig: project.config,
           vocabulary: wantVocabChapter
