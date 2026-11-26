@@ -1,6 +1,6 @@
 import { describe, it, expect, afterEach } from 'vitest';
 import { renderToStaticMarkup } from 'react-dom/server';
-import { t, tx, msg, language, startingLanguage, __test } from './i18n.js';
+import { t, tc, tx, msg, language, startingLanguage, __test } from './i18n.js';
 
 const switchLanguageForTest = __test.switchLanguage;
 
@@ -60,5 +60,16 @@ describe('startingLanguage', () => {
     expect(startingLanguage()).toBe('fr');
     localStorage.setItem('plaid.language', 'tlh');
     expect(startingLanguage()).toBe('en');
+  });
+});
+
+describe('tc', () => {
+  it('is the plain message until a catalog translates that sense', async () => {
+    expect(tc('verb', 'Comment')).toBe('Comment');
+    await switchLanguageForTest('fr', { Comment: 'Commentaire' });
+    expect(tc('verb', 'Comment')).toBe('Commentaire');
+    await switchLanguageForTest('fr', { 'Comment [verb]': 'Commenter' });
+    expect(tc('verb', 'Comment')).toBe('Commenter');
+    expect(t('Comment')).toBe('Commentaire');
   });
 });

@@ -149,7 +149,7 @@ export function DocumentBaseline() {
               {/* Not set up is a plain fact, never drawn as if broken. */}
               {!ops.primaryTextLayer && (
                 <Notice tone="info" icon={Info}>
-                  {NOT_SET_UP}
+                  {t(NOT_SET_UP)}
                 </Notice>
               )}
             </div>

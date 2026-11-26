@@ -140,15 +140,18 @@ export const AssistantTab = ({
               />
             )}
             <div className="flex flex-wrap justify-center gap-2">
+              {/* An example stands in for the person's own message, so it is
+                  shown and sent in the interface's language. The adapters
+                  mark them msg(). */}
               {adapter.examples.map((ex) => (
                 <button
                   key={ex}
                   type="button"
                   disabled={!canSend}
-                  onClick={() => send(ex)}
+                  onClick={() => send(t(ex))}
                   className="rounded-full border px-3 py-1 text-xs text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-50"
                 >
-                  {ex}
+                  {t(ex)}
                 </button>
               ))}
             </div>

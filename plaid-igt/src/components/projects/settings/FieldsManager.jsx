@@ -17,7 +17,7 @@ import { notifySuccess, notifyError, notifyInfo } from '@/utils/feedback';
 import { fieldNameLang } from '@/domain/fieldNames';
 import { lexiconFieldChoices, proposeLexiconField } from '@/domain/lexiconField';
 import { SENTENCE_ROLE_CHOICES, proposeSentenceRole } from '@/domain/sentenceRole';
-import { humanizeFieldName } from '@/domain/vocabFields';
+import { fieldDisplayName } from '@/domain/vocabFieldLabels';
 import {
   IGNORED_TOKEN_MODES,
   SENTENCE_ROLES,
@@ -771,13 +771,13 @@ export const FieldsManager = ({
                           <SelectItem value={NO_LEXICON_FIELD}>{t('None')}</SelectItem>
                           {lexiconKeys.map((k) => (
                             <SelectItem key={k} value={k}>
-                              {humanizeFieldName(k)}
+                              {fieldDisplayName(k)}
                             </SelectItem>
                           ))}
                           {record.lexiconField && !lexiconKeys.includes(record.lexiconField) && (
                             <SelectItem value={record.lexiconField}>
                               {t('{name} (missing)', {
-                                name: humanizeFieldName(record.lexiconField),
+                                name: fieldDisplayName(record.lexiconField),
                               })}
                             </SelectItem>
                           )}

@@ -37,7 +37,7 @@ export const readRoleset = (metadata) => {
 export const rolesetProblem = (name) => {
   const text = String(name ?? '').trim();
   return NOT_IN_UMR_CONCEPT.test(text)
-    ? `A roleset cannot hold spaces, brackets, colons, quotes or #: ${text}`
+    ? t('A roleset cannot hold spaces, brackets, colons, quotes or #: {text}', { text })
     : null;
 };
 

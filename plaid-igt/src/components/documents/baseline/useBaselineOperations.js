@@ -304,7 +304,11 @@ export const useBaselineOperations = () => {
   // a whole document's baseline, and it used to go without a word. What a
   // save on its way sends is not asked about: it lands whether or not the tab
   // is left. What was typed since is.
-  useUnsavedDraft(isEditing && editedText !== base ? t('The baseline text you have typed') : null);
+  useUnsavedDraft(
+    isEditing && editedText !== base ? 'The baseline text you have typed' : null,
+    null,
+    { one: t('The baseline text you have typed is not saved. Leaving loses it.') },
+  );
 
   // The box's change, with the selection before it (editLogHandlers) and the
   // caret after it, kept as an edit.

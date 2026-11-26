@@ -16,7 +16,7 @@
 import { COMPOSE_TABLE } from './composeTable.js';
 import { CODE_LENGTH } from './compose.js';
 import { readCompose } from './igtConfig.js';
-import { t, msg } from '@ui/lib/i18n.js';
+import { t } from '@ui/lib/i18n.js';
 
 /** The codes as shipped, before a project changes anything. */
 export const BUILT_IN_TABLE = COMPOSE_TABLE;
@@ -131,27 +131,22 @@ export function rowsToConfig(rows) {
 }
 
 /**
- * The problem a row has when another listed row has its code. A message:
- * validateCode gives it translated, `t(DUPLICATE_CODE)`.
+ * What is wrong with one row, each `{ kind, text }`: `text` the reason the
+ * settings screen shows, and `kind` 'duplicate' when another listed row has
+ * its code, else 'invalid'. `others` are the other rows, for the duplicate
+ * check.
  */
-export const DUPLICATE_CODE = msg('This code already exists.');
-
-/**
- * What is wrong with one row, as a list of reasons the settings screen can
- * show. `others` are the other rows, for the duplicate check.
- */
-export function validateCode(row, others = []) {
+export function codeProblems(row, others = []) {
   const problems = [];
   const code = row?.code ?? '';
   if (row?.origin === 'removed') return problems;
-  if ([...code].length !== CODE_LENGTH) {
-    problems.push(t('A code is {n} characters.', { n: CODE_LENGTH }));
-  }
-  if (/\s/.test(code)) problems.push(t('A code cannot contain a space.'));
-  if (code.includes('\\')) problems.push(t('A code cannot contain a backslash.'));
-  if (!isFilledString(row?.char)) problems.push(t('Enter a character.'));
+  const invalid = (text) => problems.push({ kind: 'invalid', text });
+  if ([...code].length !== CODE_LENGTH) invalid(t('A code is {n} characters.', { n: CODE_LENGTH }));
+  if (/\s/.test(code)) invalid(t('A code cannot contain a space.'));
+  if (code.includes('\\')) invalid(t('A code cannot contain a backslash.'));
+  if (!isFilledString(row?.char)) invalid(t('Enter a character.'));
   if (others.some((o) => o !== row && o.code === code && o.origin !== 'removed' && code !== '')) {
-    problems.push(t(DUPLICATE_CODE));
+    problems.push({ kind: 'duplicate', text: t('This code already exists.') });
   }
   return problems;
 }

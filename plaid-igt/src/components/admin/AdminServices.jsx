@@ -295,7 +295,7 @@ export const AdminServices = ({ client, currentUser }) => {
           textIncludes(r.tasks.join(' '), q) ||
           r.entries.some((e) => textIncludes(e.project.name, q)),
       }}
-      noun="service"
+      countLabel={(v) => t('{total} {n, plural, one {service} other {services}}', v)}
       empty={t('No project has seen a service.')}
       noMatch={t('No services match.')}
       loading={loading}

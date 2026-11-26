@@ -312,7 +312,11 @@ export const VocabularyManager = ({
             value={query}
             onChange={setQuery}
           />
-          <ListCount shown={shown.length} total={tableData.length} noun="vocabulary" />
+          <ListCount
+            shown={shown.length}
+            total={tableData.length}
+            countLabel={(v) => t('{total} {n, plural, one {vocabulary} other {vocabularies}}', v)}
+          />
         </div>
 
         <div className="overflow-hidden rounded-md border">
@@ -385,6 +389,7 @@ export const VocabularyManager = ({
                             name={record.name}
                             onRemove={() => handleVocabToggle(record.id, false)}
                             removeLabel={t('Unlink')}
+                            removeAria={t('Unlink {name}', { name: record.name })}
                             removeIcon={Unlink}
                           />
                         )

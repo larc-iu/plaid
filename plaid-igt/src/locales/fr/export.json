@@ -10,7 +10,6 @@
   "A vocabulary": "Un vocabulaire",
   "Abbreviation": "Abréviation",
   "Adds a Morph tier beneath Word, subdivided symbolically.": "Ajoute un tier Morph sous Word, subdivisé symboliquement.",
-  "All": "Toutes",
   "An example document failed to load: {error}": "Un document d’exemple n’a pas pu être chargé : {error}",
   "Analyses with no values that only repeat the word, or split it at its own - or =: they come back unanalyzed": "Les analyses sans valeur qui ne font que répéter le mot, ou le coupent à son propre - ou = : elles reviennent non analysées",
   "As written": "Telle qu’écrite",
@@ -120,7 +119,6 @@
   "This format produces one .flextext for the whole run. With the lexicon included (set in the preset) it becomes a .zip pairing that file with the lexicon as LIFT.": "Ce format produit un seul .flextext pour tout l’export. Avec le lexique inclus (réglé dans le préréglage), il devient un .zip qui associe ce fichier au lexique en LIFT.",
   "This project has no export presets yet. A preset fixes the format (plain text, FLEx, CLDF, ELAN, Praat, a LaTeX book, or a lossless Plaid IGT archive) and which fields to include. A maintainer creates one under Manage export presets.": "Ce projet n’a pas encore de préréglage d’export. Un préréglage fixe le format (texte brut, FLEx, CLDF, ELAN, Praat, un livre LaTeX ou une archive Plaid IGT sans perte) et les champs à inclure. Un mainteneur en crée un sous Gérer les préréglages d’export.",
   "This project has no language identity yet": "Ce projet n’a pas encore d’identité linguistique",
-  "Title": "Titre",
   "Two vocabularies are named \"{name}\". Rename one to export as CLDF.": "Deux vocabulaires s’appellent « {name} ». Renommez-en un pour exporter en CLDF.",
   "Two vocabularies are named \"{name}\". Rename one to export as a Plaid IGT archive.": "Deux vocabulaires s’appellent « {name} ». Renommez-en un pour exporter en archive Plaid IGT.",
   "Unavailable while morpheme segmentation is off.": "Indisponible tant que la segmentation en morphèmes est désactivée.",
@@ -134,7 +132,6 @@
   "Word gloss (gls)": "Glose du mot (gls)",
   "Word line": "Ligne de mots",
   "Word tiers": "Tiers de mots",
-  "Words": "Mots",
   "Words and Morphemes": "Mots et morphèmes",
   "Words only, as written": "Mots seulement, tels qu’écrits",
   "Writes “-s” rather than “s”. Turn off for exact-form searching in ELAN.": "Écrit « -s » plutôt que « s ». Désactivez pour chercher la forme exacte dans ELAN.",
@@ -165,5 +162,6 @@
   "{name} <muted>(morpheme)</muted>": "{name} <muted>(morphème)</muted>",
   "{name} <muted>(orthography)</muted>": "{name} <muted>(orthographe)</muted>",
   "{name} <muted>(sentence)</muted>": "{name} <muted>(phrase)</muted>",
-  "{name} <muted>(word)</muted>": "{name} <muted>(mot)</muted>"
+  "{name} <muted>(word)</muted>": "{name} <muted>(mot)</muted>",
+  "All [entries]": "Toutes"
 }

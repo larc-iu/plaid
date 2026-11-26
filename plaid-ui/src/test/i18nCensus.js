@@ -13,7 +13,7 @@
 //             like a phrase
 //   jsxString a string inside a JSX expression: {saving ? 'Saving' : 'Save'}
 //   litText   text or a read attribute in a lit-html template
-//   countOf   countOf(), plural() or andList() from lib/plural.js, which
+//   countOf   countOf() or plural() from lib/plural.js, which
 //             build English only
 //   moduleT   t() or tx() called at module level, before the language is known
 //   sentence  any other string that reads like a sentence (a toast, a
@@ -29,7 +29,7 @@ import path from 'node:path';
 import * as espree from 'espree';
 
 const MESSAGE_FUNCTIONS = new Set(['t', 'tx', 'msg']);
-const ENGLISH_ONLY = new Set(['countOf', 'plural', 'andList']);
+const ENGLISH_ONLY = new Set(['countOf', 'plural']);
 
 // Attributes whose string is always for a person.
 const READ_ATTRS = new Set([
@@ -163,6 +163,17 @@ function scanSource(code, fileName = 'file.jsx') {
         break;
       case 'CallExpression': {
         const name = calleeName(node);
+        // tc('verb', 'Comment') is the message "Comment [verb]".
+        if (node.callee.type === 'Identifier' && name === 'tc') {
+          const sense = staticString(node.arguments[0]);
+          const message = staticString(node.arguments[1]);
+          if (sense !== null && message !== null) {
+            keys.push({ key: `${message} [${sense}]`, line: node.loc.start.line, fn: name });
+          }
+          if (!ctx.inFunction) flag('moduleT', node, 'tc() at module level');
+          node.arguments.slice(2).forEach((a) => walk(a, ctx));
+          return;
+        }
         if (node.callee.type === 'Identifier' && MESSAGE_FUNCTIONS.has(name)) {
           const key = staticString(node.arguments[0]);
           if (key !== null) keys.push({ key, line: node.loc.start.line, fn: name });

@@ -47,7 +47,7 @@ import { missingFields, similarField } from '../../import/elan/fieldTargets';
 import { existingFields } from '../../domain/fieldInventory';
 import { addOrthographies, createFields, missingOrthographies } from '../../import/project';
 import { discoverExportLayers } from '../../export/exportLayers';
-import { nodeLabel } from '../../import/elan/schema';
+import { shownNodeLabel } from './elan/shownNodeLabel.js';
 import { fieldWorksFieldNames, suggestFieldNames } from '../../import/elan/tierNaming';
 import { defaultFieldName } from '../../import/elan/buildDocuments';
 import { useDocumentTitle } from '@ui/hooks/useDocumentTitle.js';
@@ -345,7 +345,7 @@ export const ImportElanDocuments = () => {
       // An orthography is a name on the word layer, not a field to pick.
       return (
         <Input
-          aria-label={t('Name for {name}', { name: nodeLabel(node) })}
+          aria-label={t('Name for {name}', { name: shownNodeLabel(node) })}
           value={batch.fieldNames[node.key] ?? ''}
           disabled={!editable}
           onChange={(e) => batch.setName(node.key, e.target.value)}
@@ -381,7 +381,7 @@ export const ImportElanDocuments = () => {
         </Select>
         {isNew && (
           <Input
-            aria-label={t('New field name for {name}', { name: nodeLabel(node) })}
+            aria-label={t('New field name for {name}', { name: shownNodeLabel(node) })}
             value={name}
             disabled={!editable}
             onChange={(e) => batch.setName(node.key, e.target.value)}

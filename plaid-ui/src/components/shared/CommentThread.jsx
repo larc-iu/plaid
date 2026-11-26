@@ -11,7 +11,7 @@ import { isPending, withReturnedDraft } from '../../domain/CommentStore.js';
 import { useUnsavedDraft } from '../../hooks/useUnsavedDraft.js';
 import { useSavingGuard } from '../../hooks/useSavingGuard.js';
 import { isEnter } from '../../lib/chords.js';
-import { t, msg } from '../../lib/i18n.js';
+import { t, tc, msg } from '../../lib/i18n.js';
 
 // One thread: its comments oldest first, and a box to add to it.
 //
@@ -32,6 +32,11 @@ const onMetaEnter = (fn) => (event) => {
 // What leaving asks about while a comment is typed and not yet saved.
 const TYPED = msg('The comment you have typed');
 const TYPED_SEVERAL = msg('comments you have typed');
+// The leave question's own sentences for them.
+const typedSaid = () => ({
+  one: t('The comment you have typed is not saved. Leaving loses it.'),
+  several: (n) => t('{n} comments you have typed are not saved. Leaving loses them.', { n }),
+});
 
 // False once the component has unmounted, for a write that answers later.
 const useMounted = () => {
@@ -56,6 +61,7 @@ const Comment = ({ comment, store, canWrite, canDeleteAny, onEdit, onRemove }) =
   useUnsavedDraft(
     sending || (draft !== null && draft.trim() && draft.trim() !== comment.body) ? t(TYPED) : null,
     t(TYPED_SEVERAL),
+    typedSaid(),
   );
   const pending = isPending(comment);
   const mine = comment.authorId === store.currentUserId;
@@ -202,7 +208,7 @@ export const CommentThread = ({
   // Posts on their way. What was typed is kept until the server has it.
   const [sending, setSending] = useState(0);
   const mounted = useMounted();
-  useUnsavedDraft(composer.trim() || sending ? t(TYPED) : null, t(TYPED_SEVERAL));
+  useUnsavedDraft(composer.trim() || sending ? t(TYPED) : null, t(TYPED_SEVERAL), typedSaid());
   // Closing the tab asks while a post is on its way, even once this thread
   // has left the screen.
   useSavingGuard(store);
@@ -259,7 +265,7 @@ export const CommentThread = ({
               {t('Markdown · {key}+Enter', { key: metaKeyLabel() })}
             </span>
             <Button size="sm" disabled={!composer.trim()} onClick={submit}>
-              {t('Comment')}
+              {tc('verb', 'Comment')}
             </Button>
           </div>
         </div>

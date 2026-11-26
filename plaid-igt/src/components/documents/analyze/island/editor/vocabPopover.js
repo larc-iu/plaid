@@ -1,7 +1,8 @@
 import { html, nothing } from 'lit-html';
 import { live } from 'lit-html/directives/live.js';
 import { readVocabFields, trimIgnoredEdges } from '@/domain/igtConfig';
-import { morphTypeLabel, morphTypeOptions } from '@/domain/affixMarkers';
+import { morphTypeOptions } from '@/domain/affixMarkers';
+import { morphTypeDisplayLabel } from '@/domain/vocabFieldLabels';
 import { groupRankedByHeadword, itemLabel, lexiconView, refIds } from '@/domain/vocabDictionary';
 import { FIELD_TYPES, RESERVED_ITEM_KEYS } from '@/domain/vocabFields';
 import { rankVocabItems, TIERS } from '@/domain/vocabRank';
@@ -159,7 +160,7 @@ export const vocabPopover = {
     // name, numbered as everything else in the popover is.
     const refLabel = (id) => itemLabel(memo.byId.get(id), memo.numbers);
     const valueOf = (n) => {
-      if (n === 'morphType') return morphTypeLabel(meta[n]);
+      if (n === 'morphType') return morphTypeDisplayLabel(meta[n]);
       if (!hasRefs || fields[n]?.type !== FIELD_TYPES.ITEM) return meta[n];
       return refIds(item, { name: n }).map(refLabel).filter(Boolean).join(', ');
     };
@@ -1067,7 +1068,7 @@ export const vocabPopover = {
           ${morphTypeOptions(current).map(
             (type) =>
               html`<option value=${type} ?selected=${current === type}>
-                ${morphTypeLabel(type)}
+                ${morphTypeDisplayLabel(type)}
               </option>`,
           )}
         </select>
@@ -1122,7 +1123,7 @@ export const vocabPopover = {
           ${morphTypeOptions(current).map(
             (type) =>
               html`<option value=${type} ?selected=${current === type}>
-                ${morphTypeLabel(type)}
+                ${morphTypeDisplayLabel(type)}
               </option>`,
           )}
         </select>

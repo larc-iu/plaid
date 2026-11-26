@@ -26,7 +26,7 @@ import {
 import { textIncludes } from '@ui/domain/collation.js';
 import { sameConfig } from '@ui/domain/configCells.js';
 import { nameKey } from '@ui/lib/nameKey.js';
-import { t, tx, msg, listOf } from '@ui/lib/i18n.js';
+import { t, tx, msg, listOf, tc } from '@ui/lib/i18n.js';
 import { isEnter } from '@ui/lib/chords.js';
 
 // The editor for a project's tagsets. Owns a draft of the whole map and hands
@@ -55,13 +55,15 @@ export const VALUE_PAGE_SIZE = TALL_LIST_PAGE_SIZE;
 const MODES_UI = {
   [MODES.SUGGEST]: {
     // "Open" against "Closed", the way a linguist already reads open and
-    // closed classes. The stored mode value is still `suggest`.
-    label: msg('Open'),
+    // closed classes. The stored mode value is still `suggest`. The labels are
+    // said when shown: "Open" here is an open list, a word of its own in
+    // another language (tc).
+    label: () => tc('list', 'Open'),
     badge: 'border-transparent bg-secondary text-secondary-foreground',
     help: msg('The whole list is offered while you annotate, but anything can be typed.'),
   },
   [MODES.CLOSED]: {
-    label: msg('Closed'),
+    label: () => t('Closed'),
     // Neutral: amber means a contributor's unreviewed work.
     badge: 'border-input bg-transparent text-foreground',
     help: msg(
@@ -69,7 +71,7 @@ const MODES_UI = {
     ),
   },
   [MODES.MIXED]: {
-    label: msg('Closed, plus lexical glosses'),
+    label: () => t('Closed, plus lexical glosses'),
     badge: 'border-dashed border-input bg-transparent text-foreground',
     help: msg(
       'A tag is allowed if it has a lowercase letter or is in a script without capitals. Anything else must be on the list. Useful for glosses.',
@@ -388,7 +390,7 @@ export const TagsetsManager = ({
               </Button>
               <span className="font-medium">{name}</span>
               <Badge variant="secondary" className={MODES_UI[ts.mode].badge}>
-                {t(MODES_UI[ts.mode].label)}
+                {MODES_UI[ts.mode].label()}
               </Badge>
               <span className="text-xs text-muted-foreground">
                 {[
@@ -438,7 +440,7 @@ export const TagsetsManager = ({
                         onChange={() => patch(name, { mode: m })}
                       />
                       <span>
-                        <span className="text-sm font-medium">{t(MODES_UI[m].label)}</span>
+                        <span className="text-sm font-medium">{MODES_UI[m].label()}</span>
                         <span className="block text-xs text-muted-foreground">
                           {t(MODES_UI[m].help)}
                         </span>
@@ -563,7 +565,9 @@ export const TagsetsManager = ({
                             <ListCount
                               shown={matched.length}
                               total={ts.values.length}
-                              noun="value"
+                              countLabel={(v) =>
+                                t('{total} {n, plural, one {value} other {values}}', v)
+                              }
                             />
                             <SearchInput
                               className="w-full max-w-[18rem]"

@@ -503,7 +503,7 @@ const PIECE_COUNTS_AFTER = [
 ];
 
 // A label and its value, as the totals and a piece's line say them.
-export const labelled = (label, value) => t('{label}: {value}', { label, value });
+const labelled = (label, value) => t('{label}: {value}', { label, value });
 export const pieceWrittenText = (piece) => {
   const counts = piece?.counts || {};
   const said = (pairs) =>

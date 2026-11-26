@@ -1,4 +1,5 @@
 import { t } from '@ui/lib/i18n.js';
+import { recordingRefusalText } from '@/domain/mutations/alignment.js';
 
 // What a page holding a document says when the recording it plays changed
 // under it: deleted or replaced by someone else, and learned when the page
@@ -26,23 +27,9 @@ export function recordingChangeNotice(before, after, { ownDelete = false, notSav
   return { title: t('Recording replaced'), message: changedMessage('replaced', notSaved) };
 }
 
-// `notSaved` is the name alignment.js gives what it refused: "Segment" and
-// "Segment edit" have whole sentences of their own, and any other name goes
-// into the sentence as it came.
+// `notSaved` is the name alignment.js gives what it refused, which says it.
 function changedMessage(change, notSaved) {
   const deleted = change === 'deleted';
-  if (!notSaved) return deleted ? t('Deleted elsewhere.') : t('Replaced elsewhere.');
-  if (notSaved === 'Segment') {
-    return deleted
-      ? t('Deleted elsewhere. Segment not saved.')
-      : t('Replaced elsewhere. Segment not saved.');
-  }
-  if (notSaved === 'Segment edit') {
-    return deleted
-      ? t('Deleted elsewhere. Segment edit not saved.')
-      : t('Replaced elsewhere. Segment edit not saved.');
-  }
-  return deleted
-    ? t('Deleted elsewhere. {what} not saved.', { what: notSaved })
-    : t('Replaced elsewhere. {what} not saved.', { what: notSaved });
+  if (notSaved) return recordingRefusalText(notSaved, !deleted);
+  return deleted ? t('Deleted elsewhere.') : t('Replaced elsewhere.');
 }

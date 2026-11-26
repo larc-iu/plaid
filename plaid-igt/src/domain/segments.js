@@ -116,22 +116,6 @@ export const mweSplitNotes = (loss = {}) =>
     message: marked,
   }));
 
-/**
- * The old form of `mweSplitNotes`: one `[count, rest]` pair per kind that
- * has any, the count to be set apart. Its `rest` is English only: a sentence
- * cut around its count cannot be translated. Use `mweSplitNotes`.
- */
-export const mweSplitLines = ({ hiddenMwes = 0, partialMwes = 0 } = {}) =>
-  [
-    [hiddenMwes, 'will not be shown until the sentences are merged again.'], // i18n-ignore the old fragment API, English only: callers move to mweSplitNotes
-    [partialMwes, 'will be shown only in part until the sentences are merged again.'], // i18n-ignore the old fragment API, English only: callers move to mweSplitNotes
-  ]
-    .filter(([n]) => n > 0)
-    .map(([n, rest]) => [
-      t('{n, plural, one {# multi-word expression} other {# multi-word expressions}}', { n }),
-      rest,
-    ]);
-
 /** What `mweSplitNotes` says, as plain sentences one after another, or '' for none. */
 export const mweSplitSentences = (loss) =>
   MWE_SPLIT.filter(([, field]) => loss?.[field] > 0)

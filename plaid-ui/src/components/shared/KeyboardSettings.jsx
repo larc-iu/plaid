@@ -4,7 +4,7 @@ import { chordCaps, chordText, chordsOf, isModifierKeydown } from '../../lib/cho
 import { KeymapConflict, saveUserKeymap } from '../../lib/userKeymap.js';
 import { notifyError } from '../../lib/notify.js';
 import { humanizeError } from '../../lib/errors.js';
-import { t } from '../../lib/i18n.js';
+import { t, tc } from '../../lib/i18n.js';
 import { Button } from '../ui/button';
 import { Card, CardHeader, CardTitle, CardContent } from '../ui/card';
 
@@ -37,7 +37,7 @@ const problemText = (found, chord) => {
   if (found.problem === 'conflict') {
     return found.with.fixed
       ? t('{pressed} has a fixed meaning here.', { pressed })
-      : t('{pressed} is “{action}”.', { pressed, action: found.with.label });
+      : t('{pressed} is “{action}”.', { pressed, action: t(found.with.label) });
   }
   return t('{pressed} cannot be used.', { pressed });
 };
@@ -105,8 +105,8 @@ export const KeyboardSettings = ({ keymap, groups }) => {
       </CardHeader>
       <CardContent className="flex flex-col gap-5">
         {groups.map((group) => (
-          <section key={group.id} aria-label={group.label}>
-            <h3 className="mb-1 text-sm font-medium">{group.label}</h3>
+          <section key={group.id} aria-label={t(group.label)}>
+            <h3 className="mb-1 text-sm font-medium">{t(group.label)}</h3>
             <ul className="divide-y rounded-md border">
               {keymap.actions
                 .filter((a) => !a.fixed && a.group === group.id)
@@ -117,14 +117,14 @@ export const KeyboardSettings = ({ keymap, groups }) => {
                       {/* On a narrow screen the keys and the buttons wrap under
                           the label instead of squeezing it a word a line. */}
                       <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-                        <span className="min-w-0 flex-1 basis-48 text-sm">{action.label}</span>
+                        <span className="min-w-0 flex-1 basis-48 text-sm">{t(action.label)}</span>
                         {isRecording ? (
                           <button
                             type="button"
                             autoFocus
                             className="rounded border border-primary px-2 py-0.5 text-xs text-primary outline-none ring-2 ring-primary/30"
                             aria-label={t('Press the new shortcut for {action}', {
-                              action: action.label,
+                              action: t(action.label),
                             })}
                             onKeyDown={onRecordKey(action.id)}
                             onBlur={stop}
@@ -158,7 +158,7 @@ export const KeyboardSettings = ({ keymap, groups }) => {
                                   size="sm"
                                   disabled={saving}
                                   aria-label={t('Reset the shortcut for {action}', {
-                                    action: action.label,
+                                    action: t(action.label),
                                   })}
                                   onClick={() => apply(keymap.withBinding(action.id, null))}
                                 >
@@ -170,14 +170,14 @@ export const KeyboardSettings = ({ keymap, groups }) => {
                                 size="sm"
                                 disabled={saving}
                                 aria-label={t('Change the shortcut for {action}', {
-                                  action: action.label,
+                                  action: t(action.label),
                                 })}
                                 onClick={() => {
                                   setProblem(null);
                                   setRecording(action.id);
                                 }}
                               >
-                                {t('Change')}
+                                {tc('verb', 'Change')}
                               </Button>
                             </>
                           )}

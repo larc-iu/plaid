@@ -36,7 +36,8 @@ export function TranscribeDialog({ mediaOps, readOnly = false }) {
           ? t('Speech detection is running. One run at a time on a document.')
           : null
       }
-      noun="transcription"
+      searching={t('Looking for a transcription service.')}
+      noneOnline={t('No transcription service is online for this project.')}
       disabled={readOnly || isUploading}
       blocked={!transcribeSpot.service || isUploading || channels.none || channels.waiting}
     >

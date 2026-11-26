@@ -25,7 +25,8 @@ import {
 import { cn } from '@ui/lib/utils';
 import { msg, t, tx } from '@ui/lib/i18n.js';
 import { notifySuccess, notifyError, notifyWarning, humanizeError } from '@/utils/feedback';
-import { humanizeFieldName, FIELD_TYPES } from '@/domain/vocabFields';
+import { FIELD_TYPES } from '@/domain/vocabFields';
+import { fieldDisplayName } from '@/domain/vocabFieldLabels';
 import { buildReplacer, MATCH_EMPTY } from '@/domain/replacer';
 import { planVocabReplace, replaceWrites } from '@/domain/vocabReplace';
 import { RESERVED_STATUS_VALUES, STATUS_VALUES, statusFieldKey } from '@/domain/vocabDictionary';
@@ -103,7 +104,7 @@ export const ReplaceDialog = ({
       ...fields
         // name-ok: A15 built-in entry key
         .filter((f) => f.name !== 'morphType' && f.type !== FIELD_TYPES.ITEM)
-        .map((f) => ({ name: f.name, label: humanizeFieldName(f.name) })),
+        .map((f) => ({ name: f.name, label: fieldDisplayName(f.name) })),
     ],
     [fields, canRename],
   );

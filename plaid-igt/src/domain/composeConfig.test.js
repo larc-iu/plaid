@@ -7,7 +7,7 @@ import {
   readRemovedCodes,
   resolveComposeTable,
   rowsToConfig,
-  validateCode,
+  codeProblems,
 } from './composeConfig.js';
 import { composeInsert, lookupCode } from './compose.js';
 
@@ -100,7 +100,8 @@ describe('a project code in use', () => {
   });
 });
 
-describe('validateCode', () => {
+describe('codeProblems', () => {
+  const validateCode = (row, others) => codeProblems(row, others).map((p) => p.text);
   const ok = (row, others) => validateCode(row, others).length === 0;
 
   it('accepts a two-character code that types something', () => {
@@ -117,7 +118,9 @@ describe('validateCode', () => {
   it('refuses a duplicate within the project', () => {
     const a = { code: "b'", char: 'ɓ' };
     const b = { code: "b'", char: 'ɗ' };
-    expect(validateCode(b, [a, b])).toEqual(['This code already exists.']);
+    expect(codeProblems(b, [a, b])).toEqual([
+      { kind: 'duplicate', text: 'This code already exists.' },
+    ]);
     // Against itself alone it is fine.
     expect(ok(a, [a])).toBe(true);
   });

@@ -1,7 +1,8 @@
 import { html, nothing } from 'lit-html';
 import { PROV_STATES } from '@larc-iu/plaid-client';
 import { trimIgnoredEdges } from '@/domain/igtConfig';
-import { morphTypeLabel, morphTypeOptions } from '@/domain/affixMarkers';
+import { morphTypeOptions } from '@/domain/affixMarkers';
+import { morphTypeDisplayLabel } from '@/domain/vocabFieldLabels';
 import { joinMweForm, mweMorphType } from '@/domain/mwe';
 import { notifyInfo } from '@/utils/feedback';
 import { EMPTY_SET, numHtml, provClass } from './shared.js';
@@ -543,7 +544,7 @@ export const mwe = {
           ${morphTypeOptions(current).map(
             (type) =>
               html`<option value=${type} ?selected=${current === type}>
-                ${morphTypeLabel(type)}
+                ${morphTypeDisplayLabel(type)}
               </option>`,
           )}
         </select>

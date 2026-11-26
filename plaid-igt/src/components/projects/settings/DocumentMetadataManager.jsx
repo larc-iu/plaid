@@ -268,6 +268,7 @@ export const DocumentMetadataManager = ({
                         ? {}
                         : {
                             removeLabel: t('Reset to default'),
+                            removeAria: t('Reset to default {name}', { name: record.name }),
                             removeIcon: RotateCcw,
                             destructive: false,
                           })}

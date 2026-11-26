@@ -10,9 +10,9 @@ export const plural = (n, noun) => {
 // A count and its noun, agreeing, the count written for the reader's locale:
 // "1 text", "2 texts", "1,204 words". `many` is for a plural `plural` would
 // not make ("entry", "entries" it does: "person", "people" it does not).
+// English only, for the apps not yet translated: a translated screen uses a
+// plural message (lib/i18n.js).
+// i18n-ignore
 export const countOf = (n, one, many) =>
+  // i18n-ignore
   `${n.toLocaleString()} ${many === undefined ? plural(n, one) : n === 1 ? one : many}`;
-
-// Names in a running list: "A", "A and B", "A, B and C".
-export const andList = (names) =>
-  names.length <= 1 ? (names[0] ?? '') : `${names.slice(0, -1).join(', ')} and ${names.at(-1)}`;

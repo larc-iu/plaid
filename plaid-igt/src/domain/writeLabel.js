@@ -18,7 +18,7 @@ export const shownLabel = (label) =>
   typeof label === 'string' ? t(label) : t(label.message, label.values);
 
 /** The label in English, its values filled in. */
-export const englishLabel = (label) =>
+const englishLabel = (label) =>
   typeof label === 'string'
     ? label
     : label.message.replace(/\{(\w+)\}/g, (_, name) => String(label.values?.[name] ?? ''));

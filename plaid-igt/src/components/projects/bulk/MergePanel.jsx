@@ -15,14 +15,9 @@ import { notifySuccess, notifyError, humanizeError } from '@/utils/feedback';
 import { buildItemNumbers } from '@/domain/vocabDictionary';
 import { FormLabel } from '@/components/vocabularies/FormLabel';
 import { ExamplesPanel } from '@/components/vocabularies/DictionaryPanels';
-import {
-  normalizeVocabFields,
-  humanizeFieldName,
-  editableMetadata,
-  FIELD_TYPES,
-} from '@/domain/vocabFields';
+import { normalizeVocabFields, editableMetadata, FIELD_TYPES } from '@/domain/vocabFields';
+import { fieldDisplayName, morphTypeDisplayLabel } from '@/domain/vocabFieldLabels';
 import { itemLabel, mergeMorphType, planMergeRefs, refIds } from '@/domain/vocabDictionary';
-import { morphTypeLabel } from '@/domain/affixMarkers';
 import { metadataUpdates } from '@/domain/metadataPatch';
 import { readVocabFields } from '@/domain/igtConfig';
 import { planMerge, applyMerge } from './bulkRunner.js';
@@ -71,7 +66,7 @@ const EntryDetail = ({ item, fields, nameOf, client }) => {
       <dl className="grid grid-cols-[auto_1fr] items-baseline gap-x-3 gap-y-0.5 text-sm">
         {fields.map((f) => (
           <Fragment key={f.name}>
-            <dt className="text-xs text-muted-foreground">{humanizeFieldName(f.name)}</dt>
+            <dt className="text-xs text-muted-foreground">{fieldDisplayName(f.name)}</dt>
             <dd>
               {f.type === FIELD_TYPES.ITEM
                 ? show(refIds(item, f).map(nameOf).filter(Boolean).join(', '))
@@ -81,7 +76,7 @@ const EntryDetail = ({ item, fields, nameOf, client }) => {
         ))}
         {extras.map((k) => (
           <Fragment key={k}>
-            <dt className="text-xs text-muted-foreground">{humanizeFieldName(k)}</dt>
+            <dt className="text-xs text-muted-foreground">{fieldDisplayName(k)}</dt>
             <dd>{show(typeof meta[k] === 'object' ? JSON.stringify(meta[k]) : meta[k])}</dd>
           </Fragment>
         ))}
@@ -493,7 +488,7 @@ export const MergePanel = ({ project, client }) => {
                 entry: (
                   <FormLabel form={itemById.get(survivor)?.form} index={numbers.get(survivor)} />
                 ),
-                type: morphTypeLabel(typing.take),
+                type: morphTypeDisplayLabel(typing.take),
               })}
             </span>
           )}

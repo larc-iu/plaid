@@ -158,7 +158,7 @@ export const grid = {
             <div class="igt-cell${this._rowCls(`orth:${name}`)}" data-row=${`orth:${name}`}>
               ${this._field({
                 key: `or:${token.id}:${name}`,
-                what: this._cellWhat(name, `"${token.content}"`, sctx.index),
+                what: this._cellShown(name, { word: token }, sctx.index),
                 entityIds: [token.id],
                 value: token.orthographies?.[name] ?? '',
                 apply: (v) =>
@@ -183,7 +183,7 @@ export const grid = {
               ${this._field({
                 key: `wa:${token.id}:${name}`,
                 gloss: {},
-                what: this._cellWhat(name, `"${token.content}"`, sctx.index),
+                what: this._cellShown(name, { word: token }, sctx.index),
                 entityIds: [token.annotations?.[name]?.id],
                 badge: token.annotations?.[name]?.id
                   ? this._commentBadge(
@@ -343,6 +343,15 @@ export const grid = {
             `morpheme ${morph.precedence ?? siblings.indexOf(morph) + 1} of "${word.content}"`, // i18n-ignore: History's label, stored with the edit
             index,
           );
+    // The same cell as the leave question names it, in the reader's language.
+    const formShown =
+      siblings.length <= 1
+        ? t('Morpheme form of "{word}" in sentence {n}', { word: word.content, n: index + 1 })
+        : t('Form of morpheme {k} of "{word}" in sentence {n}', {
+            k: morph.precedence ?? siblings.indexOf(morph) + 1,
+            word: word.content,
+            n: index + 1,
+          });
     // Chips linked to a stem/root lexicon entry keep the lavender accent —
     // a coverage cue for lexical identification; everything else stays quiet.
     // Machine-made segmentation (copied analyses) marks the morpheme TOKEN's
@@ -375,7 +384,7 @@ export const grid = {
               spellcheck="false"
               dir="auto"
               ?disabled=${this.readOnly}
-              .igtWhat=${formWhat}
+              .igtWhat=${formShown}
               .igtEntityIds=${[morph.id]}
               ${uncontrolledValue(shown, value)}
               @focus=${this._onMorphFormFocus}
@@ -422,7 +431,7 @@ export const grid = {
               ${this._field({
                 key: `ma:${morph.id}:${name}`,
                 gloss: { reading },
-                what: this._cellWhat(name, this._morphemeSubject(morph, word, siblings), index),
+                what: this._cellShown(name, { morph, word, siblings }, index),
                 entityIds: [morph.annotations?.[name]?.id],
                 badge: morph.annotations?.[name]?.id
                   ? this._commentBadge(
@@ -523,7 +532,7 @@ export const grid = {
                 : html`
                     ${this._field({
                       key: `sa:${sentence.id}:${name}`,
-                      what: this._cellWhat(name, null, index),
+                      what: this._cellShown(name, null, index),
                       entityIds: [sentence.annotations?.[name]?.id],
                       value: sentence.annotations?.[name]?.value ?? '',
                       // As a word's gloss (DocumentModel.resendsByEntity).

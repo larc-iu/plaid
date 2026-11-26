@@ -19,7 +19,7 @@ import { UserAdminDialogs } from '@ui/components/shared/UserAdminDialogs.jsx';
 import { UserDetail } from './UserDetail';
 import { textIncludes } from '@ui/domain/collation.js';
 import { formatBytes } from '@/utils/formatBytes';
-import { t } from '@ui/lib/i18n.js';
+import { t, tc } from '@ui/lib/i18n.js';
 
 // The whole account directory. The project Access tab resolves one project's
 // members; this browses everyone, and opens onto what one person has been
@@ -107,7 +107,7 @@ export const AdminUsers = ({ client, currentUser }) => {
       sort: (u) => (u.deactivatedAt ? 2 : u.isAdmin ? 0 : 1),
       render: (u) => (
         <div className="flex items-center gap-1.5">
-          {u.isAdmin && <Badge variant="secondary">{t('Admin')}</Badge>}
+          {u.isAdmin && <Badge variant="secondary">{tc('account', 'Admin')}</Badge>}
           {u.deactivatedAt && (
             <Badge
               variant="outline"
@@ -185,7 +185,7 @@ export const AdminUsers = ({ client, currentUser }) => {
           placeholder: t('Search accounts…'),
           match: (u, q) => textIncludes(u.id, q) || textIncludes(u.displayName || '', q),
         }}
-        noun="account"
+        countLabel={(v) => t('{total} {n, plural, one {account} other {accounts}}', v)}
         empty={t('No accounts.')}
         noMatch={t('No accounts match.')}
         loading={loading}

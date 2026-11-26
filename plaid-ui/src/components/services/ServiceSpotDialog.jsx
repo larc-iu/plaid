@@ -15,7 +15,9 @@ import { t } from '../../lib/i18n.js';
 // `blockedHint` (the app's own reason), else another run holding the document
 // (`writeLock`). No service online is the method row's to say, once: with a
 // `noun`, as "No parsing service is online for this project.", or "Looking
-// for a parsing service." while `isDiscovering`. `blocked` disables Run with
+// for a parsing service." while `isDiscovering`. A caller that translates
+// passes those two sentences whole instead, as `noneOnline` and `searching`
+// (each wins over `noun` for its own state). `blocked` disables Run with
 // nothing said. `onOpen` runs each time the dialog opens. `size` is the
 // button's (`sm` on an annotation tab's RunBar). `children` sit under the
 // method row: what else the run takes (the channels of a recording, say).
@@ -28,6 +30,8 @@ export function ServiceSpotDialog({
   writeLock = null,
   blockedHint = null,
   noun = null,
+  searching = null,
+  noneOnline = null,
   isDiscovering = false,
   onOpen = null,
   disabled = false,
@@ -38,11 +42,10 @@ export function ServiceSpotDialog({
   const [open, setOpen] = useState(false);
   const running = heldBy(writeLock, label);
   const notice = blockedHint ?? runHeldNotice(writeLock);
-  const emptyHint = !noun
-    ? undefined
-    : isDiscovering
-      ? t('Looking for a {noun} service.', { noun })
-      : t('No {noun} service is online for this project.', { noun });
+  const emptyHint = isDiscovering
+    ? (searching ?? (noun ? t('Looking for a {noun} service.', { noun }) : undefined))
+    : (noneOnline ??
+      (noun ? t('No {noun} service is online for this project.', { noun }) : undefined));
 
   return (
     <>

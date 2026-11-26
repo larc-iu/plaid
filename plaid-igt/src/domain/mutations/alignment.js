@@ -536,6 +536,16 @@ const NOT_SAVED = {
   ],
 };
 
+/**
+ * What a write refused because the recording changed says, for `what` it
+ * left unsaved (a name `takeRecordingRefusal` answers, "Segment"), as the
+ * recording was `replaced` or deleted.
+ */
+export const recordingRefusalText = (what, replaced) => {
+  const [onReplace, onDelete] = NOT_SAVED[what];
+  return t(replaced ? onReplace : onDelete);
+};
+
 export const alignmentMutations = {
   // Create a new alignment by inserting `text` into the body at a position
   // chosen to preserve temporal ordering, then creating the alignment token
@@ -1649,8 +1659,7 @@ export const alignmentMutations = {
   _recordingRefusal(seen, raw, what) {
     const now = recordingOf(raw);
     if (!seen || seen === now) return null;
-    const [replaced, deleted] = NOT_SAVED[what];
-    const message = t(now ? replaced : deleted);
+    const message = recordingRefusalText(what, !!now);
     const refused = {
       url: now,
       what,

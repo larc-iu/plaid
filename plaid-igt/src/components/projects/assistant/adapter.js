@@ -180,11 +180,11 @@ export const IGT_ASSISTANT = {
     }
     return wrote;
   },
-  // Each is sent to the model as the person's message when clicked, so it
-  // stays as written.
+  // Each stands in for the person's own message: shown, and sent when
+  // clicked, in the reader's language (the tab calls t() on it).
   examples: [
-    'Which words in this project are still unglossed?', // i18n-ignore: sent to the model
-    'Are the glosses for the most common suffix consistent?', // i18n-ignore: sent to the model
-    'Summarize the noun morphology you can see in the corpus.', // i18n-ignore: sent to the model
+    msg('Which words in this project are still unglossed?'),
+    msg('Are the glosses for the most common suffix consistent?'),
+    msg('Summarize the noun morphology you can see in the corpus.'),
   ],
 };

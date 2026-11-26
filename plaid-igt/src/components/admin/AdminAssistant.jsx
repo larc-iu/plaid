@@ -443,7 +443,7 @@ export const AdminAssistant = ({ client }) => {
           textIncludes(r.userId, q) ||
           textIncludes(r.projectName, q),
       }}
-      noun="conversation"
+      countLabel={(v) => t('{total} {n, plural, one {conversation} other {conversations}}', v)}
       empty={t('No conversations.')}
       noMatch={(q) => t('No conversations match “{query}”.', { query: q })}
       loading={loading}

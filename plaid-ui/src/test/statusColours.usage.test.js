@@ -7,7 +7,8 @@ import { APPS, repoRoot } from './apps.js';
 // icon. As the colour of words they read at 3.7:1 and 2.1:1 on a card, under
 // the 4.5:1 that text needs, so words take `text-success-foreground` or
 // `text-warning-foreground`. A bare `text-success` is allowed only on a line
-// that draws an icon.
+// that draws an icon. Prettier puts a long icon's props one to a line, so
+// an attribute line reads with the bare `<Check` that opens it above.
 
 const repo = repoRoot();
 const ROOTS = ['plaid-ui/src', ...APPS.map((a) => `${a.dir}/src`)];
@@ -26,13 +27,13 @@ describe('success and warning colours', () => {
     const found = [];
     for (const root of ROOTS) {
       for (const file of sources(path.join(repo, root))) {
-        fs.readFileSync(file, 'utf8')
-          .split('\n')
-          .forEach((line, i) => {
-            if (BARE.test(line) && !ICON.test(line)) {
-              found.push(`${path.relative(repo, file)}:${i + 1}: ${line.trim()}`);
-            }
-          });
+        const lines = fs.readFileSync(file, 'utf8').split('\n');
+        lines.forEach((line, i) => {
+          const opener = /^\s*<[A-Z][A-Za-z]*\s*$/.test(lines[i - 1] ?? '') ? lines[i - 1] : '';
+          if (BARE.test(line) && !ICON.test(`${opener.trim()} ${line.trim()}`)) {
+            found.push(`${path.relative(repo, file)}:${i + 1}: ${line.trim()}`);
+          }
+        });
       }
     }
     expect(found).toEqual([]);

@@ -89,5 +89,13 @@
   "Unlink": "Délier",
   "Job": "Tâche",
   "Activity": "Activité",
-  "Include media files": "Inclure les fichiers média"
+  "Include media files": "Inclure les fichiers média",
+  "Comment [verb]": "Commenter",
+  "View [noun]": "Affichage",
+  "Search [noun]": "Recherche",
+  "Export [noun]": "Export",
+  "Import [noun]": "Import",
+  "Discarded [job]": "Abandonnée",
+  "Replaced [job]": "Remplacée",
+  "Discarded. [job]": "Abandonnée."
 }

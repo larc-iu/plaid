@@ -353,7 +353,7 @@ export const JobPage = ({ project, projectId, jobId, client }) => {
           onOpenChange={setUndoOpen}
           client={client}
           entry={{ id: jobId, label: jobName(job) }}
-          noun="job"
+          title={t('Undo this job?')}
           send={sendUndo}
           tokens={job.report ? (jobEditedText(job) ? 'with-text' : 'morphemes') : undefined}
           errorText={jobUndoError}

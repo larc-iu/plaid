@@ -39,7 +39,9 @@ export const useMetadataOperations = (doc) => {
     metadataFields.map((field) => [field.name, edited[field.name] ?? stored[field.name] ?? '']),
   );
   const dirty = metadataFields.some((field) => values[field.name] !== (stored[field.name] ?? ''));
-  useUnsavedDraft(dirty ? t('What you have typed here') : null);
+  useUnsavedDraft(dirty ? 'What you have typed here' : null, null, {
+    one: t('What you have typed here is not saved. Leaving loses it.'),
+  });
 
   const updateValue = (name, value) => setEdited((prev) => ({ ...prev, [name]: value }));
 

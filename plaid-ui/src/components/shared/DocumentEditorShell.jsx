@@ -71,7 +71,8 @@ import { t } from '../../lib/i18n.js';
 // - `assistantApp`: the app tag of the app's assistant.
 // - `documentPath(projectId, documentId)`: the document's address, which a
 //   tab's address extends.
-// - `tabs`: `list`, the tabs in order as `{ value, label }`. `editor` is the
+// - `tabs`: `list`, the tabs in order as `{ value, label }`, each label a
+//   message marked msg() that the shell shows through t(). `editor` is the
 //   annotation editor's, which is where a citation and Ask point. `wide`
 //   (`[editor]` when left out) are full-bleed and supply their own padding,
 //   the rest are held to a readable width. `past` are those that can show
@@ -466,7 +467,7 @@ const DocumentEditor = ({ app, documentClient }) => {
 
   // The tab first, as in every app, then the document and its project.
   const tabLabel = app.tabs.list.find((entry) => entry.value === tab)?.label;
-  useDocumentTitle(tabLabel, shown?.raw?.name, project?.name);
+  useDocumentTitle(tabLabel && t(tabLabel), shown?.raw?.name, project?.name);
 
   // Every document tab is full width in `Layout`, so the breadcrumb and the
   // tab row stand in one place whichever tab is open. The wide tabs are
@@ -610,6 +611,7 @@ const DocumentEditor = ({ app, documentClient }) => {
         failed={!loading && !doc}
         tabs={app.tabs.list.map((entry) => ({
           ...entry,
+          label: t(entry.label),
           // What an entry changed is no tab's: a tab leaves it for the
           // document as of the entry, on that tab.
           to: showChanges ? withDocumentView(tabHref(entry.value)) : tabHref(entry.value),

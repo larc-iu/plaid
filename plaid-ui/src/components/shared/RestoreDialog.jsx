@@ -4,10 +4,12 @@
 // toast that confirms the restore offers Undo.
 //
 // What each app says differently is what it calls a token layer, so
-// `roleWords` (role -> [singular, plural]) is a prop, and, for an app with
-// layers of its own, `layerWords` (a layer's config -> [singular, plural], or
-// null to leave it out; see `indexLayers`). Everything else, down to the
-// wording of the toasts, is the same in every app.
+// `roleWords` (role -> words) is a prop, and, for an app with layers of its
+// own, `layerWords` (a layer's config -> words, or null to leave it out; see
+// `indexLayers`). The words are `{ count(n), scope }`, whole messages (see
+// domain/restoreSummary.js), or the older English-only [singular, plural].
+// Everything else, down to the wording of the toasts, is the same in every
+// app.
 
 import { useEffect, useRef, useState } from 'react';
 import { readRole } from '@larc-iu/plaid-client';

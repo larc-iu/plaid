@@ -3,7 +3,7 @@ import { fullTimestamp } from '../../lib/formatTime.js';
 import { changesMadeText } from '../../lib/auditText.js';
 import { Notice } from './Notice.jsx';
 import { SegmentedControl } from './SegmentedControl.jsx';
-import { t, msg } from '../../lib/i18n.js';
+import { t, tc, msg } from '../../lib/i18n.js';
 
 const VIEWS = [
   { value: 'changes', label: msg('Changes') },
@@ -36,7 +36,7 @@ export const HistoricalBanner = ({ entry, loading, view, onView, className = '' 
         <span>{text}</span>
         {onView && (
           <SegmentedControl
-            label={t('View')}
+            label={tc('noun', 'View')}
             value={view}
             onChange={onView}
             options={VIEWS.map((v) => ({ ...v, label: t(v.label) }))}

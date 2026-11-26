@@ -8,7 +8,7 @@
 // breaking the dialog.
 
 import { ROLES } from '@larc-iu/plaid-client';
-import { t, msg, listOf } from '@ui/lib/i18n.js';
+import { t, tc, msg, listOf } from '@ui/lib/i18n.js';
 import { humanizeError, statusOf } from '@ui/lib/errors.js';
 
 // Each kind of row: `n` of them named (`count`), and `n` of them said with
@@ -400,7 +400,7 @@ export const undoneToast = (summary, opts) => {
   ]
     .filter(Boolean)
     .join(' ');
-  return { title: line ? t('Undone') : t('Nothing undone'), message, undid: !!line };
+  return { title: line ? tc('toast', 'Undone') : t('Nothing undone'), message, undid: !!line };
 };
 
 /**

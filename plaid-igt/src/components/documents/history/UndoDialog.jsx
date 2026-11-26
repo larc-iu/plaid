@@ -52,8 +52,7 @@ const UNKNOWN_UNDO = msg(
  * every link to them: each vocabulary's History, at this entry.
  *
  * `send({dryRun})`, where it is not one entry's undo through `scope` (a job's
- * undo), and `title`, the dialog's question ("Undo this job?"). `noun`, what
- * the title calls it ("job"), is the older way, in English only. `tokens`, with no
+ * undo), and `title`, the dialog's question ("Undo this job?"). `tokens`, with no
  * `tokenRows`, says what the tokens are (undoneLine). `errorText(err,
  * fallback)` words a refusal, undoError by default. `onUndone(summary)` is
  * called after the undo, with core's answer, or with null when it is not
@@ -67,7 +66,6 @@ export const UndoDialog = ({
   scope = {},
   send,
   title,
-  noun,
   errorText = undoError,
   place,
   tokenRows,
@@ -158,12 +156,7 @@ export const UndoDialog = ({
       <DialogContent className="max-w-md" data-testid="undo-dialog">
         <DialogHeader>
           <DialogTitle>
-            {title ??
-              (noun
-                ? `Undo this ${noun}?` // i18n-ignore the old bare-noun prop, English only: callers pass `title`
-                : entry?.action
-                  ? t('Undo this action?')
-                  : t('Undo this entry?'))}
+            {title ?? (entry?.action ? t('Undo this action?') : t('Undo this entry?'))}
           </DialogTitle>
         </DialogHeader>
 

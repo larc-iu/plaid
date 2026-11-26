@@ -36,7 +36,7 @@
 // line, which also keeps "Copy "A" as "B"" in one piece, and the rules run
 // only on what is before and after it.
 import { fullTimestamp } from './formatTime.js';
-import { msg, t } from './i18n.js';
+import { t, tc } from './i18n.js';
 
 const ID = '[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\\b';
 const JOINED_ID = new RegExp(`\\s+(?:and|into)\\s+${ID}`, 'gi');
@@ -71,17 +71,18 @@ export const readableDescription = (text) => {
 // What an operation's kind (the server's closed list, `?group-kind=`) is
 // called on a History row. An operation with no kind names none.
 const KIND_LABELS = {
-  'assistant-plan': msg('Assistant'),
-  'service-run': msg('Automatic'),
-  import: msg('Import'),
-  'bulk-edit': msg('Bulk edit'),
-  'guess-adoption': msg('Guess taken'),
-  repair: msg('Repair'),
-  review: msg('Review'),
-  job: msg('Job'),
+  'assistant-plan': () => t('Assistant'),
+  'service-run': () => t('Automatic'),
+  import: () => tc('noun', 'Import'),
+  'bulk-edit': () => t('Bulk edit'),
+  'guess-adoption': () => t('Guess taken'),
+  repair: () => t('Repair'),
+  review: () => t('Review'),
+  job: () => t('Job'),
 };
 
-export const operationKindLabel = (kind) => (KIND_LABELS[kind] ? t(KIND_LABELS[kind]) : null);
+export const operationKindLabel = (kind) =>
+  Object.hasOwn(KIND_LABELS, kind) ? KIND_LABELS[kind]() : null;
 
 // The line over a History entry's changes. Where the entry's first change
 // (`from`) was earlier than its end (`time`, what is read at), it says both,

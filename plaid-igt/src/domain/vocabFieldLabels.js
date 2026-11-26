@@ -11,6 +11,7 @@
 
 import { t, msg } from '@ui/lib/i18n.js';
 import { fieldLabel, humanizeFieldName } from './vocabFields.js';
+import { morphTypeLabel } from './affixMarkers.js';
 
 // The labels vocabFields.js gives its known fields (FIELD_LABELS), by key.
 const SHOWN = {
@@ -57,3 +58,12 @@ export const fieldDisplayName = (name) => translated(name, humanizeFieldName(nam
 /** `fieldDescription` for the screen. */
 export const fieldDisplayDescription = (name) =>
   t(Object.hasOwn(DESCRIPTIONS, name) ? DESCRIPTIONS[name] : CUSTOM_DESCRIPTION);
+
+/**
+ * `morphTypeLabel` for the screen. Only the app's own name for FieldWorks'
+ * phrase types translates: the others are FieldWorks' own names, which stay.
+ */
+export const morphTypeDisplayLabel = (type) => {
+  const label = morphTypeLabel(type);
+  return label === type ? label : t('multi-word expression');
+};

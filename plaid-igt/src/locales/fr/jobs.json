@@ -341,5 +341,9 @@
   "{unit, select, word {{n, plural, one {# word} other {# words}}} morpheme {{n, plural, one {# morpheme} other {# morphemes}}} sentence {{n, plural, one {# sentence} other {# sentences}}} other {{n, number} {unit}}}": "{unit, select, word {{n, plural, one {# mot} other {# mots}}} morpheme {{n, plural, one {# morphème} other {# morphèmes}}} sentence {{n, plural, one {# phrase} other {# phrases}}} other {{n, number} {unit}}}",
   "{values}, not in the setup": "{values}, hors de la configuration",
   "{why, select, output {Answer too long} repeating {Model repeated itself} other {Steps used up}}: what it had staged was not written.": "{why, select, output {Réponse trop longue} repeating {Le modèle s’est répété} other {Étapes épuisées}} : ce qu’elle avait préparé n’a pas été écrit.",
-  "{why, select, output {Answer too long} repeating {Model repeated itself} other {Steps used up}}: written as staged.": "{why, select, output {Réponse trop longue} repeating {Le modèle s’est répété} other {Étapes épuisées}} : écrit tel que préparé."
+  "{why, select, output {Answer too long} repeating {Model repeated itself} other {Steps used up}}: written as staged.": "{why, select, output {Réponse trop longue} repeating {Le modèle s’est répété} other {Étapes épuisées}} : écrit tel que préparé.",
+  "All": "Tous",
+  "Created [entries]": "Créées",
+  "Set to [column]": "Fixée à",
+  "Undo this job?": "Annuler cette tâche ?"
 }

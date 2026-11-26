@@ -138,7 +138,7 @@ export const AdminProjects = ({ client, currentUser }) => {
         placeholder: t('Search projects…'),
         match: (p, q) => textIncludes(p.name, q),
       }}
-      noun="project"
+      countLabel={(v) => t('{total} {n, plural, one {project} other {projects}}', v)}
       empty={t('No projects.')}
       noMatch={t('No projects match.')}
       loading={loading}

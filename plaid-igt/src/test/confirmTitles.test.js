@@ -5,7 +5,8 @@ import { fileURLToPath } from 'node:url';
 
 // Every confirm's title in igt is a question ("Delete segment?", "Revoke this
 // token?"), by ruling (2026-09-27). The titles are strings at the call sites,
-// so the rule is read off the source:
+// or the message of a t(), tx() or tc() there, so the rule is read off the
+// source:
 // - each `confirm({ title })`, including the island's `confirmRef.current`,
 // - each `<ConfirmDeleteDialog title>`,
 // - each `<AlertDialogTitle>` (igt opens an AlertDialog only to confirm),
@@ -33,7 +34,37 @@ const LITERAL = /'((?:[^'\\]|\\.)*)'|"((?:[^"\\]|\\.)*)"|`((?:[^`\\]|\\.)*)`/g;
 // A literal compared against (`kind === 'merge' ? …`) is not one of them.
 const COMPARED = /[!=]==?\s*('(?:[^'\\]|\\.)*'|"(?:[^"\\]|\\.)*")/g;
 const literals = (expr) =>
-  [...expr.replace(COMPARED, '').matchAll(LITERAL)].map((m) => m[1] ?? m[2] ?? m[3]);
+  [...messagesOnly(expr).replace(COMPARED, '').matchAll(LITERAL)].map((m) => m[1] ?? m[2] ?? m[3]);
+
+// A translated title is its message, the first argument of t() or tx() (the
+// second of tc(), after the sense). The values passed with it are not part
+// of the title. A call whose message is not a literal stays as it is, and
+// so has no title literal of its own.
+const MESSAGE_CALL = /\b(?:tx?\(|tc\(\s*'[^']*'\s*,)\s*/g;
+const STRING_START = /^('(?:[^'\\]|\\.)*'|"(?:[^"\\]|\\.)*"|`(?:[^`\\]|\\.)*`)/;
+// From an opening parenthesis at `at`, the index of its match, past strings.
+const closingParen = (text, at) => {
+  let depth = 0;
+  for (let k = at; k < text.length; k++) {
+    const quoted = /['"`]/.test(text[k]) && text.slice(k).match(STRING_START);
+    if (quoted) k += quoted[0].length - 1;
+    else if (text[k] === '(') depth++;
+    else if (text[k] === ')' && --depth === 0) return k;
+  }
+  return text.length - 1;
+};
+function messagesOnly(expr) {
+  let out = '';
+  let at = 0;
+  for (const m of expr.matchAll(MESSAGE_CALL)) {
+    if (m.index < at) continue;
+    const message = expr.slice(m.index + m[0].length).match(STRING_START);
+    if (!message) continue;
+    out += expr.slice(at, m.index) + message[1];
+    at = closingParen(expr, expr.indexOf('(', m.index)) + 1;
+  }
+  return out + expr.slice(at);
+}
 
 // From an opening brace at `at`, the text up to its matching close.
 const braced = (text, at) => {
@@ -45,14 +76,19 @@ const braced = (text, at) => {
   return text.slice(at + 1);
 };
 
-// JSX children as the strings a reader sees the end of: the text itself, with
-// each `{...}` standing in as one opaque word.
-const jsxText = (children) => [
-  children
-    .replace(/\{[^{}]*\}/g, 'X')
-    .replace(/\s+/g, ' ')
-    .trim(),
-];
+// JSX children as the strings a reader sees the end of. Children that are one
+// `{...}` expression (a translated title) are that expression's literals.
+// Otherwise the text itself, with each `{...}` standing in as one opaque word.
+const jsxText = (children) => {
+  const s = children.trim();
+  if (s.startsWith('{') && braced(s, 0).length === s.length - 2) return literals(braced(s, 0));
+  return [
+    s
+      .replace(/\{[^{}]*\}/g, 'X')
+      .replace(/\s+/g, ' ')
+      .trim(),
+  ];
+};
 
 // Each confirm title in a file, as {line, strings}. `dialogTitles` also reads
 // the file's plain `<DialogTitle>`s.
@@ -94,15 +130,25 @@ describe('igt confirm titles', () => {
       "<ConfirmDeleteDialog title={kind === 'merge' ? 'Merge words?' : 'Split word'}>",
       "<AlertDialogTitle>Apply {plural(n, 'change')}?</AlertDialogTitle>",
       '<DialogTitle dir="auto">Restore “{label}”</DialogTitle>',
+      "await confirm({ title: t('Delete “{name}”?', { name: n ?? '' }), body: 'x' });",
+      "<ConfirmDeleteDialog title={tc('job', 'Discard (it)', { a: ')' })}>",
+      "<AlertDialogTitle>{tx('Delete <b>{name}</b>?', { b: (c) => c })}</AlertDialogTitle>",
+      "<DialogTitle>{title ?? (a ? t('Undo this action?') : t('Undo {n}?', { n }))}</DialogTitle>",
+      '<AlertDialogTitle>{t(MESSAGE)}</AlertDialogTitle>',
     ].join('\n');
     expect(confirmTitles(src, { dialogTitles: true }).map((t) => t.strings)).toEqual([
       ['Delete token'],
       ['Delete yours?', "Delete ${name}'s?"],
+      ['Delete “{name}”?'],
       ['Delete project'],
       ['Delete “${x}”?'],
       ['Merge words?', 'Split word'],
+      ['Discard (it)'],
       ['Apply X?'],
+      ['Delete <b>{name}</b>?'],
+      [],
       ['Restore “X”'],
+      ['Undo this action?', 'Undo {n}?'],
     ]);
   });
 

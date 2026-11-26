@@ -15,7 +15,7 @@ import { useConfirm } from '@ui/components/shared/ConfirmProvider';
 import { lossPhrase } from '@ui/domain/annotationLoss.js';
 import { notifySuccess } from '@/utils/feedback';
 import {
-  mweSplitLines,
+  mweSplitNotes,
   segmentSplitDescription,
   splitPointsFromSegments,
 } from '@/domain/segments.js';
@@ -343,7 +343,7 @@ export function DocumentTokenize() {
         </p>
         <p>{t('Words, morphemes, and their annotations are unchanged.')}</p>
         {confirmClear === 'sentences' && !clearSentencesFits(layers) && (
-          <p className="text-destructive">{TOO_MANY_SENTENCES}</p>
+          <p className="text-destructive">{t(TOO_MANY_SENTENCES)}</p>
         )}
       </ConfirmDeleteDialog>
 
@@ -501,10 +501,8 @@ export function SentenceSplitWords({ loss }) {
           )}
         </p>
       ) : null}
-      {mweSplitLines(loss).map(([count, rest]) => (
-        <p key={rest}>
-          <strong>{count}</strong> {rest}
-        </p>
+      {mweSplitNotes(loss).map(({ key, n, message }) => (
+        <p key={key}>{tx(message, { n, strong })}</p>
       ))}
     </>
   );

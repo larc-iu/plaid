@@ -28,7 +28,7 @@ import { inviteLinkFor, GRANT_ROLES, inviteRevocable } from '@ui/domain/invites.
 import { ProjectLink } from './ProjectLink';
 import { ROLE_HINTS } from '@/domain/roleGrants.js';
 import { textIncludes } from '@ui/domain/collation.js';
-import { t } from '@ui/lib/i18n.js';
+import { t, tc } from '@ui/lib/i18n.js';
 import { copyText } from '@ui/lib/download.js';
 
 // Every invite on the server, whoever minted it. A project's own tab shows
@@ -209,7 +209,7 @@ export const AdminInvites = ({ client }) => {
           </span>
         ) : (
           <span className="flex flex-wrap items-center gap-1">
-            {i.grantAdmin && <Badge variant="destructive">{t('Admin')}</Badge>}
+            {i.grantAdmin && <Badge variant="destructive">{tc('account', 'Admin')}</Badge>}
             {i.projectId && (
               <ProjectLink
                 project={projects.find((p) => p.id === i.projectId) ?? { id: i.projectId }}
@@ -289,7 +289,7 @@ export const AdminInvites = ({ client }) => {
             textIncludes(i.createdBy || '', q) ||
             textIncludes(projectName(i.projectId), q),
         }}
-        noun="invite"
+        countLabel={(v) => t('{total} {n, plural, one {invite} other {invites}}', v)}
         showCount={!loadFailed}
         empty={loadFailed ? t('Not loaded.') : t('No invites.')}
         noMatch={t('No invites match.')}

@@ -27,6 +27,7 @@ import {
   vocabTagsetByField,
   FIELD_TYPES,
 } from '@/domain/vocabFields';
+import { fieldDisplayLabel } from '@/domain/vocabFieldLabels';
 import {
   buildSenseTree,
   buildItemNumbers,
@@ -644,7 +645,9 @@ export const VocabularyItems = ({
 
   // Leaving an entry with unsaved edits asks first, whichever way out: a row,
   // a link in a panel, the vocabulary's tabs, the shell, Back, or a closed tab.
-  useUnsavedDraft(typed ? 'The entry you have typed' : null);
+  useUnsavedDraft(typed ? 'The entry you have typed' : null, null, {
+    one: t('The entry you have typed is not saved. Leaving loses it.'),
+  });
   typedRef.current = typed;
   typedRef.current = typed;
 
@@ -854,7 +857,7 @@ export const VocabularyItems = ({
       metadata: { ...reservedMetadata(selectedAsRead?.metadata), ...fromBase.metadata },
     };
     const labelOf = (key) =>
-      key === 'form' ? t('Form') : fieldLabel(fields.find((f) => f.name === key) ?? key);
+      key === 'form' ? t('Form') : fieldDisplayLabel(fields.find((f) => f.name === key) ?? key);
     setItems((prev) => prev.map((i) => (i.id === item.id ? saved(item.id) : i)));
     showSaved();
     // Only the keys the save changes are sent, so one written elsewhere

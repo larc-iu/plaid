@@ -99,8 +99,8 @@ export const RedeemInvite = ({ loginPath, homePath, projectPath }) => {
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
-    if (!isReset && !email.trim()) return setError(EMAIL_REQUIRED_MESSAGE);
-    if (!isReset && !isEmail(email)) return setError(EMAIL_INVALID_MESSAGE);
+    if (!isReset && !email.trim()) return setError(t(EMAIL_REQUIRED_MESSAGE));
+    if (!isReset && !isEmail(email)) return setError(t(EMAIL_INVALID_MESSAGE));
     const tooShort = passwordTooShort(password, passwordMinimum);
     if (tooShort) return setError(tooShort);
     if (password !== confirm) return setError(t('Passwords do not match'));

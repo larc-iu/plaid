@@ -92,7 +92,9 @@ export const DocumentDetailsPage = ({
   const dirty = name.trim() !== (doc.name || '') && name.trim() !== '';
   // A typed name that has not been saved: leaving this screen asks first,
   // whether by the tab strip, a link, Back or a reload.
-  useUnsavedDraft(dirty ? t('The name you have typed') : null);
+  useUnsavedDraft(dirty ? t('The name you have typed') : null, null, {
+    one: t('The name you have typed is not saved. Leaving loses it.'),
+  });
   // The two ways this screen leaves itself. A router push is none of the ways
   // out the hook watches, so it asks here.
   const guardLeaving = useUnsavedGuard();

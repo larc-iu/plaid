@@ -4,7 +4,7 @@ import { ChevronDown, ChevronRight, CornerLeftUp, X, FileText, Plus } from 'luci
 import { Popover, PopoverContent, PopoverTrigger } from '@ui/components/ui/popover';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@ui/components/ui/dialog';
 import { cn } from '@ui/lib/utils';
-import { humanizeFieldName } from '@/domain/vocabFields';
+import { fieldDisplayName } from '@/domain/vocabFieldLabels';
 import {
   descendantsOf,
   referencesTo,
@@ -96,7 +96,7 @@ export const ItemRefField = ({
           numbers={numbers}
           exclude={exclude}
           onPick={(x) => set([...ids, x])}
-          placeholder={t('Find an entry for {field}…', { field: humanizeFieldName(field.name) })}
+          placeholder={t('Find an entry for {field}…', { field: fieldDisplayName(field.name) })}
         />
       )}
     </div>
@@ -526,7 +526,7 @@ export const ReferencedByPanel = ({ item, items, fields, numbers, itemTo }) => {
             <span className="min-w-0 flex-1 truncate">
               <ItemLink item={r.item} numbers={numbers} itemTo={itemTo} />
             </span>
-            <span className="text-xs text-muted-foreground">{humanizeFieldName(r.field.name)}</span>
+            <span className="text-xs text-muted-foreground">{fieldDisplayName(r.field.name)}</span>
           </li>
         ))}
       </ul>

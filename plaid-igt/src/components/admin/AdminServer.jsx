@@ -527,7 +527,7 @@ export const AdminServer = ({ client }) => {
           rowKey={(l) => l.documentId}
           id="admin-locks"
           defaultSort={{ key: 'user', dir: 'asc' }}
-          noun="document"
+          countLabel={(v) => t('{total} {n, plural, one {document} other {documents}}', v)}
           empty={t('Nobody is holding a document.')}
         />
 
@@ -585,7 +585,7 @@ export const AdminServer = ({ client }) => {
           rowKey={(b) => `${b.kind}:${b.ip}:${b.userId || ''}`}
           id="admin-rate-limits"
           defaultSort={{ key: 'failures', dir: 'desc' }}
-          noun={['address', 'addresses']}
+          countLabel={(v) => t('{total} {n, plural, one {address} other {addresses}}', v)}
           empty={t('Nothing recorded in the last 15 minutes.')}
           actions={
             buckets.length > 0 && (

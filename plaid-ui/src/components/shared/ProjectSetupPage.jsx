@@ -12,7 +12,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '../ui/card';
 import { Loading } from './Loading.jsx';
 import { SetupBlocked } from './SetupBlocked.jsx';
 import { TYPE } from '../../lib/typeScale.js';
-import { msg, t } from '../../lib/i18n.js';
+import { msg, t, tc } from '../../lib/i18n.js';
 
 /**
  * The standalone setup page of plaid-ud and plaid-umr: the app's layers in a
@@ -52,7 +52,7 @@ export const ProjectSetupPage = ({ layerInfo, setup }) => {
       const client = getClient();
       if (!client) throw new Error('Not authenticated');
       await setup.adopt(client, project, info);
-      notifySuccess(t('Set up for {app}', { app: setup.app }));
+      notifySuccess(tc('toast', 'Set up for {app}', { app: setup.app }));
       navigate(documentsHref);
     } catch (err) {
       console.error(`Failed to set the project up for ${setup.app}:`, err);

@@ -202,7 +202,7 @@ export const AdminJobs = ({ client }) => {
             textIncludes(j.instructions || '', q) ||
             textIncludes(j.startedByName || '', q),
         }}
-        noun="job"
+        countLabel={(v) => t('{total} {n, plural, one {job} other {jobs}}', v)}
         empty={t('No jobs.')}
         noMatch={t('No jobs match.')}
       />

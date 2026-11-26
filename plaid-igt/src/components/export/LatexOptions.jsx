@@ -9,7 +9,7 @@ import {
   ROW_KINDS,
   VOCAB_SCOPES,
 } from '@/export/latexBook';
-import { msg, t } from '@ui/lib/i18n.js';
+import { msg, t, tc } from '@ui/lib/i18n.js';
 
 const SCOPE_LABEL = {
   [ROW_KINDS.ORTHOGRAPHY]: msg('Orthography'),
@@ -103,7 +103,7 @@ const VocabularyOptions = ({ choice, onChange }) => {
             <legend className="mb-1 text-sm font-medium">{t('Entries')}</legend>
             {[
               [VOCAB_SCOPES.USED, t('Used in the texts')],
-              [VOCAB_SCOPES.ALL, t('All')],
+              [VOCAB_SCOPES.ALL, tc('entries', 'All')],
             ].map(([value, label]) => (
               <label key={value} className="flex cursor-pointer items-center gap-2">
                 <input

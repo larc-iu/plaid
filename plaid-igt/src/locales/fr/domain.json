@@ -255,7 +255,6 @@
   "{n, plural, one {# change in documents or lexicons you cannot open is not undone.} other {# changes in documents or lexicons you cannot open are not undone.}}": "{n, plural, one {# modification dans des documents ou lexiques que vous ne pouvez pas ouvrir n’est pas annulée.} other {# modifications dans des documents ou lexiques que vous ne pouvez pas ouvrir ne sont pas annulées.}}",
   "{n, plural, one {# multi-word expression will be shown only in part until the sentences are merged again.} other {# multi-word expressions will be shown only in part until the sentences are merged again.}}": "{n, plural, one {# expression polylexicale ne sera affichée qu’en partie jusqu’à ce que les phrases soient de nouveau fusionnées.} other {# expressions polylexicales ne seront affichées qu’en partie jusqu’à ce que les phrases soient de nouveau fusionnées.}}",
   "{n, plural, one {# multi-word expression will not be shown until the sentences are merged again.} other {# multi-word expressions will not be shown until the sentences are merged again.}}": "{n, plural, one {# expression polylexicale ne sera pas affichée tant que les phrases ne seront pas de nouveau fusionnées.} other {# expressions polylexicales ne seront pas affichées tant que les phrases ne seront pas de nouveau fusionnées.}}",
-  "{n, plural, one {# multi-word expression} other {# multi-word expressions}}": "{n, plural, one {# expression polylexicale} other {# expressions polylexicales}}",
   "{n, plural, one {# segment starts inside a word and is left alone.} other {# segments start inside a word and are left alone.}}": "{n, plural, one {# segment commence à l’intérieur d’un mot et reste tel quel.} other {# segments commencent à l’intérieur d’un mot et restent tels quels.}}",
   "{n, plural, one {# sentence break will be added where segments start.} other {# sentence breaks will be added where segments start.}}": "{n, plural, one {# coupure de phrase sera ajoutée là où commencent des segments.} other {# coupures de phrase seront ajoutées là où commencent des segments.}}",
   "{n, plural, one {# time alignment} other {# time alignments}}": "{n, plural, one {# alignement temporel} other {# alignements temporels}}",
@@ -271,5 +270,11 @@
   "{values} is not in this field's tagset.": "Absent du jeu d’étiquettes de ce champ : {values}.",
   "{value} (not in tagset)": "{value} (absent du jeu d’étiquettes)",
   "“{value}” is a reserved Status value and cannot be renamed or removed. Nothing was written.": "« {value} » est une valeur de Statut réservée et ne peut être ni renommée ni retirée. Rien n’a été écrit.",
-  "“{word}” was changed elsewhere. Not respelled.": "« {word} » a été modifié ailleurs. Graphie non modifiée."
+  "“{word}” was changed elsewhere. Not respelled.": "« {word} » a été modifié ailleurs. Graphie non modifiée.",
+  "A roleset cannot hold spaces, brackets, colons, quotes or #: {text}": "Un jeu de rôles ne peut contenir ni espace, ni crochet, ni deux-points, ni guillemet, ni # : {text}",
+  "multi-word expression": "expression polylexicale",
+  "sentence": "phrase",
+  "word": "mot",
+  "time alignment": "alignement temporel",
+  "Undone [toast]": "Annulé"
 }

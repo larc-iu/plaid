@@ -6,7 +6,7 @@ import { AssistantMarkdown } from '@ui/components/assistant/AssistantMarkdown.js
 import { copyText } from '@ui/lib/download.js';
 import { TYPE } from '@ui/lib/typeScale.js';
 import { historyHref } from '@ui/hooks/useHistoryParam.js';
-import { msg, t, tx } from '@ui/lib/i18n.js';
+import { msg, t, tx, tc } from '@ui/lib/i18n.js';
 import { APP_ROUTES } from '@/appRoutes.js';
 import {
   HARMONIZE_BY_TEXT,
@@ -574,7 +574,7 @@ export const HarmonizeChanged = ({ list, more = 0 }) => (
       <thead className="text-left text-muted-foreground">
         <tr>
           <th className="py-1 pr-4 font-medium">{t('Form')}</th>
-          <th className="py-1 pr-4 font-medium">{t('Set to')}</th>
+          <th className="py-1 pr-4 font-medium">{tc('column', 'Set to')}</th>
           <th className="py-1 pr-4 font-medium">{t('Decided by')}</th>
           <th className="py-1 font-medium">{t('Replaced')}</th>
         </tr>
@@ -646,7 +646,7 @@ export const HarmonizeLeft = ({ list, more = 0 }) => (
 export const Entries = ({ report, vocabs = [] }) => {
   const entries = report.entries || {};
   const draftLexicons = draftLexiconsOf(report, vocabs);
-  const entryLists = [[t('Created'), entries.created, entries.createdMore]].filter(
+  const entryLists = [[tc('entries', 'Created'), entries.created, entries.createdMore]].filter(
     ([, list = [], more = 0]) => list.length || more,
   );
   const unlinked = entries.unlinked || [];

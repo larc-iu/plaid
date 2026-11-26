@@ -3,8 +3,9 @@ import { Trash2 } from 'lucide-react';
 import { Input } from '@ui/components/ui/input';
 import { Label } from '@ui/components/ui/label';
 import { Button } from '@ui/components/ui/button';
-import { morphTypeLabel, morphTypeOptions } from '@/domain/affixMarkers';
-import { fieldLabel, FIELD_TYPES } from '@/domain/vocabFields';
+import { morphTypeOptions } from '@/domain/affixMarkers';
+import { FIELD_TYPES } from '@/domain/vocabFields';
+import { fieldDisplayLabel, morphTypeDisplayLabel } from '@/domain/vocabFieldLabels';
 import { TagsetField } from '@/components/shared/TagsetField.jsx';
 import { ItemRefField, EntryPlace, HomographNumber } from './DictionaryPanels';
 import { RolesetBand } from './RolesetBand';
@@ -77,7 +78,7 @@ export const EntryEditor = ({
     // Index, not the field name: a name is free text and may not be a legal
     // id fragment.
     const fieldId = `${uid}-field-${fields.indexOf(field)}`;
-    const label = fieldLabel(field);
+    const label = fieldDisplayLabel(field);
     return (
       <div key={field.name} className="flex min-w-0 flex-col gap-1">
         <Label htmlFor={fieldId} className="text-xs font-medium text-muted-foreground">
@@ -109,7 +110,7 @@ export const EntryEditor = ({
             <option value="">—</option>
             {morphTypeOptions(values.morphType).map((type) => (
               <option key={type} value={type}>
-                {morphTypeLabel(type)}
+                {morphTypeDisplayLabel(type)}
               </option>
             ))}
           </select>

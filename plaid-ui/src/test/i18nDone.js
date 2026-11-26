@@ -5,14 +5,4 @@
 //
 // A path is added here when its work is finished, and never taken out to
 // make a change pass.
-export const I18N_DONE = [
-  'plaid-ui/src/components/shared/UserButton.jsx',
-  'plaid-ui/src/components/auth',
-  'plaid-ui/src/components/guidelines',
-  'plaid-ui/src/components/services',
-  'plaid-ui/src/contexts',
-  'plaid-ui/src/services',
-  'plaid-igt/src/components/export',
-  'plaid-igt/src/export',
-  'plaid-igt/src/import',
-];
+export const I18N_DONE = ['plaid-ui/src', 'plaid-igt/src'];

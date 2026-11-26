@@ -596,6 +596,38 @@ export const cells = {
     return `morpheme ${which} of "${word.content}"`;
   },
 
+  // The cell as the leave question names it, in the reader's language: the
+  // words of _cellWhat, which History stores in English. `subject` is
+  // `{ word }` for a word's cell, `{ morph, word, siblings }` for a
+  // morpheme's, and null for a sentence's own field.
+  _cellShown(field, subject, index) {
+    const n = index + 1;
+    if (!subject) return t('{field} of sentence {n}', { field, n });
+    const { morph, word, siblings } = subject;
+    if (!morph) return t('{field} of "{word}" in sentence {n}', { field, word: word.content, n });
+    const form = morphFormOf(morph);
+    if (siblings.length <= 1) {
+      return t('{field} of morpheme "{form}" in sentence {n}', {
+        field,
+        form: form || word.content,
+        n,
+      });
+    }
+    return form
+      ? t('{field} of morpheme "{form}" of "{word}" in sentence {n}', {
+          field,
+          form,
+          word: word.content,
+          n,
+        })
+      : t('{field} of morpheme {k} of "{word}" in sentence {n}', {
+          field,
+          k: morph.precedence ?? siblings.indexOf(morph) + 1,
+          word: word.content,
+          n,
+        });
+  },
+
   // Keep the classes this file toggles by hand in step with the cell's text.
   // lit only rewrites the class attribute when one of ITS interpolations
   // changes, so a class flipped by hand (the input handler's filled/empty, the

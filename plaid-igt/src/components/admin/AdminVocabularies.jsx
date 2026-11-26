@@ -109,7 +109,7 @@ export const AdminVocabularies = ({ client }) => {
         placeholder: t('Search vocabularies…'),
         match: (v, q) => textIncludes(v.name || '', q),
       }}
-      noun="vocabulary"
+      countLabel={(v) => t('{total} {n, plural, one {vocabulary} other {vocabularies}}', v)}
       empty={t('No vocabularies.')}
       noMatch={t('No vocabularies match.')}
       loading={loading}

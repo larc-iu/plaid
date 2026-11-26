@@ -22,9 +22,11 @@
 // different halves, an end lying where the smallest begin of its span's
 // tokens is (core's place).
 //
-// No bare imports: plaid-ud's node suite imports this file by path.
+// No bare imports: plaid-ud's node suite imports this file by path. The one
+// import that has some is lib/i18n.js, as in DocumentModel.js.
 
 import { PROV, PROVENANCE_KEYS, isProtected } from '../../../plaid-client-js/src/provenance.js';
+import { listOf, t } from '../lib/i18n.js';
 
 const EMPTY = () => ({
   annotations: 0,
@@ -98,7 +100,7 @@ const nestedUnder = (childrenOf, layerId) => {
   return out;
 };
 
-const within = (outer, t) => t.begin >= outer.begin && t.end <= outer.end;
+const within = (outer, tk) => tk.begin >= outer.begin && tk.end <= outer.end;
 
 // Every token deleting `ids` takes, with the layer it is on: the tokens
 // themselves (unless `under` says they stay: true for all, or a set of the
@@ -108,14 +110,14 @@ const dyingTokens = (layers, ids, under = false) => {
   const stays = under instanceof Set ? (id) => under.has(id) : () => Boolean(under);
   const dying = new Map(); // token id -> token layer id
   for (const tl of layers) {
-    const given = (tl.tokens || []).filter((t) => ids.has(t.id));
+    const given = (tl.tokens || []).filter((tk) => ids.has(tk.id));
     if (!given.length) continue;
-    given.forEach((t) => {
-      if (!stays(t.id)) dying.set(t.id, tl.id);
+    given.forEach((tk) => {
+      if (!stays(tk.id)) dying.set(tk.id, tl.id);
     });
     for (const nested of nestedUnder(childrenOf, tl.id)) {
-      for (const t of nested.tokens || []) {
-        if (given.some((g) => within(g, t))) dying.set(t.id, nested.id);
+      for (const tk of nested.tokens || []) {
+        if (given.some((g) => within(g, tk))) dying.set(tk.id, nested.id);
       }
     }
   }
@@ -133,7 +135,7 @@ export const singleLinkTokens = (tokenLayers) =>
   new Set(
     (tokenLayers || [])
       .filter((l) => declares(l, 'single-link'))
-      .flatMap((l) => (l.tokens || []).map((t) => t.id)),
+      .flatMap((l) => (l.tokens || []).map((tk) => tk.id)),
   );
 
 /**
@@ -167,7 +169,7 @@ const keepsWithin = (rl, layerId) =>
 // Where core places a span: the smallest begin of its tokens, or null.
 const placer = (layers) => {
   const beginOf = new Map();
-  for (const tl of layers) for (const t of tl.tokens || []) beginOf.set(t.id, t.begin);
+  for (const tl of layers) for (const tk of tl.tokens || []) beginOf.set(tk.id, tk.begin);
   return (span) => {
     const begins = (span?.tokens || []).map((id) => beginOf.get(id)).filter(Number.isFinite);
     return begins.length ? Math.min(...begins) : null;
@@ -220,10 +222,10 @@ export const countDeleteLoss = (tokenLayers, tokenIds, options = {}) => {
   if (!dying.size) return result;
 
   for (const tl of layers) {
-    for (const t of tl.tokens || []) {
-      if (!dying.has(t.id) || skipped(tl.id)) continue;
+    for (const tk of tl.tokens || []) {
+      if (!dying.has(tk.id) || skipped(tl.id)) continue;
       bump(result.byLayer, tl.id);
-      if (hasContent(t, tl.id)) result.content += 1;
+      if (hasContent(tk, tl.id)) result.content += 1;
     }
   }
 
@@ -233,8 +235,8 @@ export const countDeleteLoss = (tokenLayers, tokenIds, options = {}) => {
     for (const sl of tl.spanLayers || []) {
       for (const s of sl.spans || []) {
         const toks = Array.isArray(s.tokens) ? s.tokens : [];
-        if (!toks.some((t) => dying.has(t))) continue;
-        const gone = toks.every((t) => dying.has(t));
+        if (!toks.some((tk) => dying.has(tk))) continue;
+        const gone = toks.every((tk) => dying.has(tk));
         if (gone) emptied.add(s.id);
         if (skipped(tl.id, sl.id)) continue;
         if (!gone) {
@@ -282,14 +284,14 @@ export const countDeleteLoss = (tokenLayers, tokenIds, options = {}) => {
   for (const { vocabId, links } of linkSources) {
     for (const link of links) {
       const toks = Array.isArray(link.tokens) ? link.tokens : [];
-      if (!toks.some((t) => dying.has(t))) {
+      if (!toks.some((tk) => dying.has(tk))) {
         if (toks.length === 1 && ruled.has(toks[0])) onlyOn(toks[0], link.id);
         continue;
       }
       if (seen.has(link.id ?? link)) continue;
       seen.add(link.id ?? link);
-      if (!toks.every((t) => dying.has(t))) {
-        const left = toks.filter((t) => !dying.has(t));
+      if (!toks.every((tk) => dying.has(tk))) {
+        const left = toks.filter((tk) => !dying.has(tk));
         if (left.length === 1 && ruled.has(left[0])) {
           onlyOn(left[0], link.id);
           cut.set(link.id, vocabId);
@@ -335,12 +337,12 @@ export const countSplitLoss = (tokenLayers, tokenId, position, options = {}) => 
   const result = EMPTY();
   const layers = tokenLayers || [];
   const skipped = skipper(options.skip);
-  const owner = layers.find((tl) => (tl.tokens || []).some((t) => t.id === tokenId));
-  const token = owner?.tokens.find((t) => t.id === tokenId);
+  const owner = layers.find((tl) => (tl.tokens || []).some((tk) => tk.id === tokenId));
+  const token = owner?.tokens.find((tk) => tk.id === tokenId);
   if (!token || !(token.begin < position && position < token.end)) return result;
 
   const tokenById = new Map();
-  for (const tl of layers) for (const t of tl.tokens || []) tokenById.set(t.id, t);
+  for (const tl of layers) for (const tk of tl.tokens || []) tokenById.set(tk.id, tk);
   // Which half of the split token a span falls in, as core places it: by the
   // smallest begin of its tokens. -1 left, 1 right, 0 outside the token.
   const side = (span) => {
@@ -407,7 +409,7 @@ export const countPartitionLoss = (tokenLayers, layerId, ranges, options = {}) =
     const i = tokens.findIndex(([b, e]) => b <= p && p < e);
     return i === -1 ? null : i;
   };
-  const now = holder(current.map((t) => [t.begin, t.end]));
+  const now = holder(current.map((tk) => [tk.begin, tk.end]));
   const after = ranges === 'any' ? (p) => p : holder(ranges || []);
   const crosses = (anc, a, b) => {
     const x = anc(a);
@@ -418,7 +420,7 @@ export const countPartitionLoss = (tokenLayers, layerId, ranges, options = {}) =
   for (const tl of layers) {
     for (const sl of tl.spanLayers || []) {
       const spanById = new Map((sl.spans || []).map((sp) => [sp.id, sp]));
-      const gone = (sp) => (sp?.tokens || []).length > 0 && sp.tokens.every((t) => dying.has(t));
+      const gone = (sp) => (sp?.tokens || []).length > 0 && sp.tokens.every((tk) => dying.has(tk));
       for (const rl of sl.relationLayers || []) {
         if (skipped(tl.id, sl.id, rl.id) || !keepsWithin(rl, layerId)) continue;
         for (const r of rl.relations || []) {
@@ -458,12 +460,12 @@ export const countTextDeleteLoss = (tokenLayers, ranges, options = {}) => {
   const skipIds = new Set(except || []);
   const ids = [];
   for (const tl of tokenLayers || []) {
-    for (const t of tl.tokens || []) {
-      if (skipIds.has(t.id)) continue;
+    for (const tk of tl.tokens || []) {
+      if (skipIds.has(tk.id)) continue;
       const inside = (ranges || []).some(([b, e]) =>
-        t.begin === t.end ? b < t.begin && t.end < e : b <= t.begin && t.end <= e,
+        tk.begin === tk.end ? b < tk.begin && tk.end < e : b <= tk.begin && tk.end <= e,
       );
-      if (inside) ids.push(t.id);
+      if (inside) ids.push(tk.id);
     }
   }
   return countDeleteLoss(tokenLayers, ids, rest);
@@ -527,8 +529,8 @@ export const applyTokenDelete = (tokenLayers, tokenIds, { vocabs = null } = {}) 
     });
   const none = () => {};
   for (const tl of layers) {
-    if (Array.isArray(tl.tokens) && tl.tokens.some((t) => dead.has(t.id))) {
-      tl.tokens = tl.tokens.filter((t) => !dead.has(t.id));
+    if (Array.isArray(tl.tokens) && tl.tokens.some((tk) => dead.has(tk.id))) {
+      tl.tokens = tl.tokens.filter((tk) => !dead.has(tk.id));
     }
     for (const sl of tl.spanLayers || []) {
       if (Array.isArray(sl.spans)) sl.spans = sweep(sl.spans, none, (id) => emptied.add(id));
@@ -557,11 +559,19 @@ export const applyTokenDelete = (tokenLayers, tokenIds, { vocabs = null } = {}) 
 
 /**
  * "3 annotations and 2 vocabulary links", the counts a question about a
- * delete names, or '' when there are none.
+ * delete names, or '' when there are none. Each count is its own message and
+ * the two are joined as the language joins a list, so the phrase can stand
+ * as a value in a whole sentence.
  */
 export const lossPhrase = ({ annotations = 0, links = 0 } = {}) => {
   const parts = [];
-  if (annotations) parts.push(`${annotations} ${annotations === 1 ? 'annotation' : 'annotations'}`);
-  if (links) parts.push(`${links} ${links === 1 ? 'vocabulary link' : 'vocabulary links'}`);
-  return parts.join(' and ');
+  if (annotations) {
+    parts.push(t('{n, plural, one {{n} annotation} other {{n} annotations}}', { n: annotations }));
+  }
+  if (links) {
+    parts.push(
+      t('{n, plural, one {{n} vocabulary link} other {{n} vocabulary links}}', { n: links }),
+    );
+  }
+  return parts.length ? listOf(parts) : '';
 };

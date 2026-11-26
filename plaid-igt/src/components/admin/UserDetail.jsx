@@ -17,7 +17,7 @@ import { TYPE } from '@ui/lib/typeScale.js';
 import { cn } from '@ui/lib/utils';
 import { ProjectLink } from './ProjectLink';
 import { documentTarget, projectTarget } from './projectTarget';
-import { t } from '@ui/lib/i18n.js';
+import { t, tc } from '@ui/lib/i18n.js';
 
 // One account: what they can reach, what they have been doing, and what is
 // holding a session open in their name.
@@ -124,7 +124,7 @@ export const UserDetail = ({ client, userId, backTo, onEdit, dialogs }) => {
             <div>
               <h2 className={cn('flex items-center gap-2', TYPE.section)}>
                 {user.displayName || user.id}
-                {user.isAdmin && <Badge variant="secondary">{t('Admin')}</Badge>}
+                {user.isAdmin && <Badge variant="secondary">{tc('account', 'Admin')}</Badge>}
                 {user.deactivatedAt && <Badge variant="outline">{t('Deactivated')}</Badge>}
               </h2>
               <p className="text-sm text-muted-foreground">{user.id}</p>
@@ -186,7 +186,7 @@ export const UserDetail = ({ client, userId, backTo, onEdit, dialogs }) => {
               placeholder: t('Search projects…'),
               match: (p, q) => textIncludes(p.name, q),
             }}
-            noun="project"
+            countLabel={(v) => t('{total} {n, plural, one {project} other {projects}}', v)}
             empty={t('No project roles.')}
             noMatch={t('No projects match.')}
           />
@@ -242,7 +242,7 @@ export const UserDetail = ({ client, userId, backTo, onEdit, dialogs }) => {
             rowKey={(tok) => tok.id}
             id="user-tokens"
             defaultSort={{ key: 'created', dir: 'desc' }}
-            noun="token"
+            countLabel={(v) => t('{total} {n, plural, one {token} other {tokens}}', v)}
             empty={t('No active tokens.')}
           />
 

@@ -22,7 +22,37 @@ const LITERAL = /'((?:[^'\\]|\\.)*)'|"((?:[^"\\]|\\.)*)"|`((?:[^`\\]|\\.)*)`/g;
 // A literal compared against (`kind === 'merge' ? …`) is not one of them.
 const COMPARED = /[!=]==?\s*('(?:[^'\\]|\\.)*'|"(?:[^"\\]|\\.)*")/g;
 const literals = (expr) =>
-  [...expr.replace(COMPARED, '').matchAll(LITERAL)].map((m) => m[1] ?? m[2] ?? m[3]);
+  [...messagesOnly(expr).replace(COMPARED, '').matchAll(LITERAL)].map((m) => m[1] ?? m[2] ?? m[3]);
+
+// A translated title is its message, the first argument of t() or tx() (the
+// second of tc(), after the sense). The values passed with it are not part
+// of the title. A call whose message is not a literal stays as it is, and
+// so has no title literal of its own.
+const MESSAGE_CALL = /\b(?:tx?\(|tc\(\s*'[^']*'\s*,)\s*/g;
+const STRING_START = /^('(?:[^'\\]|\\.)*'|"(?:[^"\\]|\\.)*"|`(?:[^`\\]|\\.)*`)/;
+// From an opening parenthesis at `at`, the index of its match, past strings.
+const closingParen = (text, at) => {
+  let depth = 0;
+  for (let k = at; k < text.length; k++) {
+    const quoted = /['"`]/.test(text[k]) && text.slice(k).match(STRING_START);
+    if (quoted) k += quoted[0].length - 1;
+    else if (text[k] === '(') depth++;
+    else if (text[k] === ')' && --depth === 0) return k;
+  }
+  return text.length - 1;
+};
+const messagesOnly = (expr) => {
+  let out = '';
+  let at = 0;
+  for (const m of expr.matchAll(MESSAGE_CALL)) {
+    if (m.index < at) continue;
+    const message = expr.slice(m.index + m[0].length).match(STRING_START);
+    if (!message) continue;
+    out += expr.slice(at, m.index) + message[1];
+    at = closingParen(expr, expr.indexOf('(', m.index)) + 1;
+  }
+  return out + expr.slice(at);
+};
 
 // From an opening brace at `at`, the text up to its matching close.
 const braced = (text, at) => {
@@ -63,6 +93,10 @@ describe('confirm titles', () => {
       "  title: mine ? 'Delete yours?' : `Delete ${name}'s?`,",
       "  confirmLabel: 'Delete',",
       '});',
+      "await confirm({ title: t('Delete “{name}”?', { name: n || t('Untitled') }) });",
+      "await confirm({ title: tc('job', 'Discard (it)', { a: ')' }), body: 'x' });",
+      "await confirm({ title: tx('Delete <b>{name}</b>?', { b: (c) => c }) });",
+      'await confirm({ title: t(MESSAGE) });',
       '<ConfirmDeleteDialog open title="Delete project" onConfirm={go}>',
       '<ConfirmDeleteDialog title={`Delete “${x}”?`}>',
       "<ConfirmDeleteDialog title={kind === 'merge' ? 'Merge words?' : 'Split word'}>",
@@ -70,6 +104,10 @@ describe('confirm titles', () => {
     expect(confirmTitles(src).map((t) => literals(t.expr))).toEqual([
       ['Delete token'],
       ['Delete yours?', "Delete ${name}'s?"],
+      ['Delete “{name}”?'],
+      ['Discard (it)'],
+      ['Delete <b>{name}</b>?'],
+      [],
       ['Delete project'],
       ['Delete “${x}”?'],
       ['Merge words?', 'Split word'],

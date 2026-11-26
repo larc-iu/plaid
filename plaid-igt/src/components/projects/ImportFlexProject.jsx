@@ -41,7 +41,7 @@ import { setupDataFor } from '../../import/project';
 
 import { documentFraction, documentLabel } from '../../import/progress';
 import { useDocumentTitle } from '@ui/hooks/useDocumentTitle.js';
-import { humanizeFieldName } from '@/domain/vocabFields';
+import { fieldDisplayName } from '@/domain/vocabFieldLabels';
 import { scopeBadgeClass } from '@/domain/scopeColors';
 import { t, tx, msg } from '@ui/lib/i18n.js';
 import { readTextFile } from '@ui/lib/textFile.js';
@@ -798,7 +798,7 @@ export const ImportFlexProject = ({ format = 'fwbackup' }) => {
                             })
                           }
                         />
-                        <span>{humanizeFieldName(f.name)}</span>
+                        <span>{fieldDisplayName(f.name)}</span>
                         <span className="text-xs text-muted-foreground">
                           {where} · <code>{f.wss.join(', ')}</code>
                         </span>

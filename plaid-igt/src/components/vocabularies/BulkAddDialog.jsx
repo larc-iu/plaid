@@ -35,7 +35,8 @@ import { CHUNK, withMintedIds } from '@/domain/bulk';
 import { readVocabulary } from '@/domain/vocabCache';
 import { followIds, settledId } from '@ui/domain/pendingIds.js';
 import { notifySuccess, notifyError, humanizeError } from '@/utils/feedback';
-import { humanizeFieldName, fieldDescription, FIELD_TYPES } from '@/domain/vocabFields';
+import { humanizeFieldName, FIELD_TYPES } from '@/domain/vocabFields';
+import { fieldDisplayName, fieldDisplayDescription } from '@/domain/vocabFieldLabels';
 import { saveBlob, sanitizeFilename } from '@ui/lib/download.js';
 import { NotUtf8FileError, readTextFile } from '@ui/lib/textFile.js';
 import {
@@ -58,7 +59,7 @@ import {
   makeRefusal,
   serializeImportReport,
 } from '@/import/vocabBulk';
-import { msg, t, tx } from '@ui/lib/i18n.js';
+import { msg, t, tx, tc } from '@ui/lib/i18n.js';
 import { isEnter } from '@ui/lib/chords.js';
 
 // What a plan writes, as the server gets it: pending ids named by the ids the
@@ -112,13 +113,15 @@ const actionTone = (d) => {
   return 'text-success-foreground';
 };
 
-// Short labels for the per-row choice. The bucket dropdowns say the same thing
-// at length, since there the subject is a whole pile of rows.
+// Short labels for the per-row choice, said when shown. The bucket dropdowns
+// say the same thing at length, since there the subject is a whole pile of
+// rows. "Expand" here adds to an entry, a word of its own in another
+// language (tc).
 const ROW_CHOICES = {
-  fill: msg('Expand'),
-  skip: msg('Skip'),
-  new: msg('Add'),
-  overwrite: msg('Replace existing'),
+  fill: () => tc('entry', 'Expand'),
+  skip: () => t('Skip'),
+  new: () => t('Add'),
+  overwrite: () => t('Replace existing'),
 };
 // The same, numbered after one of the entries that share the form.
 const NUMBERED_CHOICES = {
@@ -149,11 +152,11 @@ const rowChoices = (d) => {
   // between, and a numbered option there would only restate the default.
   const targetable = d.matches.filter((m) => m.canTarget !== false).length;
   if (!targeted || targetable < 2) {
-    return base.map((v) => ({ value: v, label: t(ROW_CHOICES[v]) }));
+    return base.map((v) => ({ value: v, label: ROW_CHOICES[v]() }));
   }
   const out = base
     .filter((v) => v !== targeted)
-    .map((v) => ({ value: v, label: t(ROW_CHOICES[v]) }));
+    .map((v) => ({ value: v, label: ROW_CHOICES[v]() }));
   // Only the entries the comparison shows can be picked: a number past the
   // table would name an entry the reviewer has not seen.
   d.matches.slice(0, MAX_MATCHES).forEach((m, i) => {
@@ -298,7 +301,7 @@ const DecisionRow = ({ d, columns, override, fallback, onChoose }) => {
               <th className="w-28" />
               {columns.map((f) => (
                 <th key={f} className="px-1 pt-1 text-left font-normal text-muted-foreground">
-                  {humanizeFieldName(f)}
+                  {fieldDisplayName(f)}
                 </th>
               ))}
             </tr>
@@ -528,7 +531,7 @@ export const BulkAddDialog = ({
   const rejectedIn = useMemo(
     () =>
       rejectedFields([...entries, ...plan.decisions])
-        .map(humanizeFieldName)
+        .map(fieldDisplayName)
         .join(', '),
     [entries, plan],
   );
@@ -953,7 +956,7 @@ export const BulkAddDialog = ({
                       <option value={FORM}>{t('Form (required)')}</option>
                       {fieldNames.map((f) => (
                         <option key={f} value={f} disabled={target !== f && usedFields.includes(f)}>
-                          {humanizeFieldName(f)}
+                          {fieldDisplayName(f)}
                         </option>
                       ))}
                       <option value={IGNORE}>{t("Don't import")}</option>
@@ -979,13 +982,13 @@ export const BulkAddDialog = ({
             <p className="text-sm">{t('The same value on every row')}</p>
             {constantFields.map((f) => (
               <div key={f} className="flex items-center gap-2">
-                <span className="w-40 shrink-0 truncate text-sm">{humanizeFieldName(f)}</span>
+                <span className="w-40 shrink-0 truncate text-sm">{fieldDisplayName(f)}</span>
                 <Input
                   dir="auto"
                   value={constants[f]}
                   onChange={(e) => setConstants((prev) => ({ ...prev, [f]: e.target.value }))}
                   className="h-7 flex-1"
-                  aria-label={t('{field} on every row', { field: humanizeFieldName(f) })}
+                  aria-label={t('{field} on every row', { field: fieldDisplayName(f) })}
                 />
                 <Button
                   variant="ghost"
@@ -1016,7 +1019,7 @@ export const BulkAddDialog = ({
                 <option value="">{t('Add a field…')}</option>
                 {addable.map((f) => (
                   <option key={f} value={f}>
-                    {humanizeFieldName(f)}
+                    {fieldDisplayName(f)}
                   </option>
                 ))}
               </select>
@@ -1044,8 +1047,8 @@ export const BulkAddDialog = ({
               )}
             </LegendEntry>
             {fieldNames.map((f) => (
-              <LegendEntry key={f} term={t('{field} (optional):', { field: humanizeFieldName(f) })}>
-                {fieldDescription(f)}
+              <LegendEntry key={f} term={t('{field} (optional):', { field: fieldDisplayName(f) })}>
+                {fieldDisplayDescription(f)}
               </LegendEntry>
             ))}
             {/* A field no column supplies may be the one a left-out column
@@ -1128,7 +1131,7 @@ export const BulkAddDialog = ({
                   <option value="">{t('Set all {n} to…', { n: n(rows.length) })}</option>
                   {bulk.map((v) => (
                     <option key={v} value={v}>
-                      {t(ROW_CHOICES[v])}
+                      {ROW_CHOICES[v]()}
                     </option>
                   ))}
                 </select>

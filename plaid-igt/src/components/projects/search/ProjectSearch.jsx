@@ -23,7 +23,7 @@ import { runHitsSearch, runFreqSearch } from './searchRunner.js';
 import { SegmentedControl } from '@ui/components/shared/SegmentedControl.jsx';
 import { MarkedText } from '@ui/components/shared/MarkedText.jsx';
 import { hitTo, rememberCaret } from './hitLinks.js';
-import { t, tx } from '@ui/lib/i18n.js';
+import { t, tx, tc } from '@ui/lib/i18n.js';
 import { isEnter } from '@ui/lib/chords.js';
 import { NoteLine } from './NoteLine.jsx';
 
@@ -210,7 +210,7 @@ export const ProjectSearch = ({ project, projectId, client }) => {
           </Button>
         </div>
         <SegmentedControl
-          label={t('View')}
+          label={tc('noun', 'View')}
           className="mt-3"
           value={mode}
           onChange={switchMode}

@@ -64,7 +64,7 @@ export const chrome = {
     // Not set up is a plain fact: the muted empty state, never a warm one.
     if (!info.primaryTokenLayer) {
       return html` <div class="igt-island__empty">
-        <p>${NOT_SET_UP}</p>
+        <p>${t(NOT_SET_UP)}</p>
       </div>`;
     }
     const sentences = doc.sentences;

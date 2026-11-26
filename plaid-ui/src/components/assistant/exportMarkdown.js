@@ -19,7 +19,7 @@ import {
   stagedLine,
 } from './planChanges.js';
 import { formatElapsed } from '../../hooks/useRunProgress.js';
-import { msg, t } from '../../lib/i18n.js';
+import { msg, t, tc } from '../../lib/i18n.js';
 import {
   couldNotOpen,
   namedCitations,
@@ -75,7 +75,6 @@ export const replyToMarkdown = (text, citations, ctx) => {
 // it covers, how it ended, and its instructions as sent, or as drafted.
 const JOB_CARD_ENDS = {
   started: msg('Started.'),
-  discarded: msg('Discarded.'),
   failed: msg('Not started.'),
   replaced: msg('Replaced by a later job card.'),
 };
@@ -89,7 +88,13 @@ const jobCardToMarkdown = (card) => {
     : more > 0
       ? t('{names} and {n, plural, one {# more} other {# more}}', { names: listed, n: more })
       : listed;
-  const said = JOB_CARD_ENDS[card.status] ? t(JOB_CARD_ENDS[card.status]) : t('Not yet started.');
+  // A job card's end agrees with « tâche » where a language says so.
+  const said =
+    card.status === 'discarded'
+      ? tc('job', 'Discarded.')
+      : JOB_CARD_ENDS[card.status]
+        ? t(JOB_CARD_ENDS[card.status])
+        : t('Not yet started.');
   const brief = card.status === 'started' ? card.sentBrief : card.brief;
   // What the job fills and whether it may edit the text, as the card's rows
   // say them (a card drafted before cards had them has neither).

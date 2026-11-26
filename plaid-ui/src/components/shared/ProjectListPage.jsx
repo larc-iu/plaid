@@ -201,7 +201,6 @@ export const ProjectListPage = ({
           ),
         }}
         tableId="projects"
-        noun="project"
         countLabel={(v) => t('{total} {n, plural, one {project} other {projects}}', v)}
         noMatch={t('No projects match.')}
         defaultSort={{ key: 'updated', dir: 'desc' }}

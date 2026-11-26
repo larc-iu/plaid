@@ -205,7 +205,9 @@ export const LanguagesSettings = ({ project, projectId, client, onProjectUpdate 
   const dirty = JSON.stringify(stored) !== JSON.stringify(saved);
   const valid = coordinatesOk(draft.object) && coordinatesOk(draft.meta);
   // Leaving the section, or the page, with an edit not saved asks first.
-  useUnsavedDraft(dirty ? t('What you have typed here') : null);
+  useUnsavedDraft(dirty ? 'What you have typed here' : null, null, {
+    one: t('What you have typed here is not saved. Leaving loses it.'),
+  });
 
   const save = async () => {
     if (!dirty || !valid || saving) return;

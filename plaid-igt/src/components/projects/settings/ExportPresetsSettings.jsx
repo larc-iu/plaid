@@ -42,7 +42,7 @@ import {
   EXPORT_FORMATS,
 } from '@/export/presets';
 import { isEnter } from '@ui/lib/chords.js';
-import { t } from '@ui/lib/i18n.js';
+import { t, tc } from '@ui/lib/i18n.js';
 
 const formatLabel = (id) => {
   const label = EXPORT_FORMATS.find((f) => f.id === id)?.label;
@@ -182,7 +182,7 @@ export const ExportPresetsSettings = ({ projectId, client, onProjectUpdate }) =>
     <div className="flex flex-col gap-4">
       <SectionHeader
         className="mb-2"
-        title={t('Export')}
+        title={tc('noun', 'Export')}
         description={t(
           'A preset fixes an export format and which orthographies, fields and options it includes. Open one to edit it and to run it.',
         )}

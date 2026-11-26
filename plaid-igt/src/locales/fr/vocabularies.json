@@ -348,5 +348,9 @@
   "“{label}” is as it was at {time}.": "« {label} » est telle qu’elle était le {time}.",
   "“{label}” is back as it was.": "« {label} » est revenue à son état précédent.",
   "“{label}” is back, without its links.": "« {label} » est de retour, sans ses liens.",
-  "“{project}” becomes its project. “{home}” keeps it linked.": "« {project} » devient son projet. « {home} » le garde lié."
+  "“{project}” becomes its project. “{home}” keeps it linked.": "« {project} » devient son projet. « {home} » le garde lié.",
+  "Expand [entry]": "Compléter",
+  "The entry you have typed is not saved. Leaving loses it.": "L’entrée que vous avez saisie n’est pas enregistrée. Partir la fait perdre.",
+  "The vocabulary name you have typed is not saved. Leaving loses it.": "Le nom de vocabulaire que vous avez saisi n’est pas enregistré. Partir le fait perdre.",
+  "“{value}” is a reserved Status value and cannot be renamed or removed": "« {value} » est une valeur de statut réservée et ne peut être ni renommée ni retirée"
 }

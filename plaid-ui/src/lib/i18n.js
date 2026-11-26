@@ -22,6 +22,8 @@
 //                         pure domain function building a warning.
 //   tx(message, values)   React nodes, for a sentence with markup inside it:
 //                         tx('Delete <b>{name}</b>?', { name, b: (c) => <b>{c}</b> })
+//   tc(sense, message)    a string, for the second meaning of an English
+//                         word. See tc below.
 //   msg(message)          marks a message in a module-level constant (a table
 //                         of labels), which is read before the language is
 //                         known. It returns the English, and the place that
@@ -62,6 +64,20 @@ i18next.use(ICU).init({
 
 /** The message in the interface's language, its values filled in. */
 export const t = (message, values) => i18next.t(message, values);
+
+/**
+ * A message whose English word means two things that another language says
+ * two ways: "Comment" the noun and "Comment" the button. The second use
+ * names its sense, `tc('verb', 'Comment')`, and a catalog translates it
+ * under the key "Comment [verb]". English, and a language with no entry
+ * for that key, get the plain message.
+ */
+export const tc = (sense, message, values) => {
+  const key = `${message} [${sense}]`;
+  return i18next.getResource(i18next.language, NAMESPACE, key) === undefined
+    ? i18next.t(message, values)
+    : i18next.t(key, values);
+};
 
 /** Marks a message held in a module-level constant. See the note above. */
 export const msg = (message) => message;

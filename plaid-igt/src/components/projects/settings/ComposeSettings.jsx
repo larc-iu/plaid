@@ -20,8 +20,7 @@ import {
   composeRows,
   isBuiltInCode,
   rowsToConfig,
-  validateCode,
-  DUPLICATE_CODE,
+  codeProblems,
 } from '@/domain/composeConfig';
 import { textIncludes } from '@ui/domain/collation.js';
 import { TYPE } from '@ui/lib/typeScale.js';
@@ -193,10 +192,12 @@ export const ComposeSettings = ({ project, projectId, client, onProjectUpdate })
 
   const dirty = rowsKey(draft) !== rowsKey(saved);
   // Leaving the section, or the page, with an edit not saved asks first.
-  useUnsavedDraft(dirty ? t('The change to special characters') : null);
+  useUnsavedDraft(dirty ? 'The change to special characters' : null, null, {
+    one: t('The change to special characters is not saved. Leaving loses it.'),
+  });
   const problemsByCode = useMemo(() => {
     const m = new Map();
-    for (const row of draft) m.set(row, validateCode(row, draft));
+    for (const row of draft) m.set(row, codeProblems(row, draft));
     return m;
   }, [draft]);
   const canSave = dirty && !saving && [...problemsByCode.values()].every((p) => p.length === 0);
@@ -380,7 +381,11 @@ export const ComposeSettings = ({ project, projectId, client, onProjectUpdate })
 
       <div className="flex max-w-4xl flex-col gap-3">
         <div className="flex flex-wrap items-center gap-2">
-          <ListCount shown={matches.length} total={live.length} noun="code" />
+          <ListCount
+            shown={matches.length}
+            total={live.length}
+            countLabel={(v) => t('{total} {n, plural, one {code} other {codes}}', v)}
+          />
           <SearchInput
             className="w-full max-w-[20rem]"
             inputClassName="h-8"
@@ -509,10 +514,10 @@ export const ComposeSettings = ({ project, projectId, client, onProjectUpdate })
                     <p className="px-3 pt-1 text-xs text-muted-foreground">{elsewhereText(row)}</p>
                   )}
                   {problems.map((p) => {
-                    const other = p === DUPLICATE_CODE ? clashOf(row) : null;
+                    const other = p.kind === 'duplicate' ? clashOf(row) : null;
                     return (
-                      <p key={p} className="px-3 pt-1 text-xs text-destructive">
-                        {other ? clashText(other) : p}
+                      <p key={p.text} className="px-3 pt-1 text-xs text-destructive">
+                        {other ? clashText(other) : p.text}
                         {other && (
                           <>
                             {' '}

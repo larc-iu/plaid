@@ -175,6 +175,10 @@ export const comments = {
       this,
       this._cmtSending || typed || editing ? 'The comment you have typed' : null,
       'comments you have typed',
+      {
+        one: t('The comment you have typed is not saved. Leaving loses it.'),
+        several: (n) => t('{n} comments you have typed are not saved. Leaving loses them.', { n }),
+      },
     );
   },
 

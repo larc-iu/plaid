@@ -839,7 +839,9 @@ const NewSegmentRow = memo(function NewSegmentRow({
   const canCreate = ready && draft.trim().length > 0;
   // Only Enter saves this row, so what it holds is asked about on every way
   // out, as Baseline's edit box is.
-  useUnsavedDraft(draft.trim() ? t('The new segment you have typed') : null);
+  useUnsavedDraft(draft.trim() ? 'The new segment you have typed' : null, null, {
+    one: t('The new segment you have typed is not saved. Leaving loses it.'),
+  });
 
   useLayoutEffect(() => autoGrow(ref.current), [draft]);
   // Stable, so the running clock's re-renders do not hand the box over again
@@ -1181,6 +1183,13 @@ export function TranscriptList({
           { n: unsaved.length },
         )
       : null,
+    null,
+    {
+      one: t(
+        '{n, plural, one {The text of a transcript line is not saved. Leaving loses it.} other {The text of {n} transcript lines is not saved. Leaving loses it.}}',
+        { n: unsaved.length },
+      ),
+    },
   );
 
   const confirm = useConfirm();

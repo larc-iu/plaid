@@ -236,6 +236,8 @@
   "{n, plural, one {# vocabulary link} other {# vocabulary links}} cannot come back.": "{n, plural, one {# lien de vocabulaire ne peut pas être rétabli.} other {# liens de vocabulaire ne peuvent pas être rétablis.}}",
   "{n, plural, one {# {one}} other {# {other}}}": "{n, plural, one {# {one}} other {# {other}}}",
   "{n, plural, one {Kept: # vocabulary link. The entry it had then no longer exists.} other {Kept: # vocabulary links. The entries they had then no longer exist.}}": "{n, plural, one {Conservé : # lien de vocabulaire. L’entrée qu’il avait alors n’existe plus.} other {Conservés : # liens de vocabulaire. Les entrées qu’ils avaient alors n’existent plus.}}",
+  "{n, plural, one {{n} annotation} other {{n} annotations}}": "{n, plural, one {{n} annotation} other {{n} annotations}}",
+  "{n, plural, one {{n} vocabulary link} other {{n} vocabulary links}}": "{n, plural, one {{n} lien de vocabulaire} other {{n} liens de vocabulaire}}",
   "{name} deactivated": "{name} désactivé",
   "{name} failed: {error}": "Échec de {name} : {error}",
   "{name} finished.": "{name} a terminé.",

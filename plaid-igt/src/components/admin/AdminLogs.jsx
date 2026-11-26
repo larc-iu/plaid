@@ -408,7 +408,7 @@ export const AdminLogs = ({ client }) => {
         id="admin-log-events"
         defaultSort={{ key: 'ts', dir: 'desc' }}
         pageParam="events"
-        noun="event"
+        countLabel={(v) => t('{total} {n, plural, one {event} other {events}}', v)}
         empty={t('Nothing logged outside the requests below.')}
         loading={loading}
         expand={(e) => (
@@ -431,7 +431,7 @@ export const AdminLogs = ({ client }) => {
         id="admin-log-requests"
         defaultSort={{ key: 'ts', dir: 'desc' }}
         pageParam="requests"
-        noun="request"
+        countLabel={(v) => t('{total} {n, plural, one {request} other {requests}}', v)}
         empty={t('No request in the buffer matches.')}
         loading={loading}
         expand={(r) => (

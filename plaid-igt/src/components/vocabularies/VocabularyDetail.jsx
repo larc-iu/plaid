@@ -33,13 +33,12 @@ import {
 import { entryMorphTypesOf } from '@/domain/vocabLookup';
 import { planKeptTypes, queueKeptTypes, busyLinkedDocument } from '@/domain/keptMorphType';
 import { refusalSaid, statusOf } from '@ui/lib/errors.js';
-import { msg, t, tx } from '@ui/lib/i18n.js';
+import { msg, t, tx, tc } from '@ui/lib/i18n.js';
 import {
   normalizeVocabFields,
   newVocabField,
   seedDefaultFields,
   fieldsToConfig,
-  fieldLabel,
   isBuiltInField,
   vocabGovernedFields,
   isReservedFieldName,
@@ -47,6 +46,7 @@ import {
   FIELD_SCOPES,
   ENTRY_ROLES,
 } from '@/domain/vocabFields';
+import { fieldDisplayLabel } from '@/domain/vocabFieldLabels';
 import { ENTRY_ROLE_CHOICES, proposeEntryRole } from '@/domain/entryRole';
 import {
   buildSenseTree,
@@ -123,6 +123,11 @@ import { cn } from '@ui/lib/utils';
 import { isEnter } from '@ui/lib/chords.js';
 
 const strong = (c) => <strong>{c}</strong>;
+
+// reservedStatusMessage on screen. vocabDictionary.js says it in English,
+// since that module imports no translation (a plain-node mirror runs it).
+const reservedStatusShown = (value) =>
+  t('“{value}” is a reserved Status value and cannot be renamed or removed', { value });
 
 // A tab the past state does not reach. The trigger is an anchor, which the
 // `disabled:` variant does not match, so it keys on Radix's data attribute.
@@ -357,7 +362,9 @@ export const VocabularyDetail = () => {
   const nameTyped = isNewVocabulary
     ? !!editedName.trim()
     : !!vocabulary && editedName.trim() !== vocabulary.name;
-  useUnsavedDraft(nameTyped ? 'The vocabulary name you have typed' : null);
+  useUnsavedDraft(nameTyped ? 'The vocabulary name you have typed' : null, null, {
+    one: t('The vocabulary name you have typed is not saved. Leaving loses it.'),
+  });
 
   // Each schema write expects the fields, or the tagsets, this page last read
   // or wrote, so a page opened before another maintainer's save is refused
@@ -852,7 +859,7 @@ export const VocabularyDetail = () => {
       tagsetsBefore: tagsets,
       tagsetsAfter: tagsets,
     });
-    if (refused) notifyError(reservedStatusMessage(refused), t('Reserved value'));
+    if (refused) notifyError(reservedStatusShown(refused), t('Reserved value'));
     return !!refused;
   };
 
@@ -942,7 +949,7 @@ export const VocabularyDetail = () => {
         notifyError(t('The entries could not be read.'), t('Not changed'));
         return;
       }
-      const label = fieldLabel(before ?? { name: fieldName });
+      const label = fieldDisplayLabel(before ?? { name: fieldName });
       const lines = [];
       // Said as what is true of each direction. A text field can hold the
       // strings perfectly well: what it cannot hold is a reference, and that
@@ -1042,8 +1049,8 @@ export const VocabularyDetail = () => {
       tagsetsAfter: next,
     });
     if (dropped) {
-      notifyError(reservedStatusMessage(dropped), t('Reserved value'));
-      throw new Error(reservedStatusMessage(dropped));
+      notifyError(reservedStatusShown(dropped), t('Reserved value'));
+      throw new Error(reservedStatusMessage(dropped)); // i18n-ignore: stops the save, the toast above says it
     }
     setDraftTagsets(next);
     if (repointed) setFields(repointed);
@@ -1182,7 +1189,7 @@ export const VocabularyDetail = () => {
                   <tr key={field.name} className="border-t hover:bg-muted/30">
                     <td className="px-3 py-1.5">
                       <span className="flex items-center gap-2">
-                        <span>{fieldLabel(field)}</span>
+                        <span>{fieldDisplayLabel(field)}</span>
                         {field.immutable || field.name === statusKey ? (
                           <span className="rounded-sm bg-muted px-1.5 py-0.5 text-[11px] font-medium text-muted-foreground">
                             {t('Required')}
@@ -1197,7 +1204,7 @@ export const VocabularyDetail = () => {
                     <td className="px-3 py-1.5">
                       <Switch
                         id={`inline-${field.name}`}
-                        aria-label={t('Show {field} inline', { field: fieldLabel(field) })}
+                        aria-label={t('Show {field} inline', { field: fieldDisplayLabel(field) })}
                         checked={field.inline}
                         onCheckedChange={() => handleToggleInline(field.name)}
                       />
@@ -1215,7 +1222,7 @@ export const VocabularyDetail = () => {
                         >
                           <SelectTrigger
                             id={`type-${field.name}`}
-                            aria-label={t('Type of {field}', { field: fieldLabel(field) })}
+                            aria-label={t('Type of {field}', { field: fieldDisplayLabel(field) })}
                             className="h-7 w-24 text-xs"
                           >
                             <SelectValue />
@@ -1242,7 +1249,9 @@ export const VocabularyDetail = () => {
                         >
                           <SelectTrigger
                             id={`scope-${field.name}`}
-                            aria-label={t('Where {field} is shown', { field: fieldLabel(field) })}
+                            aria-label={t('Where {field} is shown', {
+                              field: fieldDisplayLabel(field),
+                            })}
                             className="h-7 w-36 text-xs"
                           >
                             <SelectValue />
@@ -1262,7 +1271,7 @@ export const VocabularyDetail = () => {
                       {field.name !== 'morphType' && !isRef && (
                         <Input
                           value={langDrafts[field.name] ?? field.lang ?? ''}
-                          aria-label={t('Language of {field}', { field: fieldLabel(field) })}
+                          aria-label={t('Language of {field}', { field: fieldDisplayLabel(field) })}
                           className="h-7 w-20 text-xs"
                           onChange={(e) =>
                             setLangDrafts((d) => ({ ...d, [field.name]: e.target.value }))
@@ -1287,7 +1296,7 @@ export const VocabularyDetail = () => {
                         >
                           <SelectTrigger
                             id={`role-${field.name}`}
-                            aria-label={t('Role of {field}', { field: fieldLabel(field) })}
+                            aria-label={t('Role of {field}', { field: fieldDisplayLabel(field) })}
                             className="h-7 w-36 text-xs"
                           >
                             <SelectValue />
@@ -1319,7 +1328,9 @@ export const VocabularyDetail = () => {
                           >
                             <SelectTrigger
                               id={`tagset-${field.name}`}
-                              aria-label={t('Tagset of {field}', { field: fieldLabel(field) })}
+                              aria-label={t('Tagset of {field}', {
+                                field: fieldDisplayLabel(field),
+                              })}
                               className="h-7 w-36 text-xs"
                             >
                               <SelectValue />
@@ -1346,7 +1357,7 @@ export const VocabularyDetail = () => {
                     <td className="px-3 py-1.5">
                       <div className="flex justify-end">
                         <RowControls
-                          name={fieldLabel(field)}
+                          name={fieldDisplayLabel(field)}
                           onUp={() => handleMoveField(field.name, -1)}
                           onDown={() => handleMoveField(field.name, 1)}
                           canUp={canMoveUp}
@@ -1514,7 +1525,7 @@ export const VocabularyDetail = () => {
                   </span>
                   {changesShown && (
                     <SegmentedControl
-                      label={t('View')}
+                      label={tc('noun', 'View')}
                       value={historyParam.view}
                       onChange={historyParam.setView}
                       options={[
@@ -1693,7 +1704,7 @@ export const VocabularyDetail = () => {
                             ? { [statusTagsetName(fields)]: RESERVED_STATUS_VALUES }
                             : {}
                         }
-                        reservedMessage={reservedStatusMessage}
+                        reservedMessage={reservedStatusShown}
                         onSaveChanges={handleSaveTagsets}
                         onLoadAttested={handleLoadAttested}
                         emptyHint={t('No tagsets yet. Add one, then assign it to a field above.')}

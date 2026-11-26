@@ -11,9 +11,8 @@ import { t } from '@ui/lib/i18n.js';
 //
 // `name` names the row in the buttons' labels for a screen reader. The remove
 // button's title is `removeLabel` ("Remove" by default), and its label names
-// the row: `removeAria`, a whole message such as t('Unlink {name}', { name }).
-// A `removeLabel` given without `removeAria` is put before the name, which
-// only English reads right.
+// the row: `removeAria`, a whole message such as t('Unlink {name}', { name }),
+// "Remove {name}" by default.
 export const RowControls = ({
   name,
   onUp,
@@ -32,15 +31,7 @@ export const RowControls = ({
     handler();
   };
   const removeTitle = removeLabel ?? t('Remove');
-  const removeNamed =
-    removeAria ??
-    (removeLabel == null
-      ? name
-        ? t('Remove {name}', { name })
-        : t('Remove')
-      : name
-        ? `${removeLabel} ${name}`
-        : removeLabel);
+  const removeNamed = removeAria ?? (name ? t('Remove {name}', { name }) : removeTitle);
   return (
     <div className="flex items-center gap-1">
       {onUp && (

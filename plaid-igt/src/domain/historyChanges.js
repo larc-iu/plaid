@@ -39,14 +39,6 @@ import { FIELD_TYPES, RESERVED_ITEM_KEYS, normalizeVocabFields } from './vocabFi
 // ---------------------------------------------------------------------------
 // Whose a value was
 
-/** The legend's word for each provenance state. */
-export const PROV_WORDS = Object.freeze({
-  [PROV_STATES.HUMAN]: 'a person’s',
-  [PROV_STATES.VERIFIED]: 'confirmed',
-  [PROV_STATES.CONTRIBUTED]: 'contributed',
-  [PROV_STATES.MACHINE]: 'machine-made',
-});
-
 // A person's value, confirmed or not: what a change "replaced a person's
 // value" counts. A machine value a person confirmed is a person's too.
 const PERSONS = new Set([PROV_STATES.HUMAN, PROV_STATES.VERIFIED, PROV_STATES.CONTRIBUTED]);

@@ -338,7 +338,9 @@ export function GuidelinesTab({ client, projectId, project, canWrite }) {
   // Every way out of this screen asks before it drops the text: the app's tabs
   // and links through the shared guard, and another guideline or New here.
   const typed = editing && (draft.title !== draft.base.title || draft.body !== draft.base.body);
-  useUnsavedDraft(typed ? t('The guideline you have typed') : null);
+  useUnsavedDraft(typed ? t('The guideline you have typed') : null, null, {
+    one: t('The guideline you have typed is not saved. Leaving loses it.'),
+  });
   const guardLeaving = useUnsavedGuard();
   // Titles are not unique and the server does not police them, so this is a
   // note and not a blocker: it is said while the title is being typed, which is
@@ -381,7 +383,11 @@ export function GuidelinesTab({ client, projectId, project, canWrite }) {
             project with a handful of guidelines it floated in mid-air. */}
         <div className="flex flex-col gap-2 border-b p-2">
           <div className="flex items-center justify-between gap-2">
-            <ListCount shown={matched.length} total={entries.length} noun="guideline" />
+            <ListCount
+              shown={matched.length}
+              total={entries.length}
+              countLabel={(v) => t('{total} {n, plural, one {guideline} other {guidelines}}', v)}
+            />
             {canWrite && (
               <Button
                 type="button"

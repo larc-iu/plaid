@@ -22,12 +22,12 @@ import {
   SelectValue,
 } from '@ui/components/ui/select';
 import { cn } from '@ui/lib/utils';
-import { humanizeFieldName } from '@/domain/vocabFields';
+import { fieldDisplayName } from '@/domain/vocabFieldLabels';
 import { ANY_FIELD } from '@/domain/vocabItemFilter';
 import { FormLabel } from './FormLabel';
 import { NEW_ID } from './vocabItemsState';
 import { SegmentedControl } from '@ui/components/shared/SegmentedControl.jsx';
-import { t } from '@ui/lib/i18n.js';
+import { t, tc } from '@ui/lib/i18n.js';
 
 // The left pane: the search box and its scope, the view toggle, the paged
 // rows, and the footer's bulk actions. `list` is a useEntryList; `scope` and
@@ -105,7 +105,7 @@ export const EntryList = ({
               <SelectItem value="form">{t('Form')}</SelectItem>
               {fieldNames.map((name) => (
                 <SelectItem key={name} value={name}>
-                  {humanizeFieldName(name)}
+                  {fieldDisplayName(name)}
                 </SelectItem>
               ))}
             </SelectContent>
@@ -121,7 +121,7 @@ export const EntryList = ({
           )}
         </div>
         <SegmentedControl
-          label={t('View')}
+          label={tc('noun', 'View')}
           value={treeView ? 'tree' : 'flat'}
           onChange={(v) => setTreeView(v === 'tree')}
           options={[
@@ -155,7 +155,7 @@ export const EntryList = ({
           >
             {t('{n} without {field}', {
               n: emptyCount.toLocaleString(),
-              field: humanizeFieldName(emptyField),
+              field: fieldDisplayName(emptyField),
             })}
           </button>
         )}

@@ -6,7 +6,7 @@ import { useDocumentTitle } from '../../hooks/useDocumentTitle.js';
 import { useProject } from '../../hooks/useProject.js';
 import { humanizeError, projectNotFound } from '../../lib/errors.js';
 import { notifyError, notifySuccess } from '../../lib/notify.js';
-import { t } from '../../lib/i18n.js';
+import { t, tc } from '../../lib/i18n.js';
 import { Button } from '../ui/button';
 import { ProjectDocumentsList } from './ProjectDocumentsList.jsx';
 import { LoadError } from './LoadError.jsx';
@@ -77,7 +77,7 @@ export const ProjectDocumentsPage = ({
       const client = getClient();
       if (!client) throw new Error('Not authenticated');
       await setup.adopt(client, project, info);
-      notifySuccess(t('Set up for {app}', { app: setup.app }));
+      notifySuccess(tc('toast', 'Set up for {app}', { app: setup.app }));
       await reload();
     } catch (err) {
       console.error(`Failed to set the project up for ${setup.app}:`, err);

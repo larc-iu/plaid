@@ -319,5 +319,8 @@
   "“{entry}” takes the type {type}.": "« {entry} » prend le type {type}.",
   "“{form}” occurs {n, plural, one {# time} other {# times}}, and none is analyzed. Analyze one in a document first.": "« {form} » apparaît {n, plural, one {# fois} other {# fois}}, et aucune occurrence n’est analysée. Analysez-en une dans un document d’abord.",
   "“{name}” in {files}": "« {name} » dans {files}",
-  "“{name}”, as it will be imported.": "« {name} », tel qu’il sera importé."
+  "“{name}”, as it will be imported.": "« {name} », tel qu’il sera importé.",
+  "Which words in this project are still unglossed?": "Quels mots de ce projet ne sont pas encore glosés ?",
+  "Are the glosses for the most common suffix consistent?": "Les gloses du suffixe le plus fréquent sont-elles cohérentes ?",
+  "Summarize the noun morphology you can see in the corpus.": "Résumez la morphologie nominale que vous observez dans le corpus."
 }
