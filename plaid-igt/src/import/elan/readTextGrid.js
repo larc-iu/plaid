@@ -103,7 +103,7 @@ const binaryError = (fileName) =>
  */
 export async function readTextGridFile(file) {
   const bytes = new Uint8Array(await file.arrayBuffer());
-  if (new TextDecoder('latin1').decode(bytes.subarray(0, 12)) === 'ooBinaryFile') {
+  if ([...'ooBinaryFile'].every((c, i) => bytes[i] === c.charCodeAt(0))) {
     throw binaryError(file.name);
   }
   return readTextGrid(decodeText(bytes, file.name), file.name);
