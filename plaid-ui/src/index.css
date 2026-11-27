@@ -212,6 +212,15 @@ body {
   background-color: hsl(var(--primary) / 0.2);
 }
 
+/* On a surface filled with the accent (a message one wrote to the assistant,
+   a tooltip, a filled button) that tint cannot be seen, so a selection there
+   turns the two colours round. */
+.bg-primary::selection,
+.bg-primary ::selection {
+  background-color: hsl(var(--primary-foreground));
+  color: hsl(var(--primary));
+}
+
 /* Language data, where an app draws it outside a surface of its own. */
 .plaid-text {
   font-family: var(--plaid-font-text);
